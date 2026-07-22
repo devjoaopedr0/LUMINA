@@ -1,12 +1,17 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import * as auth from "@/lib/auth";
-import type { AppUser } from "@/lib/auth";
+import type { AccountType, AppUser } from "@/lib/auth";
 
 interface AuthContextValue {
   user: AppUser | null;
   loading: boolean;
   login: (email: string, password: string) => AppUser | null;
-  signup: (name: string, email: string, password: string) => { user?: AppUser; error?: string };
+  signup: (
+    name: string,
+    email: string,
+    password: string,
+    accountType: AccountType
+  ) => { user?: AppUser; error?: string };
   logout: () => void;
 }
 
@@ -29,8 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result) setUser(result);
       return result;
     },
-    signup: (name, email, password) => {
-      const result = auth.signup(name, email, password);
+    signup: (name, email, password, accountType) => {
+      const result = auth.signup(name, email, password, accountType);
       if (result.user) setUser(result.user);
       return result;
     },
