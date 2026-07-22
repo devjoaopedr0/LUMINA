@@ -1,0 +1,125 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-display: "Poppins", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary: #ffc107;
+  --color-primary-50: #fffbeb;
+  --color-primary-100: #fff3c4;
+  --color-primary-400: #ffd54f;
+  --color-primary-500: #ffc107;
+  --color-primary-600: #e6ac00;
+  --color-primary-700: #b38300;
+
+  --color-graphite: #1f2937;
+  --color-graphite-700: #374151;
+  --color-graphite-500: #6b7280;
+  --color-graphite-400: #9ca3af;
+
+  --color-surface: #ffffff;
+  --color-surface-card: #f8fafc;
+  --color-surface-line: #e5e7eb;
+
+  --color-success: #22c55e;
+  --color-alert: #ef4444;
+
+  --animate-fade-up: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fade-in 0.8s ease forwards;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-14px);
+    }
+  }
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-surface-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-surface text-graphite font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    overflow-x: hidden;
+  }
+
+  .dark body {
+    @apply bg-[#0B0D12] text-[#E5E7EB];
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background: var(--color-primary);
+    color: var(--color-graphite);
+  }
+}
+
+@layer utilities {
+  .container-lumina {
+    @apply mx-auto w-full max-w-[1180px] px-6 md:px-10;
+  }
+
+  .text-gradient-graphite {
+    @apply bg-clip-text text-transparent bg-gradient-to-b from-graphite to-graphite-700;
+  }
+
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+  }
+
+  .dark .glass {
+    background: rgba(17, 19, 24, 0.6);
+  }
+}
