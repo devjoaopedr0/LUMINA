@@ -1,8 +1,8 @@
 import { ArrowRight, Sparkles, Star, TrendingUp, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { APP_URL } from "@/lib/config";
 
 export function Hero() {
   return (
@@ -60,10 +60,13 @@ export function Hero() {
           transition={{ duration: 0.7, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
         >
-          <Link to="/signup" className={buttonVariants({ size: "lg", className: "w-full sm:w-auto" })}>
+          <a
+            href={`${APP_URL}/signup`}
+            className={buttonVariants({ size: "lg", className: "w-full sm:w-auto" })}
+          >
             Criar minha conta grátis
             <ArrowRight className="h-4 w-4" />
-          </Link>
+          </a>
           <a
             href="#como-funciona"
             className={buttonVariants({ size: "lg", variant: "outline", className: "w-full sm:w-auto" })}
