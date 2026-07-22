@@ -32,7 +32,7 @@ export function Navbar() {
         scrolled ? "glass border-b border-surface-line shadow-[0_1px_0_rgba(0,0,0,0.02)]" : "bg-transparent"
       )}
     >
-      <nav className="container-lumina flex h-[72px] items-center justify-between">
+      <nav className="container-lumina flex h-18 items-center justify-between">
         <a href="#top" aria-label="Lumina — página inicial">
           <Logo />
         </a>
