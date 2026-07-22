@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { buttonVariants } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import { APP_URL } from "@/lib/config";
 
 const LINKS = [
   { label: "Solução", href: "#solucao" },
@@ -50,12 +50,12 @@ export function Navbar() {
         </div>
 
         <div className="hidden lg:flex items-center gap-3">
-          <Link to="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+          <a href={`${APP_URL}/login`} className={buttonVariants({ variant: "ghost", size: "sm" })}>
             Entrar
-          </Link>
-          <Link to="/signup" className={buttonVariants({ variant: "primary", size: "sm" })}>
+          </a>
+          <a href={`${APP_URL}/signup`} className={buttonVariants({ variant: "primary", size: "sm" })}>
             Criar conta grátis
-          </Link>
+          </a>
         </div>
 
         <button
@@ -89,20 +89,20 @@ export function Navbar() {
                 </a>
               ))}
               <div className="mt-2 flex flex-col gap-2 px-3">
-                <Link
-                  to="/login"
+                <a
+                  href={`${APP_URL}/login`}
                   onClick={() => setOpen(false)}
                   className={buttonVariants({ variant: "outline", className: "w-full" })}
                 >
                   Entrar
-                </Link>
-                <Link
-                  to="/signup"
+                </a>
+                <a
+                  href={`${APP_URL}/signup`}
                   onClick={() => setOpen(false)}
                   className={buttonVariants({ variant: "primary", className: "w-full" })}
                 >
                   Criar conta grátis
-                </Link>
+                </a>
               </div>
             </div>
           </motion.div>

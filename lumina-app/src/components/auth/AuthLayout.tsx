@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { Sparkles, ShieldCheck, Zap } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { LANDING_URL } from "@/lib/config";
 
 const HIGHLIGHTS = [
   { icon: Sparkles, text: "Plano de estudos personalizado pela LuminIA" },
@@ -31,9 +31,9 @@ export function AuthLayout({
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/20 blur-[120px]"
         />
-        <Link to="/" className="relative">
+        <a href={LANDING_URL} className="relative">
           <Logo dark />
-        </Link>
+        </a>
 
         <div className="relative">
           <h2 className="max-w-sm text-3xl font-semibold leading-[1.2] tracking-tight">
@@ -59,9 +59,9 @@ export function AuthLayout({
       {/* Form panel */}
       <div className="relative flex w-full flex-1 flex-col items-center justify-center px-6 py-16 lg:w-[58%]">
         <div className="w-full max-w-sm">
-          <Link to="/" className="mb-10 flex justify-center lg:hidden">
+          <a href={LANDING_URL} className="mb-10 flex justify-center lg:hidden">
             <Logo />
-          </Link>
+          </a>
 
           <h1 className="text-2xl font-semibold tracking-tight text-graphite">{title}</h1>
           <p className="mt-2 text-sm text-graphite-500">{subtitle}</p>

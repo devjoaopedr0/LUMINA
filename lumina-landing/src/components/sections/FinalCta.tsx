@@ -1,7 +1,7 @@
 import { ArrowRight, Sparkles } from "lucide-react";
-import { Link } from "react-router-dom";
 import { Reveal } from "@/components/ui/Reveal";
 import { buttonVariants } from "@/components/ui/Button";
+import { APP_URL } from "@/lib/config";
 
 export function FinalCta() {
   return (
@@ -28,10 +28,10 @@ export function FinalCta() {
             </p>
 
             <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Link to="/signup" className={buttonVariants({ size: "lg" })}>
+              <a href={`${APP_URL}/signup`} className={buttonVariants({ size: "lg" })}>
                 Criar minha conta grátis
                 <ArrowRight className="h-4 w-4" />
-              </Link>
+              </a>
               <a
                 href="#faq"
                 className={buttonVariants({
