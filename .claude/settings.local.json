@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p lumina-app/src/lib lumina-app/src/data lumina-app/src/contexts lumina-app/src/pages lumina-app/src/components/ui lumina-app/src/components/auth)",
+      "Bash(cp lumina-landing/src/lib/utils.ts lumina-app/src/lib/utils.ts)",
+      "Bash(cp lumina-landing/src/lib/auth.ts lumina-app/src/lib/auth.ts)",
+      "Bash(cp lumina-landing/src/data/users.json lumina-app/src/data/users.json)",
+      "Bash(cp lumina-landing/src/contexts/AuthContext.tsx lumina-app/src/contexts/AuthContext.tsx)",
+      "Bash(npm uninstall *)",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 5174 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess\")",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=22152' | Select-Object CommandLine\")",
+      "Bash(git status *)",
+      "Bash(gh auth *)"
     ]
   }
 }
