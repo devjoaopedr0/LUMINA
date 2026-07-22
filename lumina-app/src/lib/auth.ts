@@ -1,9 +1,12 @@
 import seedUsers from "@/data/users.json";
 
+export type AccountType = "aluno" | "instituicao";
+
 export interface AppUser {
   name: string;
   email: string;
   password: string;
+  accountType: AccountType;
 }
 
 const USERS_KEY = "lumina_users";
@@ -13,7 +16,7 @@ function getUsers(): AppUser[] {
   const raw = localStorage.getItem(USERS_KEY);
   if (raw) return JSON.parse(raw);
   localStorage.setItem(USERS_KEY, JSON.stringify(seedUsers));
-  return seedUsers;
+  return seedUsers as AppUser[];
 }
 
 function saveUsers(users: AppUser[]) {
@@ -29,12 +32,17 @@ export function login(email: string, password: string): AppUser | null {
   return user;
 }
 
-export function signup(name: string, email: string, password: string): { user?: AppUser; error?: string } {
+export function signup(
+  name: string,
+  email: string,
+  password: string,
+  accountType: AccountType
+): { user?: AppUser; error?: string } {
   const users = getUsers();
   const exists = users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase());
   if (exists) return { error: "Já existe uma conta com esse e-mail." };
 
-  const newUser: AppUser = { name, email: email.trim(), password };
+  const newUser: AppUser = { name, email: email.trim(), password, accountType };
   saveUsers([...users, newUser]);
   localStorage.setItem(SESSION_KEY, newUser.email);
   return { user: newUser };

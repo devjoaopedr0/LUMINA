@@ -1,15 +1,47 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  ArrowRight,
+  ArrowLeft,
+  AlertCircle,
+  CheckCircle2,
+  GraduationCap,
+  Building2,
+} from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
+import type { AccountType } from "@/lib/auth";
+
+const ACCOUNT_TYPES: {
+  value: AccountType;
+  icon: typeof GraduationCap;
+  title: string;
+  description: string;
+}[] = [
+  {
+    value: "aluno",
+    icon: GraduationCap,
+    title: "Sou aluno",
+    description: "Quero estudar e me preparar para o vestibular com a LuminIA.",
+  },
+  {
+    value: "instituicao",
+    icon: Building2,
+    title: "Sou instituição",
+    description: "Quero licenciar a Lumina para minha instituição.",
+  },
+];
 
 export function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
+
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -21,6 +53,7 @@ export function Signup() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!accountType) return;
 
     if (password.length < 5) {
       setError("Sua senha precisa ter pelo menos 5 caracteres.");
@@ -31,7 +64,7 @@ export function Signup() {
       return;
     }
 
-    const result = signup(name, email, password);
+    const result = signup(name, email, password, accountType);
     if (result.error) {
       setError(result.error);
       return;
@@ -43,8 +76,67 @@ export function Signup() {
     setError("O cadastro com Google será habilitado assim que o backend estiver conectado.");
   }
 
+  if (!accountType) {
+    return (
+      <AuthLayout
+        title="Como você vai usar a Lumina?"
+        subtitle="Isso nos ajuda a personalizar sua experiência desde o início."
+      >
+        <div className="flex flex-col gap-4">
+          {ACCOUNT_TYPES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setAccountType(option.value)}
+              className="group flex items-start gap-4 rounded-2xl border border-surface-line bg-white p-5 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary-600 hover:shadow-[0_20px_40px_-20px_rgba(31,41,55,0.15)]"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-graphite/5 text-graphite transition-colors group-hover:bg-primary group-hover:text-graphite">
+                <option.icon className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-base font-semibold text-graphite">{option.title}</span>
+                <span className="mt-1 block text-sm leading-relaxed text-graphite-500">
+                  {option.description}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-8 text-center text-sm text-graphite-500">
+          Já tem uma conta?{" "}
+          <Link to="/login" className="font-semibold text-graphite hover:text-primary-600">
+            Entrar
+          </Link>
+        </p>
+      </AuthLayout>
+    );
+  }
+
+  const selected = ACCOUNT_TYPES.find((o) => o.value === accountType)!;
+
   return (
-    <AuthLayout title="Crie sua conta grátis" subtitle="Comece agora, sem cartão de crédito.">
+    <AuthLayout
+      title={accountType === "instituicao" ? "Crie a conta da sua instituição" : "Crie sua conta grátis"}
+      subtitle={
+        accountType === "instituicao"
+          ? "Preencha os dados abaixo para começar."
+          : "Comece agora, sem cartão de crédito."
+      }
+    >
+      <button
+        type="button"
+        onClick={() => setAccountType(null)}
+        className="mb-6 flex items-center gap-2 rounded-full border border-surface-line bg-white py-2 pl-2 pr-4 text-xs font-semibold text-graphite-500 transition-colors hover:text-graphite"
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-graphite/5">
+          <ArrowLeft className="h-3.5 w-3.5" />
+        </span>
+        <selected.icon className="h-3.5 w-3.5 text-primary-600" />
+        {selected.title}
+        <span className="text-graphite-400">· trocar</span>
+      </button>
+
       <GoogleButton onClick={handleGoogleClick} />
 
       <div className="my-6 flex items-center gap-3">
@@ -56,13 +148,13 @@ export function Signup() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
           <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-graphite">
-            Nome completo
+            {accountType === "instituicao" ? "Nome da instituição" : "Nome completo"}
           </label>
           <Input
             id="name"
             type="text"
             autoComplete="name"
-            placeholder="Seu nome"
+            placeholder={accountType === "instituicao" ? "Nome do cursinho ou escola" : "Seu nome"}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -77,7 +169,7 @@ export function Signup() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="voce@email.com"
+            placeholder="seunome@gmail.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -132,10 +224,12 @@ export function Signup() {
           </div>
         )}
 
-        <div className="flex items-start gap-2 rounded-xl border border-success/20 bg-success/5 p-3 text-xs text-graphite-500">
-          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-          <span>Grátis para começar. Sem cartão de crédito. Cancele quando quiser.</span>
-        </div>
+        {accountType === "aluno" && (
+          <div className="flex items-start gap-2 rounded-xl border border-success/20 bg-success/5 p-3 text-xs text-graphite-500">
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+            <span>Grátis para começar. Sem cartão de crédito. Cancele quando quiser.</span>
+          </div>
+        )}
 
         <Button type="submit" size="lg" className="mt-2 w-full">
           Criar minha conta
