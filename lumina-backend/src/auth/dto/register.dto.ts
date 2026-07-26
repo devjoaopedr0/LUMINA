@@ -1,0 +1,43 @@
+import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+
+export class RegisterDto {
+  @ApiProperty({ example: 'Maria Silva', description: 'Nome do usuário' })
+  @IsString({ message: 'first_name deve ser um texto.' })
+  @MinLength(2, { message: 'first_name deve ter pelo menos 2 caracteres.' })
+  @MaxLength(80, { message: 'first_name deve ter no máximo 80 caracteres.' })
+  firstName: string;
+
+  @ApiProperty({ example: 'Silva', description: 'Sobrenome do usuário' })
+  @IsString({ message: 'last_name deve ser um texto.' })
+  @MinLength(2, { message: 'last_name deve ter pelo menos 2 caracteres.' })
+  @MaxLength(80, { message: 'last_name deve ter no máximo 80 caracteres.' })
+  lastName: string;
+
+  @ApiProperty({ example: 'maria.silva', description: 'Nome de usuário único' })
+  @IsString({ message: 'username deve ser um texto.' })
+  @MinLength(3, { message: 'username deve ter pelo menos 3 caracteres.' })
+  @MaxLength(30, { message: 'username deve ter no máximo 30 caracteres.' })
+  @Matches(/^[a-z0-9_.]+$/, {
+    message: 'username só pode conter letras minúsculas, números, "_" e ".".',
+  })
+  username: string;
+
+  @ApiProperty({ example: 'maria@exemplo.com' })
+  @IsEmail({}, { message: 'email deve ser um endereço de e-mail válido.' })
+  email: string;
+
+  @ApiProperty({ example: 'SenhaForte123', minLength: 8, maxLength: 72 })
+  @IsString({ message: 'password deve ser um texto.' })
+  @MinLength(8, { message: 'password deve ter pelo menos 8 caracteres.' })
+  // bcrypt ignora silenciosamente bytes além do 72º; barrar aqui evita uma
+  // senha "efetiva" truncada sem o usuário perceber.
+  @MaxLength(72, { message: 'password deve ter no máximo 72 caracteres.' })
+  password: string;
+}
