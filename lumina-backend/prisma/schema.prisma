@@ -1,0 +1,296 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+// Gerador clássico (CommonJS, sem driver adapter obrigatório) — o novo
+// gerador "prisma-client" do Prisma 7 emite apenas ESM (usa import.meta.url)
+// e exige um adapter explícito (@prisma/adapter-pg), incompatível com o
+// NestJS em CommonJS usado neste backend.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// MÓDULO CORE
+// ============================================================================
+// Convenção: models em PascalCase / campos em camelCase no schema Prisma,
+// mapeados via @@map / @map para snake_case no Postgres (tabelas/colunas).
+// Isso mantém o client Prisma ergonômico (ex: prisma.user.findMany()) e o
+// banco 100% em snake_case, como exigido.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+
+  @@map("user_status")
+}
+
+/// PENDING: conta institucional criada mas ainda não aprovada/ativada —
+/// licenciamento institucional é sempre uma relação paga, tipicamente com
+/// um passo de aprovação/onboarding assistido antes de ativar de fato.
+enum InstitutionStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+
+  @@map("institution_status")
+}
+
+enum WorkspaceType {
+  PERSONAL
+  INSTITUTION
+
+  @@map("workspace_type")
+}
+
+/// INVITED: convite enviado mas ainda não aceito pelo usuário.
+enum WorkspaceMemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+
+  @@map("workspace_member_status")
+}
+
+// ----------------------------------------------------------------------------
+// USERS
+// ----------------------------------------------------------------------------
+
+/// Autenticação do usuário. Não contém dados públicos de perfil — ver
+/// UserProfile, separada para manter esta tabela enxuta e não expor
+/// password_hash junto de dados exibíveis publicamente.
+model User {
+  id            String     @id @default(uuid()) @db.Uuid
+  email         String     @unique
+  passwordHash  String     @map("password_hash")
+  emailVerified Boolean    @default(false) @map("email_verified")
+  status        UserStatus @default(ACTIVE)
+  lastLogin     DateTime?  @map("last_login")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  deletedAt     DateTime?  @map("deleted_at")
+
+  profile            UserProfile?
+  workspaceMembers   WorkspaceMember[]
+  classMemberships   ClassMember[]
+  classesTeaching    ClassTeacher[]
+  coordinatedClasses Class[]           @relation("ClassCoordinator")
+  createdClasses     Class[]           @relation("ClassCreatedBy")
+
+  @@map("users")
+}
+
+/// Dados públicos/exibíveis do usuário (1:1 com User). first_name é
+/// obrigatório (necessário desde o primeiro acesso, ex: saudação no
+/// dashboard); os demais campos ficam disponíveis para preenchimento
+/// progressivo do perfil e por isso são opcionais.
+model UserProfile {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  firstName String    @map("first_name")
+  lastName  String?   @map("last_name")
+  username  String?   @unique
+  avatarUrl String?   @map("avatar_url")
+  phone     String?
+  birthDate DateTime? @map("birth_date") @db.Date
+  bio       String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// ----------------------------------------------------------------------------
+// INSTITUTIONS & WORKSPACES
+// ----------------------------------------------------------------------------
+
+/// Organização que licencia a Lumina (escola, cursinho, professor
+/// particular, grupo de estudos). Possui exatamente um Workspace do tipo
+/// INSTITUTION — ver Workspace.institutionId.
+model Institution {
+  id        String            @id @default(uuid()) @db.Uuid
+  name      String
+  cnpj      String?           @unique
+  email     String            @unique
+  phone     String?
+  logoUrl   String?           @map("logo_url")
+  status    InstitutionStatus @default(PENDING)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  workspace Workspace?
+
+  @@map("institutions")
+}
+
+/// Ambiente de trabalho dentro da plataforma. Todo usuário possui
+/// automaticamente um Workspace PERSONAL (institutionId nulo); toda
+/// Institution possui exatamente um Workspace INSTITUTION. A constraint
+/// UNIQUE em institutionId é o que garante esse 1:1 no banco.
+model Workspace {
+  id            String        @id @default(uuid()) @db.Uuid
+  institutionId String?       @unique @map("institution_id") @db.Uuid
+  name          String
+  type          WorkspaceType
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  institution Institution?      @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  members     WorkspaceMember[]
+  roles       Role[]
+  classes     Class[]
+
+  @@map("workspaces")
+}
+
+/// Vincula usuários a Workspaces com um cargo (Role) e status de vínculo.
+/// Diferente de ClassMember/ClassTeacher, tem updated_at porque `status` é
+/// mutável (ex: INVITED -> ACTIVE, ACTIVE -> SUSPENDED).
+model WorkspaceMember {
+  id          String                @id @default(uuid()) @db.Uuid
+  workspaceId String                @map("workspace_id") @db.Uuid
+  userId      String                @map("user_id") @db.Uuid
+  roleId      String                @map("role_id") @db.Uuid
+  status      WorkspaceMemberStatus @default(ACTIVE)
+  joinedAt    DateTime              @default(now()) @map("joined_at")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id])
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// ----------------------------------------------------------------------------
+// RBAC (ROLES & PERMISSIONS)
+// ----------------------------------------------------------------------------
+
+/// Cargo dentro de um Workspace (ex: Administrador, Professor, Aluno).
+/// is_system marca cargos padrão criados automaticamente para todo novo
+/// Workspace — protegidos contra edição/exclusão pela aplicação.
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceMembers WorkspaceMember[]
+  rolePermissions  RolePermission[]
+
+  @@index([workspaceId])
+  @@map("roles")
+}
+
+/// Catálogo global de permissões do sistema (ex: CREATE_CLASS). Não
+/// pertence a um Workspace — é compartilhado; Roles se vinculam a ela via
+/// RolePermission.
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  code        String  @unique
+  name        String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// Concede uma Permission a uma Role. Tabela de junção pura — sem
+/// updated_at porque conceder/revogar é criar/deletar linha, não atualizar.
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ----------------------------------------------------------------------------
+// CLASSES
+// ----------------------------------------------------------------------------
+
+/// Turma dentro de um Workspace institucional. Ingresso de alunos via
+/// join_code (estilo Google Classroom).
+///
+/// Regra de negócio que o Postgres não expressa via FK: workspaceId deve
+/// referenciar um Workspace com type = INSTITUTION. Precisa ser validada na
+/// camada de aplicação (ou via trigger) antes de criar/mover uma turma.
+model Class {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  name          String
+  description   String?
+  joinCode      String   @unique @map("join_code")
+  maxStudents   Int?     @map("max_students")
+  coordinatorId String?  @map("coordinator_id") @db.Uuid
+  archived      Boolean  @default(false)
+  createdBy     String   @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  coordinator User?          @relation("ClassCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
+  creator     User           @relation("ClassCreatedBy", fields: [createdBy], references: [id])
+  members     ClassMember[]
+  teachers    ClassTeacher[]
+
+  @@index([workspaceId])
+  @@map("classes")
+}
+
+/// Vincula alunos a turmas.
+model ClassMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([userId])
+  @@map("class_members")
+}
+
+/// Vincula professores a turmas — N:N: um professor pode lecionar em várias
+/// turmas, uma turma pode ter vários professores.
+model ClassTeacher {
+  id        String   @id @default(uuid()) @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([userId])
+  @@map("class_teachers")
+}
