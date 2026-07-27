@@ -18,6 +18,10 @@ describe('Auth (e2e)', () => {
     process.env.CORS_ORIGIN = 'http://localhost:5174';
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/unused-fake-db';
     process.env.PORT = '3999';
+    process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+    process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+    process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3999/auth/google/callback';
+    process.env.FRONTEND_URL = 'http://localhost:5174';
 
     // Import dinâmico DEPOIS de setar as envs: um `import` estático no topo
     // do arquivo seria avaliado antes deste beforeAll rodar (hoisting),
@@ -114,6 +118,7 @@ describe('Auth (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.email).toBe(registerPayload.email);
+    expect(res.body.hasPassword).toBe(true);
   });
 
   it('GET /auth/me com token inválido retorna 401', async () => {
@@ -121,5 +126,25 @@ describe('Auth (e2e)', () => {
       .get('/auth/me')
       .set('Authorization', 'Bearer token-invalido');
     expect(res.status).toBe(401);
+  });
+
+  it('POST /auth/set-password sem token retorna 401', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/set-password')
+      .send({ password: 'OutraSenhaForte123' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /auth/set-password numa conta que já tem senha retorna 409', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/set-password')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ password: 'OutraSenhaForte123' });
+
+    expect(res.status).toBe(409);
   });
 });

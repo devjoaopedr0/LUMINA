@@ -27,6 +27,7 @@ export class UsersService {
       status: user.status,
       lastLogin: user.lastLogin,
       createdAt: user.createdAt,
+      hasPassword: user.passwordHash !== null,
       firstName: user.profile?.firstName ?? null,
       lastName: user.profile?.lastName ?? null,
       username: user.profile?.username ?? null,

@@ -37,6 +37,10 @@ export class UsersRepository {
     return db.user.findUnique({ where: { id }, include: { profile: true } });
   }
 
+  findByGoogleId(googleId: string, db: Db = this.prisma): Promise<UserWithProfile | null> {
+    return db.user.findUnique({ where: { googleId }, include: { profile: true } });
+  }
+
   createWithProfile(
     data: {
       email: string;
@@ -65,5 +69,44 @@ export class UsersRepository {
 
   updateLastLogin(id: string, db: Db = this.prisma): Promise<User> {
     return db.user.update({ where: { id }, data: { lastLogin: new Date() } });
+  }
+
+  /** Cria um usuário a partir de um login social (Google). Sem senha local
+   * (passwordHash null) — e-mail já vem verificado pelo provedor. */
+  createFromGoogle(
+    data: {
+      email: string;
+      googleId: string;
+      firstName: string;
+      lastName: string;
+      avatarUrl: string | null;
+    },
+    db: Db = this.prisma,
+  ): Promise<UserWithProfile> {
+    return db.user.create({
+      data: {
+        email: data.email,
+        googleId: data.googleId,
+        emailVerified: true,
+        profile: {
+          create: {
+            firstName: data.firstName,
+            lastName: data.lastName,
+            avatarUrl: data.avatarUrl,
+          },
+        },
+      },
+      include: { profile: true },
+    });
+  }
+
+  /** Vincula uma conta local já existente a um Google ID (primeiro login via
+   * Google usando o mesmo e-mail de uma conta criada por senha). */
+  linkGoogleId(userId: string, googleId: string, db: Db = this.prisma): Promise<User> {
+    return db.user.update({ where: { id: userId }, data: { googleId } });
+  }
+
+  updatePasswordHash(userId: string, passwordHash: string, db: Db = this.prisma): Promise<User> {
+    return db.user.update({ where: { id: userId }, data: { passwordHash } });
   }
 }
