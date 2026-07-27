@@ -4,6 +4,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { Dashboard } from "@/pages/Dashboard";
+import { OAuthCallback } from "@/pages/OAuthCallback";
+import { SetPassword } from "@/pages/SetPassword";
 
 function App() {
   return (
@@ -12,6 +14,15 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route
+          path="/definir-senha"
+          element={
+            <ProtectedRoute>
+              <SetPassword />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/app"
           element={

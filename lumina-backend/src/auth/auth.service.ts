@@ -9,11 +9,13 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Prisma, UserStatus, WorkspaceType } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UserWithProfile, UsersRepository } from '../users/users.repository';
 import { UsersService } from '../users/users.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { GoogleProfile } from './interfaces/google-profile.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Injectable()
@@ -105,6 +107,77 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     return user;
+  }
+
+  /** Chamado pelo GoogleStrategy com os dados já extraídos do perfil do
+   * Google. Resolve para um User existente (por google_id, ou por e-mail —
+   * vinculando a conta local já existente, já que o Google garante que o
+   * e-mail é verificado) ou cria uma conta nova com os campos preenchidos
+   * automaticamente a partir do perfil. Contas criadas assim nascem sem
+   * senha local (ver hasPassword em UserResponseDto / POST /auth/set-password). */
+  async validateGoogleUser(profile: GoogleProfile): Promise<UserWithProfile> {
+    const existingByGoogleId = await this.usersRepository.findByGoogleId(profile.googleId);
+    if (existingByGoogleId) return existingByGoogleId;
+
+    const existingByEmail = await this.usersRepository.findByEmail(profile.email);
+    if (existingByEmail) {
+      await this.usersRepository.linkGoogleId(existingByEmail.id, profile.googleId);
+      return { ...existingByEmail, googleId: profile.googleId };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const createdUser = await this.usersRepository.createFromGoogle(
+        {
+          email: profile.email,
+          googleId: profile.googleId,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          avatarUrl: profile.avatarUrl,
+        },
+        tx,
+      );
+
+      await this.createPersonalWorkspace(tx, createdUser.id, profile.firstName);
+
+      return createdUser;
+    });
+  }
+
+  /** Último passo do fluxo OAuth: mesmas checagens/efeitos do login comum
+   * (status ACTIVE, last_login, tokens), a partir do User já resolvido por
+   * validateGoogleUser. */
+  async finishOAuthLogin(user: UserWithProfile): Promise<AuthResponseDto> {
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('Esta conta não está ativa. Entre em contato com o suporte.');
+    }
+
+    await this.usersRepository.updateLastLogin(user.id);
+    const refreshed = await this.usersRepository.findById(user.id);
+
+    return this.buildAuthResponse(refreshed as UserWithProfile);
+  }
+
+  /** Define a senha local de uma conta que ainda não tem uma — o caso de
+   * uso é o usuário que se cadastrou via Google e, na sequência, é
+   * convidado a criar uma senha. Não é um "trocar senha": se já existir
+   * password_hash, recusa (isso é uma funcionalidade futura separada, que
+   * exigiria confirmar a senha atual). */
+  async setPassword(userId: string, newPassword: string): Promise<UserResponseDto> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    if (user.passwordHash !== null) {
+      throw new ConflictException(
+        'Esta conta já tem uma senha definida. Troca de senha ainda não está disponível.',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, AuthService.BCRYPT_SALT_ROUNDS);
+    await this.usersRepository.updatePasswordHash(userId, passwordHash);
+    const updated = await this.usersRepository.findById(userId);
+
+    return this.usersService.toPublicUser(updated as UserWithProfile);
   }
 
   /** Cria o Workspace pessoal + cargo de sistema "Owner" + vínculo do

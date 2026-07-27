@@ -1,6 +1,6 @@
 # lumina-backend
 
-API de autenticação da Lumina — NestJS + PostgreSQL + Prisma ORM + JWT. Nesta etapa, implementa **apenas** cadastro, login e proteção de rotas via JWT. Nenhum outro módulo (instituições, turmas, scanner, IA, pagamentos) está implementado ainda.
+API de autenticação da Lumina — NestJS + PostgreSQL + Prisma ORM + JWT. Nesta etapa, implementa **apenas** cadastro, login (e-mail/senha e Google) e proteção de rotas via JWT. Nenhum outro módulo (instituições, turmas, scanner, IA, pagamentos) está implementado ainda.
 
 ## Setup
 
@@ -29,6 +29,9 @@ API de autenticação da Lumina — NestJS + PostgreSQL + Prisma ORM + JWT. Nest
 |---|---|---|---|
 | POST | `/auth/register` | Cria a conta + Workspace pessoal | — |
 | POST | `/auth/login` | Autentica e retorna os tokens JWT | — |
+| GET | `/auth/google` | Inicia o login/cadastro com Google (redirect) | — |
+| GET | `/auth/google/callback` | Callback do Google — redireciona pro frontend com os tokens | — |
+| POST | `/auth/set-password` | Define a senha local de uma conta criada via Google | Bearer token |
 | GET | `/auth/me` | Retorna o usuário autenticado | Bearer token |
 
 ## Scripts
@@ -48,13 +51,15 @@ API de autenticação da Lumina — NestJS + PostgreSQL + Prisma ORM + JWT. Nest
 - **users + user_profiles continuam separados**: dados de autenticação (`users`) ficam à parte dos dados públicos de perfil (`user_profiles`, 1:1). A API expõe os dois já achatados num único objeto `user`.
 - **Workspace pessoal automático**: todo `POST /auth/register` cria, na mesma transação, um `Workspace` do tipo `PERSONAL` + um cargo de sistema "Owner" + o vínculo do usuário — pré-requisito para o restante da plataforma funcionar.
 - **Refresh token**: já é emitido (JWT assinado com `JWT_REFRESH_SECRET`, diferente do secret do access token), mas ainda não existe endpoint `/auth/refresh` nem revogação — só a estrutura, como combinado.
+- **Login com Google**: `password_hash` é opcional e `google_id` (único) foi adicionado a `users`. No primeiro login social, vincula por `google_id`; se não achar, tenta achar por e-mail (já verificado pelo Google) e vincula a conta local existente; senão cria uma conta nova com nome/sobrenome/avatar preenchidos automaticamente a partir do perfil do Google — sem senha local.
+- **`POST /auth/set-password`**: contas criadas via Google não têm senha até o usuário definir uma por aqui (mesmas regras de senha do cadastro comum). Não é um "trocar senha" — se a conta já tiver `password_hash`, recusa com 409.
 - **Testes sem Postgres**: os testes e2e sobem a aplicação NestJS real (guards, pipes, filtro global) trocando o `PrismaService` por um fake em memória — não dependem de um banco rodando.
 
 ## Estrutura
 
 ```
 src/
-  auth/         # cadastro, login, JWT (strategy/guard), DTOs
+  auth/         # cadastro, login, Google OAuth, JWT (strategies/guards), DTOs
   users/        # repository + service de usuários (Repository Pattern)
   common/       # filtro global de exceções, decorators
   config/       # validação de variáveis de ambiente
@@ -62,8 +67,10 @@ src/
   app.module.ts
   main.ts
 prisma/
-  schema.prisma       # módulo CORE completo
-  migrations/          # migration inicial
+  schema.prisma            # módulo CORE completo
+  migrations/
+    0001_init/              # migration inicial
+    0002_add_google_oauth/  # password_hash opcional + google_id
 test/
   auth.e2e-spec.ts     # testes e2e via HTTP (supertest)
   fake-prisma.ts       # PrismaService fake usado nos testes e2e

@@ -9,13 +9,16 @@ import {
   CheckCircle2,
   GraduationCap,
   Building2,
+  Clock,
 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
-import type { AccountType } from "@/lib/auth";
+import { ApiError, googleAuthUrl } from "@/lib/api";
+
+type AccountType = "aluno" | "instituicao";
 
 const ACCOUNT_TYPES: {
   value: AccountType;
@@ -43,20 +46,22 @@ export function Signup() {
 
   const [accountType, setAccountType] = useState<AccountType | null>(null);
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!accountType) return;
 
-    if (password.length < 5) {
-      setError("Sua senha precisa ter pelo menos 5 caracteres.");
+    if (password.length < 8) {
+      setError("Sua senha precisa ter pelo menos 8 caracteres.");
       return;
     }
     if (password !== confirmPassword) {
@@ -64,16 +69,23 @@ export function Signup() {
       return;
     }
 
-    const result = signup(name, email, password, accountType);
-    if (result.error) {
-      setError(result.error);
-      return;
+    setSubmitting(true);
+    try {
+      await signup({ firstName, lastName, username, email, password });
+      navigate("/app", { replace: true });
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível criar sua conta agora. Verifique sua conexão e tente de novo."
+      );
+    } finally {
+      setSubmitting(false);
     }
-    navigate("/app", { replace: true });
   }
 
   function handleGoogleClick() {
-    setError("O cadastro com Google será habilitado assim que o backend estiver conectado.");
+    window.location.href = googleAuthUrl();
   }
 
   if (!accountType) {
@@ -113,17 +125,47 @@ export function Signup() {
     );
   }
 
-  const selected = ACCOUNT_TYPES.find((o) => o.value === accountType)!;
+  if (accountType === "instituicao") {
+    return (
+      <AuthLayout
+        title="Cadastro institucional chegando em breve"
+        subtitle="Ainda estamos preparando o fluxo de licenciamento para instituições."
+      >
+        <button
+          type="button"
+          onClick={() => setAccountType(null)}
+          className="mb-6 flex items-center gap-2 rounded-full border border-surface-line bg-white py-2 pl-2 pr-4 text-xs font-semibold text-graphite-500 transition-colors hover:text-graphite"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-graphite/5">
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </span>
+          Voltar
+        </button>
+
+        <div className="flex items-start gap-3 rounded-2xl border border-surface-line bg-surface-card p-5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-graphite">
+            <Clock className="h-5 w-5" />
+          </span>
+          <p className="text-sm leading-relaxed text-graphite-500">
+            O cadastro para escolas e cursinhos está em construção. Enquanto isso, você pode criar
+            uma conta de aluno para conhecer a plataforma.
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          size="lg"
+          className="mt-6 w-full"
+          onClick={() => setAccountType("aluno")}
+        >
+          Criar conta de aluno
+        </Button>
+      </AuthLayout>
+    );
+  }
 
   return (
-    <AuthLayout
-      title={accountType === "instituicao" ? "Crie a conta da sua instituição" : "Crie sua conta grátis"}
-      subtitle={
-        accountType === "instituicao"
-          ? "Preencha os dados abaixo para começar."
-          : "Comece agora, sem cartão de crédito."
-      }
-    >
+    <AuthLayout title="Crie sua conta grátis" subtitle="Comece agora, sem cartão de crédito.">
       <button
         type="button"
         onClick={() => setAccountType(null)}
@@ -132,8 +174,8 @@ export function Signup() {
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-graphite/5">
           <ArrowLeft className="h-3.5 w-3.5" />
         </span>
-        <selected.icon className="h-3.5 w-3.5 text-primary-600" />
-        {selected.title}
+        <GraduationCap className="h-3.5 w-3.5 text-primary-600" />
+        Sou aluno
         <span className="text-graphite-400">· trocar</span>
       </button>
 
@@ -146,17 +188,48 @@ export function Signup() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="firstName" className="mb-1.5 block text-sm font-medium text-graphite">
+              Nome
+            </label>
+            <Input
+              id="firstName"
+              type="text"
+              autoComplete="given-name"
+              placeholder="Seu nome"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="lastName" className="mb-1.5 block text-sm font-medium text-graphite">
+              Sobrenome
+            </label>
+            <Input
+              id="lastName"
+              type="text"
+              autoComplete="family-name"
+              placeholder="Seu sobrenome"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+
         <div>
-          <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-graphite">
-            {accountType === "instituicao" ? "Nome da instituição" : "Nome completo"}
+          <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-graphite">
+            Nome de usuário
           </label>
           <Input
-            id="name"
+            id="username"
             type="text"
-            autoComplete="name"
-            placeholder={accountType === "instituicao" ? "Nome do cursinho ou escola" : "Seu nome"}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            autoComplete="username"
+            placeholder="seu.usuario"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.toLowerCase())}
             required
           />
         </div>
@@ -224,15 +297,13 @@ export function Signup() {
           </div>
         )}
 
-        {accountType === "aluno" && (
-          <div className="flex items-start gap-2 rounded-xl border border-success/20 bg-success/5 p-3 text-xs text-graphite-500">
-            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-            <span>Grátis para começar. Sem cartão de crédito. Cancele quando quiser.</span>
-          </div>
-        )}
+        <div className="flex items-start gap-2 rounded-xl border border-success/20 bg-success/5 p-3 text-xs text-graphite-500">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+          <span>Grátis para começar. Sem cartão de crédito. Cancele quando quiser.</span>
+        </div>
 
-        <Button type="submit" size="lg" className="mt-2 w-full">
-          Criar minha conta
+        <Button type="submit" size="lg" className="mt-2 w-full" disabled={submitting}>
+          {submitting ? "Criando conta..." : "Criar minha conta"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>
