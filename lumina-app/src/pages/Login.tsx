@@ -6,6 +6,7 @@ import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
+import { ApiError, googleAuthUrl } from "@/lib/api";
 
 export function Login() {
   const { login } = useAuth();
@@ -17,21 +18,29 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setSubmitting(true);
 
-    const user = login(email, password);
-    if (!user) {
-      setError("E-mail ou senha incorretos. Confira os dados e tente de novo.");
-      return;
+    try {
+      await login(email, password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível entrar agora. Verifique sua conexão e tente de novo."
+      );
+    } finally {
+      setSubmitting(false);
     }
-    navigate(from, { replace: true });
   }
 
   function handleGoogleClick() {
-    setError("O login com Google será habilitado assim que o backend estiver conectado.");
+    window.location.href = googleAuthUrl();
   }
 
   return (
@@ -98,8 +107,8 @@ export function Login() {
           </div>
         )}
 
-        <Button type="submit" size="lg" className="mt-2 w-full">
-          Entrar
+        <Button type="submit" size="lg" className="mt-2 w-full" disabled={submitting}>
+          {submitting ? "Entrando..." : "Entrar"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>
