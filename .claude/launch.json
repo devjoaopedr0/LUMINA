@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "lumina-app"],
       "port": 5174
+    },
+    {
+      "name": "lumina-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:dev", "--prefix", "lumina-backend"],
+      "port": 3001
     }
   ]
 }
