@@ -36,7 +36,7 @@ API de autenticação da Lumina — NestJS + PostgreSQL + Prisma ORM + JWT. Nest
 
 ## Scripts
 
-- `npm run start:dev` — servidor de desenvolvimento (`tsx watch`, sem build prévio).
+- `npm run start:dev` — servidor de desenvolvimento: build inicial + `tsc --watch` recompilando incrementalmente, com `node --watch` reiniciando o processo a cada mudança (ver nota abaixo sobre por que não usamos `tsx`/`ts-node`).
 - `npm run build` / `npm run start:prod` — build de produção (`tsc`) e execução do `dist/`.
 - `npm run typecheck` — só checa tipos, sem emitir.
 - `npm test` — roda a suíte de testes (unitários + e2e via HTTP com Prisma mockado).
@@ -54,6 +54,7 @@ API de autenticação da Lumina — NestJS + PostgreSQL + Prisma ORM + JWT. Nest
 - **Login com Google**: `password_hash` é opcional e `google_id` (único) foi adicionado a `users`. No primeiro login social, vincula por `google_id`; se não achar, tenta achar por e-mail (já verificado pelo Google) e vincula a conta local existente; senão cria uma conta nova com nome/sobrenome/avatar preenchidos automaticamente a partir do perfil do Google — sem senha local.
 - **`POST /auth/set-password`**: contas criadas via Google não têm senha até o usuário definir uma por aqui (mesmas regras de senha do cadastro comum). Não é um "trocar senha" — se a conta já tiver `password_hash`, recusa com 409.
 - **Testes sem Postgres**: os testes e2e sobem a aplicação NestJS real (guards, pipes, filtro global) trocando o `PrismaService` por um fake em memória — não dependem de um banco rodando.
+- **Por que `start:dev` não usa `tsx`/`ts-node`**: ferramentas baseadas em esbuild (`tsx`) não emitem a metadata de decorators (`emitDecoratorMetadata`) que o NestJS usa pra resolver injeção de dependência por tipo — em dev isso quebrava silenciosamente (ex: `ConfigService` chegando `undefined` no construtor do `PrismaService`). `@swc-node/register` teria o mesmo efeito do SWC usado nos testes, mas está incompatível com o TypeScript 7 deste projeto. A solução robusta foi usar o compilador real (`tsc --watch`), o mesmo do build de produção.
 
 ## Estrutura
 
