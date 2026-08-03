@@ -1,42 +1,70 @@
-import { useState, type FormEvent } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
+import { ApiError, googleAuthUrl } from "@/lib/api";
 
 export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const from = (location.state as { from?: string })?.from ?? "/app";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [googleRedirecting, setGoogleRedirecting] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  useEffect(() => {
+    const oauthError = searchParams.get("oauthError");
+    if (!oauthError) return;
+
+    setError(oauthError);
+    window.history.replaceState({}, "", location.pathname);
+  }, [location.pathname, searchParams]);
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setSubmitting(true);
 
-    const user = login(email, password);
-    if (!user) {
-      setError("E-mail ou senha incorretos. Confira os dados e tente de novo.");
-      return;
+    try {
+      await login(email, password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível entrar agora. Verifique sua conexão e tente de novo."
+      );
+    } finally {
+      setSubmitting(false);
     }
-    navigate(from, { replace: true });
   }
 
   function handleGoogleClick() {
-    setError("O login com Google será habilitado assim que o backend estiver conectado.");
+    setError(null);
+    setGoogleRedirecting(true);
+    window.location.href = googleAuthUrl();
   }
 
   return (
     <AuthLayout title="Bem-vindo de volta" subtitle="Entre na sua conta para continuar sua evolução.">
-      <GoogleButton onClick={handleGoogleClick} />
+      <GoogleButton onClick={handleGoogleClick} loading={googleRedirecting} />
+
+      {error && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       <div className="my-6 flex items-center gap-3">
         <div className="h-px flex-1 bg-surface-line" />
@@ -91,15 +119,8 @@ export function Login() {
           </div>
         </div>
 
-        {error && (
-          <div className="flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <Button type="submit" size="lg" className="mt-2 w-full">
-          Entrar
+        <Button type="submit" size="lg" className="mt-2 w-full" disabled={submitting}>
+          {submitting ? "Entrando..." : "Entrar"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>

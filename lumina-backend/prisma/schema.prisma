@@ -71,9 +71,17 @@ enum WorkspaceMemberStatus {
 /// UserProfile, separada para manter esta tabela enxuta e não expor
 /// password_hash junto de dados exibíveis publicamente.
 model User {
-  id            String     @id @default(uuid()) @db.Uuid
-  email         String     @unique
-  passwordHash  String     @map("password_hash")
+  id    String @id @default(uuid()) @db.Uuid
+  email String @unique
+
+  // Nulo para contas criadas via login social (ex: Google) que nunca
+  // definiram uma senha local — login por e-mail/senha exige que exista.
+  passwordHash String? @map("password_hash")
+
+  // ID estável ("sub") retornado pelo Google — usado para reconhecer a
+  // conta em logins futuros, mais seguro que casar só por e-mail.
+  googleId String? @unique @map("google_id")
+
   emailVerified Boolean    @default(false) @map("email_verified")
   status        UserStatus @default(ACTIVE)
   lastLogin     DateTime?  @map("last_login")

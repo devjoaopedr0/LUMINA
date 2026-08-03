@@ -35,6 +35,13 @@ export class UserResponseDto {
   createdAt: Date;
 
   @Expose()
+  @ApiProperty({
+    description:
+      'false quando a conta foi criada via login social (Google) e ainda não tem uma senha local definida.',
+  })
+  hasPassword: boolean;
+
+  @Expose()
   @ApiProperty({ nullable: true })
   firstName: string | null;
 

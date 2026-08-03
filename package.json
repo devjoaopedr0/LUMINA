@@ -1,0 +1,13 @@
+{
+  "name": "lumina",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Orquestração local dos projetos da Lumina (landing, app, backend).",
+  "scripts": {
+    "dev": "concurrently -k -n backend,app -c green,cyan \"npm run start:dev --prefix lumina-backend\" \"npm run dev --prefix lumina-app\"",
+    "dev:all": "concurrently -k -n backend,app,landing -c green,cyan,yellow \"npm run start:dev --prefix lumina-backend\" \"npm run dev --prefix lumina-app\" \"npm run dev --prefix lumina-landing\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  }
+}

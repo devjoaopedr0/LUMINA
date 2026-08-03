@@ -1,48 +1,86 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import * as auth from "@/lib/auth";
-import type { AccountType, AppUser } from "@/lib/auth";
+import { apiLogin, apiMe, apiRegister, apiSetPassword, type ApiUser } from "@/lib/api";
+import { clearTokens, getAccessToken, setTokens } from "@/lib/auth";
+
+export interface SignupData {
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  password: string;
+}
 
 interface AuthContextValue {
-  user: AppUser | null;
+  user: ApiUser | null;
   loading: boolean;
-  login: (email: string, password: string) => AppUser | null;
-  signup: (
-    name: string,
-    email: string,
-    password: string,
-    accountType: AccountType
-  ) => { user?: AppUser; error?: string };
+  login: (email: string, password: string) => Promise<ApiUser>;
+  signup: (data: SignupData) => Promise<ApiUser>;
+  loginWithTokens: (accessToken: string, refreshToken: string) => Promise<ApiUser>;
+  setPassword: (password: string) => Promise<ApiUser>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AppUser | null>(null);
+  const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setUser(auth.getCurrentUser());
-    setLoading(false);
+    const token = getAccessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    apiMe(token)
+      .then(setUser)
+      .catch(() => clearTokens())
+      .finally(() => setLoading(false));
   }, []);
+
+  async function login(email: string, password: string) {
+    const res = await apiLogin({ email, password });
+    setTokens(res.accessToken, res.refreshToken);
+    setUser(res.user);
+    return res.user;
+  }
+
+  async function signup(data: SignupData) {
+    const res = await apiRegister(data);
+    setTokens(res.accessToken, res.refreshToken);
+    setUser(res.user);
+    return res.user;
+  }
+
+  /** Usado pela tela de callback do login com Google, que já recebe os
+   * tokens prontos na URL (ver OAuthCallback). */
+  async function loginWithTokens(accessToken: string, refreshToken: string) {
+    setTokens(accessToken, refreshToken);
+    const me = await apiMe(accessToken);
+    setUser(me);
+    return me;
+  }
+
+  async function setPassword(password: string) {
+    const token = getAccessToken();
+    const updated = await apiSetPassword(token ?? "", password);
+    setUser(updated);
+    return updated;
+  }
+
+  function logout() {
+    clearTokens();
+    setUser(null);
+  }
 
   const value: AuthContextValue = {
     user,
     loading,
-    login: (email, password) => {
-      const result = auth.login(email, password);
-      if (result) setUser(result);
-      return result;
-    },
-    signup: (name, email, password, accountType) => {
-      const result = auth.signup(name, email, password, accountType);
-      if (result.user) setUser(result.user);
-      return result;
-    },
-    logout: () => {
-      auth.logout();
-      setUser(null);
-    },
+    login,
+    signup,
+    loginWithTokens,
+    setPassword,
+    logout,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

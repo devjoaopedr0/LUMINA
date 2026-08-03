@@ -21,7 +21,10 @@ export function Dashboard() {
           <Logo />
           <div className="flex items-center gap-4">
             <span className="hidden text-sm text-graphite-500 sm:inline">
-              Olá, <span className="font-semibold text-graphite">{user?.name || user?.email}</span>
+              Olá,{" "}
+              <span className="font-semibold text-graphite">
+                {user?.firstName || user?.email}
+              </span>
             </span>
             <Button variant="outline" size="sm" onClick={logout}>
               <LogOut className="h-4 w-4" />
@@ -38,12 +41,11 @@ export function Dashboard() {
             Sua jornada começa agora
           </span>
           <h1 className="mt-5 max-w-xl text-3xl font-semibold leading-[1.2] tracking-tight md:text-4xl">
-            Bem-vindo(a) à Lumina, {user?.name?.split(" ")[0] || "estudante"}.
+            Bem-vindo(a) à Lumina, {user?.firstName || "estudante"}.
           </h1>
           <p className="mt-4 max-w-lg text-white/60">
             Sua conta foi criada com sucesso. Esta é a área logada da plataforma —
-            as funcionalidades abaixo chegam em breve, assim que conectarmos o
-            backend.
+            as funcionalidades abaixo chegam em breve.
           </p>
         </div>
 

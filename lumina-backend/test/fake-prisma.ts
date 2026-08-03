@@ -20,7 +20,12 @@ export function createFakePrisma() {
   const fake: any = {
     user: {
       findUnique: vi.fn(async ({ where, include }: any) => {
-        const user = users.find((u) => (where.id && u.id === where.id) || (where.email && u.email === where.email));
+        const user = users.find(
+          (u) =>
+            (where.id && u.id === where.id) ||
+            (where.email && u.email === where.email) ||
+            (where.googleId && u.googleId === where.googleId),
+        );
         if (!user) return null;
         return include?.profile ? withProfile(user) : user;
       }),
@@ -30,8 +35,9 @@ export function createFakePrisma() {
         const user = {
           id,
           email: data.email,
-          passwordHash: data.passwordHash,
-          emailVerified: false,
+          passwordHash: data.passwordHash ?? null,
+          googleId: data.googleId ?? null,
+          emailVerified: data.emailVerified ?? false,
           status: 'ACTIVE',
           lastLogin: null,
           createdAt: now,
@@ -46,8 +52,8 @@ export function createFakePrisma() {
             userId: id,
             firstName: data.profile.create.firstName,
             lastName: data.profile.create.lastName,
-            username: data.profile.create.username,
-            avatarUrl: null,
+            username: data.profile.create.username ?? null,
+            avatarUrl: data.profile.create.avatarUrl ?? null,
             phone: null,
             birthDate: null,
             bio: null,
