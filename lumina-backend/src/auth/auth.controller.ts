@@ -13,6 +13,7 @@ import { RegisterDto } from './dto/register.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { redirectOAuthError } from './oauth-redirect.util';
 
 /** Controller só recebe a requisição e delega ao AuthService — nenhuma regra
  * de negócio vive aqui. */
@@ -61,16 +62,22 @@ export class AuthController {
     @CurrentUser() user: UserWithProfile,
     @Res() res: Response,
   ): Promise<void> {
-    const auth = await this.authService.finishOAuthLogin(user);
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5174';
 
-    // Redireciona de volta pro app com os tokens na query string. O
-    // frontend lê os tokens na rota de callback e limpa a URL em seguida
-    // (history.replaceState) para não deixá-los no histórico do navegador.
-    const redirectUrl = new URL('/oauth/callback', frontendUrl);
-    redirectUrl.searchParams.set('accessToken', auth.accessToken);
-    redirectUrl.searchParams.set('refreshToken', auth.refreshToken);
-    res.redirect(redirectUrl.toString());
+    try {
+      const auth = await this.authService.finishOAuthLogin(user);
+
+      // Redireciona de volta pro app com os tokens na query string. O
+      // frontend lê os tokens na rota de callback e limpa a URL em seguida
+      // (history.replaceState) para não deixá-los no histórico do navegador.
+      const redirectUrl = new URL('/oauth/callback', frontendUrl);
+      redirectUrl.searchParams.set('accessToken', auth.accessToken);
+      redirectUrl.searchParams.set('refreshToken', auth.refreshToken);
+      res.redirect(redirectUrl.toString());
+    } catch (error) {
+      redirectOAuthError(res, frontendUrl, error);
+    }
   }
 
   @Post('set-password')

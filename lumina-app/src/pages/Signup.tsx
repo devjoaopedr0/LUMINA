@@ -55,6 +55,7 @@ export function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleRedirecting, setGoogleRedirecting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -85,6 +86,8 @@ export function Signup() {
   }
 
   function handleGoogleClick() {
+    setError(null);
+    setGoogleRedirecting(true);
     window.location.href = googleAuthUrl();
   }
 
@@ -179,7 +182,7 @@ export function Signup() {
         <span className="text-graphite-400">· trocar</span>
       </button>
 
-      <GoogleButton onClick={handleGoogleClick} />
+      <GoogleButton onClick={handleGoogleClick} loading={googleRedirecting} />
 
       <div className="my-6 flex items-center gap-3">
         <div className="h-px flex-1 bg-surface-line" />

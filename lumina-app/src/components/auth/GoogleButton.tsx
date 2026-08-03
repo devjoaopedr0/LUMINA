@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function GoogleLogo() {
@@ -24,18 +25,34 @@ function GoogleLogo() {
   );
 }
 
-export function GoogleButton({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+export function GoogleButton({
+  className,
+  loading = false,
+  disabled,
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) {
   return (
     <button
       type="button"
+      disabled={disabled || loading}
       className={cn(
-        "flex h-12 w-full items-center justify-center gap-3 rounded-full border border-surface-line bg-white text-sm font-semibold text-graphite transition-all duration-300 hover:-translate-y-0.5 hover:border-graphite/30",
+        "flex h-12 w-full items-center justify-center gap-3 rounded-full border border-surface-line bg-white text-sm font-semibold text-graphite transition-all duration-300 hover:-translate-y-0.5 hover:border-graphite/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
         className
       )}
       {...props}
     >
-      <GoogleLogo />
-      Continuar com Google
+      {loading ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Redirecionando para o Google...
+        </>
+      ) : (
+        <>
+          <GoogleLogo />
+          {children ?? "Continuar com Google"}
+        </>
+      )}
     </button>
   );
 }

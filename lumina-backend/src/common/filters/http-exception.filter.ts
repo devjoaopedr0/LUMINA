@@ -31,6 +31,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    // Guards OAuth podem já ter feito redirect antes do UnauthorizedException
+    // padrão do Passport — evita "Cannot set headers after they are sent".
+    if (response.headersSent) {
+      return;
+    }
+
     const { status, body } = this.resolve(exception, request.url);
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {

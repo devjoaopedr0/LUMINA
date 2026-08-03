@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { Profile, Strategy, VerifyCallback } from 'passport-google-oauth20';
+import { Profile, Strategy, StrategyOptions, VerifyCallback } from 'passport-google-oauth20';
 import { AuthService } from '../auth.service';
 
 @Injectable()
@@ -15,7 +15,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET') as string,
       callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL') as string,
       scope: ['email', 'profile'],
-    });
+      // session não está nos tipos do @types/passport-google-oauth20, mas é
+      // suportado pelo passport-oauth2 em runtime.
+      session: false,
+    } as StrategyOptions & { session: false });
   }
 
   /** Passport já trocou o "code" do Google pelo profile aqui — não lidamos
