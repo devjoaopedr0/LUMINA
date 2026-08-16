@@ -109,4 +109,8 @@ export class UsersRepository {
   updatePasswordHash(userId: string, passwordHash: string, db: Db = this.prisma): Promise<User> {
     return db.user.update({ where: { id: userId }, data: { passwordHash } });
   }
+
+  markEmailVerified(userId: string, db: Db = this.prisma): Promise<User> {
+    return db.user.update({ where: { id: userId }, data: { emailVerified: true } });
+  }
 }

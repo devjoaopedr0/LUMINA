@@ -1,5 +1,13 @@
 import { Type, plainToInstance } from 'class-transformer';
-import { IsInt, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+  validateSync,
+} from 'class-validator';
 
 /**
  * Valida process.env no boot da aplicação. Se faltar (ou for inválida)
@@ -51,6 +59,16 @@ class EnvironmentVariables {
 
   @IsString()
   FRONTEND_URL: string;
+
+  // Opcionais: sem RESEND_API_KEY o MailerService simula o envio no console
+  // (útil em dev), em vez de quebrar o boot da aplicação.
+  @IsOptional()
+  @IsString()
+  RESEND_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  RESEND_FROM_EMAIL?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

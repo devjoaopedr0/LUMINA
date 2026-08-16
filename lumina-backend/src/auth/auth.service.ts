@@ -1,29 +1,43 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { createHash, randomBytes, randomInt } from 'crypto';
 import { Prisma, UserStatus, WorkspaceType } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { MailerService } from '../mailer/mailer.service';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UserWithProfile, UsersRepository } from '../users/users.repository';
 import { UsersService } from '../users/users.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { EmailVerificationCodeRepository } from './email-verification-codes.repository';
 import { GoogleProfile } from './interfaces/google-profile.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { PasswordResetTokenRepository } from './password-reset-tokens.repository';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   // 12 é um passo acima do default histórico do bcrypt (10) — mais custoso
   // para ataques de força bruta offline, ainda rápido o suficiente (~200ms)
   // para não impactar UX de login em hardware atual.
   private static readonly BCRYPT_SALT_ROUNDS = 12;
+
+  // Validade do token de redefinição de senha enviado por e-mail.
+  private static readonly PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
+
+  // Validade do código de verificação de e-mail enviado após o cadastro.
+  private static readonly EMAIL_VERIFICATION_TTL_MS = 15 * 60 * 1000;
 
   // Hash "de mentira" usado quando o e-mail não existe, para que o tempo de
   // resposta do login não revele se um e-mail está ou não cadastrado
@@ -36,6 +50,9 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly passwordResetTokensRepository: PasswordResetTokenRepository,
+    private readonly emailVerificationCodesRepository: EmailVerificationCodeRepository,
+    private readonly mailerService: MailerService,
   ) {
     this.dummyPasswordHash = bcrypt.hashSync(
       'lumina-timing-safety-placeholder',
@@ -72,6 +89,11 @@ export class AuthService {
 
       return createdUser;
     });
+
+    // A conta nasce com emailVerified=false; o código confirma o e-mail na
+    // sequência. O envio é feito fora da transação e não derruba o cadastro
+    // se falhar — a pessoa pode pedir um novo código na tela de confirmação.
+    await this.issueVerificationCode(user.id);
 
     return this.buildAuthResponse(user);
   }
@@ -178,6 +200,128 @@ export class AuthService {
     const updated = await this.usersRepository.findById(userId);
 
     return this.usersService.toPublicUser(updated as UserWithProfile);
+  }
+
+  /** Confirma o e-mail de uma conta recém-cadastrada com o código recebido
+   * por e-mail. Idempotente para quem já confirmou: se a conta já está
+   * verificada, apenas retorna o usuário atual (sem tocar no banco). */
+  async verifyEmail(userId: string, code: string): Promise<UserResponseDto> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    if (user.emailVerified) {
+      return this.usersService.toPublicUser(user);
+    }
+
+    const record = await this.emailVerificationCodesRepository.findValidByCodeHash(
+      this.hashSecret(code),
+    );
+    if (!record || record.userId !== user.id) {
+      throw new BadRequestException('Código inválido ou expirado.');
+    }
+
+    await this.emailVerificationCodesRepository.markUsed(record.id);
+    await this.usersRepository.markEmailVerified(user.id);
+    const updated = await this.usersRepository.findById(user.id);
+
+    return this.usersService.toPublicUser(updated as UserWithProfile);
+  }
+
+  /** Reenvia o código de verificação (invalida o anterior). Usado quando o
+   * e-mail do cadastro se perdeu ou o código expirou. */
+  async resendVerificationCode(userId: string): Promise<void> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    if (user.emailVerified) {
+      return;
+    }
+
+    await this.issueVerificationCode(user.id);
+  }
+
+  /** Gera, persiste (SÓ o SHA-256) e envia um código de verificação de
+   * 6 dígitos para o usuário. Substitui qualquer código anterior. */
+  private async issueVerificationCode(userId: string): Promise<void> {
+    const code = randomInt(100_000, 1_000_000).toString();
+
+    await this.emailVerificationCodesRepository.invalidateForUser(userId);
+    await this.emailVerificationCodesRepository.create({
+      userId,
+      codeHash: this.hashSecret(code),
+      expiresAt: new Date(Date.now() + AuthService.EMAIL_VERIFICATION_TTL_MS),
+    });
+
+    const user = await this.usersRepository.findById(userId);
+    if (!user) return;
+
+    try {
+      await this.mailerService.sendVerificationCodeEmail(user.email, code);
+    } catch (error) {
+      this.logger.error(
+        `Falha ao enviar código de verificação para ${user.email}`,
+        error,
+      );
+    }
+  }
+
+  /** Pedido de redefinição de senha. A resposta é sempre a mesma (sucesso)
+   * mesmo quando o e-mail não existe, pra não revelar quais e-mails estão
+   * cadastrados — a checagem de existência aqui é só pra saber se há o que
+   * fazer. Tokens anteriores do usuário são invalidados no novo pedido. */
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.usersRepository.findByEmail(email);
+    if (!user) {
+      this.logger.warn(
+        `requestPasswordReset para e-mail não cadastrado (${email}) — resposta mantida neutra.`,
+      );
+      return;
+    }
+
+    await this.passwordResetTokensRepository.invalidateForUser(user.id);
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashSecret(token);
+
+    await this.passwordResetTokensRepository.create({
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + AuthService.PASSWORD_RESET_TTL_MS),
+    });
+
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5174';
+    const resetUrl = new URL('/redefinir-senha', frontendUrl);
+    resetUrl.searchParams.set('token', token);
+
+    try {
+      await this.mailerService.sendPasswordResetEmail(user.email, resetUrl.toString());
+    } catch (error) {
+      this.logger.error(`Falha ao enviar e-mail de redefinição de senha para ${user.email}`, error);
+    }
+  }
+
+  /** Troca a senha usando o token recebido por e-mail. O token é comparado
+   * pelo SHA-256 (nunca armazenado cru) e só vale uma vez, dentro de 30 min. */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const record = await this.passwordResetTokensRepository.findValidByTokenHash(
+      this.hashSecret(token),
+    );
+    if (!record) {
+      throw new UnauthorizedException('Link de redefinição inválido ou expirado.');
+    }
+
+    await this.passwordResetTokensRepository.markUsed(record.id);
+
+    const passwordHash = await bcrypt.hash(newPassword, AuthService.BCRYPT_SALT_ROUNDS);
+    await this.usersRepository.updatePasswordHash(record.userId, passwordHash);
+  }
+
+  private hashSecret(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
   }
 
   /** Cria o Workspace pessoal + cargo de sistema "Owner" + vínculo do

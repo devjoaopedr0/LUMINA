@@ -8,9 +8,12 @@ import { UsersService } from '../users/users.service';
 import { UserWithProfile } from '../users/users.repository';
 import { AuthService } from './auth.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { redirectOAuthError } from './oauth-redirect.util';
@@ -95,6 +98,55 @@ export class AuthController {
     @Body() dto: SetPasswordDto,
   ): Promise<UserResponseDto> {
     return this.authService.setPassword(user.id, dto.password);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Envia um e-mail com link de redefinição de senha. Resposta idêntica quando o e-mail não existe (não revela cadastro).',
+  })
+  @ApiResponse({ status: 200, description: 'Sempre 200, mesmo para e-mail não cadastrado.' })
+  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Redefine a senha usando o token recebido por e-mail.' })
+  @ApiResponse({ status: 200, description: 'Senha redefinida com sucesso.' })
+  @ApiResponse({ status: 401, description: 'Link inválido ou expirado.' })
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    return this.authService.resetPassword(dto.token, dto.password);
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Confirma o e-mail do usuário autenticado com o código de 6 dígitos recebido no cadastro.',
+  })
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  @ApiResponse({ status: 400, description: 'Código inválido ou expirado.' })
+  verifyEmail(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: VerifyEmailDto,
+  ): Promise<UserResponseDto> {
+    return this.authService.verifyEmail(user.id, dto.code);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Reenvia o código de verificação de e-mail para o usuário autenticado.',
+  })
+  @ApiResponse({ status: 200, description: 'Código reenviado (ou nada se já verificado).' })
+  resendVerification(@CurrentUser() user: UserWithProfile): Promise<void> {
+    return this.authService.resendVerificationCode(user.id);
   }
 
   @Get('me')

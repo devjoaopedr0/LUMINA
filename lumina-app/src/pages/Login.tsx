@@ -2,11 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
-import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
-import { ApiError, googleAuthUrl } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 
 export function Login() {
   const { login } = useAuth();
@@ -20,7 +19,6 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [googleRedirecting, setGoogleRedirecting] = useState(false);
 
   useEffect(() => {
     const oauthError = searchParams.get("oauthError");
@@ -49,28 +47,14 @@ export function Login() {
     }
   }
 
-  function handleGoogleClick() {
-    setError(null);
-    setGoogleRedirecting(true);
-    window.location.href = googleAuthUrl();
-  }
-
   return (
     <AuthLayout title="Bem-vindo de volta" subtitle="Entre na sua conta para continuar sua evolução.">
-      <GoogleButton onClick={handleGoogleClick} loading={googleRedirecting} />
-
       {error && (
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
-
-      <div className="my-6 flex items-center gap-3">
-        <div className="h-px flex-1 bg-surface-line" />
-        <span className="text-xs text-graphite-400">ou continue com e-mail</span>
-        <div className="h-px flex-1 bg-surface-line" />
-      </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
@@ -93,9 +77,12 @@ export function Login() {
             <label htmlFor="password" className="block text-sm font-medium text-graphite">
               Senha
             </label>
-            <a href="#" className="text-xs font-medium text-primary-600 hover:underline">
+            <Link
+              to="/esqueci-senha"
+              className="text-xs font-medium text-primary-600 hover:underline"
+            >
               Esqueceu a senha?
-            </a>
+            </Link>
           </div>
           <div className="relative">
             <Input
