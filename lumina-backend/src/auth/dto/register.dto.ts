@@ -31,6 +31,10 @@ export class RegisterDto {
 
   @ApiProperty({ example: 'maria@exemplo.com' })
   @IsEmail({}, { message: 'email deve ser um endereço de e-mail válido.' })
+  @Matches(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, {
+    message: 'email deve seguir o padrão nome@dominio.com.',
+  })
+  @MaxLength(254, { message: 'email deve ter no máximo 254 caracteres.' })
   email: string;
 
   @ApiProperty({ example: 'SenhaForte123', minLength: 8, maxLength: 72 })

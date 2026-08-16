@@ -1,12 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
-// Gerador clássico (CommonJS, sem driver adapter obrigatório) — o novo
-// gerador "prisma-client" do Prisma 7 emite apenas ESM (usa import.meta.url)
-// e exige um adapter explícito (@prisma/adapter-pg), incompatível com o
-// NestJS em CommonJS usado neste backend.
 generator client {
   provider = "prisma-client-js"
 }
@@ -15,18 +6,412 @@ datasource db {
   provider = "postgresql"
 }
 
-// ============================================================================
-// MÓDULO CORE
-// ============================================================================
-// Convenção: models em PascalCase / campos em camelCase no schema Prisma,
-// mapeados via @@map / @map para snake_case no Postgres (tabelas/colunas).
-// Isso mantém o client Prisma ergonômico (ex: prisma.user.findMany()) e o
-// banco 100% em snake_case, como exigido.
-// ============================================================================
+/// Autenticação do usuário. Não contém dados públicos de perfil — ver
+/// UserProfile, separada para manter esta tabela enxuta e não expor
+/// password_hash junto de dados exibíveis publicamente.
+model User {
+  id                     String                  @id @default(uuid()) @db.Uuid
+  email                  String                  @unique
+  passwordHash           String?                 @map("password_hash")
+  emailVerified          Boolean                 @default(false) @map("email_verified")
+  status                 UserStatus              @default(ACTIVE)
+  lastLogin              DateTime?               @map("last_login")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+  deletedAt              DateTime?               @map("deleted_at")
+  googleId               String?                 @unique @map("google_id")
+  classMemberships       ClassMember[]
+  classesTeaching        ClassTeacher[]
+  coordinatedClasses     Class[]                 @relation("ClassCoordinator")
+  createdClasses         Class[]                 @relation("ClassCreatedBy")
+  emailVerificationCodes EmailVerificationCode[]
+  passwordResetTokens    PasswordResetToken[]
+  questionAttempts       QuestionAttempt[]
+  createdQuestions       Question[]              @relation("QuestionCreatedBy")
+  profile                UserProfile?
+  questionProgress       UserQuestionProgress[]
+  workspaceMembers       WorkspaceMember[]
 
-// ----------------------------------------------------------------------------
-// ENUMS
-// ----------------------------------------------------------------------------
+  @@map("users")
+}
+
+/// Token de redefinição de senha (fluxo "esqueci minha senha"). Guardamos
+/// apenas o SHA-256 do token — o valor cru só existe no e-mail enviado ao
+/// usuário — e invalidamos por expiração (expires_at) e uso único (used_at).
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+/// Código numérico de verificação de e-mail (fluxo de cadastro). Assim como
+/// o reset de senha, guardamos apenas o SHA-256 do código — o valor cru só
+/// é enviado por e-mail. Uso único (used_at) e expiração curta (expires_at).
+model EmailVerificationCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_codes")
+}
+
+/// Dados públicos/exibíveis do usuário (1:1 com User). first_name é
+/// obrigatório (necessário desde o primeiro acesso, ex: saudação no
+/// dashboard); os demais campos ficam disponíveis para preenchimento
+/// progressivo do perfil e por isso são opcionais.
+model UserProfile {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  firstName String    @map("first_name")
+  lastName  String?   @map("last_name")
+  username  String?   @unique
+  avatarUrl String?   @map("avatar_url")
+  phone     String?
+  birthDate DateTime? @map("birth_date") @db.Date
+  bio       String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+/// Organização que licencia a Lumina (escola, cursinho, professor
+/// particular, grupo de estudos). Possui exatamente um Workspace do tipo
+/// INSTITUTION — ver Workspace.institutionId.
+model Institution {
+  id        String            @id @default(uuid()) @db.Uuid
+  name      String
+  cnpj      String?           @unique
+  email     String            @unique
+  phone     String?
+  logoUrl   String?           @map("logo_url")
+  status    InstitutionStatus @default(PENDING)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+  workspace Workspace?
+
+  @@map("institutions")
+}
+
+/// Ambiente de trabalho dentro da plataforma. Todo usuário possui
+/// automaticamente um Workspace PERSONAL (institutionId nulo); toda
+/// Institution possui exatamente um Workspace INSTITUTION. A constraint
+/// UNIQUE em institutionId é o que garante esse 1:1 no banco.
+model Workspace {
+  id               String            @id @default(uuid()) @db.Uuid
+  institutionId    String?           @unique @map("institution_id") @db.Uuid
+  name             String
+  type             WorkspaceType
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  classes          Class[]
+  questionAttempts QuestionAttempt[]
+  questions        Question[]
+  roles            Role[]
+  members          WorkspaceMember[]
+  institution      Institution?      @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@map("workspaces")
+}
+
+/// Vincula usuários a Workspaces com um cargo (Role) e status de vínculo.
+/// Diferente de ClassMember/ClassTeacher, tem updated_at porque `status` é
+/// mutável (ex: INVITED -> ACTIVE, ACTIVE -> SUSPENDED).
+model WorkspaceMember {
+  id          String                @id @default(uuid()) @db.Uuid
+  workspaceId String                @map("workspace_id") @db.Uuid
+  userId      String                @map("user_id") @db.Uuid
+  roleId      String                @map("role_id") @db.Uuid
+  status      WorkspaceMemberStatus @default(ACTIVE)
+  joinedAt    DateTime              @default(now()) @map("joined_at")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  role        Role                  @relation(fields: [roleId], references: [id])
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+/// Cargo dentro de um Workspace (ex: Administrador, Professor, Aluno).
+/// is_system marca cargos padrão criados automaticamente para todo novo
+/// Workspace — protegidos contra edição/exclusão pela aplicação.
+model Role {
+  id               String            @id @default(uuid()) @db.Uuid
+  workspaceId      String            @map("workspace_id") @db.Uuid
+  name             String
+  description      String?
+  isSystem         Boolean           @default(false) @map("is_system")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  rolePermissions  RolePermission[]
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceMembers WorkspaceMember[]
+
+  @@index([workspaceId])
+  @@map("roles")
+}
+
+/// Catálogo global de permissões do sistema (ex: CREATE_CLASS). Não
+/// pertence a um Workspace — é compartilhado; Roles se vinculam a ela via
+/// RolePermission.
+model Permission {
+  id              String           @id @default(uuid()) @db.Uuid
+  code            String           @unique
+  name            String
+  description     String?
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// Concede uma Permission a uma Role. Tabela de junção pura — sem
+/// updated_at porque conceder/revogar é criar/deletar linha, não atualizar.
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Turma dentro de um Workspace institucional. Ingresso de alunos via
+/// join_code (estilo Google Classroom).
+///
+/// Regra de negócio que o Postgres não expressa via FK: workspaceId deve
+/// referenciar um Workspace com type = INSTITUTION. Precisa ser validada na
+/// camada de aplicação (ou via trigger) antes de criar/mover uma turma.
+model Class {
+  id            String         @id @default(uuid()) @db.Uuid
+  workspaceId   String         @map("workspace_id") @db.Uuid
+  name          String
+  description   String?
+  joinCode      String         @unique @map("join_code")
+  maxStudents   Int?           @map("max_students")
+  coordinatorId String?        @map("coordinator_id") @db.Uuid
+  archived      Boolean        @default(false)
+  createdBy     String         @map("created_by") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  members       ClassMember[]
+  teachers      ClassTeacher[]
+  coordinator   User?          @relation("ClassCoordinator", fields: [coordinatorId], references: [id])
+  creator       User           @relation("ClassCreatedBy", fields: [createdBy], references: [id])
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("classes")
+}
+
+/// Vincula alunos a turmas.
+model ClassMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([userId])
+  @@map("class_members")
+}
+
+/// Vincula professores a turmas — N:N: um professor pode lecionar em várias
+/// turmas, uma turma pode ter vários professores.
+model ClassTeacher {
+  id        String   @id @default(uuid()) @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([userId])
+  @@map("class_teachers")
+}
+
+/// Disciplina estruturada do banco de questões. Questões podem referenciar
+/// via FK (subjectId) e também mantêm o texto denormalizado (Question.subject)
+/// para exibição sem join. subjects é o primeiro nível de classificação
+/// (ex: Matemática) — alimenta filtros e as futuras análises da LuminIA.
+model Subject {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @unique
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  questions Question[] @relation("QuestionSubject")
+  topics    Topic[]    @relation("TopicSubject")
+
+  @@map("subjects")
+}
+
+/// Assunto dentro de uma disciplina (ex: "Funções exponenciais" dentro de
+/// Matemática). Segundo nível de classificação das questões.
+model Topic {
+  id        String     @id @default(uuid()) @db.Uuid
+  subjectId String     @map("subject_id") @db.Uuid
+  name      String
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  questions Question[] @relation("QuestionTopic")
+  subject   Subject    @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, name])
+  @@index([subjectId])
+  @@map("topics")
+}
+
+/// Prova/concurso estruturado (ex: ENEM 2023). Questões podem ou não vir de
+/// uma prova; questões autorais costumam ter examId nulo.
+model Exam {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String
+  year        Int?
+  institution String?
+  description String?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  questions   Question[] @relation("QuestionExam")
+
+  @@index([name, year])
+  @@map("exams")
+}
+
+/// Questão de múltipla escolha do banco de questões do Lumina, sempre
+/// vinculada a um Workspace. A origem é rastreada (sourceType/sourceName/
+/// sourceId) e o conteúdo normalizado tem um hash (contentHash) usado na
+/// deduplicação de importações. subject/topic/exam guardam o texto exibível
+/// (denormalizado, compatível com o fluxo atual); subjectId/topicId/examId
+/// são FKs opcionais para classificação estruturada (filtros precisos).
+/// `metadata` (JSON) reserva espaço para futura geração por IA (modelo,
+/// versão de prompt, confiança) e embeddings (pgvector) sem remodelar o banco.
+model Question {
+  id           String                 @id @default(uuid()) @db.Uuid
+  workspaceId  String                 @map("workspace_id") @db.Uuid
+  subject      String
+  topic        String
+  difficulty   QuestionDifficulty
+  exam         String
+  year         Int?
+  examNumber   Int?                   @map("exam_number")
+  stem         String
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+  contentHash  String?                @map("content_hash")
+  createdBy    String?                @map("created_by") @db.Uuid
+  examId       String?                @map("exam_id") @db.Uuid
+  explanation  String?
+  imageUrl     String?                @map("image_url")
+  metadata     Json?
+  sourceId     String?                @map("source_id")
+  sourceName   String                 @default("Lumina") @map("source_name")
+  sourceType   QuestionSourceType     @default(OFFICIAL) @map("source_type")
+  subjectId    String?                @map("subject_id") @db.Uuid
+  topicId      String?                @map("topic_id") @db.Uuid
+  alternatives QuestionAlternative[]
+  attempts     QuestionAttempt[]
+  creator      User?                  @relation("QuestionCreatedBy", fields: [createdBy], references: [id])
+  examRef      Exam?                  @relation("QuestionExam", fields: [examId], references: [id])
+  subjectRef   Subject?               @relation("QuestionSubject", fields: [subjectId], references: [id])
+  topicRef     Topic?                 @relation("QuestionTopic", fields: [topicId], references: [id])
+  workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  progress     UserQuestionProgress[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, subject])
+  @@index([workspaceId, difficulty])
+  @@index([workspaceId, exam])
+  @@index([workspaceId, subjectId])
+  @@index([workspaceId, topicId])
+  @@index([workspaceId, examId])
+  @@index([sourceType])
+  @@index([contentHash])
+  @@map("questions")
+}
+
+/// Alternativa de múltipla escolha. `position` é a ordem na prova (1, 2, 3,
+/// 4, 5) exibida como A, B, C, D, E no frontend. Apenas uma alternativa por
+/// questão deve ter is_correct = true (regra validada no service).
+model QuestionAlternative {
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  text       String
+  position   Int
+  isCorrect  Boolean  @default(false) @map("is_correct")
+  createdAt  DateTime @default(now()) @map("created_at")
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("question_alternatives")
+}
+
+/// Registro de uma resposta dada a uma questão. Guarda a posição escolhida
+/// (não um FK para a alternativa, para que o histórico sobreviva a edições
+/// da questão) e o acerto/erro calculado no momento da resposta — imutável
+/// por ser histórico, usado depois em estatísticas de desempenho.
+model QuestionAttempt {
+  id               String    @id @default(uuid()) @db.Uuid
+  questionId       String    @map("question_id") @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  selectedPosition Int       @map("selected_position")
+  isCorrect        Boolean   @map("is_correct")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  timeSpent        Int?      @map("time_spent")
+  question         Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([questionId])
+  @@index([userId])
+  @@map("question_attempts")
+}
+
+/// Progresso de um aluno em uma questão: contadores de tentativas (certo/
+/// errado), último acesso e favorito. 1:1 por par (usuário, questão). É o que
+/// alimenta as futuras análises da LuminIA (padrões de erro, revisões,
+/// recomendações) sem remodelar o banco depois.
+model UserQuestionProgress {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  questionId        String    @map("question_id") @db.Uuid
+  attempts          Int       @default(0)
+  correctAttempts   Int       @default(0) @map("correct_attempts")
+  incorrectAttempts Int       @default(0) @map("incorrect_attempts")
+  lastAttemptAt     DateTime? @map("last_attempt_at")
+  isFavorite        Boolean   @default(false) @map("is_favorite")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  question          Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, isFavorite])
+  @@index([questionId])
+  @@map("user_question_progress")
+}
 
 enum UserStatus {
   ACTIVE
@@ -63,242 +448,26 @@ enum WorkspaceMemberStatus {
   @@map("workspace_member_status")
 }
 
-// ----------------------------------------------------------------------------
-// USERS
-// ----------------------------------------------------------------------------
+enum QuestionDifficulty {
+  FACIL
+  MEDIA
+  DIFICIL
 
-/// Autenticação do usuário. Não contém dados públicos de perfil — ver
-/// UserProfile, separada para manter esta tabela enxuta e não expor
-/// password_hash junto de dados exibíveis publicamente.
-model User {
-  id    String @id @default(uuid()) @db.Uuid
-  email String @unique
-
-  // Nulo para contas criadas via login social (ex: Google) que nunca
-  // definiram uma senha local — login por e-mail/senha exige que exista.
-  passwordHash String? @map("password_hash")
-
-  // ID estável ("sub") retornado pelo Google — usado para reconhecer a
-  // conta em logins futuros, mais seguro que casar só por e-mail.
-  googleId String? @unique @map("google_id")
-
-  emailVerified Boolean    @default(false) @map("email_verified")
-  status        UserStatus @default(ACTIVE)
-  lastLogin     DateTime?  @map("last_login")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-  deletedAt     DateTime?  @map("deleted_at")
-
-  profile            UserProfile?
-  workspaceMembers   WorkspaceMember[]
-  classMemberships   ClassMember[]
-  classesTeaching    ClassTeacher[]
-  coordinatedClasses Class[]           @relation("ClassCoordinator")
-  createdClasses     Class[]           @relation("ClassCreatedBy")
-
-  @@map("users")
+  @@map("question_difficulty")
 }
 
-/// Dados públicos/exibíveis do usuário (1:1 com User). first_name é
-/// obrigatório (necessário desde o primeiro acesso, ex: saudação no
-/// dashboard); os demais campos ficam disponíveis para preenchimento
-/// progressivo do perfil e por isso são opcionais.
-model UserProfile {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @unique @map("user_id") @db.Uuid
-  firstName String    @map("first_name")
-  lastName  String?   @map("last_name")
-  username  String?   @unique
-  avatarUrl String?   @map("avatar_url")
-  phone     String?
-  birthDate DateTime? @map("birth_date") @db.Date
-  bio       String?
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+/// Origem de uma questão do banco. Define quem forneceu o conteúdo e
+/// controla as permissões de uso (nunca copiar de fontes sem autorização):
+/// - OFFICIAL: conteúdo curado/produzido pelo próprio Lumina (ex: questões
+/// de provas oficiais licenciadas, ou autorais da equipe);
+/// - PARTNER: conteúdo fornecido por instituições parceiras;
+/// - GENERATED: questões geradas pela LuminIA (nunca tratadas como oficiais);
+/// - IMPORTED: conteúdo importado de datasets/fontes externas autorizadas.
+enum QuestionSourceType {
+  OFFICIAL
+  PARTNER
+  GENERATED
+  IMPORTED
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_profiles")
-}
-
-// ----------------------------------------------------------------------------
-// INSTITUTIONS & WORKSPACES
-// ----------------------------------------------------------------------------
-
-/// Organização que licencia a Lumina (escola, cursinho, professor
-/// particular, grupo de estudos). Possui exatamente um Workspace do tipo
-/// INSTITUTION — ver Workspace.institutionId.
-model Institution {
-  id        String            @id @default(uuid()) @db.Uuid
-  name      String
-  cnpj      String?           @unique
-  email     String            @unique
-  phone     String?
-  logoUrl   String?           @map("logo_url")
-  status    InstitutionStatus @default(PENDING)
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
-
-  workspace Workspace?
-
-  @@map("institutions")
-}
-
-/// Ambiente de trabalho dentro da plataforma. Todo usuário possui
-/// automaticamente um Workspace PERSONAL (institutionId nulo); toda
-/// Institution possui exatamente um Workspace INSTITUTION. A constraint
-/// UNIQUE em institutionId é o que garante esse 1:1 no banco.
-model Workspace {
-  id            String        @id @default(uuid()) @db.Uuid
-  institutionId String?       @unique @map("institution_id") @db.Uuid
-  name          String
-  type          WorkspaceType
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-
-  institution Institution?      @relation(fields: [institutionId], references: [id], onDelete: Cascade)
-  members     WorkspaceMember[]
-  roles       Role[]
-  classes     Class[]
-
-  @@map("workspaces")
-}
-
-/// Vincula usuários a Workspaces com um cargo (Role) e status de vínculo.
-/// Diferente de ClassMember/ClassTeacher, tem updated_at porque `status` é
-/// mutável (ex: INVITED -> ACTIVE, ACTIVE -> SUSPENDED).
-model WorkspaceMember {
-  id          String                @id @default(uuid()) @db.Uuid
-  workspaceId String                @map("workspace_id") @db.Uuid
-  userId      String                @map("user_id") @db.Uuid
-  roleId      String                @map("role_id") @db.Uuid
-  status      WorkspaceMemberStatus @default(ACTIVE)
-  joinedAt    DateTime              @default(now()) @map("joined_at")
-  createdAt   DateTime              @default(now()) @map("created_at")
-  updatedAt   DateTime              @updatedAt @map("updated_at")
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role      @relation(fields: [roleId], references: [id])
-
-  @@unique([workspaceId, userId])
-  @@index([userId])
-  @@map("workspace_members")
-}
-
-// ----------------------------------------------------------------------------
-// RBAC (ROLES & PERMISSIONS)
-// ----------------------------------------------------------------------------
-
-/// Cargo dentro de um Workspace (ex: Administrador, Professor, Aluno).
-/// is_system marca cargos padrão criados automaticamente para todo novo
-/// Workspace — protegidos contra edição/exclusão pela aplicação.
-model Role {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
-  name        String
-  description String?
-  isSystem    Boolean  @default(false) @map("is_system")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  workspaceMembers WorkspaceMember[]
-  rolePermissions  RolePermission[]
-
-  @@index([workspaceId])
-  @@map("roles")
-}
-
-/// Catálogo global de permissões do sistema (ex: CREATE_CLASS). Não
-/// pertence a um Workspace — é compartilhado; Roles se vinculam a ela via
-/// RolePermission.
-model Permission {
-  id          String  @id @default(uuid()) @db.Uuid
-  code        String  @unique
-  name        String
-  description String?
-
-  rolePermissions RolePermission[]
-
-  @@map("permissions")
-}
-
-/// Concede uma Permission a uma Role. Tabela de junção pura — sem
-/// updated_at porque conceder/revogar é criar/deletar linha, não atualizar.
-model RolePermission {
-  roleId       String   @map("role_id") @db.Uuid
-  permissionId String   @map("permission_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-  @@map("role_permissions")
-}
-
-// ----------------------------------------------------------------------------
-// CLASSES
-// ----------------------------------------------------------------------------
-
-/// Turma dentro de um Workspace institucional. Ingresso de alunos via
-/// join_code (estilo Google Classroom).
-///
-/// Regra de negócio que o Postgres não expressa via FK: workspaceId deve
-/// referenciar um Workspace com type = INSTITUTION. Precisa ser validada na
-/// camada de aplicação (ou via trigger) antes de criar/mover uma turma.
-model Class {
-  id            String   @id @default(uuid()) @db.Uuid
-  workspaceId   String   @map("workspace_id") @db.Uuid
-  name          String
-  description   String?
-  joinCode      String   @unique @map("join_code")
-  maxStudents   Int?     @map("max_students")
-  coordinatorId String?  @map("coordinator_id") @db.Uuid
-  archived      Boolean  @default(false)
-  createdBy     String   @map("created_by") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  coordinator User?          @relation("ClassCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
-  creator     User           @relation("ClassCreatedBy", fields: [createdBy], references: [id])
-  members     ClassMember[]
-  teachers    ClassTeacher[]
-
-  @@index([workspaceId])
-  @@map("classes")
-}
-
-/// Vincula alunos a turmas.
-model ClassMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  classId   String   @map("class_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  joinedAt  DateTime @default(now()) @map("joined_at")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([classId, userId])
-  @@index([userId])
-  @@map("class_members")
-}
-
-/// Vincula professores a turmas — N:N: um professor pode lecionar em várias
-/// turmas, uma turma pode ter vários professores.
-model ClassTeacher {
-  id        String   @id @default(uuid()) @db.Uuid
-  classId   String   @map("class_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-
-  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([classId, userId])
-  @@index([userId])
-  @@map("class_teachers")
+  @@map("question_source_type")
 }

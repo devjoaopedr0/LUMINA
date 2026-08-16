@@ -12,11 +12,11 @@ import {
   Clock,
 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
-import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
-import { ApiError, googleAuthUrl } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import { EMAIL_PATTERN } from "@/lib/utils";
 
 type AccountType = "aluno" | "instituicao";
 
@@ -50,17 +50,25 @@ export function Signup() {
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [googleRedirecting, setGoogleRedirecting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
+    if (!EMAIL_PATTERN.test(email)) {
+      setError("Digite um e-mail válido, por exemplo: nome@gmail.com.");
+      return;
+    }
+    if (confirmEmail !== email) {
+      setError("Os e-mails não conferem.");
+      return;
+    }
     if (password.length < 8) {
       setError("Sua senha precisa ter pelo menos 8 caracteres.");
       return;
@@ -72,8 +80,11 @@ export function Signup() {
 
     setSubmitting(true);
     try {
-      await signup({ firstName, lastName, username, email, password });
-      navigate("/app", { replace: true });
+      const newUser = await signup({ firstName, lastName, username, email, password });
+      // Conta recém-criada nasce com e-mail não verificado: segue para a tela
+      // de confirmação (código de 6 dígitos). Quem já tem e-mail verificado
+      // (ex: futuro login social) vai direto ao app.
+      navigate(newUser.emailVerified ? "/app" : "/confirmar-email", { replace: true });
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -83,12 +94,6 @@ export function Signup() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function handleGoogleClick() {
-    setError(null);
-    setGoogleRedirecting(true);
-    window.location.href = googleAuthUrl();
   }
 
   if (!accountType) {
@@ -182,14 +187,6 @@ export function Signup() {
         <span className="text-graphite-400">· trocar</span>
       </button>
 
-      <GoogleButton onClick={handleGoogleClick} loading={googleRedirecting} />
-
-      <div className="my-6 flex items-center gap-3">
-        <div className="h-px flex-1 bg-surface-line" />
-        <span className="text-xs text-graphite-400">ou cadastre-se com e-mail</span>
-        <div className="h-px flex-1 bg-surface-line" />
-      </div>
-
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -248,6 +245,21 @@ export function Signup() {
             placeholder="seunome@gmail.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="confirm-email" className="mb-1.5 block text-sm font-medium text-graphite">
+            Confirmar e-mail
+          </label>
+          <Input
+            id="confirm-email"
+            type="email"
+            autoComplete="email"
+            placeholder="digite o e-mail novamente"
+            value={confirmEmail}
+            onChange={(e) => setConfirmEmail(e.target.value)}
             required
           />
         </div>

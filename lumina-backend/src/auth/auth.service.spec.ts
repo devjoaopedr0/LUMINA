@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,9 @@ describe('AuthService', () => {
   let usersService: any;
   let jwtService: any;
   let configService: any;
+  let passwordResetTokensRepository: any;
+  let emailVerificationCodesRepository: any;
+  let mailerService: any;
   let baseUser: any;
 
   beforeEach(async () => {
@@ -63,6 +66,7 @@ describe('AuthService', () => {
       linkGoogleId: vi.fn(),
       updateLastLogin: vi.fn(),
       updatePasswordHash: vi.fn(),
+      markEmailVerified: vi.fn(),
     };
 
     usersService = {
@@ -75,11 +79,43 @@ describe('AuthService', () => {
 
     configService = {
       get: vi.fn((key: string) =>
-        ({ JWT_REFRESH_SECRET: 'refresh-secret', JWT_REFRESH_EXPIRES_IN: '7d' })[key],
+        ({
+          JWT_REFRESH_SECRET: 'refresh-secret',
+          JWT_REFRESH_EXPIRES_IN: '7d',
+          FRONTEND_URL: 'http://localhost:5174',
+        })[key],
       ),
     };
 
-    service = new AuthService(prisma, usersRepository, usersService, jwtService, configService);
+    passwordResetTokensRepository = {
+      create: vi.fn(),
+      findValidByTokenHash: vi.fn(),
+      invalidateForUser: vi.fn(),
+      markUsed: vi.fn(),
+    };
+
+    emailVerificationCodesRepository = {
+      create: vi.fn(),
+      findValidByCodeHash: vi.fn(),
+      invalidateForUser: vi.fn(),
+      markUsed: vi.fn(),
+    };
+
+    mailerService = {
+      sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+      sendVerificationCodeEmail: vi.fn().mockResolvedValue(undefined),
+    };
+
+    service = new AuthService(
+      prisma,
+      usersRepository,
+      usersService,
+      jwtService,
+      configService,
+      passwordResetTokensRepository,
+      emailVerificationCodesRepository,
+      mailerService,
+    );
   });
 
   const registerDto = {
@@ -91,10 +127,11 @@ describe('AuthService', () => {
   };
 
   describe('register', () => {
-    it('cria o usuário + workspace pessoal e retorna tokens', async () => {
+    it('cria o usuário + workspace pessoal, emite código de verificação e retorna tokens', async () => {
       usersRepository.findByEmail.mockResolvedValue(null);
       usersRepository.findByUsername.mockResolvedValue(null);
       usersRepository.createWithProfile.mockResolvedValue(baseUser);
+      usersRepository.findById.mockResolvedValue(baseUser);
 
       const result = await service.register(registerDto);
 
@@ -105,6 +142,20 @@ describe('AuthService', () => {
         expect.objectContaining({ email: registerDto.email, username: registerDto.username }),
         expect.anything(),
       );
+      // Conta nasce sem e-mail verificado + código enviado por e-mail.
+      expect(baseUser.emailVerified).toBe(false);
+      expect(emailVerificationCodesRepository.invalidateForUser).toHaveBeenCalledWith(baseUser.id);
+      expect(emailVerificationCodesRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: baseUser.id,
+          codeHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        }),
+      );
+      const sentCode = mailerService.sendVerificationCodeEmail.mock.calls[0][1] as string;
+      expect(sentCode).toMatch(/^\d{6}$/);
+      const storedHash = emailVerificationCodesRepository.create.mock.calls[0][0].codeHash;
+      expect(storedHash).not.toBe(sentCode);
     });
 
     it('lança ConflictException se o e-mail já está cadastrado', async () => {
@@ -288,6 +339,142 @@ describe('AuthService', () => {
       await expect(service.setPassword('inexistente', 'SenhaForte123')).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    it('invalida tokens anteriores, cria um novo e envia o e-mail com o link', async () => {
+      usersRepository.findByEmail.mockResolvedValue(baseUser);
+      passwordResetTokensRepository.findValidByTokenHash.mockResolvedValue(null);
+
+      await service.requestPasswordReset(baseUser.email);
+
+      expect(passwordResetTokensRepository.invalidateForUser).toHaveBeenCalledWith(baseUser.id);
+      expect(passwordResetTokensRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: baseUser.id,
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        }),
+      );
+
+      const createCall = passwordResetTokensRepository.create.mock.calls[0][0];
+      const sentUrl = mailerService.sendPasswordResetEmail.mock.calls[0][1] as string;
+      const tokenFromUrl = new URL(sentUrl).searchParams.get('token');
+
+      expect(mailerService.sendPasswordResetEmail).toHaveBeenCalledWith(
+        baseUser.email,
+        expect.stringContaining('token='),
+      );
+      // O token armazenado é o SHA-256 do token enviado — o token cru nunca é persistido.
+      expect(tokenFromUrl).not.toBe(createCall.tokenHash);
+    });
+
+    it('não faz nada (e não envia e-mail) quando o e-mail não está cadastrado', async () => {
+      usersRepository.findByEmail.mockResolvedValue(null);
+
+      await service.requestPasswordReset('ninguem@exemplo.com');
+
+      expect(passwordResetTokensRepository.invalidateForUser).not.toHaveBeenCalled();
+      expect(passwordResetTokensRepository.create).not.toHaveBeenCalled();
+      expect(mailerService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('marca o token como usado e atualiza o hash de senha', async () => {
+      const record = {
+        id: 'token-1',
+        userId: baseUser.id,
+        tokenHash: 'hash-do-token',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      };
+      passwordResetTokensRepository.findValidByTokenHash.mockResolvedValue(record);
+
+      await service.resetPassword('token-valido', 'NovaSenhaForte123');
+
+      expect(passwordResetTokensRepository.markUsed).toHaveBeenCalledWith(record.id);
+      expect(usersRepository.updatePasswordHash).toHaveBeenCalledWith(
+        baseUser.id,
+        expect.any(String),
+      );
+      expect(await bcrypt.compare('NovaSenhaForte123', usersRepository.updatePasswordHash.mock.calls[0][1])).toBe(true);
+    });
+
+    it('lança UnauthorizedException para token inválido ou expirado', async () => {
+      passwordResetTokensRepository.findValidByTokenHash.mockResolvedValue(null);
+
+      await expect(service.resetPassword('token-invalido', 'NovaSenhaForte123')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(usersRepository.updatePasswordHash).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('marca o código como usado e verifica o e-mail do usuário', async () => {
+      const record = {
+        id: 'code-1',
+        userId: baseUser.id,
+        codeHash: 'hash-do-codigo',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      };
+      usersRepository.findById.mockResolvedValueOnce(baseUser);
+      emailVerificationCodesRepository.findValidByCodeHash.mockResolvedValue(record);
+      usersRepository.findById.mockResolvedValueOnce({ ...baseUser, emailVerified: true });
+
+      const result = await service.verifyEmail(baseUser.id, '123456');
+
+      expect(emailVerificationCodesRepository.markUsed).toHaveBeenCalledWith(record.id);
+      expect(usersRepository.markEmailVerified).toHaveBeenCalledWith(baseUser.id);
+      expect(result).toEqual({ id: baseUser.id, email: baseUser.email });
+    });
+
+    it('lança BadRequestException para código inválido ou expirado', async () => {
+      usersRepository.findById.mockResolvedValue(baseUser);
+      emailVerificationCodesRepository.findValidByCodeHash.mockResolvedValue(null);
+
+      await expect(service.verifyEmail(baseUser.id, '000000')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(usersRepository.markEmailVerified).not.toHaveBeenCalled();
+    });
+
+    it('é idempotente e não toca o banco quando o e-mail já está verificado', async () => {
+      const verifiedUser = { ...baseUser, emailVerified: true };
+      usersRepository.findById.mockResolvedValue(verifiedUser);
+
+      const result = await service.verifyEmail(baseUser.id, '123456');
+
+      expect(emailVerificationCodesRepository.findValidByCodeHash).not.toHaveBeenCalled();
+      expect(usersRepository.markEmailVerified).not.toHaveBeenCalled();
+      expect(result).toEqual({ id: baseUser.id, email: baseUser.email });
+    });
+  });
+
+  describe('resendVerificationCode', () => {
+    it('invalida o código anterior, cria um novo e reenvia o e-mail', async () => {
+      usersRepository.findById.mockResolvedValue(baseUser);
+
+      await service.resendVerificationCode(baseUser.id);
+
+      expect(emailVerificationCodesRepository.invalidateForUser).toHaveBeenCalledWith(baseUser.id);
+      expect(emailVerificationCodesRepository.create).toHaveBeenCalled();
+      expect(mailerService.sendVerificationCodeEmail).toHaveBeenCalledWith(
+        baseUser.email,
+        expect.stringMatching(/^\d{6}$/),
+      );
+    });
+
+    it('não faz nada quando o e-mail já está verificado', async () => {
+      usersRepository.findById.mockResolvedValue({ ...baseUser, emailVerified: true });
+
+      await service.resendVerificationCode(baseUser.id);
+
+      expect(emailVerificationCodesRepository.invalidateForUser).not.toHaveBeenCalled();
+      expect(mailerService.sendVerificationCodeEmail).not.toHaveBeenCalled();
     });
   });
 });

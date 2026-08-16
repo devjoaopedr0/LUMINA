@@ -1,21 +1,67 @@
+import { randomUUID } from 'node:crypto';
 import { vi } from 'vitest';
 
 /**
  * Substituto em memória do PrismaService para os testes e2e — sobe a
  * aplicação NestJS real (guards, pipes, filtros, controllers) sem depender
- * de um Postgres de verdade. Implementa só a fatia da API do Prisma que o
- * UsersRepository/AuthService realmente usa.
+ * de um Postgres de verdade. Implementa só a fatia da API do Prisma que os
+ * repositórios da aplicação realmente usam.
  */
 export function createFakePrisma() {
   const users: any[] = [];
   const profiles: any[] = [];
+  const workspaces: any[] = [];
+  const workspaceMembers: any[] = [];
+  const institutions: any[] = [];
+  const questions: any[] = [];
+  const alternatives: any[] = [];
+  const attempts: any[] = [];
+  const subjects: any[] = [];
+  const topics: any[] = [];
+  const exams: any[] = [];
+  const progress: any[] = [];
   let counter = 0;
-  const nextId = (prefix: string) => `${prefix}-${++counter}`;
+  // IDs de verdade (UUID v4), como o Postgres gera — necessário porque o
+  // ParseUUIDPipe valida o formato dos params de rota. O prefixo é ignorado.
+  const nextId = (_prefix?: string) => randomUUID();
 
   const withProfile = (user: any) => ({
     ...user,
     profile: profiles.find((p) => p.userId === user.id) ?? null,
   });
+
+  const withAlternatives = (question: any) => ({
+    ...question,
+    alternatives: alternatives
+      .filter((a) => a.questionId === question.id)
+      .sort((a, b) => a.position - b.position),
+  });
+
+  const questionMatches = (question: any, where: any) => {
+    if (!where) return true;
+    if (where.workspaceId) {
+      if (Array.isArray(where.workspaceId?.in)) {
+        if (!where.workspaceId.in.includes(question.workspaceId)) return false;
+      } else if (question.workspaceId !== where.workspaceId) return false;
+    }
+    if (where.difficulty && question.difficulty !== where.difficulty) return false;
+    if (where.year && question.year !== where.year) return false;
+    if (where.subjectId && question.subjectId !== where.subjectId) return false;
+    if (where.topicId && question.topicId !== where.topicId) return false;
+    if (where.examId && question.examId !== where.examId) return false;
+    if (where.sourceType && question.sourceType !== where.sourceType) return false;
+    if (where.sourceId && question.sourceId !== where.sourceId) return false;
+    if (where.contentHash && question.contentHash !== where.contentHash) return false;
+    for (const field of ['subject', 'topic', 'exam'] as const) {
+      const filter = where[field];
+      if (filter?.contains && !question[field].toLowerCase().includes(filter.contains.toLowerCase())) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const findSubjectByName = (name: string) => subjects.find((s) => s.name === name);
 
   const fake: any = {
     user: {
@@ -77,12 +123,359 @@ export function createFakePrisma() {
         return include?.user ? { ...profile, user: users.find((u) => u.id === profile.userId) } : profile;
       }),
     },
-    workspace: { create: vi.fn(async () => ({ id: nextId('workspace') })) },
+    workspace: {
+      create: vi.fn(async ({ data }: any) => {
+        const workspace = {
+          id: nextId('workspace'),
+          name: data.name,
+          type: data.type,
+          institutionId: data.institutionId ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        workspaces.push(workspace);
+        return workspace;
+      }),
+      findUnique: vi.fn(async ({ where }: any) => workspaces.find((w) => w.id === where.id) ?? null),
+    },
+    institution: {
+      findUnique: vi.fn(async ({ where, include }: any) => {
+        const institution = institutions.find((i) => i.email === where.email);
+        if (!institution) return null;
+        return include?.workspace
+          ? {
+              ...institution,
+              workspace: workspaces.find((w) => w.institutionId === institution.id) ?? null,
+            }
+          : institution;
+      }),
+    },
+    workspaceMember: {
+      create: vi.fn(async ({ data }: any) => {
+        const member = {
+          id: nextId('member'),
+          workspaceId: data.workspaceId,
+          userId: data.userId,
+          roleId: data.roleId,
+          status: 'ACTIVE',
+          joinedAt: new Date(),
+        };
+        workspaceMembers.push(member);
+        return member;
+      }),
+      findFirst: vi.fn(async ({ where, include }: any) => {
+        const member = workspaceMembers.find((m) => {
+          if (where.userId && m.userId !== where.userId) return false;
+          if (where.workspaceId && m.workspaceId !== where.workspaceId) return false;
+          if (where.workspace?.type) {
+            const workspace = workspaces.find((w) => w.id === m.workspaceId);
+            if (workspace?.type !== where.workspace.type) return false;
+          }
+          return true;
+        });
+        if (!member) return null;
+        const workspace = workspaces.find((w) => w.id === member.workspaceId);
+        const role = { rolePermissions: [] };
+        return {
+          ...member,
+          workspace: include?.workspace ? workspace : undefined,
+          role: include?.role ? role : undefined,
+        };
+      }),
+    },
     role: { create: vi.fn(async () => ({ id: nextId('role') })) },
-    workspaceMember: { create: vi.fn(async () => ({})) },
+    emailVerificationCode: {
+      create: vi.fn(async () => ({ id: nextId('code') })),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
+    subject: {
+      findUnique: vi.fn(async ({ where }: any) => {
+        const subject = where.id
+          ? subjects.find((s) => s.id === where.id)
+          : findSubjectByName(where.name);
+        return subject ?? null;
+      }),
+      findMany: vi.fn(async ({ orderBy }: any) => {
+        const list = [...subjects];
+        if (orderBy?.name === 'asc') list.sort((a, b) => a.name.localeCompare(b.name));
+        return list;
+      }),
+      upsert: vi.fn(async ({ where, create }: any) => {
+        const existing = findSubjectByName(where.name);
+        if (existing) return existing;
+        const subject = {
+          id: nextId('subject'),
+          name: create.name,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        subjects.push(subject);
+        return subject;
+      }),
+    },
+    topic: {
+      findUnique: vi.fn(async ({ where }: any) => {
+        if (where.id) return topics.find((t) => t.id === where.id) ?? null;
+        const { subjectId, name } = where.subjectId_name ?? {};
+        return topics.find((t) => t.subjectId === subjectId && t.name === name) ?? null;
+      }),
+      findMany: vi.fn(async ({ where, orderBy }: any) => {
+        const list = topics.filter((t) => !where?.subjectId || t.subjectId === where.subjectId);
+        if (orderBy?.name === 'asc') list.sort((a, b) => a.name.localeCompare(b.name));
+        return list;
+      }),
+      upsert: vi.fn(async ({ where, create }: any) => {
+        const { subjectId, name } = where.subjectId_name ?? {};
+        const existing = topics.find((t) => t.subjectId === subjectId && t.name === name);
+        if (existing) return existing;
+        const topic = {
+          id: nextId('topic'),
+          subjectId: create.subjectId,
+          name: create.name,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        topics.push(topic);
+        return topic;
+      }),
+    },
+    exam: {
+      findUnique: vi.fn(async ({ where }: any) => exams.find((e) => e.id === where.id) ?? null),
+      findFirst: vi.fn(async ({ where }: any) =>
+        exams.find(
+          (e) =>
+            e.name === where.name &&
+            (where.year === undefined || where.year === null || e.year === where.year),
+        ) ?? null,
+      ),
+      findMany: vi.fn(async ({ skip = 0, take = Infinity }: any) => {
+        const list = [...exams].sort(
+          (a, b) => (b.year ?? 0) - (a.year ?? 0) || a.name.localeCompare(b.name),
+        );
+        return list.slice(skip, skip + take);
+      }),
+      count: vi.fn(async () => exams.length),
+      create: vi.fn(async ({ data }: any) => {
+        const exam = {
+          id: nextId('exam'),
+          name: data.name,
+          year: data.year ?? null,
+          institution: data.institution ?? null,
+          description: data.description ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        exams.push(exam);
+        return exam;
+      }),
+    },
+    question: {
+      create: vi.fn(async ({ data, include }: any) => {
+        const id = nextId('question');
+        const now = new Date();
+        const question = {
+          id,
+          workspaceId: data.workspaceId,
+          sourceType: data.sourceType ?? 'OFFICIAL',
+          sourceName: data.sourceName ?? 'Lumina',
+          sourceId: data.sourceId ?? null,
+          contentHash: data.contentHash ?? null,
+          subject: data.subject,
+          topic: data.topic,
+          subjectId: data.subjectId ?? null,
+          topicId: data.topicId ?? null,
+          examId: data.examId ?? null,
+          difficulty: data.difficulty,
+          exam: data.exam,
+          year: data.year ?? null,
+          examNumber: data.examNumber ?? null,
+          stem: data.stem,
+          explanation: data.explanation ?? null,
+          imageUrl: data.imageUrl ?? null,
+          metadata: data.metadata ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        questions.push(question);
+        (data.alternatives?.create ?? []).forEach((alternative: any) => {
+          alternatives.push({
+            id: nextId('alt'),
+            questionId: id,
+            text: alternative.text,
+            position: alternative.position,
+            isCorrect: alternative.isCorrect,
+            createdAt: now,
+          });
+        });
+        return include?.alternatives ? withAlternatives(question) : question;
+      }),
+      findUnique: vi.fn(async ({ where, include }: any) => {
+        const question = questions.find((q) => q.id === where.id);
+        if (!question) return null;
+        return include?.alternatives ? withAlternatives(question) : question;
+      }),
+      findFirst: vi.fn(async ({ where, include }: any) => {
+        const question = questions.find((q) => questionMatches(q, where));
+        if (!question) return null;
+        return include?.alternatives ? withAlternatives(question) : question;
+      }),
+      findMany: vi.fn(async ({ where, skip = 0, take = Infinity, orderBy, include }: any) => {
+        const list = questions
+          .filter((q) => questionMatches(q, where))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .slice(skip, skip + take);
+        void orderBy;
+        return include?.alternatives ? list.map(withAlternatives) : list;
+      }),
+      count: vi.fn(async ({ where }: any) => questions.filter((q) => questionMatches(q, where)).length),
+      update: vi.fn(async ({ where, data, include }: any) => {
+        const question = questions.find((q) => q.id === where.id);
+        const { alternatives, ...fields } = data;
+        Object.assign(question, fields);
+        void alternatives;
+        question.updatedAt = new Date();
+        return include?.alternatives ? withAlternatives(question) : question;
+      }),
+      delete: vi.fn(async ({ where }: any) => {
+        const index = questions.findIndex((q) => q.id === where.id);
+        const [question] = questions.splice(index, 1);
+        const altIndexes = alternatives
+          .map((a, i) => (a.questionId === question.id ? i : -1))
+          .filter((i) => i >= 0)
+          .reverse();
+        altIndexes.forEach((i) => alternatives.splice(i, 1));
+        return question;
+      }),
+    },
+    questionAlternative: {
+      deleteMany: vi.fn(async ({ where }: any) => {
+        const before = alternatives.length;
+        for (let i = alternatives.length - 1; i >= 0; i--) {
+          if (alternatives[i].questionId === where.questionId) alternatives.splice(i, 1);
+        }
+        return { count: before - alternatives.length };
+      }),
+      createMany: vi.fn(async ({ data }: any) => {
+        data.forEach((alternative: any) => {
+          alternatives.push({
+            id: nextId('alt'),
+            questionId: alternative.questionId,
+            text: alternative.text,
+            position: alternative.position,
+            isCorrect: alternative.isCorrect,
+            createdAt: new Date(),
+          });
+        });
+        return { count: data.length };
+      }),
+    },
+    questionAttempt: {
+      create: vi.fn(async ({ data }: any) => {
+        const attempt = { id: nextId('attempt'), ...data, createdAt: new Date() };
+        attempts.push(attempt);
+        return attempt;
+      }),
+      findMany: vi.fn(async ({ where, take = Infinity }: any) => {
+        const inWorkspaces = Array.isArray(where?.workspaceId?.in);
+        return attempts
+          .filter(
+            (a) =>
+              (!where?.userId || a.userId === where.userId) &&
+              (!where?.workspaceId ||
+                inWorkspaces
+                  ? where.workspaceId.in.includes(a.workspaceId)
+                  : a.workspaceId === where.workspaceId),
+          )
+          .slice(0, take)
+          .map((a) => ({
+            ...a,
+            question: questions.find((q) => q.id === a.questionId) ?? null,
+          }));
+      }),
+    },
+    userQuestionProgress: {
+      findUnique: vi.fn(async ({ where }: any) => {
+        const { userId, questionId } = where.userId_questionId ?? {};
+        return progress.find((p) => p.userId === userId && p.questionId === questionId) ?? null;
+      }),
+      upsert: vi.fn(async ({ where, update, create }: any) => {
+        const { userId, questionId } = where.userId_questionId ?? {};
+        let record = progress.find((p) => p.userId === userId && p.questionId === questionId);
+        const now = new Date();
+        if (record) {
+          for (const [key, value] of Object.entries(update ?? {})) {
+            record[key] =
+              value && typeof value === 'object' && 'increment' in value
+                ? (record[key] ?? 0) + value.increment
+                : value;
+          }
+          return record;
+        }
+        record = {
+          id: nextId('progress'),
+          userId: create.userId,
+          questionId: create.questionId,
+          attempts: create.attempts ?? 0,
+          correctAttempts: create.correctAttempts ?? 0,
+          incorrectAttempts: create.incorrectAttempts ?? 0,
+          isFavorite: create.isFavorite ?? false,
+          lastAttemptAt: create.lastAttemptAt ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        progress.push(record);
+        return record;
+      }),
+      findMany: vi.fn(async ({ where, skip = 0, take = Infinity, orderBy }: any) => {
+        void orderBy;
+        const rows = progress
+          .filter(
+            (p) =>
+              (!where?.userId || p.userId === where.userId) &&
+              (where?.isFavorite === undefined || p.isFavorite === where.isFavorite),
+          )
+          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+          .slice(skip, skip + take);
+        return rows.map((p) => ({
+          ...p,
+          question: questions.find((q) => q.id === p.questionId) ?? null,
+        }));
+      }),
+      count: vi.fn(async ({ where }: any) =>
+        progress.filter(
+          (p) =>
+            (!where?.userId || p.userId === where.userId) &&
+            (where?.isFavorite === undefined || p.isFavorite === where.isFavorite),
+        ).length,
+      ),
+    },
     $transaction: vi.fn(async (cb: any) => cb(fake)),
     onModuleInit: vi.fn(),
     onModuleDestroy: vi.fn(),
+  };
+
+  /** Cria o banco central (Institution "Lumina" + Workspace INSTITUTION)
+   * usado nos testes de acesso público do banco de questões. */
+  fake.seedBankWorkspace = (name = 'Banco de Questões Lumina') => {
+    const institutionId = nextId('institution');
+    institutions.push({
+      id: institutionId,
+      name: 'Lumina',
+      email: 'banco@lumina.app',
+      status: 'ACTIVE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const workspace = {
+      id: nextId('workspace'),
+      name,
+      type: 'INSTITUTION',
+      institutionId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    workspaces.push(workspace);
+    return workspace;
   };
 
   return fake;

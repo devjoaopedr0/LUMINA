@@ -2,16 +2,20 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { MailerModule } from '../mailer/mailer.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { EmailVerificationCodeRepository } from './email-verification-codes.repository';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { PasswordResetTokenRepository } from './password-reset-tokens.repository';
 
 @Module({
   imports: [
     UsersModule,
+    MailerModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     // Registra o JwtService com o secret/expiração do ACCESS token. O
     // refresh token usa um secret e expiração diferentes, passados
@@ -30,7 +34,14 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, GoogleAuthGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    GoogleStrategy,
+    GoogleAuthGuard,
+    PasswordResetTokenRepository,
+    EmailVerificationCodeRepository,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

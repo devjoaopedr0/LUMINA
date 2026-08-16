@@ -4,8 +4,11 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { Dashboard } from "@/pages/Dashboard";
-import { OAuthCallback } from "@/pages/OAuthCallback";
 import { SetPassword } from "@/pages/SetPassword";
+import { ForgotPassword } from "@/pages/ForgotPassword";
+import { ResetPassword } from "@/pages/ResetPassword";
+import { ConfirmEmail } from "@/pages/ConfirmEmail";
+import { QuestionBank } from "@/pages/QuestionBank";
 
 function App() {
   return (
@@ -14,7 +17,16 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="/esqueci-senha" element={<ForgotPassword />} />
+        <Route path="/redefinir-senha" element={<ResetPassword />} />
+        <Route
+          path="/confirmar-email"
+          element={
+            <ProtectedRoute>
+              <ConfirmEmail />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/definir-senha"
           element={
@@ -28,6 +40,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/questoes"
+          element={
+            <ProtectedRoute>
+              <QuestionBank />
             </ProtectedRoute>
           }
         />

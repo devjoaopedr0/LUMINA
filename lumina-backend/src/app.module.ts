@@ -6,7 +6,9 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseModule } from './database/prisma.module';
+import { QuestionsModule } from './questions/questions.module';
 import { UsersModule } from './users/users.module';
+import { WorkspacesModule } from './workspaces/workspaces.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -24,6 +26,8 @@ import { validateEnv } from './config/env.validation';
     DatabaseModule,
     UsersModule,
     AuthModule,
+    WorkspacesModule,
+    QuestionsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

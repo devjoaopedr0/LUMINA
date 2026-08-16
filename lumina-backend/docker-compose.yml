@@ -4,7 +4,7 @@ services:
 
     container_name: lumina-postgres
 
-    restart: unless-stopped
+    restart: always
 
     environment:
       POSTGRES_DB: lumina
@@ -16,6 +16,13 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   postgres_data:

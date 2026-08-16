@@ -1,5 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { apiLogin, apiMe, apiRegister, apiSetPassword, type ApiUser } from "@/lib/api";
+import {
+  apiLogin,
+  apiMe,
+  apiRegister,
+  apiResendVerification,
+  apiSetPassword,
+  apiVerifyEmail,
+  type ApiUser,
+} from "@/lib/api";
 import { clearTokens, getAccessToken, setTokens } from "@/lib/auth";
 
 export interface SignupData {
@@ -15,8 +23,9 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<ApiUser>;
   signup: (data: SignupData) => Promise<ApiUser>;
-  loginWithTokens: (accessToken: string, refreshToken: string) => Promise<ApiUser>;
   setPassword: (password: string) => Promise<ApiUser>;
+  verifyEmail: (code: string) => Promise<ApiUser>;
+  resendVerification: () => Promise<void>;
   logout: () => void;
 }
 
@@ -52,20 +61,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.user;
   }
 
-  /** Usado pela tela de callback do login com Google, que já recebe os
-   * tokens prontos na URL (ver OAuthCallback). */
-  async function loginWithTokens(accessToken: string, refreshToken: string) {
-    setTokens(accessToken, refreshToken);
-    const me = await apiMe(accessToken);
-    setUser(me);
-    return me;
-  }
-
   async function setPassword(password: string) {
     const token = getAccessToken();
     const updated = await apiSetPassword(token ?? "", password);
     setUser(updated);
     return updated;
+  }
+
+  async function verifyEmail(code: string) {
+    const token = getAccessToken();
+    const updated = await apiVerifyEmail(token ?? "", code);
+    setUser(updated);
+    return updated;
+  }
+
+  async function resendVerification() {
+    const token = getAccessToken();
+    await apiResendVerification(token ?? "");
   }
 
   function logout() {
@@ -78,8 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     login,
     signup,
-    loginWithTokens,
     setPassword,
+    verifyEmail,
+    resendVerification,
     logout,
   };
 

@@ -28,12 +28,21 @@ describe('Auth (e2e)', () => {
     // fazendo o ConfigModule.forRoot({ validate }) falhar por env ausente.
     const { AppModule } = await import('../src/app.module');
     const { PrismaService } = await import('../src/database/prisma.service');
+    const { MailerService } = await import('../src/mailer/mailer.service');
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(PrismaService)
       .useValue(createFakePrisma())
+      // Sem mock, o register dispararia e-mail real (Resend) — o .env local
+      // tem RESEND_API_KEY e o ConfigService prioriza o .env sobre o
+      // process.env. Manter os testes e2e livres de rede externa.
+      .overrideProvider(MailerService)
+      .useValue({
+        sendPasswordResetEmail: async () => undefined,
+        sendVerificationCodeEmail: async () => undefined,
+      })
       .compile();
 
     app = moduleRef.createNestApplication();

@@ -8,6 +8,7 @@
     "prisma:validate": "prisma validate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:seed": "prisma db seed",
     "prisma:studio": "prisma studio",
     "start:dev": "npm run build && concurrently -k -n tsc,app -c blue,green \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --watch dist/main.js\"",
     "build": "tsc -p tsconfig.build.json",
@@ -55,6 +56,7 @@
     "concurrently": "^10.0.4",
     "dotenv": "^17.4.2",
     "supertest": "^7.2.2",
+    "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "unplugin-swc": "^1.5.9",
     "vitest": "^4.1.10"
