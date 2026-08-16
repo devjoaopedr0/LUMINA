@@ -12,6 +12,7 @@
     "prisma:studio": "prisma studio",
     "start:dev": "npm run build && concurrently -k -n tsc,app -c blue,green \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --watch dist/main.js\"",
     "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
