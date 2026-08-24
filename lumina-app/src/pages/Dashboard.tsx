@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { LogOut, Sparkles, LayoutDashboard, Database, ScanLine, CalendarRange, ArrowRight } from "lucide-react";
+import { LogOut, Sparkles, LayoutDashboard, Database, ScanLine, Calendar, ArrowRight, UserRound } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +8,6 @@ import { useAuth } from "@/contexts/AuthContext";
 const COMING_SOON = [
   { icon: LayoutDashboard, label: "Dashboard de desempenho" },
   { icon: ScanLine, label: "Scanner inteligente" },
-  { icon: CalendarRange, label: "Cronograma adaptativo" },
 ];
 
 export function Dashboard() {
@@ -26,6 +25,12 @@ export function Dashboard() {
                 {user?.firstName || user?.email}
               </span>
             </span>
+            <Link to="/app/perfil" className="hidden sm:block">
+              <Button variant="outline" size="sm">
+                <UserRound className="h-4 w-4" />
+                Perfil
+              </Button>
+            </Link>
             <Button variant="outline" size="sm" onClick={logout}>
               <LogOut className="h-4 w-4" />
               Sair
@@ -49,7 +54,23 @@ export function Dashboard() {
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+          <Link
+            to="/app/perfil"
+            className="group transition-transform duration-300 hover:-translate-y-1"
+          >
+            <Card className="h-full border-primary/30 bg-white text-center">
+              <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 text-graphite">
+                <UserRound className="h-5 w-5" />
+              </span>
+              <p className="mt-4 text-sm font-semibold text-graphite">Meu perfil</p>
+              <p className="mt-1 text-xs text-graphite-400">Dados pessoais</p>
+              <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 transition-colors group-hover:text-graphite">
+                Editar
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Card>
+          </Link>
           <Link
             to="/app/questoes"
             className="group transition-transform duration-300 hover:-translate-y-1"
@@ -60,6 +81,22 @@ export function Dashboard() {
               </span>
               <p className="mt-4 text-sm font-semibold text-graphite">Banco de questões</p>
               <p className="mt-1 text-xs text-graphite-400">Acessar agora</p>
+              <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 transition-colors group-hover:text-graphite">
+                Começar
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Card>
+          </Link>
+          <Link
+            to="/app/cronograma"
+            className="group transition-transform duration-300 hover:-translate-y-1"
+          >
+            <Card className="h-full border-primary/30 bg-white text-center">
+              <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 text-graphite">
+                <Calendar className="h-5 w-5" />
+              </span>
+              <p className="mt-4 text-sm font-semibold text-graphite">Cronograma de estudos</p>
+              <p className="mt-1 text-xs text-graphite-400">Planeje seu ENEM</p>
               <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 transition-colors group-hover:text-graphite">
                 Começar
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />

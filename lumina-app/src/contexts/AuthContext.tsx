@@ -6,6 +6,8 @@ import {
   apiResendVerification,
   apiSetPassword,
   apiVerifyEmail,
+  apiUpdateProfile,
+  type UpdateProfilePayload,
   type ApiUser,
 } from "@/lib/api";
 import { clearTokens, getAccessToken, setTokens } from "@/lib/auth";
@@ -26,6 +28,7 @@ interface AuthContextValue {
   setPassword: (password: string) => Promise<ApiUser>;
   verifyEmail: (code: string) => Promise<ApiUser>;
   resendVerification: () => Promise<void>;
+  updateProfile: (data: UpdateProfilePayload) => Promise<ApiUser>;
   logout: () => void;
 }
 
@@ -80,6 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiResendVerification(token ?? "");
   }
 
+  async function updateProfile(data: UpdateProfilePayload) {
+    const token = getAccessToken();
+    const updated = await apiUpdateProfile(token ?? '', data);
+    setUser(updated);
+    return updated;
+  }
+
   function logout() {
     clearTokens();
     setUser(null);
@@ -93,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPassword,
     verifyEmail,
     resendVerification,
+    updateProfile,
     logout,
   };
 

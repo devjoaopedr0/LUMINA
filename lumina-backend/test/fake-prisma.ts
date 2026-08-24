@@ -110,10 +110,15 @@ export function createFakePrisma() {
 
         return include?.profile ? withProfile(user) : user;
       }),
-      update: vi.fn(async ({ where, data }: any) => {
+      update: vi.fn(async ({ where, data, include }: any) => {
         const user = users.find((u) => u.id === where.id);
-        Object.assign(user, data);
-        return user;
+        if (data.profile?.update) {
+          const profile = profiles.find((p) => p.userId === user.id);
+          Object.assign(profile, data.profile.update, { updatedAt: new Date() });
+        }
+        const { profile: _profile, ...userData } = data;
+        Object.assign(user, userData);
+        return include?.profile ? withProfile(user) : user;
       }),
     },
     userProfile: {

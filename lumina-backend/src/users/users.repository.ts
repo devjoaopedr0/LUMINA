@@ -113,4 +113,16 @@ export class UsersRepository {
   markEmailVerified(userId: string, db: Db = this.prisma): Promise<User> {
     return db.user.update({ where: { id: userId }, data: { emailVerified: true } });
   }
+
+  updateProfile(
+    userId: string,
+    data: Prisma.UserProfileUpdateInput,
+    db: Db = this.prisma,
+  ): Promise<UserWithProfile> {
+    return db.user.update({
+      where: { id: userId },
+      data: { profile: { update: data } },
+      include: { profile: true },
+    });
+  }
 }
