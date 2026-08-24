@@ -9,6 +9,8 @@ import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
+import { StudySchedulePage } from "@/pages/StudySchedulePage";
+import { Profile } from "@/pages/Profile";
 
 function App() {
   return (
@@ -48,6 +50,22 @@ function App() {
           element={
             <ProtectedRoute>
               <QuestionBank />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/perfil"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/cronograma"
+          element={
+            <ProtectedRoute>
+              <StudySchedulePage />
             </ProtectedRoute>
           }
         />

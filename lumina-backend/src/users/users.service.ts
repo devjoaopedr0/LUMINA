@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersRepository, UserWithProfile } from './users.repository';
 
@@ -18,6 +20,28 @@ export class UsersService {
     return this.usersRepository.findById(id);
   }
 
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<UserResponseDto> {
+    const data: Prisma.UserProfileUpdateInput = { ...dto };
+    if (dto.firstName !== undefined) data.firstName = dto.firstName.trim();
+    if (dto.lastName) data.lastName = dto.lastName.trim();
+    if (dto.username) data.username = dto.username.trim().toLowerCase();
+    if (dto.bio) data.bio = dto.bio.trim();
+    if (dto.birthDate) data.birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
+
+    try {
+      const updated = await this.usersRepository.updateProfile(userId, data);
+      return this.toPublicUser(updated);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Este username já está em uso.');
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException('Perfil não encontrado.');
+      }
+      throw error;
+    }
+  }
+
   /** Achata User + UserProfile num único objeto público, sem password_hash. */
   toPublicUser(user: UserWithProfile): UserResponseDto {
     return new UserResponseDto({
@@ -33,6 +57,7 @@ export class UsersService {
       username: user.profile?.username ?? null,
       avatarUrl: user.profile?.avatarUrl ?? null,
       phone: user.profile?.phone ?? null,
+      birthDate: user.profile?.birthDate ?? null,
       bio: user.profile?.bio ?? null,
     });
   }

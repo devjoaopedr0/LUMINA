@@ -13,6 +13,7 @@ export interface ApiUser {
   username: string | null;
   avatarUrl: string | null;
   phone: string | null;
+  birthDate: string | null;
   bio: string | null;
 }
 
@@ -106,6 +107,27 @@ export function apiResendVerification(accessToken: string): Promise<void> {
   return request("/auth/resend-verification", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export interface UpdateProfilePayload {
+  firstName?: string;
+  lastName?: string | null;
+  username?: string | null;
+  avatarUrl?: string | null;
+  phone?: string | null;
+  birthDate?: string | null;
+  bio?: string | null;
+}
+
+export function apiUpdateProfile(
+  accessToken: string,
+  payload: UpdateProfilePayload
+): Promise<ApiUser> {
+  return request('/users/me/profile', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(payload),
   });
 }
 
@@ -312,5 +334,290 @@ export function apiAnswerQuestion(
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ selectedPosition }),
+  });
+}
+
+// =============================================================================
+// Cronograma de Estudos
+// =============================================================================
+
+export type StudyTaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
+
+export type StudyScheduleStatus = "ACTIVE" | "COMPLETED" | "CANCELLED";
+
+export interface StudySubject {
+  id: string;
+  name: string;
+  code: string;
+  displayOrder: number;
+}
+
+export interface StudyScheduleSubjectTarget {
+  subjectId: string;
+  targetHours: number;
+}
+
+export interface StudySchedule {
+  id: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  studyDays: number[];
+  dailyMinutes: number;
+  objective: string | null;
+  status: StudyScheduleStatus;
+  createdAt: string;
+  updatedAt: string;
+  scheduleSubjects: {
+    subjectId: string;
+    targetHours: number;
+    subject: StudySubject;
+  }[];
+}
+
+export interface StudyTask {
+  id: string;
+  scheduleId: string;
+  sessionId: string;
+  subjectId: string | null;
+  title: string;
+  description: string | null;
+  status: StudyTaskStatus;
+  scheduledMinutes: number;
+  completedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  subjectName?: string;
+  loggedMinutes?: number;
+}
+
+export interface StudySession {
+  id: string;
+  scheduleId: string;
+  date: string;
+  scheduledMinutes: number;
+  tasks: StudyTask[];
+  subjects: StudySubject[];
+}
+
+export interface StudyProgressSummary {
+  id: string;
+  scheduleId: string;
+  completedMinutes: number;
+  totalScheduledMinutes: number;
+  streakDays: number;
+  lastStudyDate: string | null;
+  completedTasks: number;
+  totalTasks: number;
+  updatedAt: string;
+}
+
+export interface ProgressEvolutionPoint {
+  date: string;
+  studyMinutes: number;
+  completedTasks: number;
+}
+
+export interface PaginatedTasks {
+  items: StudyTask[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface UserVestibular {
+  id: string;
+  userId: string;
+  examId: string | null;
+  customName: string | null;
+  targetDate: string | null;
+  exam?: { id: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStudySchedulePayload {
+  startDate: string;
+  endDate: string;
+  studyDays: number[];
+  dailyMinutes: number;
+  objective?: string;
+  subjects: StudyScheduleSubjectTarget[];
+}
+
+export interface CreateStudyTaskPayload {
+  sessionId: string;
+  subjectId?: string;
+  title: string;
+  description?: string;
+  scheduledMinutes: number;
+}
+
+export interface UpdateStudyTaskPayload {
+  subjectId?: string;
+  title?: string;
+  description?: string;
+  status?: string;
+  scheduledMinutes?: number;
+  notes?: string | null;
+}
+
+export function apiListStudySubjects(accessToken: string): Promise<StudySubject[]> {
+  return request("/study/subjects", { headers: authHeaders(accessToken) });
+}
+
+export function apiGetStudySchedule(accessToken: string): Promise<StudySchedule | null> {
+  return request("/study/schedule", { headers: authHeaders(accessToken) });
+}
+
+export function apiCreateStudySchedule(
+  accessToken: string,
+  payload: CreateStudySchedulePayload
+): Promise<{ ok: boolean }> {
+  return request("/study/schedule", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiUpdateStudySchedule(
+  accessToken: string,
+  id: string,
+  payload: Partial<CreateStudySchedulePayload>
+): Promise<StudySchedule | null> {
+  return request(`/study/schedule/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiDeleteStudySchedule(accessToken: string, id: string): Promise<{ ok: boolean }> {
+  return request(`/study/schedule/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiGetDailySession(
+  accessToken: string,
+  date?: string
+): Promise<{ schedule: StudySchedule; session: StudySession | null } | null> {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+  return request(`/study/daily${qs}`, { headers: authHeaders(accessToken) });
+}
+
+export function apiListTasks(
+  accessToken: string,
+  params: { status?: string; subjectId?: string; page?: number; limit?: number }
+): Promise<PaginatedTasks | null> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.subjectId) query.set("subjectId", params.subjectId);
+  if (params.page) query.set("page", String(params.page));
+  if (params.limit) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return request(`/study/tasks${qs ? `?${qs}` : ""}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiCreateTask(
+  accessToken: string,
+  payload: CreateStudyTaskPayload
+): Promise<StudyTask> {
+  return request("/study/tasks", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiUpdateTask(
+  accessToken: string,
+  id: string,
+  payload: UpdateStudyTaskPayload
+): Promise<StudyTask | null> {
+  return request(`/study/tasks/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiDeleteTask(accessToken: string, id: string): Promise<{ ok: boolean }> {
+  return request(`/study/tasks/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiCompleteTask(accessToken: string, id: string): Promise<StudyTask | null> {
+  return request(`/study/tasks/${id}/complete`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiRescheduleTask(
+  accessToken: string,
+  id: string,
+  sessionId: string
+): Promise<StudyTask | null> {
+  return request(`/study/tasks/${id}/reschedule`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+export function apiLogTime(
+  accessToken: string,
+  id: string,
+  durationMinutes: number
+): Promise<any> {
+  return request(`/study/tasks/${id}/timer`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ durationMinutes }),
+  });
+}
+
+export function apiGetProgress(
+  accessToken: string
+): Promise<{ summary: StudyProgressSummary | null; evolution: ProgressEvolutionPoint[] | null }> {
+  return request("/study/progress", { headers: authHeaders(accessToken) });
+}
+
+export function apiRescheduleMissed(
+  accessToken: string,
+  date: string
+): Promise<{ rescheduled: number } | null> {
+  return request("/study/reschedule-missed", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ date }),
+  });
+}
+
+export function apiGetUserVestibular(accessToken: string): Promise<UserVestibular | null> {
+  return request("/user/vestibular", { headers: authHeaders(accessToken) });
+}
+
+export function apiSetVestibular(
+  accessToken: string,
+  payload: {
+    examId?: string;
+    customName?: string;
+    targetDate?: string;
+  }
+): Promise<UserVestibular> {
+  return request("/user/vestibular", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
   });
 }
