@@ -1,2 +1,2 @@
 export const LANDING_URL = import.meta.env.VITE_LANDING_URL || "http://localhost:5173";
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:1000";
+export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
