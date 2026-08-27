@@ -10,12 +10,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  CirclePause,
   Edit,
   ListChecks,
   Loader2,
   LogOut,
   Play,
   RotateCcw,
+  TimerReset,
   TrendingUp,
   X,
 } from "lucide-react";
@@ -77,6 +79,9 @@ const STUDY_SUBJECTS_DEFAULT_HOURS: Record<string, number> = {
   Filosofia: 40,
   Sociologia: 40,
   Inglês: 60,
+  Espanhol: 60,
+  Artes: 40,
+  "Educação Física": 30,
   Redação: 80,
 };
 
@@ -441,16 +446,26 @@ function ProgressPanel({ progress }: {
 interface TaskItemProps {
   task: StudyTask;
   onUpdate: (task: StudyTask | null) => void;
-  onLogTime: (minutes: number) => void;
   canCreateTasks: boolean;
 }
 
-function TaskItem({ task, onUpdate, onLogTime, canCreateTasks }: TaskItemProps) {
-  const [timer, setTimer] = useState<{ active: boolean; seconds: number }>({ active: false, seconds: 0 });
+function isGeneratedSubjectTask(task: StudyTask): boolean {
+  return Boolean(
+    task.subjectName &&
+    task.title.toLocaleLowerCase("pt-BR").startsWith(`${task.subjectName.toLocaleLowerCase("pt-BR")}: estudo programado`),
+  );
+}
+
+function taskDisplayName(task: StudyTask): string {
+  return isGeneratedSubjectTask(task) ? task.subjectName! : task.title;
+}
+
+function TaskItem({ task, onUpdate, canCreateTasks }: TaskItemProps) {
   const [error, setError] = useState<string | null>(null);
 
   const status = task.status;
   const badgeClass = TASK_STATUS_BADGE[status];
+  const generatedSubjectTask = isGeneratedSubjectTask(task);
 
   function toggleStatus() {
     setError(null);
@@ -462,33 +477,6 @@ function TaskItem({ task, onUpdate, onLogTime, canCreateTasks }: TaskItemProps) 
       .catch((err) => setError(err instanceof ApiError ? err.message : "Erro ao atualizar."));
   }
 
-  function startTimer() {
-    setTimer({ active: true, seconds: 0 });
-  }
-
-  function stopTimer() {
-    setTimer({ active: false, seconds: 0 });
-    const minutes = Math.ceil(timer.seconds / 60);
-    if (minutes > 0) {
-      setError(null);
-      apiLogTime(getAccessToken() ?? "", task.id, minutes)
-        .then(() => onLogTime(minutes))
-        .catch((err) => setError(err instanceof ApiError ? err.message : "Erro ao salvar tempo."));
-    }
-  }
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
-    if (timer.active) {
-      interval = setInterval(() => {
-        setTimer((t) => ({ ...t, seconds: t.seconds + 1 }));
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [timer.active]);
-
   return (
     <div className="rounded-xl border border-surface-line bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -497,30 +485,19 @@ function TaskItem({ task, onUpdate, onLogTime, canCreateTasks }: TaskItemProps) 
             <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}>
               {TASK_STATUS_LABEL[status]}
             </span>
-            {task.subjectName && (
+            {task.subjectName && !generatedSubjectTask && (
               <span className="rounded-full bg-graphite/5 px-2 py-0.5 text-xs text-graphite-500">
                 {task.subjectName}
               </span>
             )}
           </div>
-          <h3 className="mt-1 text-sm font-medium text-graphite">{task.title}</h3>
+          <h3 className="mt-1 text-sm font-medium text-graphite">{taskDisplayName(task)}</h3>
           {task.description && (
             <p className="mt-1 text-xs text-graphite-400">{task.description}</p>
           )}
         </div>
 
         <div className="flex items-center gap-1.5">
-          {timer.active ? (
-            <Button size="sm" variant="outline" onClick={stopTimer}>
-              <Pause className="h-3.5 w-3.5" />
-              Para
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={startTimer}>
-              <Play className="h-3.5 w-3.5" />
-              Cronômetro
-            </Button>
-          )}
           {canCreateTasks && (
             <Button size="sm" variant="ghost" onClick={toggleStatus}>
               {status === "DONE" ? "Reabrir" : "Concluir"}
@@ -528,15 +505,6 @@ function TaskItem({ task, onUpdate, onLogTime, canCreateTasks }: TaskItemProps) 
           )}
         </div>
       </div>
-
-      {timer.active && (
-        <div className="mt-3 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-graphite-400" />
-          <span className="font-mono text-sm text-graphite">
-            {Math.floor(timer.seconds / 60)}:{String(timer.seconds % 60).padStart(2, "0")}
-          </span>
-        </div>
-      )}
 
       {error && (
         <div className="mt-2 flex items-start gap-1.5 rounded border border-alert/20 bg-alert/5 p-2 text-xs text-alert">
@@ -548,24 +516,19 @@ function TaskItem({ task, onUpdate, onLogTime, canCreateTasks }: TaskItemProps) 
   );
 }
 
-const Pause = (props: { className?: string }) => (
-  <svg {...props} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-  </svg>
-);
-
 export function StudySchedulePage() {
   const { user, logout } = useAuth();
   const [subjects, setSubjects] = useState<StudySubject[]>([]);
   const [schedule, setSchedule] = useState<StudySchedule | null>(null);
   const [dailyData, setDailyData] = useState<{ schedule: StudySchedule; session: StudySession | null } | null>(null);
   const [tasks, setTasks] = useState<PaginatedTasks | null>(null);
+  const [catalogTasks, setCatalogTasks] = useState<StudyTask[]>([]);
   const [progress, setProgress] = useState<{ summary: StudyProgressSummary | null; evolution: ProgressEvolutionPoint[] | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<"daily" | "weekly" | "monthly" | "tasks">("daily");
+  const [activeTab, setActiveTab] = useState<"daily" | "subjects" | "timer" | "weekly" | "monthly" | "tasks">("daily");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [taskFilter, setTaskFilter] = useState<"all" | "PENDING" | "IN_PROGRESS" | "DONE">("all");
 
@@ -600,6 +563,9 @@ export function StudySchedulePage() {
 
   useEffect(() => {
     if (schedule && token) {
+      apiListTasks(token, { page: 1, limit: 200 })
+        .then((result) => setCatalogTasks(result?.items ?? []))
+        .catch(() => undefined);
       apiListTasks(token, {
         status: taskFilter === "all" ? undefined : taskFilter,
         page: 1,
@@ -638,6 +604,7 @@ export function StudySchedulePage() {
         items: current.items.map((t) => (t.id === updatedTask.id ? updatedTask : t)),
       };
     });
+    setCatalogTasks((current) => current.map((task) => task.id === updatedTask.id ? updatedTask : task));
     if (dailyData?.session) {
       setDailyData((current) => {
         if (!current || !current.session) return current;
@@ -652,17 +619,6 @@ export function StudySchedulePage() {
         };
       });
     }
-  }
-
-  function handleLogTime(minutes: number) {
-    if (!progress) return;
-    setProgress({
-      summary: {
-        ...progress.summary!,
-        completedMinutes: progress.summary!.completedMinutes + minutes,
-      },
-      evolution: progress.evolution,
-    });
   }
 
   const studyDaysLabel = schedule
@@ -783,7 +739,7 @@ export function StudySchedulePage() {
 
             <ProgressPanel progress={progress?.summary ?? null} />
 
-            <div className="mt-8 flex gap-4 border-b border-surface-line">
+            <div className="mt-8 flex gap-4 overflow-x-auto border-b border-surface-line">
               <button
                 type="button"
                 onClick={() => { setActiveTab("daily"); goToToday(); }}
@@ -794,6 +750,20 @@ export function StudySchedulePage() {
                 }}`}
               >
                 Diária
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("subjects")}
+                className={`pb-3 text-sm font-medium transition-colors ${activeTab === "subjects" ? "border-b-2 border-primary text-primary" : "text-graphite-500 hover:text-graphite"}`}
+              >
+                Por matéria
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("timer")}
+                className={`inline-flex items-center gap-1.5 pb-3 text-sm font-medium transition-colors ${activeTab === "timer" ? "border-b-2 border-primary text-primary" : "text-graphite-500 hover:text-graphite"}`}
+              >
+                <TimerReset className="h-4 w-4" /> Cronômetro
               </button>
               <button
                 type="button"
@@ -836,9 +806,14 @@ export function StudySchedulePage() {
                   date={currentDate}
                   data={dailyData}
                   onTaskUpdate={handleTaskUpdate}
-                  onLogTime={handleLogTime}
                   canCreateTasks={schedule.status === "ACTIVE"}
                 />
+              )}
+              {activeTab === "subjects" && (
+                <SubjectsView subjects={subjects} tasks={catalogTasks} onTaskUpdate={handleTaskUpdate} canCreateTasks={schedule.status === "ACTIVE"} />
+              )}
+              {activeTab === "timer" && (
+                <FocusTimer tasks={catalogTasks} onSaved={() => loadAll()} />
               )}
                {activeTab === "weekly" && (
                 <WeeklyView
@@ -868,7 +843,7 @@ export function StudySchedulePage() {
               )}
             </div>
 
-            <div className="mt-8 flex items-center justify-center gap-3">
+            {(activeTab === "daily" || activeTab === "weekly" || activeTab === "monthly") && <div className="mt-8 flex items-center justify-center gap-3">
               <Button variant="outline" size="sm" onClick={prevPeriod}>
                 <ChevronLeft className="h-4 w-4" />
                 Anterior
@@ -887,7 +862,7 @@ export function StudySchedulePage() {
                   Hoje
                 </Button>
               )}
-            </div>
+            </div>}
 
             <div className="mt-8">
               <Button variant="ghost" size="sm" onClick={() => {
@@ -954,11 +929,10 @@ interface DailyViewProps {
   date: Date;
   data: { schedule: StudySchedule; session: StudySession | null } | null;
   onTaskUpdate: (task: StudyTask | null) => void;
-  onLogTime: (minutes: number) => void;
   canCreateTasks: boolean;
 }
 
-function DailyView({ date, data, onTaskUpdate, onLogTime, canCreateTasks }: DailyViewProps) {
+function DailyView({ date, data, onTaskUpdate, canCreateTasks }: DailyViewProps) {
   if (!data) {
     return (
       <div className="flex flex-col items-center gap-4 py-12 text-center">
@@ -1002,7 +976,6 @@ function DailyView({ date, data, onTaskUpdate, onLogTime, canCreateTasks }: Dail
                 key={t.id}
                 task={t}
                 onUpdate={onTaskUpdate}
-                onLogTime={onLogTime}
                 canCreateTasks={canCreateTasks}
               />
             ))}
@@ -1019,7 +992,6 @@ function DailyView({ date, data, onTaskUpdate, onLogTime, canCreateTasks }: Dail
                 key={t.id}
                 task={t}
                 onUpdate={onTaskUpdate}
-                onLogTime={onLogTime}
                 canCreateTasks={canCreateTasks}
               />
             ))}
@@ -1036,7 +1008,6 @@ function DailyView({ date, data, onTaskUpdate, onLogTime, canCreateTasks }: Dail
                 key={t.id}
                 task={t}
                 onUpdate={onTaskUpdate}
-                onLogTime={onLogTime}
                 canCreateTasks={canCreateTasks}
               />
             ))}
@@ -1050,6 +1021,103 @@ function DailyView({ date, data, onTaskUpdate, onLogTime, canCreateTasks }: Dail
           <p className="text-sm text-graphite-500">Nenhuma tarefa programada para este dia.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function SubjectsView({
+  subjects,
+  tasks,
+  onTaskUpdate,
+  canCreateTasks,
+}: {
+  subjects: StudySubject[];
+  tasks: StudyTask[];
+  onTaskUpdate: (task: StudyTask | null) => void;
+  canCreateTasks: boolean;
+}) {
+  return (
+    <div>
+      <div className="mb-5">
+        <h2 className="text-lg font-semibold text-graphite">Plano dividido por matéria</h2>
+        <p className="mt-1 text-sm text-graphite-500">Visualize a carga e as atividades de cada disciplina do ENEM.</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {subjects.map((subject) => {
+          const subjectTasks = tasks.filter((task) => task.subjectId === subject.id || task.subjectName === subject.name);
+          const completed = subjectTasks.filter((task) => task.status === "DONE").length;
+          const minutes = subjectTasks.reduce((sum, task) => sum + task.scheduledMinutes, 0);
+          return (
+            <Card key={subject.id} className="bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary-700">Disciplina</p><h3 className="mt-1 font-semibold text-graphite">{subject.name}</h3></div>
+                <span className="rounded-full bg-graphite/5 px-2.5 py-1 text-xs text-graphite-500">{minutesToHours(minutes)}</span>
+              </div>
+              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-line"><div className="h-full rounded-full bg-primary" style={{ width: `${subjectTasks.length ? (completed / subjectTasks.length) * 100 : 0}%` }} /></div>
+              <p className="mt-2 text-xs text-graphite-400">{completed} de {subjectTasks.length} atividades concluídas</p>
+              {subjectTasks.length > 0 ? (
+                <div className="mt-4 space-y-2">{subjectTasks.slice(0, 3).map((task) => <TaskItem key={task.id} task={task} onUpdate={onTaskUpdate} canCreateTasks={canCreateTasks} />)}</div>
+              ) : <p className="mt-5 rounded-xl bg-surface-card p-3 text-xs text-graphite-400">Sem atividades programadas nesta matéria.</p>}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FocusTimer({ tasks, onSaved }: { tasks: StudyTask[]; onSaved: () => void }) {
+  const availableTasks = tasks.filter((task) => task.status !== "DONE");
+  const firstAvailableTaskId = availableTasks[0]?.id ?? "";
+  const [taskId, setTaskId] = useState(availableTasks[0]?.id ?? "");
+  const [seconds, setSeconds] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!taskId && firstAvailableTaskId) setTaskId(firstAvailableTaskId);
+  }, [firstAvailableTaskId, taskId]);
+
+  useEffect(() => {
+    if (!running) return;
+    const interval = setInterval(() => setSeconds((current) => current + 1), 1000);
+    return () => clearInterval(interval);
+  }, [running]);
+
+  async function finishSession() {
+    setRunning(false);
+    const minutes = Math.ceil(seconds / 60);
+    if (!taskId || minutes < 1) return;
+    try {
+      await apiLogTime(getAccessToken() ?? "", taskId, minutes);
+      setMessage(`${minutesToHours(minutes)} registrados com sucesso.`);
+      setSeconds(0);
+      onSaved();
+    } catch (error) {
+      setMessage(error instanceof ApiError ? error.message : "Não foi possível registrar o tempo.");
+    }
+  }
+
+  const display = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  return (
+    <div className="mx-auto max-w-3xl">
+      <Card className="overflow-hidden bg-graphite p-0 text-white">
+        <div className="border-b border-white/10 px-6 py-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Sala de foco</p><h2 className="mt-2 text-xl font-semibold">Cronômetro de estudos</h2><p className="mt-1 text-sm text-white/45">Uma matéria por vez. Concentração total.</p></div>
+        <div className="px-6 py-10 text-center sm:py-14">
+          <label className="mx-auto block max-w-md text-left text-xs font-semibold text-white/55">Atividade</label>
+          <select value={taskId} onChange={(event) => { setTaskId(event.target.value); setMessage(""); }} disabled={running} className="mx-auto mt-2 block w-full max-w-md rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary">
+            <option value="" className="text-graphite">Selecione uma atividade</option>
+            {availableTasks.map((task) => <option key={task.id} value={task.id} className="text-graphite">{isGeneratedSubjectTask(task) ? task.subjectName : `${task.subjectName ? `${task.subjectName} — ` : ""}${task.title}`}</option>)}
+          </select>
+          <div className="my-10 font-mono text-5xl font-semibold tracking-tight sm:text-7xl">{display}</div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {!running ? <Button disabled={!taskId} onClick={() => { setRunning(true); setMessage(""); }}><Play className="h-4 w-4" />Iniciar foco</Button> : <Button variant="outline" onClick={() => setRunning(false)}><CirclePause className="h-4 w-4" />Pausar</Button>}
+            <Button variant="ghost" disabled={seconds === 0} onClick={() => { setRunning(false); setSeconds(0); setMessage(""); }}><RotateCcw className="h-4 w-4" />Reiniciar</Button>
+            <Button variant="ghost" disabled={seconds === 0 || !taskId} onClick={() => void finishSession()}><CheckCircle2 className="h-4 w-4" />Finalizar e salvar</Button>
+          </div>
+          {message && <p className="mt-6 text-sm text-primary">{message}</p>}
+        </div>
+      </Card>
     </div>
   );
 }
@@ -1235,7 +1303,6 @@ function TaskListView({
             key={task.id}
             task={task}
             onUpdate={onTaskUpdate}
-            onLogTime={() => {}}
             canCreateTasks={canCreateTasks}
           />
         ))}

@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowLeft, CheckCircle2, Image, LoaderCircle, Save, UserRound } from 'lucide-react';
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { ArrowLeft, CheckCircle2, LoaderCircle, Save, UploadCloud, UserRound, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +16,8 @@ export function Profile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -33,6 +35,53 @@ export function Profile() {
   function update(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
     setSuccess(false);
+  }
+
+  async function useImageFile(file?: File) {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Escolha uma imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setError('A imagem deve ter no máximo 8 MB.');
+      return;
+    }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const size = Math.min(256, bitmap.width, bitmap.height);
+      const sourceSize = Math.min(bitmap.width, bitmap.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      canvas.getContext('2d')?.drawImage(
+        bitmap,
+        (bitmap.width - sourceSize) / 2,
+        (bitmap.height - sourceSize) / 2,
+        sourceSize,
+        sourceSize,
+        0,
+        0,
+        size,
+        size,
+      );
+      bitmap.close();
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.76);
+      if (dataUrl.length > 95000) {
+        setError('Não foi possível compactar essa imagem. Tente uma foto menor.');
+        return;
+      }
+      update('avatarUrl', dataUrl);
+      setError('');
+    } catch {
+      setError('Não foi possível processar essa imagem.');
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    void useImageFile(event.dataTransfer.files[0]);
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -85,9 +134,27 @@ export function Profile() {
             </div>
             <p className="mt-4 font-semibold text-graphite">{form.firstName || 'Seu nome'} {form.lastName}</p>
             <p className="mt-1 text-xs text-graphite-400">{user?.email}</p>
-            <div className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-surface-card px-3 py-2 text-xs text-graphite-500">
-              <Image className="h-4 w-4" /> Use uma URL pública para sua foto
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Enviar foto de perfil"
+              onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') fileInputRef.current?.click(); }}
+              className={`mt-5 cursor-pointer rounded-xl border-2 border-dashed px-3 py-5 transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${dragging ? 'border-primary bg-primary/10' : 'border-surface-line bg-surface-card hover:border-primary/60 hover:bg-primary/5'}`}
+            >
+              <UploadCloud className="mx-auto h-6 w-6 text-primary-700" />
+              <p className="mt-2 text-xs font-semibold text-graphite">Arraste sua foto aqui</p>
+              <p className="mt-1 text-[11px] text-graphite-400">ou clique para abrir câmera/arquivos · JPG, PNG ou WebP</p>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => void useImageFile(event.target.files?.[0])} />
             </div>
+            {form.avatarUrl && (
+              <button type="button" onClick={() => update('avatarUrl', '')} className="mt-3 inline-flex items-center gap-1 text-xs text-graphite-400 hover:text-alert">
+                <X className="h-3.5 w-3.5" /> Remover foto
+              </button>
+            )}
           </Card>
 
           <Card className="bg-white">
@@ -102,7 +169,6 @@ export function Profile() {
               <Field label="Nome de usuário"><Input value={form.username} onChange={(e) => update('username', e.target.value)} minLength={3} maxLength={30} pattern="[a-zA-Z0-9._-]+" placeholder="seu.usuario" /></Field>
               <Field label="Telefone"><Input value={form.phone} onChange={(e) => update('phone', e.target.value)} placeholder="+55 (11) 99999-9999" /></Field>
               <Field label="Data de nascimento"><Input type="date" value={form.birthDate} onChange={(e) => update('birthDate', e.target.value)} /></Field>
-              <Field label="URL da foto"><Input type="url" value={form.avatarUrl} onChange={(e) => update('avatarUrl', e.target.value)} placeholder="https://..." /></Field>
               <div className="sm:col-span-2">
                 <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-graphite">Bio</label>
                 <textarea id="bio" value={form.bio} onChange={(e) => update('bio', e.target.value)} maxLength={500} rows={4} className="w-full resize-none rounded-xl border border-surface-line bg-white px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Conte um pouco sobre seus objetivos de estudo." />

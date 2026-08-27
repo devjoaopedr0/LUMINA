@@ -282,7 +282,10 @@ async function main(): Promise<void> {
       { name: "Filosofia", code: "PHILOSOPHY", displayOrder: 9 },
       { name: "Sociologia", code: "SOCILOGY", displayOrder: 10 },
       { name: "Inglês", code: "ENGLISH", displayOrder: 11 },
-      { name: "Redação", code: "ESSAY", displayOrder: 12 },
+      { name: "Espanhol", code: "SPANISH", displayOrder: 12 },
+      { name: "Artes", code: "ARTS", displayOrder: 13 },
+      { name: "Educação Física", code: "PHYSICAL_EDUCATION", displayOrder: 14 },
+      { name: "Redação", code: "ESSAY", displayOrder: 15 },
     ];
 
     for (const subject of STUDY_SUBJECTS) {

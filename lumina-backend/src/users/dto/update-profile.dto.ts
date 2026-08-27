@@ -3,7 +3,6 @@ import {
   IsDateString,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   MaxLength,
   MinLength,
@@ -37,8 +36,10 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @Transform(emptyToNull)
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
-  @MaxLength(500)
+  @Matches(/^(https?:\/\/|data:image\/(?:jpeg|png|webp);base64,)/, {
+    message: 'avatarUrl deve ser uma URL http(s) ou uma imagem enviada pelo perfil',
+  })
+  @MaxLength(100000)
   avatarUrl?: string | null;
 
   @IsOptional()

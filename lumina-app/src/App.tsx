@@ -11,6 +11,7 @@ import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
 import { StudySchedulePage } from "@/pages/StudySchedulePage";
 import { Profile } from "@/pages/Profile";
+import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
   return (
@@ -71,6 +72,7 @@ function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <AiChatWidget />
     </AuthProvider>
   );
 }
