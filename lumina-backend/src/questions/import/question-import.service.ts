@@ -11,6 +11,8 @@ import { ExamsRepository } from '../exams.repository';
 import { ImportQuestionDto } from '../dto/import-questions.dto';
 import { QuestionDeduplicator } from './question-deduplicator';
 import { QuestionNormalizer, toNormalizedQuestion } from './question-normalizer';
+import { JsonQuestionNormalizer } from './json-question.normalizer';
+import { CsvQuestionNormalizer } from './csv-question.normalizer';
 import { QuestionValidator } from './question-validator';
 import { QuestionsRepository } from '../questions.repository';
 import { SubjectsRepository } from '../subjects.repository';
@@ -36,7 +38,17 @@ export class QuestionImportService {
     private readonly examsRepository: ExamsRepository,
     private readonly validator: QuestionValidator,
     private readonly deduplicator: QuestionDeduplicator,
+    private readonly jsonNormalizer: JsonQuestionNormalizer,
+    private readonly csvNormalizer: CsvQuestionNormalizer,
   ) {}
+
+  importFromJson(raw: unknown, workspaceId: string, createdBy: string | null = null) {
+    return this.importMany(this.jsonNormalizer.normalize(raw), workspaceId, createdBy);
+  }
+
+  importFromCsv(raw: string, workspaceId: string, createdBy: string | null = null) {
+    return this.importMany(this.csvNormalizer.normalize(raw), workspaceId, createdBy);
+  }
 
   /** Converte os DTOs da API (POST /questions/import) para o formato neutro
    * e executa o pipeline. */

@@ -204,6 +204,20 @@ export interface PaginatedQuestions {
   canManageBank?: boolean;
 }
 
+export interface QuestionImportReport {
+  total: number;
+  imported: number;
+  duplicates: number;
+  invalid: number;
+  errors: number;
+  details: Array<{
+    index: number;
+    sourceId: string | null;
+    type: "invalid" | "duplicate" | "error";
+    message: string;
+  }>;
+}
+
 export interface QuestionFilters {
   subject?: string;
   topic?: string;
@@ -303,6 +317,33 @@ export function apiDeleteQuestion(accessToken: string, id: string): Promise<void
   return request(`/questions/${id}`, {
     method: "DELETE",
     headers: authHeaders(accessToken),
+  });
+}
+
+export function apiImportQuestionFile(
+  accessToken: string,
+  fileName: string,
+  content: string,
+  target: "PERSONAL" | "BANK" = "BANK"
+): Promise<QuestionImportReport> {
+  const isCsv = fileName.toLowerCase().endsWith(".csv");
+  let body: Record<string, unknown>;
+  if (isCsv) {
+    body = { content, target };
+  } else {
+    const parsed: unknown = JSON.parse(content);
+    const questions = Array.isArray(parsed)
+      ? parsed
+      : (parsed as { questions?: unknown })?.questions;
+    if (!Array.isArray(questions)) {
+      throw new Error('O JSON deve conter uma lista ou um objeto com a chave "questions".');
+    }
+    body = { questions, target };
+  }
+  return request(`/questions/import/${isCsv ? "csv" : "json"}`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
   });
 }
 

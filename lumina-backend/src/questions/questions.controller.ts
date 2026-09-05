@@ -23,7 +23,13 @@ import { UserWithProfile } from '../users/users.repository';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateAttemptDto } from './dto/create-attempt.dto';
 import { CreateQuestionDto } from './dto/create-question.dto';
-import { ImportQuestionsDto, ImportReportDto } from './dto/import-questions.dto';
+import {
+  ImportCsvQuestionsDto,
+  ImportJsonQuestionsDto,
+  ImportQuestionsDto,
+  ImportReportDto,
+  QuestionImportTarget,
+} from './dto/import-questions.dto';
 import {
   AttemptResultDto,
   PaginatedQuestionsDto,
@@ -69,8 +75,39 @@ export class QuestionsController {
     @CurrentUser() user: UserWithProfile,
     @Body() dto: ImportQuestionsDto,
   ): Promise<ImportReportDto> {
-    const workspace = await this.questionsService.getPersonalWorkspace(user.id);
+    const workspace = await this.questionsService.getImportWorkspace(
+      user.id,
+      dto.target ?? QuestionImportTarget.PERSONAL,
+    );
     return this.questionImportService.importFromDtos(dto.questions, workspace.id, user.id);
+  }
+
+  @Post('import/json')
+  @ApiOperation({ summary: 'Importa questões de um arquivo JSON já convertido em objetos.' })
+  @ApiResponse({ status: 201, type: ImportReportDto })
+  async importJson(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: ImportJsonQuestionsDto,
+  ): Promise<ImportReportDto> {
+    const workspace = await this.questionsService.getImportWorkspace(
+      user.id,
+      dto.target ?? QuestionImportTarget.PERSONAL,
+    );
+    return this.questionImportService.importFromJson(dto.questions, workspace.id, user.id);
+  }
+
+  @Post('import/csv')
+  @ApiOperation({ summary: 'Importa questões a partir do conteúdo de um arquivo CSV.' })
+  @ApiResponse({ status: 201, type: ImportReportDto })
+  async importCsv(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: ImportCsvQuestionsDto,
+  ): Promise<ImportReportDto> {
+    const workspace = await this.questionsService.getImportWorkspace(
+      user.id,
+      dto.target ?? QuestionImportTarget.PERSONAL,
+    );
+    return this.questionImportService.importFromCsv(dto.content, workspace.id, user.id);
   }
 
   @Get()

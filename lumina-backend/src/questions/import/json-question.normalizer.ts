@@ -32,11 +32,20 @@ export class JsonQuestionNormalizer implements QuestionNormalizer {
     const rawOptions = get('options') ?? get('alternatives');
     const options = Array.isArray(rawOptions)
       ? rawOptions
-          .filter((option): option is Record<string, unknown> => typeof option === 'object' && option !== null)
-          .map((option) => ({
-            text: String(option.text ?? option.statement ?? ''),
-            correct: option.correct === true || option.isCorrect === true,
-          }))
+          .map((option) => {
+            if (typeof option === 'string' || typeof option === 'number') {
+              return { text: String(option), correct: undefined };
+            }
+            if (typeof option === 'object' && option !== null) {
+              const record = option as Record<string, unknown>;
+              return {
+                text: String(record.text ?? record.statement ?? ''),
+                correct: record.correct === true || record.isCorrect === true,
+              };
+            }
+            return { text: '', correct: undefined };
+          })
+          .filter((option) => option.text.trim().length > 0)
       : [];
 
     return {
@@ -111,4 +120,5 @@ const DEFAULT_ALIASES: Record<string, string> = {
   explanation: 'gabarito_comentado',
   sourceName: 'fonte',
   sourceId: 'id_fonte',
+  correctLetter: 'resposta',
 };

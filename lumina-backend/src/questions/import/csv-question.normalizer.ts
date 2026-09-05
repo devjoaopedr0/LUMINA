@@ -39,7 +39,10 @@ export class CsvQuestionNormalizer implements QuestionNormalizer {
     });
 
     const optionTexts = ['A', 'B', 'C', 'D', 'E', 'F']
-      .map((letter) => ({ letter, text: row[letter] ?? row[`opcao_${letter}`] }))
+      .map((letter) => {
+        const key = letter.toLowerCase();
+        return { letter, text: row[key] ?? row[`opcao_${key}`] };
+      })
       .filter((option) => option.text);
 
     const options: ExternalQuestionOption[] = optionTexts.map((option) => {
@@ -74,7 +77,25 @@ export class CsvQuestionNormalizer implements QuestionNormalizer {
   }
 
   private parseLine(line: string, delimiter: string): string[] {
-    return line.split(delimiter).map((cell) => cell.replace(/^"|"$/g, ''));
+    const cells: string[] = [];
+    let cell = '';
+    let quoted = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === '"' && quoted && line[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = !quoted;
+      } else if (char === delimiter && !quoted) {
+        cells.push(cell);
+        cell = '';
+      } else {
+        cell += char;
+      }
+    }
+    cells.push(cell);
+    return cells;
   }
 
   private optionalInt(value: string | undefined): number | undefined {

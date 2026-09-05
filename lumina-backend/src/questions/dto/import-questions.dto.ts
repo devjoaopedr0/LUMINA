@@ -18,6 +18,11 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+export enum QuestionImportTarget {
+  PERSONAL = 'PERSONAL',
+  BANK = 'BANK',
+}
+
 export class ImportQuestionOptionDto {
   @ApiProperty({ description: 'Texto da alternativa.' })
   @IsString()
@@ -127,11 +132,39 @@ export class ImportQuestionDto {
 }
 
 export class ImportQuestionsDto {
+  @ApiPropertyOptional({ enum: QuestionImportTarget, default: QuestionImportTarget.PERSONAL })
+  @IsOptional()
+  @IsEnum(QuestionImportTarget)
+  target?: QuestionImportTarget;
+
   @ApiProperty({ type: () => [ImportQuestionDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ImportQuestionDto)
   questions: ImportQuestionDto[];
+}
+
+export class ImportJsonQuestionsDto {
+  @ApiPropertyOptional({ enum: QuestionImportTarget, default: QuestionImportTarget.PERSONAL })
+  @IsOptional()
+  @IsEnum(QuestionImportTarget)
+  target?: QuestionImportTarget;
+
+  @ApiProperty({ type: 'array', items: { type: 'object' } })
+  @IsArray()
+  questions: Record<string, unknown>[];
+}
+
+export class ImportCsvQuestionsDto {
+  @ApiPropertyOptional({ enum: QuestionImportTarget, default: QuestionImportTarget.PERSONAL })
+  @IsOptional()
+  @IsEnum(QuestionImportTarget)
+  target?: QuestionImportTarget;
+
+  @ApiProperty({ description: 'Conteúdo integral do arquivo CSV, com cabeçalho.' })
+  @IsString()
+  @MinLength(1)
+  content: string;
 }
 
 export class ImportReportDto {
