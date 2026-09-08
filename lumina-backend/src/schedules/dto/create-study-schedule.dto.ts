@@ -9,6 +9,8 @@ import {
   IsUUID,
   Min,
   Max,
+  MinLength,
+  MaxLength,
 } from "class-validator";
 
 export class SubjectTargetDto {
@@ -50,7 +52,7 @@ export class CreateStudyScheduleDto {
   @ApiProperty({ type: String, nullable: true, example: "Passar no ENEM com 1400+ pontos" })
   @IsOptional()
   @IsString()
-  @Max(500)
+  @MaxLength(500)
   objective?: string;
 
   @ApiProperty({ type: [SubjectTargetDto], description: "Disciplinas e horas-alvo" })
@@ -86,7 +88,7 @@ export class UpdateStudyScheduleDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @Max(500)
+  @MaxLength(500)
   objective?: string;
 }
 
@@ -102,14 +104,14 @@ export class CreateStudyTaskDto {
 
   @ApiProperty({ example: "Resolver 10 questões de Funções" })
   @IsString()
-  @Min(3)
-  @Max(200)
+  @MinLength(3)
+  @MaxLength(200)
   title: string;
 
   @ApiProperty({ type: String, nullable: true })
   @IsOptional()
   @IsString()
-  @Max(1000)
+  @MaxLength(1000)
   description?: string;
 
   @ApiProperty({ example: 45 })
@@ -128,13 +130,13 @@ export class UpdateStudyTaskDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @Max(200)
+  @MaxLength(200)
   title?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @Max(1000)
+  @MaxLength(1000)
   description?: string;
 
   @ApiProperty({ enum: ["PENDING", "IN_PROGRESS", "DONE"], required: false })
@@ -182,7 +184,7 @@ export class SetVestibularDto {
   @ApiProperty({ type: String, nullable: true, example: "ENEM 2025" })
   @IsOptional()
   @IsString()
-  @Max(100)
+  @MaxLength(100)
   customName?: string;
 
   @ApiProperty({ format: "date", nullable: true, example: "2025-01-15" })
