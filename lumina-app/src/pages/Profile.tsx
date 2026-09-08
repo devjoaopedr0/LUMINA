@@ -37,7 +37,7 @@ export function Profile() {
     setSuccess(false);
   }
 
-  async function useImageFile(file?: File) {
+  async function processImageFile(file?: File) {
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setError('Escolha uma imagem JPG, PNG ou WebP.');
@@ -81,7 +81,7 @@ export function Profile() {
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    void useImageFile(event.dataTransfer.files[0]);
+    void processImageFile(event.dataTransfer.files[0]);
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -148,7 +148,7 @@ export function Profile() {
               <UploadCloud className="mx-auto h-6 w-6 text-primary-700" />
               <p className="mt-2 text-xs font-semibold text-graphite">Arraste sua foto aqui</p>
               <p className="mt-1 text-[11px] text-graphite-400">ou clique para abrir câmera/arquivos · JPG, PNG ou WebP</p>
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => void useImageFile(event.target.files?.[0])} />
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => void processImageFile(event.target.files?.[0])} />
             </div>
             {form.avatarUrl && (
               <button type="button" onClick={() => update('avatarUrl', '')} className="mt-3 inline-flex items-center gap-1 text-xs text-graphite-400 hover:text-alert">
