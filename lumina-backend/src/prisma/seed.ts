@@ -266,6 +266,37 @@ async function main(): Promise<void> {
     // ----------------------------------------------------------------------
     // 3. Catálogo + questões
     // ----------------------------------------------------------------------
+
+    // ----------------------------------------------------------------------
+    // 3a. Catálogo de disciplinas de estudo (ENEM)
+    // ----------------------------------------------------------------------
+    const STUDY_SUBJECTS = [
+      { name: "Matemática", code: "MATH", displayOrder: 1 },
+      { name: "Física", code: "PHYSICS", displayOrder: 2 },
+      { name: "Química", code: "CHEMISTRY", displayOrder: 3 },
+      { name: "Biologia", code: "BIOLOGY", displayOrder: 4 },
+      { name: "Português", code: "PORTUGUESE", displayOrder: 5 },
+      { name: "Literatura", code: "LITERATURE", displayOrder: 6 },
+      { name: "História", code: "HISTORY", displayOrder: 7 },
+      { name: "Geografia", code: "GEOGRAPHY", displayOrder: 8 },
+      { name: "Filosofia", code: "PHILOSOPHY", displayOrder: 9 },
+      { name: "Sociologia", code: "SOCILOGY", displayOrder: 10 },
+      { name: "Inglês", code: "ENGLISH", displayOrder: 11 },
+      { name: "Espanhol", code: "SPANISH", displayOrder: 12 },
+      { name: "Artes", code: "ARTS", displayOrder: 13 },
+      { name: "Educação Física", code: "PHYSICAL_EDUCATION", displayOrder: 14 },
+      { name: "Redação", code: "ESSAY", displayOrder: 15 },
+    ];
+
+    for (const subject of STUDY_SUBJECTS) {
+      await prisma.studySubject.upsert({
+        where: { code: subject.code },
+        update: { name: subject.name, displayOrder: subject.displayOrder },
+        create: subject,
+      });
+    }
+    console.log(`✓ ${STUDY_SUBJECTS.length} disciplinas de estudo do ENEM prontas.`);
+
     let imported = 0;
     let skipped = 0;
     for (const question of ALL_QUESTIONS) {

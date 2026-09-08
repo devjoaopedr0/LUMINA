@@ -130,6 +130,49 @@ describe('Auth (e2e)', () => {
     expect(res.body.hasPassword).toBe(true);
   });
 
+  it('PATCH /users/me/profile atualiza e normaliza o perfil autenticado', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const res = await request(app.getHttpServer())
+      .patch('/users/me/profile')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        firstName: '  Mariana  ',
+        lastName: 'Oliveira',
+        username: 'Mariana.Oliveira',
+        phone: '+55 (11) 99999-9999',
+        birthDate: '2004-05-12',
+        bio: '  Estudante focada no ENEM.  ',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.firstName).toBe('Mariana');
+    expect(res.body.username).toBe('mariana.oliveira');
+    expect(res.body.birthDate).toContain('2004-05-12');
+    expect(res.body.bio).toBe('Estudante focada no ENEM.');
+    expect(res.body.passwordHash).toBeUndefined();
+  });
+
+  it('PATCH /users/me/profile rejeita campos desconhecidos e URL inválida', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const invalidUrl = await request(app.getHttpServer())
+      .patch('/users/me/profile')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ avatarUrl: 'arquivo-local.png' });
+    expect(invalidUrl.status).toBe(400);
+
+    const extraField = await request(app.getHttpServer())
+      .patch('/users/me/profile')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ isAdmin: true });
+    expect(extraField.status).toBe(400);
+  });
+
   it('GET /auth/me com token inválido retorna 401', async () => {
     const res = await request(app.getHttpServer())
       .get('/auth/me')

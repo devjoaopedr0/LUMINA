@@ -271,6 +271,17 @@ export class QuestionsService {
     return this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
   }
 
+  /** Resolve o destino declarado pela importação e aplica a mesma autorização
+   * usada na criação manual. O banco central nunca recebe conteúdo sem que o
+   * usuário tenha QUESTION_MANAGE. */
+  async getImportWorkspace(userId: string, target: 'PERSONAL' | 'BANK' = 'PERSONAL'): Promise<Workspace> {
+    if (target === 'PERSONAL') return this.getPersonalWorkspace(userId);
+    const bank = await this.questionAccessService.getBankWorkspace();
+    if (!bank) throw new NotFoundException('Banco central de questões não encontrado.');
+    await this.questionAccessService.assertCanManage(userId, bank.id);
+    return bank;
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers privados
   // ---------------------------------------------------------------------------

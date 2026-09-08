@@ -9,6 +9,9 @@ import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
+import { StudySchedulePage } from "@/pages/StudySchedulePage";
+import { Profile } from "@/pages/Profile";
+import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
   return (
@@ -51,8 +54,25 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/app/perfil"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/cronograma"
+          element={
+            <ProtectedRoute>
+              <StudySchedulePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <AiChatWidget />
     </AuthProvider>
   );
 }

@@ -288,6 +288,20 @@ describe('QuestionsService', () => {
     });
   });
 
+  describe('getImportWorkspace', () => {
+    it('usa o workspace pessoal como destino padrão', async () => {
+      await expect(service.getImportWorkspace('user-1')).resolves.toEqual(baseWorkspace);
+    });
+
+    it('exige permissão de gerenciamento antes de importar no banco central', async () => {
+      const bank = { id: 'ws-banco', name: 'Banco Lumina', type: 'INSTITUTION' };
+      questionAccessService.getBankWorkspace.mockResolvedValue(bank);
+
+      await expect(service.getImportWorkspace('user-1', 'BANK')).resolves.toEqual(bank);
+      expect(questionAccessService.assertCanManage).toHaveBeenCalledWith('user-1', 'ws-banco');
+    });
+  });
+
   describe('findById', () => {
     it('retorna visão pública (sem isCorrect) por padrão', async () => {
       questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });

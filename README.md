@@ -27,3 +27,8 @@ Pré-requisitos antes de rodar:
 3. `lumina-app/.env` (opcional em dev — os valores padrão já apontam pro localhost).
 
 Cada projeto também pode ser rodado isoladamente (`npm run dev` dentro dele, ou `npm run start:dev` no caso do backend) — o comando na raiz é só uma conveniência que já orquestra os dois.
+
+## Documentação de funcionalidades
+
+- [Chat LuminIA e guia de integração](docs/AI_CHAT.md)
+- [Status funcional do produto](STATUS_FUNCIONAL.md)

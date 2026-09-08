@@ -20,19 +20,22 @@ model User {
   updatedAt              DateTime                @updatedAt @map("updated_at")
   deletedAt              DateTime?               @map("deleted_at")
   googleId               String?                 @unique @map("google_id")
-  classMemberships       ClassMember[]
-  classesTeaching        ClassTeacher[]
-  coordinatedClasses     Class[]                 @relation("ClassCoordinator")
-  createdClasses         Class[]                 @relation("ClassCreatedBy")
-  emailVerificationCodes EmailVerificationCode[]
-  passwordResetTokens    PasswordResetToken[]
-  questionAttempts       QuestionAttempt[]
-  createdQuestions       Question[]              @relation("QuestionCreatedBy")
-  profile                UserProfile?
-  questionProgress       UserQuestionProgress[]
-  workspaceMembers       WorkspaceMember[]
+   classMemberships       ClassMember[]
+   classesTeaching        ClassTeacher[]
+   coordinatedClasses     Class[]                 @relation("ClassCoordinator")
+   createdClasses         Class[]                 @relation("ClassCreatedBy")
+   emailVerificationCodes EmailVerificationCode[]
+   passwordResetTokens    PasswordResetToken[]
+   questionAttempts       QuestionAttempt[]
+   createdQuestions       Question[]              @relation("QuestionCreatedBy")
+   profile                UserProfile?
+   questionProgress       UserQuestionProgress[]
+   workspaceMembers       WorkspaceMember[]
+   studySchedule          StudySchedule?
+   studyTimeLogs          StudyTimeLog[]
+   selectedVestibular     UserVestibular?
 
-  @@map("users")
+   @@map("users")
 }
 
 /// Token de redefinição de senha (fluxo "esqueci minha senha"). Guardamos
@@ -293,6 +296,7 @@ model Exam {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
   questions   Question[] @relation("QuestionExam")
+  userVestibulares UserVestibular[]
 
   @@index([name, year])
   @@map("exams")
@@ -470,4 +474,190 @@ enum QuestionSourceType {
   IMPORTED
 
   @@map("question_source_type")
+}
+
+/// Status de um cronograma de estudo do aluno.
+enum StudyScheduleStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("study_schedule_status")
+}
+
+/// Status de uma tarefa de estudo.
+enum StudyTaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+
+  @@map("study_task_status")
+}
+
+/// Cronograma de estudo pessoal de um aluno, sempre associado ao ENEM
+/// (um por usuário via userId unique). Contém a data de início/término,
+/// os dias da semana disponíveis e a duração diária planejada.
+model StudySchedule {
+  id              String               @id @default(uuid()) @db.Uuid
+  userId          String               @unique @map("user_id") @db.Uuid
+  startDate       DateTime             @map("start_date") @db.Date
+  endDate         DateTime             @map("end_date") @db.Date
+  studyDays       Json                 @map("study_days")
+  dailyMinutes    Int                  @map("daily_minutes")
+  objective       String?
+  status          StudyScheduleStatus  @default(ACTIVE)
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduleSubjects StudyScheduleSubject[]
+  sessions        StudySession[]
+  tasks           StudyTask[]
+  progress        StudyProgress?
+
+  @@index([userId])
+  @@map("study_schedules")
+}
+
+/// Disciplina estruturada do ENEM usada no cronograma de estudos.
+/// Catálogo fixo (12 matérias) separado de Subject (classificação de
+/// questões) — Redação, por exemplo, não tem questões mas é estudável.
+model StudySubject {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String   @unique
+  code             String   @unique @map("code")
+  displayOrder     Int      @default(99) @map("display_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  scheduleSubjects StudyScheduleSubject[]
+  sessionSubjects  StudySessionSubject[]
+  tasks            StudyTask[]
+
+  @@map("study_subjects")
+}
+
+/// Associação between StudySchedule e StudySubject: quais disciplinas
+/// o aluno escolheu estudar e quantas horas pretende dedicar a cada uma.
+model StudyScheduleSubject {
+  id          String    @id @default(uuid()) @db.Uuid
+  scheduleId  String    @map("schedule_id") @db.Uuid
+  subjectId   String    @map("subject_id") @db.Uuid
+  targetHours Float     @map("target_hours")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  subject     StudySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schedule    StudySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, subjectId])
+  @@index([scheduleId])
+  @@index([subjectId])
+  @@map("study_schedule_subjects")
+}
+
+/// Sessão de estudo planejada para um dia específico dentro do cronograma.
+/// Uma por dia de estudo (unique em scheduleId + date).
+model StudySession {
+  id               String                @id @default(uuid()) @db.Uuid
+  scheduleId       String                @map("schedule_id") @db.Uuid
+  date             DateTime              @map("date") @db.Date
+  scheduledMinutes Int                   @default(0) @map("scheduled_minutes")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  schedule         StudySchedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  sessionSubjects  StudySessionSubject[]
+  tasks            StudyTask[]
+
+  @@index([scheduleId, date])
+  @@unique([scheduleId, date])
+  @@map("study_sessions")
+}
+
+/// Disciplinas alocadas a uma sessão de estudo (quantos minutos por matéria
+/// no dia). Tabela de junção entre StudySession e StudySubject.
+model StudySessionSubject {
+  id               String    @id @default(uuid()) @db.Uuid
+  sessionId        String    @map("session_id") @db.Uuid
+  subjectId        String    @map("subject_id") @db.Uuid
+  estimatedMinutes Int       @default(0) @map("estimated_minutes")
+  session          StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  subject          StudySubject @relation(fields: [subjectId], references: [id])
+
+  @@unique([sessionId, subjectId])
+  @@index([sessionId])
+  @@index([subjectId])
+  @@map("study_session_subjects")
+}
+
+/// Tarefa de estudo individual — pode ser auto-gerada (baseada em tópicos
+/// do banco) ou criada manualmente pelo aluno.
+model StudyTask {
+  id              String          @id @default(uuid()) @db.Uuid
+  scheduleId      String          @map("schedule_id") @db.Uuid
+  sessionId       String          @map("session_id") @db.Uuid
+  subjectId       String?         @map("subject_id") @db.Uuid
+  title           String
+  description     String?
+  status          StudyTaskStatus @default(PENDING)
+  scheduledMinutes Int            @default(0) @map("scheduled_minutes")
+  completedAt     DateTime?       @map("completed_at")
+  notes           String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  schedule        StudySchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  session         StudySession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  subject         StudySubject?   @relation(fields: [subjectId], references: [id])
+  timeLogs        StudyTimeLog[]
+
+  @@index([scheduleId])
+  @@index([sessionId])
+  @@index([subjectId])
+  @@map("study_tasks")
+}
+
+/// Registro de tempo de estudo real — o aluno bate o cronômetro na tarefa.
+model StudyTimeLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  taskId         String    @map("task_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  startTime      DateTime  @map("start_time")
+  endTime        DateTime  @map("end_time")
+  durationMinutes Int      @map("duration_minutes")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  task           StudyTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
+  @@map("study_time_logs")
+}
+
+/// Progresso agregado do aluno no seu cronograma — usado na tela de
+/// acompanhamento (percentual concluído, horas estudadas, streak).
+model StudyProgress {
+  id                String    @id @default(uuid()) @db.Uuid
+  scheduleId        String    @unique @map("schedule_id") @db.Uuid
+  completedMinutes  Int       @default(0) @map("completed_minutes")
+  totalScheduledMinutes Int   @default(0) @map("total_scheduled_minutes")
+  streakDays        Int       @default(0) @map("streak_days")
+  lastStudyDate     DateTime? @map("last_study_date") @db.Date
+  completedTasks    Int       @default(0) @map("completed_tasks")
+  totalTasks        Int       @default(0) @map("total_tasks")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  schedule          StudySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@map("study_progress")
+}
+
+/// Vestibular escolhido pelo aluno no onboarding. Referência ao nome do
+/// exam (ex: "ENEM") para contextualizar o cronograma.
+model UserVestibular {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  examId    String?   @map("exam_id") @db.Uuid
+  customName String?  @map("custom_name")  // ex: "ENEM 2025" se for custom
+  targetDate DateTime? @map("target_date") @db.Date  // data da prova
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  exam      Exam?     @relation(fields: [examId], references: [id])
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_vestibulares")
 }

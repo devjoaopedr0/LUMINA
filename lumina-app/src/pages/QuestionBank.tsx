@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  Upload,
   X,
   XCircle,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import {
   apiCreateQuestion,
   apiDeleteQuestion,
   apiGetQuestion,
+  apiImportQuestionFile,
   apiGetSubjectTopics,
   apiListExams,
   apiListQuestions,
@@ -41,6 +43,7 @@ import {
   type QuestionDifficulty,
   type QuestionFilters,
   type QuestionPayload,
+  type QuestionImportReport,
   type Subject,
   type Topic,
 } from "@/lib/api";
@@ -678,6 +681,10 @@ export function QuestionBank() {
 
   const [view, setView] = useState<"list" | "form">("list");
   const [editing, setEditing] = useState<Question | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importReport, setImportReport] = useState<QuestionImportReport | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -760,6 +767,26 @@ export function QuestionBank() {
     setFilters((current) => ({ ...current }));
   }
 
+  async function handleImportFile(file: File) {
+    if (!/\.(json|csv)$/i.test(file.name)) {
+      setImportError('Selecione um arquivo JSON ou CSV.');
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    setImportReport(null);
+    try {
+      const token = getAccessToken() ?? '';
+      const report = await apiImportQuestionFile(token, file.name, await file.text(), 'BANK');
+      setImportReport(report);
+      setFilters((current) => ({ ...current, page: 1 }));
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Não foi possível importar o arquivo.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-surface-card">
       <header className="border-b border-surface-line bg-white">
@@ -824,12 +851,78 @@ export function QuestionBank() {
                 </p>
               </div>
               {data?.canManageBank && (
-                <Button onClick={startCreate}>
-                  <Plus className="h-4 w-4" />
-                  Nova questão
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setImportOpen(true); setImportError(null); setImportReport(null); }}>
+                    <Upload className="h-4 w-4" />
+                    Importar arquivo
+                  </Button>
+                  <Button onClick={startCreate}>
+                    <Plus className="h-4 w-4" />
+                    Nova questão
+                  </Button>
+                </div>
               )}
             </div>
+
+            {importOpen && data?.canManageBank && (
+              <Card className="mt-6 bg-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="font-semibold text-graphite">Importar questões em lote</h2>
+                    <p className="mt-1 text-sm text-graphite-500">
+                      Envie JSON ou CSV. O sistema valida o gabarito e ignora duplicatas automaticamente.
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setImportOpen(false)} aria-label="Fechar importação">
+                    <X className="h-5 w-5 text-graphite-400" />
+                  </button>
+                </div>
+                <label className="mt-5 flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-surface-line bg-surface-card px-6 text-center transition hover:border-primary/50">
+                  <Upload className="h-7 w-7 text-primary" />
+                  <span className="mt-2 text-sm font-medium text-graphite">
+                    {importing ? 'Importando e validando...' : 'Clique para selecionar o arquivo'}
+                  </span>
+                  <span className="mt-1 text-xs text-graphite-400">Formatos aceitos: .json e .csv</span>
+                  <input
+                    type="file"
+                    accept=".json,.csv,application/json,text/csv"
+                    className="sr-only"
+                    disabled={importing}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleImportFile(file);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                {importError && <p className="mt-4 text-sm text-alert">{importError}</p>}
+                {importReport && (
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+                    {[
+                      ['Total', importReport.total],
+                      ['Importadas', importReport.imported],
+                      ['Duplicadas', importReport.duplicates],
+                      ['Inválidas', importReport.invalid],
+                      ['Erros', importReport.errors],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-lg bg-surface-card p-3">
+                        <p className="text-xs text-graphite-400">{label}</p>
+                        <p className="mt-1 text-lg font-semibold text-graphite">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {importReport && importReport.details.length > 0 && (
+                  <div className="mt-4 max-h-40 overflow-auto rounded-lg border border-surface-line p-3 text-xs text-graphite-500">
+                    {importReport.details.map((detail) => (
+                      <p key={`${detail.index}-${detail.type}`} className="py-1">
+                        Linha {detail.index + 1}: {detail.message}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
 
             <Card className="mt-8 bg-white">
               <form onSubmit={applyFilters} className="grid grid-cols-1 gap-4 md:grid-cols-5">

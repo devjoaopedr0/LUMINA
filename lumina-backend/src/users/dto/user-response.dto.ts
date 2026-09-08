@@ -63,6 +63,10 @@ export class UserResponseDto {
 
   @Expose()
   @ApiProperty({ nullable: true })
+  birthDate: Date | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
   bio: string | null;
 
   constructor(partial: Partial<UserResponseDto>) {

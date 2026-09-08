@@ -11,6 +11,12 @@ export default defineConfig({
     include: ['src/**/*.spec.ts', 'test/**/*.e2e-spec.ts'],
     globals: true,
     root: './',
+    // O e2e sobe a aplicação Nest inteira (todos os módulos) dentro do
+    // beforeAll. Isso já passou de 10s (default do Vitest) quando roda
+    // junto com os outros arquivos de teste em paralelo — não é lentidão
+    // pontual, é o tamanho real do grafo de módulos hoje. Timeout maior
+    // evita falso-negativo por timeout de hook.
+    hookTimeout: 30000,
   },
   plugins: [swc.vite()],
 });

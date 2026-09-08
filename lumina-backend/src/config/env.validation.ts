@@ -60,6 +60,18 @@ class EnvironmentVariables {
   @IsString()
   FRONTEND_URL: string;
 
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1000)
+  RATE_LIMIT_TTL_MS?: number;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  RATE_LIMIT_MAX?: number;
+
   // Opcionais: sem RESEND_API_KEY o MailerService simula o envio no console
   // (útil em dev), em vez de quebrar o boot da aplicação.
   @IsOptional()

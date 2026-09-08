@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ClassSerializerInterceptor } from '@nestjs/common';
@@ -7,9 +7,11 @@ import { AuthModule } from './auth/auth.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseModule } from './database/prisma.module';
 import { QuestionsModule } from './questions/questions.module';
+import { SchedulesModule } from './schedules/schedules.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { validateEnv } from './config/env.validation';
+import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 
 @Module({
   imports: [
@@ -28,8 +30,10 @@ import { validateEnv } from './config/env.validation';
     AuthModule,
     WorkspacesModule,
     QuestionsModule,
+    SchedulesModule,
   ],
   providers: [
+    RateLimitMiddleware,
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     // Defesa extra: garante que @Exclude/@Expose (ver UserResponseDto) seja
     // respeitado mesmo se algum handler futuro devolver uma instância sem
@@ -37,4 +41,8 @@ import { validateEnv } from './config/env.validation';
     { provide: APP_INTERCEPTOR, useClass: ClassSerializerInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RateLimitMiddleware).forRoutes({ path: '*path', method: RequestMethod.ALL });
+  }
+}
