@@ -50,7 +50,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+
+  // NestJS trata um controller que retorna `null` (ex: "busque o cronograma
+  // ou null se não existir") do mesmo jeito que `undefined`: o Express manda
+  // o corpo vazio (Content-Length: 0), sem o literal "null" — não é só no
+  // 204. `res.json()` nesse corpo lança "Unexpected end of JSON input" e
+  // quebra qualquer Promise.all que dependa dele. Lendo como texto primeiro
+  // cobre os dois casos com segurança, para qualquer endpoint que devolva um
+  // recurso-ou-null.
+  const text = await res.text();
+  if (!text) return null as T;
+  return JSON.parse(text) as T;
 }
 
 export function apiRegister(payload: {
