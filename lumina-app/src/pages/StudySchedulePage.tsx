@@ -106,6 +106,19 @@ function formatDate(date: Date | string): string {
 }
 
 function formatDateDisplay(date: Date | string): string {
+  if (typeof date === "string") {
+    // O backend manda datas-calendário como meia-noite UTC
+    // ("2026-09-08T00:00:00.000Z"). Passar isso por `new Date(...)` e depois
+    // `toLocaleDateString` converte para o fuso do navegador — em
+    // fusos atrás de UTC (ex: America/Sao_Paulo, UTC-3, o público-alvo da
+    // Lumina) isso exibe o dia ANTERIOR ao selecionado. Lendo o
+    // ano/mês/dia direto da string evita essa conversão de fuso.
+    const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, year, month, day] = match;
+      return `${day}/${month}/${year}`;
+    }
+  }
   return new Date(date).toLocaleDateString("pt-BR");
 }
 
@@ -128,11 +141,18 @@ function CreateScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }:
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [dailyMinutes, setDailyMinutes] = useState(120);
-  const [studyDays, setStudyDays] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [objective, setObjective] = useState("");
+  // Ao editar, os campos precisam começar preenchidos com os valores atuais
+  // do cronograma — sem isso, "Data de início"/"Data de término" ficam em
+  // branco e, por serem obrigatórios, bloqueiam silenciosamente qualquer
+  // salvamento (a validação nativa do <input required> barra o submit antes
+  // mesmo do onSubmit rodar, sem nenhuma mensagem visível). `.slice(0, 10)`
+  // em vez de `new Date(...)`: o backend manda meia-noite UTC, e converter
+  // para o fuso local (ex: America/Sao_Paulo) voltaria um dia.
+  const [startDate, setStartDate] = useState(existingSchedule?.startDate.slice(0, 10) ?? "");
+  const [endDate, setEndDate] = useState(existingSchedule?.endDate.slice(0, 10) ?? "");
+  const [dailyMinutes, setDailyMinutes] = useState(existingSchedule?.dailyMinutes ?? 120);
+  const [studyDays, setStudyDays] = useState<number[]>(existingSchedule?.studyDays ?? [1, 2, 3, 4, 5]);
+  const [objective, setObjective] = useState(existingSchedule?.objective ?? "");
   const [selectedSubjects, setSelectedSubjects] = useState<Record<string, number>>(
     existingSchedule?.scheduleSubjects
       ? Object.fromEntries(
