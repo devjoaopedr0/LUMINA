@@ -7,6 +7,7 @@ import {
   apiSetPassword,
   apiVerifyEmail,
   apiUpdateProfile,
+  onSessionExpired,
   type UpdateProfilePayload,
   type ApiUser,
 } from "@/lib/api";
@@ -48,6 +49,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => clearTokens())
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    // Dispara quando um refresh de token falha de vez (refresh token também
+    // expirado/inválido) — sem isso, `user` continuava preenchido mesmo com
+    // a sessão morta, e o app seguia parecendo "logado" enquanto toda
+    // chamada autenticada voltava um 401. Zerar `user` aqui já basta: o
+    // ProtectedRoute redireciona pra /login sozinho.
+    return onSessionExpired(() => setUser(null));
   }, []);
 
   async function login(email: string, password: string) {
