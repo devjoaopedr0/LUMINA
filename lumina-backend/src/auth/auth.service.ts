@@ -131,6 +131,28 @@ export class AuthService {
     return user;
   }
 
+  /** Troca um refresh token válido por um novo par de tokens. O access token
+   * dura pouco (JWT_EXPIRES_IN, ex: 15min) de propósito — é este endpoint
+   * que permite a sessão continuar sem pedir login de novo a cada expiração.
+   * Reemite também um novo refresh token (rotação): como não há uma tabela
+   * de refresh tokens revogados, isto NÃO impede reuso do token antigo antes
+   * dele expirar por conta própria — é só JWT stateless, igual ao access
+   * token. Uma denylist/rotação com revogação de verdade fica para uma
+   * iteração futura, se for necessário. */
+  async refresh(refreshToken: string): Promise<AuthResponseDto> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
+    }
+
+    const user = await this.validateUserById(payload.sub);
+    return this.buildAuthResponse(user);
+  }
+
   /** Chamado pelo GoogleStrategy com os dados já extraídos do perfil do
    * Google. Resolve para um User existente (por google_id, ou por e-mail —
    * vinculando a conta local já existente, já que o Google garante que o
