@@ -187,6 +187,45 @@ describe('Auth (e2e)', () => {
     expect(res.status).toBe(401);
   });
 
+  it('POST /auth/refresh troca um refresh token válido por um novo par de tokens', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: login.body.refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+    expect(res.body.user.email).toBe(registerPayload.email);
+
+    // O novo access token precisa funcionar de verdade em rota protegida.
+    const me = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${res.body.accessToken}`);
+    expect(me.status).toBe(200);
+  });
+
+  it('POST /auth/refresh com token inválido retorna 401', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: 'token-invalido' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /auth/refresh com o access token (secret errado) retorna 401', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: login.body.accessToken });
+    expect(res.status).toBe(401);
+  });
+
   it('POST /auth/set-password numa conta que já tem senha retorna 409', async () => {
     const login = await request(app.getHttpServer())
       .post('/auth/login')

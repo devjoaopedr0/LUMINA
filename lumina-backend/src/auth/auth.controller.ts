@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -46,6 +47,17 @@ export class AuthController {
   @ApiResponse({ status: 403, description: 'Conta inativa/suspensa.' })
   login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Troca um refresh token válido por um novo access token (e um novo refresh token).',
+  })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  @ApiResponse({ status: 401, description: 'Refresh token ausente, inválido ou expirado.' })
+  refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
+    return this.authService.refresh(dto.refreshToken);
   }
 
   @Get('google')

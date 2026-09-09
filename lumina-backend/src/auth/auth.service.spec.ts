@@ -75,6 +75,7 @@ describe('AuthService', () => {
 
     jwtService = {
       signAsync: vi.fn().mockResolvedValue('signed-token'),
+      verifyAsync: vi.fn(),
     };
 
     configService = {
@@ -230,6 +231,49 @@ describe('AuthService', () => {
       usersRepository.findById.mockResolvedValue({ ...baseUser, status: UserStatus.SUSPENDED });
 
       await expect(service.validateUserById(baseUser.id)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe('refresh', () => {
+    it('troca um refresh token válido por um novo par de tokens', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: baseUser.id, email: baseUser.email });
+      usersRepository.findById.mockResolvedValue(baseUser);
+
+      const result = await service.refresh('refresh-token-valido');
+
+      expect(jwtService.verifyAsync).toHaveBeenCalledWith('refresh-token-valido', {
+        secret: 'refresh-secret',
+      });
+      expect(result.accessToken).toBe('signed-token');
+      expect(result.refreshToken).toBe('signed-token');
+      expect(result.user.email).toBe(baseUser.email);
+    });
+
+    it('lança UnauthorizedException quando o refresh token é inválido ou expirado', async () => {
+      jwtService.verifyAsync.mockRejectedValue(new Error('jwt expired'));
+
+      await expect(service.refresh('token-invalido')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(usersRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('lança UnauthorizedException quando o usuário do payload não existe mais', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: 'user-deletado', email: 'x@x.com' });
+      usersRepository.findById.mockResolvedValue(null);
+
+      await expect(service.refresh('refresh-token-valido')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('lança UnauthorizedException quando a conta não está mais ACTIVE', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: baseUser.id, email: baseUser.email });
+      usersRepository.findById.mockResolvedValue({ ...baseUser, status: UserStatus.SUSPENDED });
+
+      await expect(service.refresh('refresh-token-valido')).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
