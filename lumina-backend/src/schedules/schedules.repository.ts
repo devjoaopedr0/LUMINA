@@ -172,12 +172,12 @@ export class SchedulesRepository {
     return prisma.studyTask.update({ where: { id }, data });
   }
 
-  async createTask(data: Prisma.StudyTaskUncheckedCreateInput) {
-    return this.prisma.studyTask.create({ data });
+  async createTask(data: Prisma.StudyTaskUncheckedCreateInput, tx: Db = this.prisma) {
+    return tx.studyTask.create({ data });
   }
 
-  async deleteTask(id: string) {
-    return this.prisma.studyTask.delete({ where: { id } });
+  async deleteTask(id: string, tx: Db = this.prisma) {
+    return tx.studyTask.delete({ where: { id } });
   }
 
   async createTimeLog(

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { StudyTaskStatus, type Prisma } from "@prisma/client";
 import { SchedulesRepository } from "./schedules.repository";
 import { Db, SessionAllocation } from "./domain/types";
@@ -118,6 +118,15 @@ export class SchedulesService {
   ): Promise<void> {
     const startDate = startOfDay(new Date(dto.startDate));
     const endDate = startOfDay(new Date(dto.endDate));
+    if (endDate < startDate) {
+      throw new BadRequestException("A data final deve ser igual ou posterior à inicial.");
+    }
+    if (!dto.subjects.some((subject) => subject.targetHours > 0)) {
+      throw new BadRequestException("Informe horas de estudo para pelo menos uma disciplina.");
+    }
+    if (this.countStudyDays(startDate, endDate, dto.studyDays) === 0) {
+      throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
+    }
 
     const schedule = await this.repo.prisma.$transaction(async (tx: Db) => {
       const scheduleRecord = await this.repo.createSchedule(tx, {
@@ -254,13 +263,17 @@ export class SchedulesService {
     const session = await this.repo.findSessionById(data.sessionId);
     if (!session || session.schedule.userId !== userId) return null;
 
-    return this.repo.createTask({
-      scheduleId: session.scheduleId,
-      sessionId: data.sessionId,
-      subjectId: data.subjectId ?? null,
-      title: data.title,
-      description: data.description ?? null,
-      scheduledMinutes: data.scheduledMinutes,
+    return this.repo.prisma.$transaction(async (tx: Db) => {
+      const task = await this.repo.createTask({
+        scheduleId: session.scheduleId,
+        sessionId: data.sessionId,
+        subjectId: data.subjectId ?? null,
+        title: data.title,
+        description: data.description ?? null,
+        scheduledMinutes: data.scheduledMinutes,
+      }, tx);
+      await this.updateProgress(tx, session.scheduleId);
+      return task;
     });
   }
 
@@ -278,15 +291,24 @@ export class SchedulesService {
       task.status !== StudyTaskStatus.DONE
     ) {
       update.completedAt = new Date();
+    } else if (data.status && data.status !== StudyTaskStatus.DONE) {
+      update.completedAt = null;
     }
 
-    return this.repo.updateTask(taskId, update);
+    return this.repo.prisma.$transaction(async (tx: Db) => {
+      const updated = await this.repo.updateTask(taskId, update, tx);
+      await this.updateProgress(tx, task.scheduleId);
+      return updated;
+    });
   }
 
   async deleteTask(userId: string, taskId: string) {
     const task = await this.repo.findTaskById(taskId);
     if (!task || task.schedule.userId !== userId) return null;
-    await this.repo.deleteTask(taskId);
+    await this.repo.prisma.$transaction(async (tx: Db) => {
+      await this.repo.deleteTask(taskId, tx);
+      await this.updateProgress(tx, task.scheduleId);
+    });
   }
 
   async rescheduleTask(userId: string, taskId: string, sessionId: string) {
@@ -306,7 +328,7 @@ export class SchedulesService {
     return this.repo.prisma.$transaction(async (tx: Db) => {
       const updated = await this.repo.updateTask(taskId, {
         status: StudyTaskStatus.DONE,
-        completedAt: new Date(),
+        completedAt: task.completedAt ?? new Date(),
       }, tx);
       await this.updateProgress(tx, task.scheduleId);
       return updated;
@@ -364,6 +386,7 @@ export class SchedulesService {
         },
         orderBy: { date: "asc" },
       });
+      if (futureSessions.length === 0) return { rescheduled: 0 };
 
       let idx = 0;
       for (const t of missedTasks) {
@@ -384,8 +407,8 @@ export class SchedulesService {
   async getProgress(userId: string) {
     const schedule = await this.repo.findScheduleByUserId(userId);
     if (!schedule) return null;
-    const progress = await this.repo.findProgressByScheduleId(schedule.id);
-    return progress;
+    // A sequência depende da data atual, mesmo sem novas gravações de tarefas.
+    return this.updateProgress(this.repo.prisma, schedule.id);
   }
 
   async getProgressEvolution(userId: string, days = 30) {
@@ -393,35 +416,28 @@ export class SchedulesService {
     if (!schedule) return null;
 
     const endDate = endOfDay(new Date());
-    const startDate = addDays(startOfDay(new Date()), -days);
+    const startDate = addDays(startOfDay(new Date()), -(days - 1));
 
-    const sessions = await this.repo.findSessionsByRange(
-      schedule.id,
-      startDate,
-      endDate,
-    );
-
-    const tasksByDate = await this.repo.findTasksByDateRange(
-      schedule.id,
-      startDate,
-      endDate,
-    );
+    const [logs, tasksByDate] = await Promise.all([
+      this.repo.prisma.studyTimeLog.findMany({
+        where: { task: { scheduleId: schedule.id }, endTime: { gte: startDate, lte: endDate } },
+      }),
+      this.repo.prisma.studyTask.findMany({
+        where: { scheduleId: schedule.id, status: StudyTaskStatus.DONE, completedAt: { gte: startDate, lte: endDate } },
+      }),
+    ]);
 
     const dayKeys = eachDayOfInterval(startDate, endDate);
 
     const evolution = dayKeys.map((day) => {
       const dayKey = formatDate(day);
-      const session = sessions.find(
-        (s: { date: Date }) => formatDate(s.date) === dayKey,
-      );
       const tasks = tasksByDate.filter(
-        (t: { session: { date: Date }; status: StudyTaskStatus }) =>
-          formatDate(t.session.date) === dayKey &&
-          t.status === StudyTaskStatus.DONE,
+        (t) => t.completedAt && formatDate(t.completedAt) === dayKey,
       );
       return {
         date: dayKey,
-        studyMinutes: session ? session.scheduledMinutes : 0,
+        studyMinutes: logs.filter((log) => formatDate(log.endTime) === dayKey)
+          .reduce((sum, log) => sum + log.durationMinutes, 0),
         completedTasks: tasks.length,
       };
     });
@@ -468,15 +484,14 @@ export class SchedulesService {
 
     let streakDays = 0;
     const today = new Date();
-    for (let i = 0; i < datesWithCompletedTasks.length; i++) {
+    for (let i = datesWithCompletedTasks.length - 1; i >= 0; i--) {
       const d = new Date(datesWithCompletedTasks[i]);
-      d.setHours(12, 0, 0, 0);
-      const todayStart = new Date(today);
-      todayStart.setHours(12, 0, 0, 0);
+      const todayStart = startOfDay(today);
       const diff = Math.round(
         (todayStart.getTime() - d.getTime()) / (1000 * 60 * 60 * 24),
       );
-      if (diff === streakDays) streakDays++;
+      if (diff !== streakDays) break;
+      streakDays++;
     }
 
     const lastStudyDate =
@@ -540,11 +555,22 @@ export class SchedulesService {
 
       for (const subj of dtoSubjects) {
         const proportion = subj.targetHours / totalTargetHours;
-        const minutes = Math.round(dailyMinutes * proportion);
+        const minutes = Math.floor(dailyMinutes * proportion);
         allocations.push({
           subjectId: subj.subjectId,
           estimatedMinutes: minutes,
         });
+      }
+
+      // Distribua os minutos restantes pelas maiores partes fracionárias.
+      // Arredondar cada matéria separadamente pode ultrapassar o tempo diário.
+      const remainderOrder = dtoSubjects.map((subj, index) => ({
+        index,
+        fraction: (dailyMinutes * subj.targetHours / totalTargetHours) - allocations[index].estimatedMinutes,
+      })).sort((a, b) => b.fraction - a.fraction);
+      const remaining = dailyMinutes - allocations.reduce((sum, item) => sum + item.estimatedMinutes, 0);
+      for (let index = 0; index < remaining; index++) {
+        allocations[remainderOrder[index].index].estimatedMinutes++;
       }
 
       result.push({

@@ -1,4 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { Type } from "class-transformer";
+import { StudyTaskStatus } from "@prisma/client";
 import {
   IsDateString,
   IsInt,
@@ -11,6 +13,10 @@ import {
   Max,
   MinLength,
   MaxLength,
+  ArrayNotEmpty,
+  ArrayUnique,
+  ValidateNested,
+  IsEnum,
 } from "class-validator";
 
 export class SubjectTargetDto {
@@ -35,9 +41,11 @@ export class CreateStudyScheduleDto {
 
   @ApiProperty({
     example: [0, 1, 2, 3, 4],
-    description: "Dias da semana disponíveis (0=dom, 1=seg, ..., 6=dom)",
+    description: "Dias da semana disponíveis (0=dom, 1=seg, ..., 6=sáb)",
   })
   @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
   @IsInt({ each: true })
   @Min(0, { each: true })
   @Max(6, { each: true })
@@ -57,6 +65,10 @@ export class CreateStudyScheduleDto {
 
   @ApiProperty({ type: [SubjectTargetDto], description: "Disciplinas e horas-alvo" })
   @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique((subject: SubjectTargetDto) => subject?.subjectId)
+  @ValidateNested({ each: true })
+  @Type(() => SubjectTargetDto)
   subjects: SubjectTargetDto[];
 }
 
@@ -141,8 +153,8 @@ export class UpdateStudyTaskDto {
 
   @ApiProperty({ enum: ["PENDING", "IN_PROGRESS", "DONE"], required: false })
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsEnum(StudyTaskStatus)
+  status?: StudyTaskStatus;
 
   @ApiProperty({ required: false })
   @IsOptional()
