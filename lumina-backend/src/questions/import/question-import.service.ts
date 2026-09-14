@@ -50,6 +50,33 @@ export class QuestionImportService {
     return this.importMany(this.csvNormalizer.normalize(raw), workspaceId, createdBy);
   }
 
+  /** Importa questões já resolvidas por um scraper de fonte oficial (ex:
+   * EnemImportService) e funde nelas as falhas de EXTRAÇÃO do PDF (questão
+   * anulada, alternativas ilegíveis etc.) que aconteceram antes de virar
+   * ExternalQuestion — o relatório final reflete o caderno inteiro, não só
+   * o que chegou a ser normalizado. */
+  async importScrapedQuestions(
+    questions: ExternalQuestion[],
+    extractionIssues: { questionNumber: number; reason: string }[],
+    workspaceId: string,
+    createdBy: string | null = null,
+  ): Promise<ImportReport> {
+    const report = await this.importMany(questions, workspaceId, createdBy);
+
+    for (const issue of extractionIssues) {
+      report.details.unshift({
+        index: -1,
+        sourceId: `questão ${issue.questionNumber}`,
+        type: 'invalid',
+        message: issue.reason,
+      });
+    }
+    report.total += extractionIssues.length;
+    report.invalid += extractionIssues.length;
+
+    return report;
+  }
+
   /** Converte os DTOs da API (POST /questions/import) para o formato neutro
    * e executa o pipeline. */
   async importFromDtos(

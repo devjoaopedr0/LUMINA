@@ -23,6 +23,7 @@ import { UserWithProfile } from '../users/users.repository';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateAttemptDto } from './dto/create-attempt.dto';
 import { CreateQuestionDto } from './dto/create-question.dto';
+import { ImportEnemDto } from './dto/import-enem.dto';
 import {
   ImportCsvQuestionsDto,
   ImportJsonQuestionsDto,
@@ -37,6 +38,7 @@ import {
 } from './dto/question-response.dto';
 import { QueryQuestionsDto } from './dto/query-questions.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { EnemImportService } from './import/enem/enem-import.service';
 import { QuestionImportService } from './import/question-import.service';
 import { QuestionsService } from './questions.service';
 
@@ -51,6 +53,7 @@ export class QuestionsController {
   constructor(
     private readonly questionsService: QuestionsService,
     private readonly questionImportService: QuestionImportService,
+    private readonly enemImportService: EnemImportService,
   ) {}
 
   @Post()
@@ -108,6 +111,36 @@ export class QuestionsController {
       dto.target ?? QuestionImportTarget.PERSONAL,
     );
     return this.questionImportService.importFromCsv(dto.content, workspace.id, user.id);
+  }
+
+  @Post('import/enem')
+  @ApiOperation({
+    summary:
+      'Baixa um caderno oficial do ENEM (PDFs públicos do INEP) e importa as questões dele.',
+  })
+  @ApiResponse({ status: 201, type: ImportReportDto })
+  @ApiResponse({ status: 400, description: 'URL de PDF fora do domínio do INEP, ou PDF inacessível.' })
+  @ApiResponse({ status: 403, description: 'Sem permissão para gerenciar questões no destino informado.' })
+  async importEnem(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: ImportEnemDto,
+  ): Promise<ImportReportDto> {
+    const workspace = await this.questionsService.getImportWorkspace(
+      user.id,
+      dto.target ?? QuestionImportTarget.BANK,
+    );
+    const { questions, skipped } = await this.enemImportService.fetchExam({
+      year: dto.year,
+      day: dto.day,
+      provaUrl: dto.provaUrl,
+      gabaritoUrl: dto.gabaritoUrl,
+    });
+    return this.questionImportService.importScrapedQuestions(
+      questions,
+      skipped,
+      workspace.id,
+      user.id,
+    );
   }
 
   @Get()
