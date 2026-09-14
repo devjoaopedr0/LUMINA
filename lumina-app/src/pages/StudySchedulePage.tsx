@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
   type FormEvent,
@@ -554,7 +555,7 @@ export function StudySchedulePage() {
 
   const token = getAccessToken() ?? "";
 
-  function loadAll() {
+  const loadAll = useCallback(() => {
     if (!token) return;
     setLoading(true);
     setError(null);
@@ -575,11 +576,11 @@ export function StudySchedulePage() {
         ),
       )
       .finally(() => setLoading(false));
-  }
+  }, [token]);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
 
   useEffect(() => {
     if (schedule && token) {

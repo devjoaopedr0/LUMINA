@@ -1,5 +1,8 @@
 import { API_URL } from "@/lib/config";
 import { clearTokens, getRefreshToken, setTokens } from "@/lib/auth";
+import { createApiClient } from "@/lib/api-client-core";
+
+export { ApiError } from "@/lib/api-client-core";
 
 export interface ApiUser {
   id: string;
@@ -24,119 +27,20 @@ export interface AuthResponse {
   user: ApiUser;
 }
 
-export class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
 // O access token dura pouco de propósito (JWT_EXPIRES_IN, hoje 15min). Sem
 // isto, toda sessão morria nesse prazo com um 401 cru e sem aviso — o
 // usuário continuava "logado" na tela (o header nunca soube que expirou)
 // enquanto cronograma/questões/perfil simplesmente paravam de funcionar.
-type SessionExpiredListener = () => void;
-const sessionExpiredListeners = new Set<SessionExpiredListener>();
+const apiClient = createApiClient({
+  baseUrl: API_URL,
+  getRefreshToken,
+  setTokens,
+  clearTokens,
+  fetch: (...args) => fetch(...args),
+});
 
-/** AuthContext se inscreve nisto para reagir quando a sessão morre de vez
- * (refresh token também expirado/inválido) — api.ts é um módulo comum, sem
- * acesso ao React, então avisa por este pub-sub simples em vez de importar
- * o contexto. */
-export function onSessionExpired(listener: SessionExpiredListener): () => void {
-  sessionExpiredListeners.add(listener);
-  return () => sessionExpiredListeners.delete(listener);
-}
-
-function notifySessionExpired(): void {
-  sessionExpiredListeners.forEach((listener) => listener());
-}
-
-// Nestes três, um 401 é resposta de negócio normal (senha errada, refresh
-// token expirado/inválido) — nunca deve disparar o fluxo de refresh, ou toda
-// tentativa de login errada viraria uma tentativa de refresh também.
-const AUTH_ENDPOINTS_WITHOUT_RETRY = new Set(["/auth/login", "/auth/register", "/auth/refresh"]);
-
-// Garante que N chamadas simultâneas tomando 401 ao mesmo tempo disparem só
-// UM refresh, não uma corrida de N POSTs em /auth/refresh.
-let refreshInFlight: Promise<string | null> | null = null;
-
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
-  try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!res.ok) return null;
-    const text = await res.text();
-    if (!text) return null;
-    const data = JSON.parse(text) as AuthResponse;
-    setTokens(data.accessToken, data.refreshToken);
-    return data.accessToken;
-  } catch {
-    return null;
-  }
-}
-
-async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-  // Access token expirado/inválido numa chamada autenticada: tenta renovar
-  // com o refresh token (uma única vez) antes de desistir. Só a chamada
-  // original é reexecutada — o caller nem fica sabendo que houve um refresh
-  // no meio do caminho.
-  const authHeader = (options.headers as Record<string, string> | undefined)?.Authorization;
-  if (res.status === 401 && !isRetry && authHeader && !AUTH_ENDPOINTS_WITHOUT_RETRY.has(path)) {
-    refreshInFlight ??= refreshAccessToken().finally(() => {
-      refreshInFlight = null;
-    });
-    const newAccessToken = await refreshInFlight;
-
-    if (newAccessToken) {
-      return request<T>(
-        path,
-        { ...options, headers: { ...options.headers, Authorization: `Bearer ${newAccessToken}` } },
-        true,
-      );
-    }
-
-    clearTokens();
-    notifySessionExpired();
-    throw new ApiError(401, "Sua sessão expirou. Faça login novamente.");
-  }
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message = Array.isArray(body?.message)
-      ? body.message.join(" ")
-      : (body?.message ?? "Não foi possível completar a operação.");
-    throw new ApiError(res.status, message);
-  }
-
-  if (res.status === 204) return undefined as T;
-
-  // NestJS trata um controller que retorna `null` (ex: "busque o cronograma
-  // ou null se não existir") do mesmo jeito que `undefined`: o Express manda
-  // o corpo vazio (Content-Length: 0), sem o literal "null" — não é só no
-  // 204. `res.json()` nesse corpo lança "Unexpected end of JSON input" e
-  // quebra qualquer Promise.all que dependa dele. Lendo como texto primeiro
-  // cobre os dois casos com segurança, para qualquer endpoint que devolva um
-  // recurso-ou-null.
-  const text = await res.text();
-  if (!text) return null as T;
-  return JSON.parse(text) as T;
-}
+export const onSessionExpired = apiClient.onSessionExpired;
+const request = apiClient.request;
 
 export function apiRegister(payload: {
   firstName: string;

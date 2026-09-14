@@ -11,7 +11,7 @@ import {
   type UpdateProfilePayload,
   type ApiUser,
 } from "@/lib/api";
-import { clearTokens, getAccessToken, setTokens } from "@/lib/auth";
+import { ACCESS_TOKEN_KEY, clearTokens, getAccessToken, setTokens } from "@/lib/auth";
 
 export interface SignupData {
   firstName: string;
@@ -49,6 +49,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => clearTokens())
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    function syncSession(event: StorageEvent) {
+      if (event.storageArea !== localStorage || event.key !== ACCESS_TOKEN_KEY) return;
+      if (!event.newValue) {
+        setUser(null);
+        return;
+      }
+      setLoading(true);
+      apiMe(event.newValue)
+        .then(setUser)
+        .catch(() => {
+          clearTokens();
+          setUser(null);
+        })
+        .finally(() => setLoading(false));
+    }
+    window.addEventListener("storage", syncSession);
+    return () => window.removeEventListener("storage", syncSession);
   }, []);
 
   useEffect(() => {
