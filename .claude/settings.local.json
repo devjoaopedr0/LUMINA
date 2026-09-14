@@ -21,7 +21,8 @@
       "Bash(rm -rf dist *.tsbuildinfo)",
       "Bash(curl -s -D - -o /dev/null \"http://localhost:3001/auth/google\")",
       "Bash(npx vitest *)",
-      "Bash(curl -s -w \"\\\\nSTATUS:%{http_code}\\\\n\" http://localhost:3001/auth/me)"
+      "Bash(curl -s -w \"\\\\nSTATUS:%{http_code}\\\\n\" http://localhost:3001/auth/me)",
+      "Bash(node -e \"console.log\\(require\\('fs'\\).readFileSync\\('src/questions/import/enem/enem-pdf.parser.ts','utf8'\\).includes\\('\\\\\\\\\\\\\\\\u0300-\\\\\\\\\\\\\\\\u036f'\\)\\)\")"
     ]
   }
 }
