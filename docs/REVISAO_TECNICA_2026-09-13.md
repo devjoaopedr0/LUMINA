@@ -36,6 +36,7 @@ As alterações de importação ENEM e configurações que já estavam no diret�
 | P1 | Redação por scanner | Captura no estilo CamScanner: bordas, perspectiva, contraste/sombras, várias páginas, OCR revisável e correção pelas competências do ENEM, com confiança e revisão humana. |
 | P1 | Redação digitada | Editor com autosave, temas, versões, contagem de palavras e a mesma esteira de correção e evolução usada pela redação digitalizada. |
 | P1 | Gabarito por scanner | Captura guiada, modelos de cartão, alinhamento, leitura das marcações, confiança por resposta e confirmação manual antes de vincular e corrigir o simulado. |
+| P1 | Raciocínio lógico e cálculo rápido | Rodadas cronometradas de operações básicas e cálculo mental, com dificuldade adaptativa, sequência de acertos, desafio diário e métricas de precisão, velocidade e erros recorrentes. |
 | P1 | Listas de questões e simulados | Reutilizar questões e tentativas para montar cadernos, selecionar questões, cronometrar a prova e apresentar relatório final. Ainda não há rota de simulados no app. |
 | P1 | Instituições e turmas | Existem fundamentos de workspace no backend, mas o cadastro institucional ainda mostra uma mensagem de indisponibilidade. Entregar API e interface de instituições, convites, membros, cargos e turmas. |
 | P1 | Analytics do aluno | Levar desempenho por assunto, pontos fracos e evolução ao dashboard; ele mostra principalmente dados do cronograma. Acrescentar recomendações determinísticas e revisão de erros. |

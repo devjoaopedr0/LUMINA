@@ -42,17 +42,18 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 1. Correção de redação por scanner no estilo CamScanner: câmera ou arquivo, detecção das bordas, recorte e correção de perspectiva, melhoria de contraste/sombras, suporte a várias páginas, OCR, revisão da transcrição e correção pelas competências do ENEM. O original e o texto reconhecido devem permanecer vinculados e toda baixa confiança precisa de confirmação manual.
 2. Correção de redação digitada/transcrita dentro da plataforma: editor com salvamento automático, contagem de palavras, versões, seleção de tema e o mesmo relatório por competências usado pelo scanner, permitindo comparar evolução sem depender de imagem.
 3. Correção de gabaritos por scanner: modelos identificáveis de cartão-resposta, captura guiada, alinhamento pelos marcadores, leitura de marcações, nível de confiança por resposta, revisão manual das ambíguas e vínculo automático ao simulado/lista antes de calcular nota e desempenho.
+4. Treino de raciocínio lógico e cálculo mental rápido: rodadas curtas com operações matemáticas básicas, resposta contra o tempo, sequência de acertos e dificuldade adaptativa. O módulo deve registrar precisão, tempo médio por resposta, evolução por tipo de operação e erros recorrentes, com modos de treino livre e desafio diário inspirados na dinâmica de resposta rápida citada como referência.
 
 Esses três fluxos devem compartilhar uma esteira de captura e processamento assíncrono, com estados visíveis, repetição segura, trilha de auditoria, proteção dos arquivos enviados e exclusão configurável. A correção por IA deve apresentar justificativas e permitir revisão humana; uma nota não deve ser tratada como definitiva quando a imagem ou o OCR estiverem abaixo do nível mínimo de confiança.
 
 ## Ordem recomendada das demais entregas
 
-4. Criar listas/cadernos e simulados, base necessária para associar gabaritos digitalizados.
-5. Finalizar instituições (API e interface de membros, cargos, permissões, turmas e códigos de entrada).
-6. Consolidar dashboard e analytics do aluno com os dados já coletados.
-7. Implementar Mapa de Domínio e recomendações determinísticas antes da LuminIA generativa.
-8. Adicionar provas antigas completas, com imagens, revisão editorial e comparação entre edições.
-9. Construir dashboards institucionais e relatórios.
-10. Integrar LuminIA conversacional, notificações, gamificação e pagamentos após os fluxos centrais estarem maduros.
+5. Criar listas/cadernos e simulados, base necessária para associar gabaritos digitalizados.
+6. Finalizar instituições (API e interface de membros, cargos, permissões, turmas e códigos de entrada).
+7. Consolidar dashboard e analytics do aluno com os dados já coletados.
+8. Implementar Mapa de Domínio e recomendações determinísticas antes da LuminIA generativa.
+9. Adicionar provas antigas completas, com imagens, revisão editorial e comparação entre edições.
+10. Construir dashboards institucionais e relatórios.
+11. Integrar LuminIA conversacional, notificações, gamificação e pagamentos após os fluxos centrais estarem maduros.
 
 Cada item deve ser entregue verticalmente: migração/schema, regras de autorização, API, interface, testes e observabilidade.
