@@ -19,6 +19,9 @@ export interface ApiUser {
   phone: string | null;
   birthDate: string | null;
   bio: string | null;
+  educationLevel: string | null;
+  schoolYear: number | null;
+  schoolName: string | null;
   teacherSubject: string | null;
 }
 
@@ -151,6 +154,9 @@ export interface UpdateProfilePayload {
   phone?: string | null;
   birthDate?: string | null;
   bio?: string | null;
+  educationLevel?: string | null;
+  schoolYear?: number | null;
+  schoolName?: string | null;
 }
 
 export function apiUpdateProfile(

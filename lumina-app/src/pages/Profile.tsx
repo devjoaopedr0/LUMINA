@@ -12,7 +12,7 @@ import { getAccessToken } from '@/lib/auth';
 export function Profile() {
   const { user, updateProfile, logout, logoutAll } = useAuth();
   const [form, setForm] = useState({
-    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '',
+    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '',
   });
   const [saving, setSaving] = useState(false);
   const [closingSessions, setClosingSessions] = useState(false);
@@ -34,6 +34,9 @@ export function Profile() {
       phone: user.phone ?? '',
       birthDate: user.birthDate?.slice(0, 10) ?? '',
       bio: user.bio ?? '',
+      educationLevel: user.educationLevel ?? '',
+      schoolYear: user.schoolYear?.toString() ?? '',
+      schoolName: user.schoolName ?? '',
     });
   }, [user]);
 
@@ -123,6 +126,9 @@ export function Profile() {
         phone: form.phone.trim() || null,
         birthDate: form.birthDate || null,
         bio: form.bio.trim() || null,
+        educationLevel: form.educationLevel || null,
+        schoolYear: form.schoolYear ? Number(form.schoolYear) : null,
+        schoolName: form.schoolName.trim() || null,
       });
       setSuccess(true);
     } catch (caught) {
@@ -202,7 +208,7 @@ export function Profile() {
           <Card className="bg-white">
             <div className="mb-6 flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15"><UserRound className="h-5 w-5" /></span>
-              <div><h2 className="font-semibold text-graphite">Dados pessoais</h2><p className="text-xs text-graphite-400">Campos públicos do seu perfil</p></div>
+              <div><h2 className="font-semibold text-graphite">Seu perfil</h2><p className="text-xs text-graphite-400">Dados pessoais e acadêmicos</p></div>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -215,6 +221,15 @@ export function Profile() {
                 <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-graphite">Bio</label>
                 <textarea id="bio" value={form.bio} onChange={(e) => update('bio', e.target.value)} maxLength={500} rows={4} className="w-full resize-none rounded-xl border border-surface-line bg-white px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Conte um pouco sobre seus objetivos de estudo." />
                 <p className="mt-1 text-right text-xs text-graphite-400">{form.bio.length}/500</p>
+              </div>
+            </div>
+
+            <div className="mt-7 border-t border-surface-line pt-6">
+              <h3 className="mb-4 font-semibold text-graphite">Dados acadêmicos</h3>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field label="Etapa de ensino"><select value={form.educationLevel} onChange={(e) => update('educationLevel', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Não informado</option><option value="FUNDAMENTAL_II">Ensino fundamental II</option><option value="ENSINO_MEDIO">Ensino médio</option><option value="CURSINHO">Cursinho</option><option value="SUPERIOR">Ensino superior</option><option value="OUTRO">Outro</option></select></Field>
+                <Field label="Série ou ano"><Input type="number" min={1} max={9} value={form.schoolYear} onChange={(e) => update('schoolYear', e.target.value)} placeholder="Ex.: 3" /></Field>
+                <div className="sm:col-span-2"><Field label="Escola ou curso"><Input value={form.schoolName} onChange={(e) => update('schoolName', e.target.value)} maxLength={120} placeholder="Opcional" /></Field></div>
               </div>
             </div>
 

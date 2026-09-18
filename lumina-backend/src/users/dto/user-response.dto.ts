@@ -72,6 +72,18 @@ export class UserResponseDto {
   @ApiProperty({ nullable: true })
   bio: string | null;
 
+  @Expose()
+  @ApiProperty({ nullable: true })
+  educationLevel: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  schoolYear: number | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  schoolName: string | null;
+
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);
   }

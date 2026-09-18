@@ -175,6 +175,9 @@ model UserProfile {
   phone     String?
   birthDate DateTime? @map("birth_date") @db.Date
   bio       String?
+  educationLevel String? @map("education_level") @db.VarChar(30)
+  schoolYear Int? @map("school_year")
+  schoolName String? @map("school_name") @db.VarChar(120)
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)

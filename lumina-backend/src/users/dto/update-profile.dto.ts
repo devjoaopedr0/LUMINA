@@ -1,10 +1,14 @@
 import { Transform } from 'class-transformer';
 import {
   IsDateString,
+  IsIn,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
   Matches,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -58,4 +62,20 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(500)
   bio?: string | null;
+
+  @IsOptional()
+  @IsIn(['FUNDAMENTAL_II', 'ENSINO_MEDIO', 'CURSINHO', 'SUPERIOR', 'OUTRO'])
+  educationLevel?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  schoolYear?: number | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  schoolName?: string | null;
 }

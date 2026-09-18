@@ -26,6 +26,7 @@ export class UsersService {
     if (dto.lastName) data.lastName = dto.lastName.trim();
     if (dto.username) data.username = dto.username.trim().toLowerCase();
     if (dto.bio) data.bio = dto.bio.trim();
+    if (dto.schoolName) data.schoolName = dto.schoolName.trim();
     if (dto.birthDate) data.birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
 
     try {
@@ -60,6 +61,9 @@ export class UsersService {
       phone: user.profile?.phone ?? null,
       birthDate: user.profile?.birthDate ?? null,
       bio: user.profile?.bio ?? null,
+      educationLevel: user.profile?.educationLevel ?? null,
+      schoolYear: user.profile?.schoolYear ?? null,
+      schoolName: user.profile?.schoolName ?? null,
     });
   }
 }

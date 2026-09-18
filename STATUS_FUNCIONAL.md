@@ -4,6 +4,8 @@
 
 O inventário completo enviado pelo usuário está preservado em [Funcionalidades gerais](docs/FUNCIONALIDADES_GERAIS.txt). A ordem numerada desse documento orienta as próximas entregas. Na seção 1, o encerramento de todas as sessões foi implementado com revogação de tokens por versão de sessão. A migração `20260916030000_add_session_version` foi aplicada no banco configurado em 16/09/2026. O gerenciamento individual de sessões permite listar e encerrar uma sessão; a migração `20260917010000_add_auth_sessions` foi aplicada no banco configurado em 17/09/2026.
 
+Em 17/09/2026, o perfil acadêmico ganhou etapa de ensino, série/ano e escola/curso, editáveis no perfil e retornados pela API autenticada. A migração `20260918010000_add_academic_profile` foi aplicada no banco configurado.
+
 ## Atualização de 16/09/2026 — simulados
 
 - Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.

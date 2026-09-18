@@ -145,6 +145,9 @@ describe('Auth (e2e)', () => {
         phone: '+55 (11) 99999-9999',
         birthDate: '2004-05-12',
         bio: '  Estudante focada no ENEM.  ',
+        educationLevel: 'ENSINO_MEDIO',
+        schoolYear: 3,
+        schoolName: '  Escola Exemplo  ',
       });
 
     expect(res.status).toBe(200);
@@ -152,6 +155,11 @@ describe('Auth (e2e)', () => {
     expect(res.body.username).toBe('mariana.oliveira');
     expect(res.body.birthDate).toContain('2004-05-12');
     expect(res.body.bio).toBe('Estudante focada no ENEM.');
+    expect(res.body.educationLevel).toBe('ENSINO_MEDIO');
+    expect(res.body.schoolYear).toBe(3);
+    expect(res.body.schoolName).toBe('Escola Exemplo');
+    const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${login.body.accessToken}`);
+    expect(me.body.schoolName).toBe('Escola Exemplo');
     expect(res.body.passwordHash).toBeUndefined();
   });
 
@@ -171,6 +179,12 @@ describe('Auth (e2e)', () => {
       .set('Authorization', `Bearer ${login.body.accessToken}`)
       .send({ isAdmin: true });
     expect(extraField.status).toBe(400);
+
+    const invalidAcademic = await request(app.getHttpServer())
+      .patch('/users/me/profile')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ educationLevel: 'DOUTORADO', schoolYear: 10 });
+    expect(invalidAcademic.status).toBe(400);
   });
 
   it('GET /auth/me com token inválido retorna 401', async () => {
