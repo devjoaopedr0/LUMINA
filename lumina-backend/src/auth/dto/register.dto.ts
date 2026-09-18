@@ -5,9 +5,16 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  IsIn,
+  IsOptional,
 } from 'class-validator';
 
 export class RegisterDto {
+  @ApiProperty({ required: false, description: 'Matéria lecionada. Preencher apenas ao cadastrar uma conta de professor.' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['Língua Portuguesa', 'Literatura', 'Redação', 'Matemática', 'Física', 'Química', 'Biologia', 'História', 'Geografia', 'Filosofia', 'Sociologia', 'Inglês', 'Espanhol'])
+  teacherSubject?: string;
   @ApiProperty({ example: 'Maria Silva', description: 'Nome do usuário' })
   @IsString({ message: 'first_name deve ser um texto.' })
   @MinLength(2, { message: 'first_name deve ter pelo menos 2 caracteres.' })

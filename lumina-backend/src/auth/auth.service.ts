@@ -81,6 +81,7 @@ export class AuthService {
           firstName: dto.firstName,
           lastName: dto.lastName,
           username: dto.username,
+          teacherSubject: dto.teacherSubject,
         },
         tx,
       );
@@ -123,12 +124,33 @@ export class AuthService {
   /** Usado pelo JwtStrategy a cada requisição autenticada — garante que o
    * usuário ainda existe e continua ACTIVE, mesmo que o access token em si
    * ainda seja válido (ex: conta suspensa após o token ter sido emitido). */
-  async validateUserById(userId: string): Promise<UserWithProfile> {
+  async validateUserById(userId: string, sessionVersion?: number, sessionId?: string): Promise<UserWithProfile & { authSessionId?: string }> {
     const user = await this.usersRepository.findById(userId);
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException();
     }
-    return user;
+    if ((sessionVersion ?? 0) !== (user.sessionVersion ?? 0)) throw new UnauthorizedException('Sessão encerrada. Faça login novamente.');
+    if (sessionId) {
+      const session = await this.prisma.authSession.findFirst({ where: { id: sessionId, userId, revokedAt: null } });
+      if (!session) throw new UnauthorizedException('Sessão encerrada. Faça login novamente.');
+    }
+    return { ...user, authSessionId: sessionId };
+  }
+
+  async logoutAll(userId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } }),
+      this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+  }
+
+  async listSessions(userId: string, currentSessionId?: string) {
+    const sessions = await this.prisma.authSession.findMany({ where: { userId, revokedAt: null }, orderBy: { createdAt: 'desc' } });
+    return sessions.map(({ id, createdAt, lastUsedAt }) => ({ id, createdAt, lastUsedAt, current: id === currentSessionId }));
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    await this.prisma.authSession.updateMany({ where: { id: sessionId, userId, revokedAt: null }, data: { revokedAt: new Date() } });
   }
 
   /** Troca um refresh token válido por um novo par de tokens. O access token
@@ -149,8 +171,8 @@ export class AuthService {
       throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
 
-    const user = await this.validateUserById(payload.sub);
-    return this.buildAuthResponse(user);
+    const user = await this.validateUserById(payload.sub, payload.sessionVersion, payload.sessionId);
+    return this.buildAuthResponse(user, payload.sessionId);
   }
 
   /** Chamado pelo GoogleStrategy com os dados já extraídos do perfil do
@@ -380,8 +402,11 @@ export class AuthService {
     });
   }
 
-  private async buildAuthResponse(user: UserWithProfile): Promise<AuthResponseDto> {
-    const payload: JwtPayload = { sub: user.id, email: user.email };
+  private async buildAuthResponse(user: UserWithProfile, existingSessionId?: string): Promise<AuthResponseDto> {
+    const session = existingSessionId
+      ? await this.prisma.authSession.update({ where: { id: existingSessionId }, data: { lastUsedAt: new Date() } })
+      : await this.prisma.authSession.create({ data: { userId: user.id } });
+    const payload: JwtPayload = { sub: user.id, email: user.email, sessionVersion: user.sessionVersion, sessionId: session.id };
 
     const accessToken = await this.jwtService.signAsync(payload);
     const refreshToken = await this.jwtService.signAsync(payload, {

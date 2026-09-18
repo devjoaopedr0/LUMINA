@@ -8,6 +8,9 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseModule } from './database/prisma.module';
 import { QuestionsModule } from './questions/questions.module';
 import { SchedulesModule } from './schedules/schedules.module';
+import { MentalMathModule } from './mental-math/mental-math.module';
+import { EssaysModule } from './essays/essays.module';
+import { SimulationsModule } from './simulations/simulations.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { validateEnv } from './config/env.validation';
@@ -31,6 +34,9 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
     WorkspacesModule,
     QuestionsModule,
     SchedulesModule,
+    MentalMathModule,
+    EssaysModule,
+    SimulationsModule,
   ],
   providers: [
     RateLimitMiddleware,

@@ -26,6 +26,7 @@ import { UserQuestionProgressRepository } from './user-question-progress.reposit
     QuestionCatalogController,
     QuestionPerformanceController,
   ],
+  exports: [QuestionAccessService],
   providers: [
     QuestionsService,
     QuestionsRepository,

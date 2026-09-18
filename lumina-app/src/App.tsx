@@ -11,12 +11,19 @@ import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
 import { StudySchedulePage } from "@/pages/StudySchedulePage";
 import { Profile } from "@/pages/Profile";
+import { MentalMath } from "@/pages/MentalMath";
+import { Essays } from "@/pages/Essays";
+import { Simulations } from "@/pages/Simulations";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/app/simulados" element={<ProtectedRoute><Simulations /></ProtectedRoute>} />
+        <Route path="/app/redacoes" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
+        <Route path="/app/redacoes/:id" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
+        <Route path="/app/calculo-mental" element={<ProtectedRoute><MentalMath /></ProtectedRoute>} />
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />

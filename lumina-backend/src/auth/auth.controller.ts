@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -58,6 +58,32 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Refresh token ausente, inválido ou expirado.' })
   refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Encerra todas as sessões do usuário, incluindo a atual.' })
+  logoutAll(@CurrentUser() user: UserWithProfile): Promise<void> {
+    return this.authService.logoutAll(user.id);
+  }
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Lista as sessões ativas da conta.' })
+  listSessions(@CurrentUser() user: UserWithProfile & { authSessionId?: string }) {
+    return this.authService.listSessions(user.id, user.authSessionId);
+  }
+
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Encerra uma sessão da conta.' })
+  revokeSession(@CurrentUser() user: UserWithProfile, @Param('id') id: string): Promise<void> {
+    return this.authService.revokeSession(user.id, id);
   }
 
   @Get('google')

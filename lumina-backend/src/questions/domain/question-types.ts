@@ -24,6 +24,7 @@ export interface ExternalQuestion {
   correctOptionIndex?: number;
   explanation?: string;
   imageUrl?: string;
+  sourcePdf?: { url: string; page: number };
 }
 
 export interface ExternalQuestionOption {
@@ -48,6 +49,7 @@ export interface NormalizedQuestion {
   alternatives: { text: string; isCorrect: boolean }[];
   explanation: string | null;
   imageUrl: string | null;
+  sourcePdf?: { url: string; page: number };
 }
 
 /** Relatório de uma execução de importação — a API nunca insere questões

@@ -6,14 +6,19 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/contexts/AuthContext';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiListAuthSessions, apiRevokeAuthSession, type AuthSession } from '@/lib/api';
+import { getAccessToken } from '@/lib/auth';
 
 export function Profile() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, logout, logoutAll } = useAuth();
   const [form, setForm] = useState({
     firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '',
   });
   const [saving, setSaving] = useState(false);
+  const [closingSessions, setClosingSessions] = useState(false);
+  const [sessions, setSessions] = useState<AuthSession[]>([]);
+  const [sessionError, setSessionError] = useState('');
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -31,6 +36,26 @@ export function Profile() {
       bio: user.bio ?? '',
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const token = getAccessToken();
+    if (token) void apiListAuthSessions(token).then(setSessions).catch(() => setSessionError('Não foi possível carregar as sessões.'));
+  }, [user]);
+
+  async function revokeSession(id: string, current: boolean) {
+    const token = getAccessToken();
+    if (!token) return;
+    setRevokingId(id);
+    setSessionError('');
+    try {
+      await apiRevokeAuthSession(token, id);
+      if (current) { logout(); return; }
+      setSessions((items) => items.filter((item) => item.id !== id));
+    } catch (caught) {
+      setSessionError(caught instanceof ApiError ? caught.message : 'Não foi possível encerrar a sessão.');
+    } finally { setRevokingId(null); }
+  }
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -109,6 +134,14 @@ export function Profile() {
 
   const initials = `${form.firstName[0] ?? ''}${form.lastName[0] ?? ''}`.toUpperCase() || 'LU';
 
+  async function handleLogoutAll() {
+    setClosingSessions(true);
+    setError('');
+    try { await logoutAll(); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Não foi possível encerrar as sessões.'); }
+    finally { setClosingSessions(false); }
+  }
+
   return (
     <div className="min-h-screen bg-surface-card">
       <header className="border-b border-surface-line bg-white">
@@ -125,6 +158,15 @@ export function Profile() {
           <p className="text-sm font-semibold text-primary-700">Sua conta</p>
           <h1 className="mt-1 text-3xl font-semibold text-graphite">Meu perfil</h1>
           <p className="mt-2 text-sm text-graphite-500">Mantenha seus dados atualizados para personalizar sua experiência.</p>
+          <button type="button" disabled={closingSessions} onClick={() => void handleLogoutAll()} className="mt-4 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50">{closingSessions ? 'Encerrando sessões...' : 'Sair de todos os dispositivos'}</button>
+          <section className="mt-6 rounded-xl border border-surface-line bg-white p-4" aria-label="Sessões ativas">
+            <h2 className="font-semibold text-graphite">Sessões ativas</h2>
+            {sessionError && <p role="alert" className="mt-2 text-sm text-alert">{sessionError}</p>}
+            {sessions.map((session) => <div key={session.id} className="mt-3 flex items-center justify-between gap-4 border-t border-surface-line pt-3 text-sm">
+              <span>{session.current ? 'Este dispositivo' : 'Outra sessão'} · Iniciada em {new Date(session.createdAt).toLocaleString('pt-BR')}</span>
+              <button type="button" disabled={revokingId === session.id} onClick={() => void revokeSession(session.id, session.current)} className="font-semibold text-red-700 disabled:opacity-50">Encerrar</button>
+            </div>)}
+          </section>
         </div>
 
         <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[280px_1fr]">

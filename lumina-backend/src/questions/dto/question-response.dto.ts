@@ -72,6 +72,9 @@ export class QuestionResponseDto {
   @ApiPropertyOptional({ description: 'URL de imagem de apoio.' })
   imageUrl?: string | null;
 
+  @ApiPropertyOptional({ description: 'PDF e página oficiais de origem quando identificados na importação.' })
+  sourcePdf?: { url: string; page: number } | null;
+
   @ApiPropertyOptional({
     description:
       'true se o usuário autenticado pode editar/excluir esta questão (dono do workspace pessoal ou admin do banco).',

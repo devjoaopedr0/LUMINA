@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -b --pretty false",
-    "test": "node test/api-session.check.ts",
+    "test": "node test/api-session.check.ts && node test/essay-draft.check.ts",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

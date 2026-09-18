@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, User, UserProfile } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
-export type UserWithProfile = User & { profile: UserProfile | null };
+export type UserWithProfile = User & { profile: UserProfile | null; teacherProfile?: { subject: string } | null };
 
 /** Aceita o client "normal" (PrismaService) ou um client de transação
  * (Prisma.TransactionClient), para que a criação do usuário possa
@@ -20,7 +20,7 @@ export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   findByEmail(email: string, db: Db = this.prisma): Promise<UserWithProfile | null> {
-    return db.user.findUnique({ where: { email }, include: { profile: true } });
+    return db.user.findUnique({ where: { email }, include: { profile: true, teacherProfile: true } });
   }
 
   async findByUsername(username: string, db: Db = this.prisma): Promise<UserWithProfile | null> {
@@ -34,11 +34,11 @@ export class UsersRepository {
   }
 
   findById(id: string, db: Db = this.prisma): Promise<UserWithProfile | null> {
-    return db.user.findUnique({ where: { id }, include: { profile: true } });
+    return db.user.findUnique({ where: { id }, include: { profile: true, teacherProfile: true } });
   }
 
   findByGoogleId(googleId: string, db: Db = this.prisma): Promise<UserWithProfile | null> {
-    return db.user.findUnique({ where: { googleId }, include: { profile: true } });
+    return db.user.findUnique({ where: { googleId }, include: { profile: true, teacherProfile: true } });
   }
 
   createWithProfile(
@@ -48,6 +48,7 @@ export class UsersRepository {
       firstName: string;
       lastName: string;
       username: string;
+      teacherSubject?: string;
     },
     db: Db = this.prisma,
   ): Promise<UserWithProfile> {
@@ -55,6 +56,7 @@ export class UsersRepository {
       data: {
         email: data.email,
         passwordHash: data.passwordHash,
+        ...(data.teacherSubject ? { teacherProfile: { create: { subject: data.teacherSubject } } } : {}),
         profile: {
           create: {
             firstName: data.firstName,
@@ -63,7 +65,7 @@ export class UsersRepository {
           },
         },
       },
-      include: { profile: true },
+      include: { profile: true, teacherProfile: true },
     });
   }
 

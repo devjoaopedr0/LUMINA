@@ -76,6 +76,7 @@ describe('parser de cadernos do ENEM', () => {
       `QUESTÃO 91 ${validBody} QUESTÃO 92 ${validBody} QUESTÃO 93 texto sem alternativas`,
       'Questões de número 91 a 135, relativas à área de Ciências da Natureza e suas Tecnologias.',
       new Map([[91, 'C'], [92, 'Anulado']]),
+      new Map([[91, 4], [92, 5]]),
     ]);
     const result = await service.fetchExam({
       year: 2025, day: 2,
@@ -85,6 +86,7 @@ describe('parser de cadernos do ENEM', () => {
     expect(result.questions).toHaveLength(1);
     expect(result.questions[0]).toMatchObject({
       sourceId: 'enem-2025-d2-q91', subject: 'Biologia', correctLetter: 'C', examNumber: 91,
+      sourcePdf: { url: 'https://download.inep.gov.br/prova.pdf', page: 4 },
     });
     expect(result.skipped).toEqual([
       { questionNumber: 92, reason: expect.stringContaining('anulada') },

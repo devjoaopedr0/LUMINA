@@ -11,6 +11,9 @@ import { Exclude, Expose } from 'class-transformer';
 @Exclude()
 export class UserResponseDto {
   @Expose()
+  @ApiProperty({ nullable: true })
+  teacherSubject: string | null;
+  @Expose()
   @ApiProperty()
   id: string;
 

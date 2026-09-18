@@ -58,5 +58,6 @@ export function toNormalizedQuestion(external: ExternalQuestion): NormalizedQues
     })),
     explanation: external.explanation?.trim() || null,
     imageUrl: external.imageUrl?.trim() || null,
+    sourcePdf: external.sourcePdf,
   };
 }

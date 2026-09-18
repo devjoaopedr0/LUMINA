@@ -9,7 +9,10 @@ import { vi } from 'vitest';
  */
 export function createFakePrisma() {
   const users: any[] = [];
+  const authSessions: any[] = [];
   const profiles: any[] = [];
+  const teacherProfiles: any[] = [];
+  const essayThemes: any[] = [];
   const workspaces: any[] = [];
   const workspaceMembers: any[] = [];
   const institutions: any[] = [];
@@ -28,6 +31,7 @@ export function createFakePrisma() {
   const withProfile = (user: any) => ({
     ...user,
     profile: profiles.find((p) => p.userId === user.id) ?? null,
+    teacherProfile: teacherProfiles.find((p) => p.userId === user.id) ?? null,
   });
 
   const withAlternatives = (question: any) => ({
@@ -46,6 +50,8 @@ export function createFakePrisma() {
     }
     if (where.difficulty && question.difficulty !== where.difficulty) return false;
     if (where.year && question.year !== where.year) return false;
+    if (where.examNumber && question.examNumber !== where.examNumber) return false;
+    if (where.stem?.contains && !question.stem.toLowerCase().includes(where.stem.contains.toLowerCase())) return false;
     if (where.subjectId && question.subjectId !== where.subjectId) return false;
     if (where.topicId && question.topicId !== where.topicId) return false;
     if (where.examId && question.examId !== where.examId) return false;
@@ -64,6 +70,26 @@ export function createFakePrisma() {
   const findSubjectByName = (name: string) => subjects.find((s) => s.name === name);
 
   const fake: any = {
+    authSession: {
+      create: vi.fn(async ({ data }: any) => {
+        const now = new Date();
+        const session = { id: nextId('session'), userId: data.userId, createdAt: now, lastUsedAt: now, revokedAt: null };
+        authSessions.push(session);
+        return session;
+      }),
+      findFirst: vi.fn(async ({ where }: any) => authSessions.find(s => s.id === where.id && s.userId === where.userId && s.revokedAt === where.revokedAt) ?? null),
+      findMany: vi.fn(async ({ where }: any) => authSessions.filter(s => s.userId === where.userId && s.revokedAt === where.revokedAt).sort((a, b) => +b.createdAt - +a.createdAt)),
+      update: vi.fn(async ({ where, data }: any) => {
+        const session = authSessions.find(s => s.id === where.id);
+        Object.assign(session, data);
+        return session;
+      }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const matches = authSessions.filter(s => s.userId === where.userId && (!where.id || s.id === where.id) && s.revokedAt === where.revokedAt);
+        matches.forEach(s => Object.assign(s, data));
+        return { count: matches.length };
+      }),
+    },
     user: {
       findUnique: vi.fn(async ({ where, include }: any) => {
         const user = users.find(
@@ -83,6 +109,7 @@ export function createFakePrisma() {
           email: data.email,
           passwordHash: data.passwordHash ?? null,
           googleId: data.googleId ?? null,
+          sessionVersion: 0,
           emailVerified: data.emailVerified ?? false,
           status: 'ACTIVE',
           lastLogin: null,
@@ -107,11 +134,13 @@ export function createFakePrisma() {
             updatedAt: now,
           });
         }
+        if (data.teacherProfile?.create) teacherProfiles.push({ userId: id, subject: data.teacherProfile.create.subject });
 
         return include?.profile ? withProfile(user) : user;
       }),
       update: vi.fn(async ({ where, data, include }: any) => {
         const user = users.find((u) => u.id === where.id);
+        if (data.sessionVersion?.increment) data = { ...data, sessionVersion: user.sessionVersion + data.sessionVersion.increment };
         if (data.profile?.update) {
           const profile = profiles.find((p) => p.userId === user.id);
           Object.assign(profile, data.profile.update, { updatedAt: new Date() });
@@ -119,6 +148,16 @@ export function createFakePrisma() {
         const { profile: _profile, ...userData } = data;
         Object.assign(user, userData);
         return include?.profile ? withProfile(user) : user;
+      }),
+    },
+    teacherProfile: {
+      findUnique: vi.fn(async ({ where }: any) => teacherProfiles.find(p => p.userId === where.userId) ?? null),
+    },
+    essayTheme: {
+      findMany: vi.fn(async ({ where }: any) => essayThemes.filter(t => t.exam === where.exam && (!where.year || t.year === where.year) && (!where.createdBy || t.createdBy === where.createdBy)).sort((a, b) => (b.year ?? 0) - (a.year ?? 0))),
+      create: vi.fn(async ({ data }: any) => {
+        const theme = { id: nextId('theme'), year: null, sourceUrl: null, createdAt: new Date(), ...data };
+        essayThemes.push(theme); return theme;
       }),
     },
     userProfile: {
@@ -454,7 +493,7 @@ export function createFakePrisma() {
         ).length,
       ),
     },
-    $transaction: vi.fn(async (cb: any) => cb(fake)),
+    $transaction: vi.fn(async (cb: any) => Array.isArray(cb) ? Promise.all(cb) : cb(fake)),
     onModuleInit: vi.fn(),
     onModuleDestroy: vi.fn(),
   };

@@ -50,12 +50,16 @@ export class QuestionsService {
       : (await this.questionAccessService.getPersonalWorkspaceOrThrow(userId)).id;
     this.validateAlternatives(dto.alternatives);
     const classification = await this.resolveClassification(dto);
+    const teacher = await this.prisma.teacherProfile.findUnique({ where: { userId } });
+    if (teacher && classification.subject.toLocaleLowerCase('pt-BR') !== teacher.subject.toLocaleLowerCase('pt-BR')) {
+      throw new BadRequestException(`Sua matéria cadastrada é ${teacher.subject}. Crie questões dessa matéria.`);
+    }
 
     const question = await this.questionsRepository.create({
       workspaceId,
       createdBy: userId,
-      sourceType: dto.sourceType ?? QuestionSourceType.OFFICIAL,
-      sourceName: dto.sourceName?.trim() || 'Lumina',
+      sourceType: teacher ? QuestionSourceType.PARTNER : (dto.sourceType ?? QuestionSourceType.OFFICIAL),
+      sourceName: teacher ? 'Professor da Lumina' : (dto.sourceName?.trim() || 'Lumina'),
       sourceId: null,
       contentHash: null,
       subject: classification.subject,
@@ -96,6 +100,8 @@ export class QuestionsService {
     if (query.exam) where.exam = this.contains(query.exam);
     if (query.year) where.year = query.year;
     if (query.sourceType) where.sourceType = query.sourceType;
+    if (query.examNumber) where.examNumber = query.examNumber;
+    if (query.search?.trim()) where.stem = this.contains(query.search.trim());
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -160,6 +166,10 @@ export class QuestionsService {
       topicId: question.topicId,
       examId: question.examId,
     });
+    const teacher = await this.prisma.teacherProfile.findUnique({ where: { userId } });
+    if (teacher && classification.subject.toLocaleLowerCase('pt-BR') !== teacher.subject.toLocaleLowerCase('pt-BR')) {
+      throw new BadRequestException(`Sua matéria cadastrada é ${teacher.subject}. Edite questões dessa matéria.`);
+    }
 
     const data: Prisma.QuestionUpdateInput = {};
     if (dto.subject !== undefined || dto.subjectId !== undefined) data.subject = classification.subject;
@@ -176,8 +186,8 @@ export class QuestionsService {
     if (dto.stem !== undefined) data.stem = dto.stem.trim();
     if (dto.explanation !== undefined) data.explanation = dto.explanation?.trim() || null;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl?.trim() || null;
-    if (dto.sourceType !== undefined) data.sourceType = dto.sourceType;
-    if (dto.sourceName !== undefined) data.sourceName = dto.sourceName.trim();
+    if (dto.sourceType !== undefined && !teacher) data.sourceType = dto.sourceType;
+    if (dto.sourceName !== undefined && !teacher) data.sourceName = dto.sourceName.trim();
 
     if (dto.alternatives !== undefined) {
       this.validateAlternatives(dto.alternatives);
@@ -442,6 +452,7 @@ export class QuestionsService {
       stem: question.stem,
       explanation: question.explanation,
       imageUrl: question.imageUrl,
+      sourcePdf: sourcePdfFromMetadata(question.metadata),
       canManage,
       alternatives: question.alternatives.map((alternative) => ({
         id: alternative.id,
@@ -465,6 +476,14 @@ export class QuestionsService {
       })),
     };
   }
+}
+
+function sourcePdfFromMetadata(metadata: unknown): { url: string; page: number } | null {
+  if (!metadata || typeof metadata !== 'object' || !('sourcePdf' in metadata)) return null;
+  const pdf = metadata.sourcePdf;
+  if (!pdf || typeof pdf !== 'object' || !('url' in pdf) || !('page' in pdf)) return null;
+  return typeof pdf.url === 'string' && pdf.url.startsWith('https://download.inep.gov.br/') && Number.isInteger(pdf.page) && (pdf.page as number) > 0
+    ? { url: pdf.url, page: pdf.page as number } : null;
 }
 
 /** Remove valores duplicados, preservando a ordem. */

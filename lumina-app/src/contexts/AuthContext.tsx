@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   apiLogin,
+  apiLogoutAll,
   apiMe,
   apiRegister,
   apiResendVerification,
@@ -19,6 +20,7 @@ export interface SignupData {
   username: string;
   email: string;
   password: string;
+  teacherSubject?: string;
 }
 
 interface AuthContextValue {
@@ -31,6 +33,7 @@ interface AuthContextValue {
   resendVerification: () => Promise<void>;
   updateProfile: (data: UpdateProfilePayload) => Promise<ApiUser>;
   logout: () => void;
+  logoutAll: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -125,6 +128,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
+  async function logoutAll() {
+    const token = getAccessToken();
+    await apiLogoutAll(token ?? '');
+    logout();
+  }
+
   const value: AuthContextValue = {
     user,
     loading,
@@ -135,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resendVerification,
     updateProfile,
     logout,
+    logoutAll,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

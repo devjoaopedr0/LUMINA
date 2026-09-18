@@ -20,6 +20,8 @@ model User {
   updatedAt              DateTime                @updatedAt @map("updated_at")
   deletedAt              DateTime?               @map("deleted_at")
   googleId               String?                 @unique @map("google_id")
+  sessionVersion         Int                     @default(0) @map("session_version")
+  authSessions           AuthSession[]
    classMemberships       ClassMember[]
    classesTeaching        ClassTeacher[]
    coordinatedClasses     Class[]                 @relation("ClassCoordinator")
@@ -34,8 +36,97 @@ model User {
    studySchedule          StudySchedule?
    studyTimeLogs          StudyTimeLog[]
    selectedVestibular     UserVestibular?
+   mentalMathSessions     MentalMathSession[]
+   essays                 Essay[]
+   teacherProfile         TeacherProfile?
+  authoredEssayThemes    EssayTheme[]
+  createdSimulations     Simulation[]
+  simulationSubmissions  SimulationSubmission[]
 
    @@map("users")
+}
+
+model AuthSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime @default(now()) @map("last_used_at")
+  revokedAt DateTime? @map("revoked_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("auth_sessions")
+}
+
+model MentalMathSession {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  mode       String
+  dailyKey   String?  @map("daily_key")
+  state      Json
+  version    Int      @default(0)
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dailyKey])
+  @@index([userId, createdAt])
+  @@map("mental_math_sessions")
+}
+
+model Essay {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String   @default("") @db.VarChar(160)
+  theme     String   @default("") @db.VarChar(300)
+  content   String   @default("")
+  version   Int      @default(0)
+  wordCount Int      @default(0) @map("word_count")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions EssayRevision[]
+
+  @@index([userId, updatedAt])
+  @@map("essays")
+}
+
+model EssayRevision {
+  id        String   @id @default(uuid()) @db.Uuid
+  essayId   String   @map("essay_id") @db.Uuid
+  version   Int
+  title     String   @db.VarChar(160)
+  theme     String   @db.VarChar(300)
+  content   String
+  wordCount Int      @map("word_count")
+  createdAt DateTime @default(now()) @map("created_at")
+  essay     Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
+
+  @@unique([essayId, version])
+  @@map("essay_revisions")
+}
+
+model TeacherProfile {
+  userId    String   @id @map("user_id") @db.Uuid
+  subject   String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("teacher_profiles")
+}
+
+model EssayTheme {
+  id         String   @id @default(uuid()) @db.Uuid
+  title      String   @db.VarChar(300)
+  exam       String   @db.VarChar(60)
+  year       Int?
+  sourceUrl  String?  @map("source_url") @db.VarChar(2048)
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  creator    User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([exam, year])
+  @@map("essay_themes")
 }
 
 /// Token de redefinição de senha (fluxo "esqueci minha senha"). Guardamos
@@ -121,6 +212,7 @@ model Workspace {
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   classes          Class[]
+  simulations      Simulation[]
   questionAttempts QuestionAttempt[]
   questions        Question[]
   roles            Role[]
@@ -216,6 +308,7 @@ model Class {
   updatedAt     DateTime       @updatedAt @map("updated_at")
   members       ClassMember[]
   teachers      ClassTeacher[]
+  simulations   Simulation[]
   coordinator   User?          @relation("ClassCoordinator", fields: [coordinatorId], references: [id])
   creator       User           @relation("ClassCreatedBy", fields: [createdBy], references: [id])
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -334,6 +427,7 @@ model Question {
   subjectId    String?                @map("subject_id") @db.Uuid
   topicId      String?                @map("topic_id") @db.Uuid
   alternatives QuestionAlternative[]
+  simulationItems SimulationItem[]
   attempts     QuestionAttempt[]
   creator      User?                  @relation("QuestionCreatedBy", fields: [createdBy], references: [id])
   examRef      Exam?                  @relation("QuestionExam", fields: [examId], references: [id])
@@ -368,6 +462,56 @@ model QuestionAlternative {
 
   @@index([questionId])
   @@map("question_alternatives")
+}
+
+model Simulation {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String   @db.VarChar(160)
+  createdBy   String   @map("created_by") @db.Uuid
+  classId     String?  @map("class_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  creator     User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  class       Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items       SimulationItem[]
+  submissions SimulationSubmission[]
+
+  @@index([createdBy, createdAt])
+  @@index([classId])
+  @@map("simulations")
+}
+
+model SimulationSubmission {
+  id           String   @id @default(uuid()) @db.Uuid
+  simulationId String   @map("simulation_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  answers      Json
+  correct      Int
+  total        Int
+  submittedAt  DateTime @default(now()) @map("submitted_at")
+  simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([simulationId, userId])
+  @@index([userId, submittedAt])
+  @@map("simulation_submissions")
+}
+
+model SimulationItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  simulationId     String   @map("simulation_id") @db.Uuid
+  questionId       String?  @map("question_id") @db.Uuid
+  position         Int
+  stem             String
+  alternatives     Json
+  correctPosition  Int      @map("correct_position")
+  subject          String
+  simulation       Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  question         Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  @@unique([simulationId, position])
+  @@map("simulation_items")
 }
 
 /// Registro de uma resposta dada a uma questão. Guarda a posição escolhida

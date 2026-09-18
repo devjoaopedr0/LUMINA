@@ -238,4 +238,44 @@ describe('Auth (e2e)', () => {
 
     expect(res.status).toBe(409);
   });
+
+  it('POST /auth/logout-all invalida access e refresh tokens antigos e permite novo login', async () => {
+    const account = { ...registerPayload, email: 'sessoes@exemplo.com', username: 'sessoes.teste' };
+    const first = await request(app.getHttpServer()).post('/auth/register').send(account);
+    expect(first.status).toBe(201);
+
+    const logout = await request(app.getHttpServer()).post('/auth/logout-all')
+      .set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(logout.status).toBe(204);
+
+    const oldAccess = await request(app.getHttpServer()).get('/auth/me')
+      .set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(oldAccess.status).toBe(401);
+
+    const oldRefresh = await request(app.getHttpServer()).post('/auth/refresh')
+      .send({ refreshToken: first.body.refreshToken });
+    expect(oldRefresh.status).toBe(401);
+
+    const second = await request(app.getHttpServer()).post('/auth/login')
+      .send({ email: account.email, password: account.password });
+    expect(second.status).toBe(200);
+    const newAccess = await request(app.getHttpServer()).get('/auth/me')
+      .set('Authorization', `Bearer ${second.body.accessToken}`);
+    expect(newAccess.status).toBe(200);
+  });
+
+  it('lista sessões e encerra apenas a sessão escolhida', async () => {
+    const account = { ...registerPayload, email: 'individual@exemplo.com', username: 'individual.teste' };
+    const first = await request(app.getHttpServer()).post('/auth/register').send(account);
+    const second = await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password });
+    const listed = await request(app.getHttpServer()).get('/auth/sessions').set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body).toHaveLength(2);
+    const current = listed.body.find((session: { current: boolean }) => session.current);
+    expect(current).toBeDefined();
+    expect((await request(app.getHttpServer()).delete(`/auth/sessions/${current.id}`).set('Authorization', `Bearer ${first.body.accessToken}`)).status).toBe(204);
+    expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${first.body.accessToken}`)).status).toBe(401);
+    expect((await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: first.body.refreshToken })).status).toBe(401);
+    expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${second.body.accessToken}`)).status).toBe(200);
+  });
 });

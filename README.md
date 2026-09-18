@@ -32,3 +32,4 @@ Cada projeto também pode ser rodado isoladamente (`npm run dev` dentro dele, ou
 
 - [Chat LuminIA e guia de integração](docs/AI_CHAT.md)
 - [Status funcional do produto](STATUS_FUNCIONAL.md)
+- [Funcionalidades gerais e ordem de implementação](docs/FUNCIONALIDADES_GERAIS.txt)

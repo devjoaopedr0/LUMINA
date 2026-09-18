@@ -20,6 +20,13 @@ export type QuestionSort = (typeof QUESTION_SORTS)[number];
  * Filtros de texto (subject, topic, exam) fazem busca parcial sem diferenciar
  * maiúsculas, estilo QConcursos. */
 export class QueryQuestionsDto {
+  @ApiPropertyOptional({ description: 'Busca palavras no enunciado da questão.' })
+  @IsOptional() @IsString() @MaxLength(120)
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Número exato da questão na prova.' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(9999)
+  examNumber?: number;
   @ApiPropertyOptional({ description: 'Filtra por matéria (busca parcial).' })
   @IsOptional()
   @IsString()

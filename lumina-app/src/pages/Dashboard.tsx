@@ -16,6 +16,9 @@ const NAV_ITEMS = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
   { to: "/app/cronograma", label: "Cronograma", icon: CalendarDays },
   { to: "/app/questoes", label: "Banco de questões", icon: Database },
+  { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
+  { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
+  { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
 ];
 

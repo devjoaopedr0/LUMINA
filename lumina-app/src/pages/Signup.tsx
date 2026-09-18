@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   GraduationCap,
   Building2,
+  BookOpen,
   Clock,
 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
@@ -18,7 +19,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/lib/api";
 import { EMAIL_PATTERN } from "@/lib/utils";
 
-type AccountType = "aluno" | "instituicao";
+type AccountType = "aluno" | "professor" | "instituicao";
+const TEACHER_SUBJECTS = ['Língua Portuguesa', 'Literatura', 'Redação', 'Matemática', 'Física', 'Química', 'Biologia', 'História', 'Geografia', 'Filosofia', 'Sociologia', 'Inglês', 'Espanhol'];
 
 const ACCOUNT_TYPES: {
   value: AccountType;
@@ -31,6 +33,12 @@ const ACCOUNT_TYPES: {
     icon: GraduationCap,
     title: "Sou aluno",
     description: "Quero estudar e me preparar para o vestibular com a LuminIA.",
+  },
+  {
+    value: "professor",
+    icon: BookOpen,
+    title: "Sou professor",
+    description: "Quero criar questões da minha matéria e temas de redação.",
   },
   {
     value: "instituicao",
@@ -47,6 +55,7 @@ export function Signup() {
   const [accountType, setAccountType] = useState<AccountType | null>(null);
 
   const [firstName, setFirstName] = useState("");
+  const [teacherSubject, setTeacherSubject] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -77,10 +86,13 @@ export function Signup() {
       setError("As senhas não conferem.");
       return;
     }
+    if (accountType === 'professor' && !TEACHER_SUBJECTS.includes(teacherSubject)) {
+      setError('Escolha sua matéria antes de criar a conta.'); return;
+    }
 
     setSubmitting(true);
     try {
-      const newUser = await signup({ firstName, lastName, username, email, password });
+      const newUser = await signup({ firstName, lastName, username, email, password, ...(accountType === 'professor' ? { teacherSubject } : {}) });
       // Conta recém-criada nasce com e-mail não verificado: segue para a tela
       // de confirmação (código de 6 dígitos). Quem já tem e-mail verificado
       // (ex: futuro login social) vai direto ao app.
@@ -173,7 +185,7 @@ export function Signup() {
   }
 
   return (
-    <AuthLayout title="Crie sua conta grátis" subtitle="Comece agora, sem cartão de crédito.">
+    <AuthLayout title={accountType === 'professor' ? 'Crie sua conta de professor' : 'Crie sua conta grátis'} subtitle="Comece agora, sem cartão de crédito.">
       <button
         type="button"
         onClick={() => setAccountType(null)}
@@ -183,11 +195,12 @@ export function Signup() {
           <ArrowLeft className="h-3.5 w-3.5" />
         </span>
         <GraduationCap className="h-3.5 w-3.5 text-primary-600" />
-        Sou aluno
+        {accountType === 'professor' ? 'Sou professor' : 'Sou aluno'}
         <span className="text-graphite-400">· trocar</span>
       </button>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {accountType === 'professor' ? <div><label htmlFor="teacher-subject" className="mb-1.5 block text-sm font-medium text-graphite">Matéria que você leciona</label><select id="teacher-subject" required value={teacherSubject} onChange={event => setTeacherSubject(event.target.value)} className="w-full rounded-xl border border-surface-line bg-white p-3"><option value="">Escolha sua matéria</option>{TEACHER_SUBJECTS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select><p className="mt-2 text-xs text-graphite-500">Suas questões ficarão no seu espaço pessoal até serem revisadas para publicação.</p></div> : null}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="firstName" className="mb-1.5 block text-sm font-medium text-graphite">

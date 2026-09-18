@@ -138,12 +138,13 @@ function useQuestionCatalog() {
 }
 
 interface QuestionFormProps {
+  teacherSubject?: string | null;
   initial: Question | null;
   onSaved: (question: Question) => void;
   onCancel: () => void;
 }
 
-function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
+function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFormProps) {
   const catalog = useQuestionCatalog();
   const emptyAlternatives = (): QuestionAlternativePayload[] => [
     { text: "", isCorrect: false },
@@ -153,6 +154,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
   ];
 
   const [subjectId, setSubjectId] = useState(initial?.subjectId ?? "");
+  const [teacherTopic, setTeacherTopic] = useState(initial?.topic ?? "");
   const [topicId, setTopicId] = useState(initial?.topicId ?? "");
   const [difficulty, setDifficulty] = useState<QuestionDifficulty>(
     initial?.difficulty ?? "MEDIA"
@@ -209,10 +211,10 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
   }
 
   function validate(): string | null {
-    if (!subjectId) return "Selecione a matéria.";
-    if (!topicId) return "Selecione o conteúdo/tópico.";
-    if (!examName) return "Selecione o exame/vestibular de origem.";
-    if (!year) return "Selecione o ano do exame.";
+    if (!teacherSubject && !subjectId) return "Selecione a matéria.";
+    if (teacherSubject ? teacherTopic.trim().length < 2 : !topicId) return "Informe o conteúdo/tópico.";
+    if (!teacherSubject && !examName) return "Selecione o exame/vestibular de origem.";
+    if (!teacherSubject && !year) return "Selecione o ano do exame.";
     if (stem.trim().length < 5) return "O enunciado precisa de pelo menos 5 caracteres.";
     if (alternatives.length < 2) return "Uma questão precisa de pelo menos 2 alternativas.";
     if (alternatives.some((a) => !a.text.trim()))
@@ -237,14 +239,14 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
     setSaving(true);
 
     const payload: QuestionPayload = {
-      subject: subjectName,
-      subjectId,
-      topic: topicName,
-      topicId,
+      subject: teacherSubject || subjectName,
+      subjectId: teacherSubject ? undefined : subjectId,
+      topic: teacherSubject ? teacherTopic.trim() : topicName,
+      topicId: teacherSubject ? undefined : topicId,
       difficulty,
-      exam: examName,
-      examId: catalog.examIdFor(examName, Number(year)),
-      year: Number(year),
+      exam: examName || undefined,
+      examId: year ? catalog.examIdFor(examName, Number(year)) : undefined,
+      year: year ? Number(year) : null,
       examNumber: examNumber ? Number(examNumber) : null,
       stem: stem.trim(),
       alternatives,
@@ -274,7 +276,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
           <label htmlFor="subject" className="mb-1.5 block text-sm font-medium text-graphite">
             Matéria
           </label>
-          <select
+          {teacherSubject ? <input id="subject" value={teacherSubject} disabled className={filterSelectClass()} /> : <select
             id="subject"
             value={subjectId}
             onChange={(e) => handleSubjectChange(e.target.value)}
@@ -287,13 +289,13 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
                 {subject.name}
               </option>
             ))}
-          </select>
+          </select>}
         </div>
         <div>
           <label htmlFor="topic" className="mb-1.5 block text-sm font-medium text-graphite">
             Conteúdo / tópico
           </label>
-          <select
+          {teacherSubject ? <Input id="topic" value={teacherTopic} onChange={event => setTeacherTopic(event.target.value)} placeholder="Ex.: Interpretação de texto" required /> : <select
             id="topic"
             value={topicId}
             onChange={(e) => setTopicId(e.target.value)}
@@ -309,7 +311,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
                 {topic.name}
               </option>
             ))}
-          </select>
+          </select>}
         </div>
       </div>
 
@@ -341,7 +343,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
               setYear("");
             }}
             className={filterSelectClass()}
-            required
+            required={!teacherSubject}
           >
             <option value="">Selecione o exame</option>
             {catalog.examNames.map((name) => (
@@ -586,6 +588,7 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
       <p className="mt-4 whitespace-pre-line text-[15px] leading-relaxed text-graphite">
         {question.stem}
       </p>
+      {question.sourcePdf ? <a className="mt-2 inline-block text-sm text-primary-700 underline" href={`${question.sourcePdf.url}#page=${question.sourcePdf.page}`} target="_blank" rel="noopener noreferrer">Ver página {question.sourcePdf.page} no PDF oficial</a> : null}
 
       <div className="mt-5 flex flex-col gap-2.5">
         {question.alternatives.map((alternative) => (
@@ -669,6 +672,8 @@ export function QuestionBank() {
 
   const [filters, setFilters] = useState<QuestionFilters>({ page: 1, limit: 10 });
   const [draft, setDraft] = useState({
+    search: "",
+    examNumber: "",
     subjectId: "",
     topicId: "",
     difficulty: "",
@@ -721,6 +726,8 @@ export function QuestionBank() {
       subjectId: draft.subjectId || undefined,
       topicId: draft.topicId || undefined,
       difficulty: (draft.difficulty || undefined) as QuestionDifficulty | undefined,
+      search: draft.search.trim() || undefined,
+      examNumber: draft.examNumber ? Number(draft.examNumber) : undefined,
       examId: year ? catalog.examIdFor(draft.examName, year) : undefined,
       exam: draft.examName || undefined,
       year,
@@ -728,7 +735,7 @@ export function QuestionBank() {
   }
 
   function clearFilters() {
-    setDraft({ subjectId: "", topicId: "", difficulty: "", examName: "", year: "" });
+    setDraft({ search: "", examNumber: "", subjectId: "", topicId: "", difficulty: "", examName: "", year: "" });
     setFilters({ page: 1, limit: filters.limit });
   }
 
@@ -829,6 +836,7 @@ export function QuestionBank() {
             </div>
             <Card className="bg-white">
               <QuestionForm
+                teacherSubject={user?.teacherSubject}
                 initial={editing}
                 onSaved={handleSaved}
                 onCancel={() => {
@@ -850,12 +858,12 @@ export function QuestionBank() {
                   matéria, conteúdo, dificuldade e origem.
                 </p>
               </div>
-              {data?.canManageBank && (
+              {(data?.canManageBank || user?.teacherSubject) && (
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => { setImportOpen(true); setImportError(null); setImportReport(null); }}>
+                  {data?.canManageBank ? <Button variant="outline" onClick={() => { setImportOpen(true); setImportError(null); setImportReport(null); }}>
                     <Upload className="h-4 w-4" />
                     Importar arquivo
-                  </Button>
+                  </Button> : null}
                   <Button onClick={startCreate}>
                     <Plus className="h-4 w-4" />
                     Nova questão
@@ -926,6 +934,8 @@ export function QuestionBank() {
 
             <Card className="mt-8 bg-white">
               <form onSubmit={applyFilters} className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                <label className="md:col-span-3 text-sm">Texto da questão<input value={draft.search} maxLength={120} onChange={event => setDraft(d => ({ ...d, search: event.target.value }))} placeholder="Buscar no enunciado" className="mt-1 w-full rounded-xl border border-surface-line p-3" /></label>
+                <label className="md:col-span-2 text-sm">Número na prova<input type="number" min={1} max={9999} value={draft.examNumber} onChange={event => setDraft(d => ({ ...d, examNumber: event.target.value }))} placeholder="Ex.: 47" className="mt-1 w-full rounded-xl border border-surface-line p-3" /></label>
                 <select
                   value={draft.subjectId}
                   onChange={(e) => handleSubjectChange(e.target.value)}

@@ -19,6 +19,7 @@ export interface ApiUser {
   phone: string | null;
   birthDate: string | null;
   bio: string | null;
+  teacherSubject: string | null;
 }
 
 export interface AuthResponse {
@@ -42,12 +43,55 @@ const apiClient = createApiClient({
 export const onSessionExpired = apiClient.onSessionExpired;
 const request = apiClient.request;
 
+export interface EssaySummary { id: string; title: string; theme: string; version: number; wordCount: number; createdAt: string; updatedAt: string }
+export interface Essay extends EssaySummary { content: string }
+export interface EssayRevisionSummary { id: string; version: number; title: string; theme: string; wordCount: number; createdAt: string }
+export interface EssayRevision extends EssayRevisionSummary { content: string }
+export interface EssayPage<T> { items: T[]; page: number; hasMore: boolean }
+const essayHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
+export const apiEssayCreate = (token: string): Promise<Essay> => request('/essays', { method: 'POST', headers: essayHeaders(token) });
+export const apiEssays = (token: string, page = 1): Promise<EssayPage<EssaySummary>> => request(`/essays?page=${page}`, { headers: essayHeaders(token) });
+export const apiEssay = (token: string, id: string): Promise<Essay> => request(`/essays/${id}`, { headers: essayHeaders(token) });
+export interface EssayTheme { id: string; title: string; exam: string; year: number | null; sourceUrl: string | null; createdBy: string | null }
+export const apiEssayThemes = (token: string, year?: number): Promise<EssayTheme[]> => request(`/essays/themes${year ? `?year=${year}` : ''}`, { headers: essayHeaders(token) });
+export const apiEssayThemeCreate = (token: string, title: string): Promise<EssayTheme> => request('/essays/themes', { method: 'POST', headers: essayHeaders(token), body: JSON.stringify({ title }) });
+export const apiEssaySave = (token: string, id: string, data: { title: string; theme: string; content: string; version: number }): Promise<Essay> => request(`/essays/${id}`, { method: 'PUT', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayRevisions = (token: string, id: string, page = 1): Promise<EssayPage<EssayRevisionSummary>> => request(`/essays/${id}/revisions?page=${page}`, { headers: essayHeaders(token) });
+export const apiEssayRevision = (token: string, id: string, version: number): Promise<EssayRevision> => request(`/essays/${id}/revisions/${version}`, { headers: essayHeaders(token) });
+
+export interface MathSummary { total: number; correct: number; accuracy: number; averageMs: number }
+export interface MathAttempt { left: number; right: number; operation: string; answer: number; submitted: number | null; correct: boolean; elapsedMs: number; level: number }
+export interface MathSession {
+  id: string; mode: 'free' | 'daily'; completed: boolean; version: number;
+  level: number; streak: number; bestStreak: number; totalQuestions: number; remainingMs: number;
+  question: { left: number; right: number; operation: string } | null;
+  attempts: MathAttempt[]; summary: MathSummary;
+}
+export interface MathHistory {
+  summary: MathSummary;
+  operations: (MathSummary & { operation: string })[];
+  sessions: (MathSummary & { id: string; mode: string; createdAt: string })[];
+}
+export function apiMathStart(token: string, mode: 'free' | 'daily'): Promise<MathSession> {
+  return request('/mental-math/sessions', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ mode }) });
+}
+export function apiMathSession(token: string, id: string): Promise<MathSession> {
+  return request(`/mental-math/sessions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+}
+export function apiMathAnswer(token: string, id: string, version: number, answer: number | null): Promise<MathSession> {
+  return request(`/mental-math/sessions/${id}/answers`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ version, answer }) });
+}
+export function apiMathHistory(token: string): Promise<MathHistory> {
+  return request('/mental-math/history', { headers: { Authorization: `Bearer ${token}` } });
+}
+
 export function apiRegister(payload: {
   firstName: string;
   lastName: string;
   username: string;
   email: string;
   password: string;
+  teacherSubject?: string;
 }): Promise<AuthResponse> {
   return request("/auth/register", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -140,6 +184,7 @@ export interface Question {
   exam: string;
   year: number | null;
   examNumber: number | null;
+  sourcePdf?: { url: string; page: number } | null;
   stem: string;
   alternatives: QuestionAlternative[];
   canManage?: boolean;
@@ -208,6 +253,8 @@ export interface QuestionImportReport {
 }
 
 export interface QuestionFilters {
+  search?: string;
+  examNumber?: number;
   subject?: string;
   topic?: string;
   subjectId?: string;
@@ -231,7 +278,7 @@ export interface QuestionPayload {
   subjectId?: string;
   topicId?: string;
   difficulty: QuestionDifficulty;
-  exam: string;
+  exam?: string;
   examId?: string;
   year?: number | null;
   examNumber?: number | null;
@@ -249,11 +296,35 @@ function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
+export function apiLogoutAll(accessToken: string): Promise<void> {
+  return request('/auth/logout-all', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export interface AuthSession { id: string; createdAt: string; lastUsedAt: string; current: boolean }
+export const apiListAuthSessions = (token: string): Promise<AuthSession[]> => request('/auth/sessions', { headers: authHeaders(token) });
+export const apiRevokeAuthSession = (token: string, id: string): Promise<void> => request(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders(token) });
+
+export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
+export interface SimulationSummary { id: string; title: string; createdAt: string; className: string | null; questionCount: number }
+export interface SimulationItem { id: string; position: number; stem: string; subject: string; alternatives: { position: number; text: string }[]; correctPosition?: number }
+export interface Simulation { id: string; title: string; createdAt: string; className: string | null; sheetVersion: number; items: SimulationItem[] }
+export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; items: { position: number; subject: string; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
+export const apiSimulationClasses = (token: string): Promise<SimulationClass[]> => request('/simulations/classes', { headers: authHeaders(token) });
+export const apiCreateSimulationClass = (token: string, name: string): Promise<SimulationClass> => request('/simulations/classes', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ name }) });
+export const apiJoinSimulationClass = (token: string, joinCode: string): Promise<SimulationClass> => request('/simulations/classes/join', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ joinCode }) });
+export const apiSimulations = (token: string): Promise<SimulationSummary[]> => request('/simulations', { headers: authHeaders(token) });
+export const apiCreateSimulation = (token: string, title: string, questionIds: string[], classId?: string): Promise<Simulation> => request('/simulations', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ title, questionIds, classId }) });
+export const apiSimulation = (token: string, id: string, answers = false): Promise<Simulation> => request(`/simulations/${id}${answers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
+export const apiSimulationResult = (token: string, id: string): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { headers: authHeaders(token) });
+export const apiSubmitSimulation = (token: string, id: string, answers: { position: number; selectedPosition: number }[]): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers }) });
+
 export function apiListQuestions(
   accessToken: string,
   filters: QuestionFilters = {}
 ): Promise<PaginatedQuestions> {
   const params = new URLSearchParams();
+  if (filters.search) params.set('search', filters.search);
+  if (filters.examNumber) params.set('examNumber', String(filters.examNumber));
   if (filters.subjectId) params.set("subjectId", filters.subjectId);
   else if (filters.subject) params.set("subject", filters.subject);
   if (filters.topicId) params.set("topicId", filters.topicId);

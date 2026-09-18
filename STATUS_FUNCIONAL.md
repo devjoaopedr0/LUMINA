@@ -1,5 +1,19 @@
 # Status funcional da Lumina
 
+## Referência geral
+
+O inventário completo enviado pelo usuário está preservado em [Funcionalidades gerais](docs/FUNCIONALIDADES_GERAIS.txt). A ordem numerada desse documento orienta as próximas entregas. Na seção 1, o encerramento de todas as sessões foi implementado com revogação de tokens por versão de sessão. A migração `20260916030000_add_session_version` foi aplicada no banco configurado em 16/09/2026. O gerenciamento individual de sessões permite listar e encerrar uma sessão; a migração `20260917010000_add_auth_sessions` foi aplicada no banco configurado em 17/09/2026.
+
+## Atualização de 16/09/2026 — simulados
+
+- Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.
+- Implementado: estudante cria simulado pessoal, professor cria simulado para sua turma, escolhendo de 1 a 90 questões do banco.
+- Implementado: lista de simulados disponíveis, prova imprimível e cartão-resposta com identificação do simulado, ordem estável e bolinhas para marcar.
+- Implementado: envio digital único por estudante, correção com gabarito preservado no simulado e resultado por questão com total de acertos.
+- Migrações `20260916010000_add_simulations` e `20260916020000_add_simulation_submissions` aplicadas no banco configurado em 16/09/2026.
+- Pendente: teste autenticado no navegador, leitura do cartão por câmera e analytics por turma/assunto.
+
+
 Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do repositório.
 
 ## Implementado
@@ -12,9 +26,12 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Cronograma pessoal: vestibular-alvo, dias e tempo disponível, catálogo com 15 disciplinas do ENEM, divisão por matéria, sessões, tarefas, conclusão, reagendamento, sala exclusiva de cronômetro e progresso agregado.
 - Fundações institucionais no banco: instituições, workspaces, membros, cargos, permissões, turmas, professores e alunos.
 - Landing page pública e documentação Swagger da API.
+- Cálculo mental rápido: primeira implementação de interface e API com rodadas cronometradas, dificuldade adaptativa, desafio diário e histórico por conta. Ativação depende da migração do banco; detalhes em [Cálculo mental](docs/CALCULO_MENTAL.md).
 
 ## Parcial
 
+- Redações: editor, temas, salvamento automático, histórico de versões e importação de texto UTF-8 com prévia. Migração aplicada no banco local em 15/09/2026; correção por IA/professor e scanner ainda pendentes.
+- Catálogo de propostas de redação do ENEM 2011–2025 e cadastro de professor com matéria para criação de conteúdo autoral pessoal. Consulte [Redações, professores e scanner](docs/REDAÇÕES_PROFESSORES_SCANNER.md); a migração desta etapa ainda depende da disponibilidade do PostgreSQL local.
 - Dashboard do aluno: navegação lateral, foco diário, métricas reais, progresso e próximas atividades; ainda faltam gráficos avançados e pontos fortes/fracos.
 - LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
 - Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
@@ -25,10 +42,10 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 
 ## Não iniciado
 
-- Simulados completos/mini/personalizados, janela de aplicação, cronômetro de prova e relatórios pós-simulado.
+- Janela de aplicação, cronômetro de prova e relatórios avançados pós-simulado.
 - Scanner de cartão-resposta, câmera, visão computacional e correção física.
 - Explicações personalizadas da LuminIA integradas ao histórico acadêmico.
-- Redações: temas, envio, correção por IA/professor, competências, notas e evolução.
+- Correção de redações por IA/professor, competências, notas e evolução.
 - Dashboards de professor, coordenador, diretor e administração interna.
 - Relatórios institucionais, exportação PDF/Excel e comparações entre turmas/períodos.
 - Mapa de Domínio e Lumina Score.
@@ -44,7 +61,7 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 3. Correção de gabaritos por scanner: modelos identificáveis de cartão-resposta, captura guiada, alinhamento pelos marcadores, leitura de marcações, nível de confiança por resposta, revisão manual das ambíguas e vínculo automático ao simulado/lista antes de calcular nota e desempenho.
 4. Treino de raciocínio lógico e cálculo mental rápido: rodadas curtas com operações matemáticas básicas, resposta contra o tempo, sequência de acertos e dificuldade adaptativa. O módulo deve registrar precisão, tempo médio por resposta, evolução por tipo de operação e erros recorrentes, com modos de treino livre e desafio diário inspirados na dinâmica de resposta rápida citada como referência.
 
-Esses três fluxos devem compartilhar uma esteira de captura e processamento assíncrono, com estados visíveis, repetição segura, trilha de auditoria, proteção dos arquivos enviados e exclusão configurável. A correção por IA deve apresentar justificativas e permitir revisão humana; uma nota não deve ser tratada como definitiva quando a imagem ou o OCR estiverem abaixo do nível mínimo de confiança.
+Os três fluxos de correção por captura/texto devem compartilhar uma esteira de captura e processamento assíncrono, com estados visíveis, repetição segura, trilha de auditoria, proteção dos arquivos enviados e exclusão configurável. A correção por IA deve apresentar justificativas e permitir revisão humana; uma nota não deve ser tratada como definitiva quando a imagem ou o OCR estiverem abaixo do nível mínimo de confiança.
 
 ## Ordem recomendada das demais entregas
 

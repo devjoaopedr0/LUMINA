@@ -216,6 +216,7 @@ export class QuestionImportService {
         stem: normalized.stem,
         explanation: normalized.explanation,
         imageUrl: normalized.imageUrl,
+        ...(normalized.sourcePdf ? { metadata: { sourcePdf: normalized.sourcePdf, imageCropStatus: 'PENDING_REVIEW' } } : {}),
         subjectId: subject.id,
         topicId,
         examId,

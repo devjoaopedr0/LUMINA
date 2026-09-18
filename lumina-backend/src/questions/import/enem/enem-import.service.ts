@@ -64,7 +64,7 @@ export class EnemImportService {
   private readonly logger = new Logger(EnemImportService.name);
 
   async fetchExam(params: FetchEnemExamParams): Promise<EnemFetchResult> {
-    const [examText, introText, gabarito] = await this.loadExamContent(params);
+    const [examText, introText, gabarito, pages] = await this.loadExamContent(params);
 
     const areaRanges = parseAreaRanges(introText);
     if (areaRanges.length === 0) {
@@ -117,6 +117,7 @@ export class EnemImportService {
         stem: parsed.stem,
         options: parsed.alternatives.map((alternative) => ({ text: alternative.text })),
         correctLetter,
+        ...(pages.get(block.number) ? { sourcePdf: { url: params.provaUrl, page: pages.get(block.number)! } } : {}),
       });
     }
 
@@ -125,7 +126,7 @@ export class EnemImportService {
 
   private async loadExamContent(
     params: FetchEnemExamParams,
-  ): Promise<[examText: string, introText: string, gabarito: Map<number, string>]> {
+  ): Promise<[examText: string, introText: string, gabarito: Map<number, string>, pages: Map<number, number>]> {
     // Import dinâmico: pdfjs-dist 6.x só publica build ESM (.mjs), e este
     // projeto compila para CommonJS — `import()` dinâmico é a forma correta
     // de consumir um pacote ESM-only a partir de código CJS no Node.
@@ -139,11 +140,16 @@ export class EnemImportService {
     const provaDoc = await getDocument({ data: provaBytes }).promise;
     let examText = '';
     let introText = '';
+    const pages = new Map<number, number>();
     for (let pageNum = 1; pageNum <= provaDoc.numPages; pageNum++) {
       const page = await provaDoc.getPage(pageNum);
       const content = await page.getTextContent();
       const pageText = content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
       if (pageNum === 1) introText = pageText;
+      for (const match of pageText.matchAll(/QUEST[ÃA]O\s+(\d{1,3})\s+/g)) {
+        const number = Number(match[1]);
+        if (!pages.has(number)) pages.set(number, pageNum);
+      }
       examText += ` ${pageText}`;
     }
 
@@ -156,7 +162,7 @@ export class EnemImportService {
       gabaritoRaw += content.items.map((item) => ('str' in item ? item.str : '')).join('');
     }
 
-    return [examText, introText, parseGabaritoText(gabaritoRaw)];
+    return [examText, introText, parseGabaritoText(gabaritoRaw), pages];
   }
 
   private async download(url: string): Promise<Uint8Array> {

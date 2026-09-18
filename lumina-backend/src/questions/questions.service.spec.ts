@@ -43,7 +43,7 @@ describe('QuestionsService', () => {
   ];
 
   beforeEach(() => {
-    prisma = { $transaction: vi.fn((cb: any) => cb(prisma)) };
+    prisma = { $transaction: vi.fn((cb: any) => cb(prisma)), teacherProfile: { findUnique: vi.fn().mockResolvedValue(null) } };
     questionsRepository = {
       findById: vi.fn(),
       create: vi.fn(),
@@ -122,6 +122,16 @@ describe('QuestionsService', () => {
   }
 
   describe('create', () => {
+    it('limita a matéria de professor e identifica conteúdo autoral', async () => {
+      mockClassification();
+      prisma.teacherProfile.findUnique.mockResolvedValue({ subject: 'Física' });
+      await expect(service.create('user-1', createDto)).rejects.toBeInstanceOf(BadRequestException);
+      expect(questionsRepository.create).not.toHaveBeenCalled();
+      prisma.teacherProfile.findUnique.mockResolvedValue({ subject: 'Matemática' });
+      questionsRepository.create.mockResolvedValue({ ...baseQuestion, alternatives });
+      await service.create('user-1', createDto);
+      expect(questionsRepository.create).toHaveBeenCalledWith(expect.objectContaining({ sourceType: 'PARTNER', sourceName: 'Professor da Lumina', subject: 'Matemática' }));
+    });
     it('cria a questão com alternativas normalizadas e retorna a visão de autor', async () => {
       mockClassification();
       questionsRepository.create.mockImplementation(

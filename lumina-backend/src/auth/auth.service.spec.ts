@@ -47,6 +47,13 @@ describe('AuthService', () => {
     };
 
     prisma = {
+      authSession: {
+        create: vi.fn().mockResolvedValue({ id: 'session-1' }),
+        update: vi.fn().mockResolvedValue({ id: 'session-1' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'session-1' }),
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: vi.fn((cb: any) =>
         cb({
           workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-1' }) },
