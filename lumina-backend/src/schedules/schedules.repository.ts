@@ -255,7 +255,7 @@ export class SchedulesRepository {
       where: { userId },
       update: {
         examId: data.examId ?? null,
-        customName: data.customName ?? undefined,
+        customName: data.customName === undefined ? undefined : data.customName,
         targetDate: data.targetDate ?? null,
       },
       create: {

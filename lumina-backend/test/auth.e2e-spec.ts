@@ -148,6 +148,8 @@ describe('Auth (e2e)', () => {
         educationLevel: 'ENSINO_MEDIO',
         schoolYear: 3,
         schoolName: '  Escola Exemplo  ',
+        desiredCourse: '  Medicina  ',
+        targetUniversity: '  UFC  ',
       });
 
     expect(res.status).toBe(200);
@@ -158,8 +160,11 @@ describe('Auth (e2e)', () => {
     expect(res.body.educationLevel).toBe('ENSINO_MEDIO');
     expect(res.body.schoolYear).toBe(3);
     expect(res.body.schoolName).toBe('Escola Exemplo');
+    expect(res.body.desiredCourse).toBe('Medicina');
+    expect(res.body.targetUniversity).toBe('UFC');
     const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${login.body.accessToken}`);
     expect(me.body.schoolName).toBe('Escola Exemplo');
+    expect(me.body.desiredCourse).toBe('Medicina');
     expect(res.body.passwordHash).toBeUndefined();
   });
 
@@ -251,6 +256,19 @@ describe('Auth (e2e)', () => {
       .send({ password: 'OutraSenhaForte123' });
 
     expect(res.status).toBe(409);
+  });
+
+  it('salva, consulta e limpa o vestibular-alvo da conta', async () => {
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email: registerPayload.email, password: registerPayload.password });
+    const authorization = `Bearer ${login.body.accessToken}`;
+    const saved = await request(app.getHttpServer()).post('/user/vestibular').set('Authorization', authorization).send({ customName: 'ENEM', targetDate: '2027-11-07' });
+    expect(saved.status).toBe(201);
+    const read = await request(app.getHttpServer()).get('/user/vestibular').set('Authorization', authorization);
+    expect(read.body.customName).toBe('ENEM');
+    const cleared = await request(app.getHttpServer()).post('/user/vestibular').set('Authorization', authorization).send({ customName: null });
+    expect(cleared.status).toBe(201);
+    expect(cleared.body.customName).toBeNull();
+    expect(cleared.body.targetDate).toBeNull();
   });
 
   it('POST /auth/logout-all invalida access e refresh tokens antigos e permite novo login', async () => {

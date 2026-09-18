@@ -6,14 +6,19 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/contexts/AuthContext';
-import { ApiError, apiListAuthSessions, apiRevokeAuthSession, type AuthSession } from '@/lib/api';
+import { ApiError, apiGetUserVestibular, apiListAuthSessions, apiRevokeAuthSession, apiSetVestibular, type AuthSession } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 
 export function Profile() {
   const { user, updateProfile, logout, logoutAll } = useAuth();
   const [form, setForm] = useState({
-    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '',
+    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '', desiredCourse: '', targetUniversity: '',
   });
+  const [targetExam, setTargetExam] = useState('');
+  const [targetExamDate, setTargetExamDate] = useState('');
+  const [savingExam, setSavingExam] = useState(false);
+  const [examError, setExamError] = useState('');
+  const [examSuccess, setExamSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [closingSessions, setClosingSessions] = useState(false);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
@@ -37,8 +42,34 @@ export function Profile() {
       educationLevel: user.educationLevel ?? '',
       schoolYear: user.schoolYear?.toString() ?? '',
       schoolName: user.schoolName ?? '',
+      desiredCourse: user.desiredCourse ?? '',
+      targetUniversity: user.targetUniversity ?? '',
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const token = getAccessToken();
+    if (!token) return;
+    void apiGetUserVestibular(token).then((goal) => {
+      setTargetExam(goal?.customName ?? goal?.exam?.name ?? '');
+      setTargetExamDate(goal?.targetDate?.slice(0, 10) ?? '');
+    }).catch(() => setExamError('Não foi possível carregar o vestibular-alvo.'));
+  }, [user?.id]);
+
+  async function saveTargetExam() {
+    const token = getAccessToken();
+    if (!token) return;
+    setSavingExam(true);
+    setExamError('');
+    setExamSuccess(false);
+    try {
+      await apiSetVestibular(token, { customName: targetExam.trim() || null, targetDate: targetExamDate || undefined });
+      setExamSuccess(true);
+    } catch (caught) {
+      setExamError(caught instanceof ApiError ? caught.message : 'Não foi possível salvar o vestibular-alvo.');
+    } finally { setSavingExam(false); }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -129,6 +160,8 @@ export function Profile() {
         educationLevel: form.educationLevel || null,
         schoolYear: form.schoolYear ? Number(form.schoolYear) : null,
         schoolName: form.schoolName.trim() || null,
+        desiredCourse: form.desiredCourse.trim() || null,
+        targetUniversity: form.targetUniversity.trim() || null,
       });
       setSuccess(true);
     } catch (caught) {
@@ -229,7 +262,19 @@ export function Profile() {
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field label="Etapa de ensino"><select value={form.educationLevel} onChange={(e) => update('educationLevel', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Não informado</option><option value="FUNDAMENTAL_II">Ensino fundamental II</option><option value="ENSINO_MEDIO">Ensino médio</option><option value="CURSINHO">Cursinho</option><option value="SUPERIOR">Ensino superior</option><option value="OUTRO">Outro</option></select></Field>
                 <Field label="Série ou ano"><Input type="number" min={1} max={9} value={form.schoolYear} onChange={(e) => update('schoolYear', e.target.value)} placeholder="Ex.: 3" /></Field>
-                <div className="sm:col-span-2"><Field label="Escola ou curso"><Input value={form.schoolName} onChange={(e) => update('schoolName', e.target.value)} maxLength={120} placeholder="Opcional" /></Field></div>
+                <div className="sm:col-span-2"><Field label="Escola ou cursinho atual"><Input value={form.schoolName} onChange={(e) => update('schoolName', e.target.value)} maxLength={120} placeholder="Opcional" /></Field></div>
+                <Field label="Curso desejado"><Input value={form.desiredCourse} onChange={(e) => update('desiredCourse', e.target.value)} maxLength={120} placeholder="Ex.: Medicina" /></Field>
+                <Field label="Universidade-alvo"><Input value={form.targetUniversity} onChange={(e) => update('targetUniversity', e.target.value)} maxLength={120} placeholder="Ex.: UFC" /></Field>
+              </div>
+              <div className="mt-6 border-t border-surface-line pt-5">
+                <h4 className="mb-3 font-semibold text-graphite">Vestibular-alvo</h4>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Prova ou vestibular"><Input value={targetExam} onChange={(e) => { setTargetExam(e.target.value); setExamSuccess(false); }} maxLength={100} placeholder="Ex.: ENEM ou UECE" /></Field>
+                  <Field label="Data da prova"><Input type="date" value={targetExamDate} onChange={(e) => { setTargetExamDate(e.target.value); setExamSuccess(false); }} /></Field>
+                </div>
+                {examError && <p role="alert" className="mt-3 text-sm text-alert">{examError}</p>}
+                {examSuccess && <p className="mt-3 text-sm text-success">Vestibular-alvo salvo.</p>}
+                <button type="button" disabled={savingExam} onClick={() => void saveTargetExam()} className="mt-4 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-700 disabled:opacity-50">{savingExam ? 'Salvando...' : 'Salvar vestibular-alvo'}</button>
               </div>
             </div>
 

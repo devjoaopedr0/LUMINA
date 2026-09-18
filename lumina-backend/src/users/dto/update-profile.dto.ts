@@ -78,4 +78,16 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(120)
   schoolName?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  desiredCourse?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  targetUniversity?: string | null;
 }

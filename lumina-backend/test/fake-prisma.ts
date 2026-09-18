@@ -9,6 +9,7 @@ import { vi } from 'vitest';
  */
 export function createFakePrisma() {
   const users: any[] = [];
+  const vestibulares: any[] = [];
   const authSessions: any[] = [];
   const profiles: any[] = [];
   const teacherProfiles: any[] = [];
@@ -70,6 +71,19 @@ export function createFakePrisma() {
   const findSubjectByName = (name: string) => subjects.find((s) => s.name === name);
 
   const fake: any = {
+    userVestibular: {
+      findUnique: vi.fn(async ({ where }: any) => vestibulares.find(v => v.userId === where.userId) ?? null),
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const existing = vestibulares.find(v => v.userId === where.userId);
+        if (existing) {
+          Object.assign(existing, Object.fromEntries(Object.entries(update).filter(([, value]) => value !== undefined)), { updatedAt: new Date() });
+          return existing;
+        }
+        const value = { id: nextId('vestibular'), createdAt: new Date(), updatedAt: new Date(), ...create };
+        vestibulares.push(value);
+        return value;
+      }),
+    },
     authSession: {
       create: vi.fn(async ({ data }: any) => {
         const now = new Date();

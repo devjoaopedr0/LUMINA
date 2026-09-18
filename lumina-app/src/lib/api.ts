@@ -22,6 +22,8 @@ export interface ApiUser {
   educationLevel: string | null;
   schoolYear: number | null;
   schoolName: string | null;
+  desiredCourse: string | null;
+  targetUniversity: string | null;
   teacherSubject: string | null;
 }
 
@@ -157,6 +159,8 @@ export interface UpdateProfilePayload {
   educationLevel?: string | null;
   schoolYear?: number | null;
   schoolName?: string | null;
+  desiredCourse?: string | null;
+  targetUniversity?: string | null;
 }
 
 export function apiUpdateProfile(
@@ -718,7 +722,7 @@ export function apiSetVestibular(
   accessToken: string,
   payload: {
     examId?: string;
-    customName?: string;
+    customName?: string | null;
     targetDate?: string;
   }
 ): Promise<UserVestibular> {

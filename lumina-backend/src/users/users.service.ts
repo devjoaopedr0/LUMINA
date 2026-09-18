@@ -27,6 +27,8 @@ export class UsersService {
     if (dto.username) data.username = dto.username.trim().toLowerCase();
     if (dto.bio) data.bio = dto.bio.trim();
     if (dto.schoolName) data.schoolName = dto.schoolName.trim();
+    if (dto.desiredCourse) data.desiredCourse = dto.desiredCourse.trim();
+    if (dto.targetUniversity) data.targetUniversity = dto.targetUniversity.trim();
     if (dto.birthDate) data.birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
 
     try {
@@ -64,6 +66,8 @@ export class UsersService {
       educationLevel: user.profile?.educationLevel ?? null,
       schoolYear: user.profile?.schoolYear ?? null,
       schoolName: user.profile?.schoolName ?? null,
+      desiredCourse: user.profile?.desiredCourse ?? null,
+      targetUniversity: user.profile?.targetUniversity ?? null,
     });
   }
 }

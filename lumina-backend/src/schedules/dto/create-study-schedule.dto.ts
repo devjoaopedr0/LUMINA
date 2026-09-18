@@ -197,7 +197,7 @@ export class SetVestibularDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  customName?: string;
+  customName?: string | null;
 
   @ApiProperty({ format: "date", nullable: true, example: "2025-01-15" })
   @IsOptional()
