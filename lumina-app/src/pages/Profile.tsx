@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/contexts/AuthContext';
-import { ApiError, apiGetUserVestibular, apiListAuthSessions, apiRevokeAuthSession, apiSetVestibular, type AuthSession } from '@/lib/api';
+import { ApiError, apiChangePassword, apiGetUserVestibular, apiListAuthSessions, apiRevokeAuthSession, apiSetVestibular, type AuthSession } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 
 export function Profile() {
@@ -19,6 +19,9 @@ export function Profile() {
   const [savingExam, setSavingExam] = useState(false);
   const [examError, setExamError] = useState('');
   const [examSuccess, setExamSuccess] = useState(false);
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirmation: '' });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const [saving, setSaving] = useState(false);
   const [closingSessions, setClosingSessions] = useState(false);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
@@ -72,6 +75,23 @@ export function Profile() {
     } catch (caught) {
       setExamError(caught instanceof ApiError ? caught.message : 'Não foi possível salvar o vestibular-alvo.');
     } finally { setSavingExam(false); }
+  }
+
+  async function changePassword() {
+    if (passwords.next !== passwords.confirmation) {
+      setPasswordError('A confirmação não corresponde à nova senha.');
+      return;
+    }
+    const token = getAccessToken();
+    if (!token) return;
+    setChangingPassword(true);
+    setPasswordError('');
+    try {
+      await apiChangePassword(token, passwords.current, passwords.next);
+      logout();
+    } catch (caught) {
+      setPasswordError(caught instanceof ApiError ? caught.message : 'Não foi possível alterar a senha.');
+    } finally { setChangingPassword(false); }
   }
 
   useEffect(() => {
@@ -292,6 +312,18 @@ export function Profile() {
                 <Field label="Dias por semana"><Input type="number" min={1} max={7} value={form.weeklyStudyDays} onChange={(e) => update('weeklyStudyDays', e.target.value)} placeholder="Ex.: 5" /></Field>
               </div>
             </div>
+
+            {user?.hasPassword && <div className="mt-7 border-t border-surface-line pt-6">
+              <h3 className="font-semibold text-graphite">Configurações da conta</h3>
+              <p className="mt-1 text-xs text-graphite-400">Ao trocar a senha, todas as sessões serão encerradas.</p>
+              <div className="mt-4 grid gap-5 sm:grid-cols-3">
+                <Field label="Senha atual"><Input type="password" autoComplete="current-password" value={passwords.current} onChange={(e) => setPasswords((value) => ({ ...value, current: e.target.value }))} /></Field>
+                <Field label="Nova senha"><Input type="password" autoComplete="new-password" minLength={8} maxLength={72} value={passwords.next} onChange={(e) => setPasswords((value) => ({ ...value, next: e.target.value }))} /></Field>
+                <Field label="Confirmar nova senha"><Input type="password" autoComplete="new-password" minLength={8} maxLength={72} value={passwords.confirmation} onChange={(e) => setPasswords((value) => ({ ...value, confirmation: e.target.value }))} /></Field>
+              </div>
+              {passwordError && <p role="alert" className="mt-3 text-sm text-alert">{passwordError}</p>}
+              <button type="button" disabled={changingPassword || !passwords.current || passwords.next.length < 8 || !passwords.confirmation} onClick={() => void changePassword()} className="mt-4 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50">{changingPassword ? 'Alterando...' : 'Alterar senha'}</button>
+            </div>}
 
             {error && <p role="alert" className="mt-5 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">{error}</p>}
             {success && <p className="mt-5 flex items-center gap-2 rounded-xl border border-success/20 bg-success/5 p-3 text-sm text-graphite-600"><CheckCircle2 className="h-4 w-4 text-success" /> Perfil atualizado com sucesso.</p>}

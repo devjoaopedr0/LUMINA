@@ -10,6 +10,8 @@ O perfil também permite informar curso desejado e universidade-alvo. O vestibul
 
 As preferências de estudo incluem melhor período, duração desejada por sessão e quantidade de dias por semana. A migração `20260918030000_add_study_preferences` foi aplicada no banco configurado em 18/09/2026.
 
+As configurações da conta permitem trocar a senha local mediante confirmação da senha atual. A alteração revoga todas as sessões e exige novo login.
+
 ## Atualização de 16/09/2026 — simulados
 
 - Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.

@@ -318,4 +318,21 @@ describe('Auth (e2e)', () => {
     expect((await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: first.body.refreshToken })).status).toBe(401);
     expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${second.body.accessToken}`)).status).toBe(200);
   });
+
+  it('troca a senha, exige a atual e revoga todas as sessões', async () => {
+    const account = { ...registerPayload, email: 'troca.senha@exemplo.com', username: 'troca.senha' };
+    const first = await request(app.getHttpServer()).post('/auth/register').send(account);
+    const second = await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password });
+    const wrong = await request(app.getHttpServer()).post('/auth/change-password')
+      .set('Authorization', `Bearer ${first.body.accessToken}`)
+      .send({ currentPassword: 'SenhaErrada', newPassword: 'NovaSenhaForte456' });
+    expect(wrong.status).toBe(401);
+    const changed = await request(app.getHttpServer()).post('/auth/change-password')
+      .set('Authorization', `Bearer ${first.body.accessToken}`)
+      .send({ currentPassword: account.password, newPassword: 'NovaSenhaForte456' });
+    expect(changed.status).toBe(204);
+    expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${second.body.accessToken}`)).status).toBe(401);
+    expect((await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password })).status).toBe(401);
+    expect((await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: 'NovaSenhaForte456' })).status).toBe(200);
+  });
 });

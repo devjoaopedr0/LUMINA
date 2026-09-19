@@ -8,6 +8,7 @@ import { UsersService } from '../users/users.service';
 import { UserWithProfile } from '../users/users.repository';
 import { AuthService } from './auth.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -136,6 +137,18 @@ export class AuthController {
     @Body() dto: SetPasswordDto,
   ): Promise<UserResponseDto> {
     return this.authService.setPassword(user.id, dto.password);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Troca a senha local e encerra todas as sessões da conta.' })
+  changePassword(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
 
   @Post('forgot-password')

@@ -312,6 +312,14 @@ function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
+export function apiChangePassword(accessToken: string, currentPassword: string, newPassword: string): Promise<void> {
+  return request('/auth/change-password', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
 export function apiLogoutAll(accessToken: string): Promise<void> {
   return request('/auth/logout-all', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } });
 }

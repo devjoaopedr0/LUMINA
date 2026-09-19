@@ -246,6 +246,24 @@ export class AuthService {
     return this.usersService.toPublicUser(updated as UserWithProfile);
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user?.passwordHash) {
+      throw new BadRequestException('Esta conta ainda não possui uma senha local.');
+    }
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('A senha atual está incorreta.');
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException('A nova senha deve ser diferente da senha atual.');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, AuthService.BCRYPT_SALT_ROUNDS);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash, sessionVersion: { increment: 1 } } }),
+      this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+  }
+
   /** Confirma o e-mail de uma conta recém-cadastrada com o código recebido
    * por e-mail. Idempotente para quem já confirmou: se a conta já está
    * verificada, apenas retorna o usuário atual (sem tocar no banco). */
