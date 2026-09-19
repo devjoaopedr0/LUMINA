@@ -74,8 +74,8 @@ export class SimulationsService {
   }
 
   async list(userId: string) {
-    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, class: { select: { name: true } }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
-    return rows.map(r => ({ id: r.id, title: r.title, createdAt: r.createdAt, className: r.class?.name ?? null, questionCount: r._count.items }));
+    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
+    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
   }
 
   async get(userId: string, id: string, includeAnswers = false) {

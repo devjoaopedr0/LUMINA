@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronRight,
-  Clock3, Database, Flame, LayoutDashboard, LogOut, Menu, Sparkles, TrendingUp,
-  Target, UserRound, X,
+  Award, Clock3, Database, FileText, Flame, History, LayoutDashboard, Lightbulb,
+  LogOut, Menu, Sparkles, TrendingUp, Target, UserRound, X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, type ApiUser, type PerformanceBreakdown, type StudyProgressSummary, type StudySession } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, type ApiUser, type EssaySummary, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 
 const NAV_ITEMS = [
@@ -75,19 +75,27 @@ export function Dashboard() {
   const panel = MANAGEMENT_PANELS[user?.accountType ?? 'STUDENT_INDEPENDENT'];
   const [menuOpen, setMenuOpen] = useState(false);
   const [session, setSession] = useState<StudySession | null>(null);
+  const [schedule, setSchedule] = useState<StudySchedule | null>(null);
   const [progress, setProgress] = useState<StudyProgressSummary | null>(null);
+  const [evolution, setEvolution] = useState<ProgressEvolutionPoint[]>([]);
   const [performance, setPerformance] = useState<PerformanceBreakdown | null>(null);
+  const [simulations, setSimulations] = useState<SimulationSummary[]>([]);
+  const [essays, setEssays] = useState<EssaySummary[]>([]);
+  const [questionHistory, setQuestionHistory] = useState<QuestionProgressItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
-    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token)])
-      .then(([daily, progressData, performanceData]) => {
-        if (daily.status === 'fulfilled') setSession(daily.value?.session ?? null);
-        if (progressData.status === 'fulfilled') setProgress(progressData.value.summary);
+    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token)])
+      .then(([daily, progressData, performanceData, simulationData, essayData, questionsData]) => {
+        if (daily.status === 'fulfilled') { setSession(daily.value?.session ?? null); setSchedule(daily.value?.schedule ?? null); }
+        if (progressData.status === 'fulfilled') { setProgress(progressData.value.summary); setEvolution(progressData.value.evolution ?? []); }
         if (performanceData.status === 'fulfilled') setPerformance(performanceData.value);
+        if (simulationData.status === 'fulfilled') setSimulations(simulationData.value);
+        if (essayData.status === 'fulfilled') setEssays(essayData.value.items);
+        if (questionsData.status === 'fulfilled') setQuestionHistory(questionsData.value.items);
       })
       .finally(() => setLoading(false));
   }, [isStudent]);
@@ -100,6 +108,15 @@ export function Dashboard() {
   const subjectPerformance = performance?.bySubject.slice(0, 5) ?? [];
   const strongestSubject = [...subjectPerformance].filter((item) => item.totalAttempts >= 3).sort((a, b) => b.accuracy - a.accuracy)[0];
   const attentionSubject = [...subjectPerformance].filter((item) => item.totalAttempts >= 3).sort((a, b) => a.accuracy - b.accuracy)[0];
+  const recentResults = simulations.filter((item) => item.result).slice(0, 3);
+  const nextSimulations = simulations.filter((item) => !item.result).slice(0, 3);
+  const topicPerformance = performance?.byTopic.slice(0, 5) ?? [];
+  const recommendation = attentionSubject
+    ? { title: `Reforce ${attentionSubject.subject}`, detail: `Sua taxa atual é ${attentionSubject.accuracy}%. Uma rodada curta de questões pode ajudar.`, to: '/app/questoes' }
+    : pendingTasks[0]
+      ? { title: pendingTasks[0].title, detail: 'Concluir a próxima atividade mantém seu cronograma em dia.', to: '/app/cronograma' }
+      : { title: 'Faça um diagnóstico', detail: 'Responda algumas questões para receber recomendações baseadas no seu desempenho.', to: '/app/questoes' };
+  const maxStudyMinutes = Math.max(1, ...evolution.map((item) => item.studyMinutes));
 
   const metrics = [
     { label: "Tarefas hoje", value: loading ? "—" : String(tasks.length), detail: `${completedToday} concluídas`, icon: CheckCircle2, color: "bg-success/10 text-success" },
@@ -183,6 +200,35 @@ export function Dashboard() {
                 </> : <div className="flex flex-col items-center px-4 py-9 text-center"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15"><TrendingUp className="h-6 w-6 text-primary-700" /></span><h3 className="mt-4 font-semibold text-graphite">Seu desempenho aparecerá aqui</h3><p className="mt-2 max-w-md text-sm text-graphite-400">Responda questões para acompanhar a evolução por matéria e identificar onde concentrar seus estudos.</p><Link to="/app/questoes" className="mt-5"><Button size="sm">Responder questões</Button></Link></div>}
               </div>
             </Card>
+          </section>}
+
+          {isStudent && <section className="mt-6 grid gap-6 xl:grid-cols-2" aria-label="Resultados e próximos simulados">
+            <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Notas recentes</h2><p className="mt-1 text-xs text-graphite-400">Seus últimos simulados corrigidos</p></div><Award className="h-5 w-5 text-primary-700" /></div>
+              <div className="mt-5 space-y-3">{recentResults.length ? recentResults.map((item) => <Link key={item.id} to={`/app/simulados?id=${item.id}`} className="flex items-center justify-between rounded-xl border border-surface-line p-4 hover:border-primary/50"><div><p className="text-sm font-semibold text-graphite">{item.title}</p><p className="mt-1 text-xs text-graphite-400">{new Date(item.result!.submittedAt).toLocaleDateString('pt-BR')} · {item.result!.correct} de {item.result!.total} acertos</p></div><span className="text-xl font-bold text-graphite">{Math.round((item.result!.correct / item.result!.total) * 100)}%</span></Link>) : <p className="rounded-xl bg-surface-card p-5 text-sm text-graphite-400">Conclua um simulado para registrar sua primeira nota.</p>}</div>
+            </Card>
+            <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Próximos simulados</h2><p className="mt-1 text-xs text-graphite-400">Avaliações disponíveis para responder</p></div><BookOpenCheck className="h-5 w-5 text-primary-700" /></div>
+              <div className="mt-5 space-y-3">{nextSimulations.length ? nextSimulations.map((item) => <Link key={item.id} to={`/app/simulados?id=${item.id}`} className="group flex items-center justify-between rounded-xl border border-surface-line p-4 hover:border-primary/50"><div><p className="text-sm font-semibold text-graphite">{item.title}</p><p className="mt-1 text-xs text-graphite-400">{item.questionCount} questões{item.className ? ` · ${item.className}` : ''}</p></div><ArrowRight className="h-4 w-4 text-graphite-300 group-hover:text-primary-700" /></Link>) : <p className="rounded-xl bg-surface-card p-5 text-sm text-graphite-400">Nenhum simulado pendente no momento.</p>}</div>
+            </Card>
+          </section>}
+
+          {isStudent && <section className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_1fr]" aria-label="Assuntos e recomendação">
+            <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Progresso por assunto e habilidade</h2><p className="mt-1 text-xs text-graphite-400">Competências praticadas nas questões</p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">{topicPerformance.length ? topicPerformance.map((item) => <div key={item.topic} className="rounded-xl border border-surface-line p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-graphite">{item.topic}</p><p className="mt-1 text-xs text-graphite-400">{item.totalAttempts} tentativas</p></div><span className="text-sm font-bold text-primary-700">{item.accuracy}%</span></div></div>) : <p className="col-span-full rounded-xl bg-surface-card p-5 text-sm text-graphite-400">Os assuntos praticados aparecerão após suas primeiras respostas.</p>}</div>
+            </Card>
+            <Card className="bg-graphite text-white"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15"><Lightbulb className="h-5 w-5 text-primary" /></div><p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-primary">Recomendação personalizada</p><h2 className="mt-2 text-xl font-semibold">{recommendation.title}</h2><p className="mt-2 text-sm leading-relaxed text-white/55">{recommendation.detail}</p><Link to={recommendation.to} className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary">Começar agora <ArrowRight className="h-4 w-4" /></Link></Card>
+          </section>}
+
+          {isStudent && <section className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_1fr]" aria-label="Histórico de estudos e meta acadêmica">
+            <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Histórico de estudos</h2><p className="mt-1 text-xs text-graphite-400">Minutos registrados nos últimos dias</p></div><History className="h-5 w-5 text-primary-700" /></div>
+              {evolution.length ? <div className="mt-6 flex h-36 items-end gap-2" aria-label="Gráfico de tempo estudado">{evolution.slice(-14).map((item) => <div key={item.date} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-2"><span className="hidden text-[10px] font-semibold text-graphite-400 group-hover:block">{item.studyMinutes}m</span><div className="w-full rounded-t bg-primary/70" style={{ height: `${Math.max(6, (item.studyMinutes / maxStudyMinutes) * 100)}%` }} title={`${item.studyMinutes} minutos em ${new Date(`${item.date}T12:00:00`).toLocaleDateString('pt-BR')}`} /><span className="text-[9px] text-graphite-300">{new Date(`${item.date}T12:00:00`).getDate()}</span></div>)}</div> : <p className="mt-5 rounded-xl bg-surface-card p-5 text-sm text-graphite-400">Registre tempo nas tarefas para visualizar sua evolução diária.</p>}
+            </Card>
+            <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Meta acadêmica</h2><p className="mt-1 text-xs text-graphite-400">Seu objetivo principal</p></div><Target className="h-5 w-5 text-primary-700" /></div><div className="mt-5 space-y-3"><div className="rounded-xl bg-surface-card p-4"><p className="text-xs text-graphite-400">Curso desejado</p><p className="mt-1 text-sm font-semibold text-graphite">{user?.desiredCourse || 'Defina no seu perfil'}</p></div><div className="rounded-xl bg-surface-card p-4"><p className="text-xs text-graphite-400">Universidade ou vestibular</p><p className="mt-1 text-sm font-semibold text-graphite">{user?.targetUniversity || schedule?.objective || 'Defina no seu perfil ou cronograma'}</p></div></div></Card>
+          </section>}
+
+          {isStudent && <section className="mt-6 grid gap-4 md:grid-cols-3" aria-label="Históricos recentes">
+            <Card className="bg-white"><div className="flex items-center gap-3"><Database className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Histórico de questões</h2></div><div className="mt-4 space-y-3">{questionHistory.slice(0, 3).map((item) => <div key={item.questionId}><p className="truncate text-sm font-medium text-graphite">{item.subject} · {item.topic || 'Geral'}</p><p className="text-xs text-graphite-400">{item.accuracy}% de acertos · {item.attempts} tentativas</p></div>)}{!questionHistory.length && <p className="text-sm text-graphite-400">Sem questões respondidas.</p>}</div><Link to="/app/questoes" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Abrir banco de questões</Link></Card>
+            <Card className="bg-white"><div className="flex items-center gap-3"><BookOpenCheck className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Histórico de simulados</h2></div><div className="mt-4 space-y-3">{recentResults.map((item) => <div key={item.id}><p className="truncate text-sm font-medium text-graphite">{item.title}</p><p className="text-xs text-graphite-400">{item.result!.correct}/{item.result!.total} acertos · {new Date(item.result!.submittedAt).toLocaleDateString('pt-BR')}</p></div>)}{!recentResults.length && <p className="text-sm text-graphite-400">Sem simulados concluídos.</p>}</div><Link to="/app/simulados" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Ver simulados</Link></Card>
+            <Card className="bg-white"><div className="flex items-center gap-3"><FileText className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Histórico de redações</h2></div><div className="mt-4 space-y-3">{essays.slice(0, 3).map((item) => <div key={item.id}><p className="truncate text-sm font-medium text-graphite">{item.title || 'Redação sem título'}</p><p className="text-xs text-graphite-400">{item.wordCount} palavras · versão {item.version}</p></div>)}{!essays.length && <p className="text-sm text-graphite-400">Sem redações salvas.</p>}</div><Link to="/app/redacoes" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Ver redações</Link></Card>
           </section>}
         </div>
       </main>

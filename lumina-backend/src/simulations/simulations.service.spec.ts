@@ -25,6 +25,16 @@ function setup(row: typeof sample | null = sample) {
   return { service, prisma };
 }
 
+describe('SimulationsService.list', () => {
+  it('inclui somente a nota do usuário autenticado na listagem', async () => {
+    const findMany = vi.fn().mockResolvedValue([{ id: simulationId, title: 'ENEM', createdAt: new Date(), class: null, submissions: [{ correct: 8, total: 10, submittedAt: new Date() }], _count: { items: 10 } }]);
+    const service = new SimulationsService({ simulation: { findMany } } as never, {} as never);
+    const result = await service.list(userId);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ submissions: expect.objectContaining({ where: { userId } }) }) }));
+    expect(result[0]).toEqual(expect.objectContaining({ questionCount: 10, result: expect.objectContaining({ correct: 8, total: 10 }) }));
+  });
+});
+
 describe('SimulationsService.submit', () => {
   it('corrige pelo gabarito congelado e retorna resultado do próprio aluno', async () => {
     const { service, prisma } = setup();

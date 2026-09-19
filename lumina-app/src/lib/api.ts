@@ -328,6 +328,29 @@ export interface PerformanceBreakdown {
   }>;
 }
 
+export interface QuestionProgressItem {
+  questionId: string;
+  subject: string;
+  topic: string;
+  exam: string;
+  year: number | null;
+  stem: string;
+  attempts: number;
+  correctAttempts: number;
+  incorrectAttempts: number;
+  lastAttemptAt: string | null;
+  isFavorite: boolean;
+  accuracy: number;
+}
+
+export interface QuestionProgressPage {
+  items: QuestionProgressItem[];
+  total: number;
+  page: number;
+  totalPages: number;
+  limit: number;
+}
+
 function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
@@ -362,7 +385,7 @@ export const apiCreateWorkspaceRole = (token: string, workspaceId: string, data:
 export const apiSetWorkspaceRolePermissions = (token: string, workspaceId: string, roleId: string, permissionCodes: string[]): Promise<{ id: string; permissionCodes: string[] }> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}/permissions`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ permissionCodes }) });
 
 export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
-export interface SimulationSummary { id: string; title: string; createdAt: string; className: string | null; questionCount: number }
+export interface SimulationSummary { id: string; title: string; createdAt: string; className: string | null; questionCount: number; result: { correct: number; total: number; submittedAt: string } | null }
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; alternatives: { position: number; text: string }[]; correctPosition?: number }
 export interface Simulation { id: string; title: string; createdAt: string; className: string | null; sheetVersion: number; items: SimulationItem[] }
 export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; items: { position: number; subject: string; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
@@ -409,6 +432,10 @@ export function apiGetQuestion(
 
 export function apiGetQuestionPerformance(accessToken: string): Promise<PerformanceBreakdown> {
   return request('/users/me/questions/performance', { headers: authHeaders(accessToken) });
+}
+
+export function apiGetQuestionProgress(accessToken: string, limit = 5): Promise<QuestionProgressPage> {
+  return request(`/users/me/questions/progress?page=1&limit=${limit}`, { headers: authHeaders(accessToken) });
 }
 
 export function apiCreateQuestion(
