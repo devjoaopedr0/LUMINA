@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { SimulationsService } from './simulations.service';
+import { buildTeacherDashboard, SimulationsService } from './simulations.service';
 
 const userId = 'user-1';
 const simulationId = 'simulation-1';
@@ -56,5 +56,27 @@ describe('SimulationsService.submit', () => {
     const other = setup();
     other.prisma.simulationSubmission.create.mockRejectedValue({ code: 'P2002' });
     await expect(other.service.submit(userId, simulationId, [{ position: 1, selectedPosition: 1 }, { position: 2, selectedPosition: 1 }])).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+describe('buildTeacherDashboard', () => {
+  it('agrega desempenho, alertas e conteúdos frágeis por turma', () => {
+    const result = buildTeacherDashboard([{
+      id: 'class-1', name: '3º A', joinCode: 'ABC123',
+      members: [
+        { joinedAt: new Date(), user: { id: 'student-1', email: 'ana@example.com', profile: { firstName: 'Ana', lastName: 'Silva' } } },
+        { joinedAt: new Date(), user: { id: 'student-2', email: 'bia@example.com', profile: { firstName: 'Bia', lastName: null } } },
+      ],
+      simulations: [{
+        id: 'sim-1', title: 'Diagnóstico',
+        items: [{ position: 1, subject: 'Matemática', correctPosition: 2 }, { position: 2, subject: 'Português', correctPosition: 1 }],
+        submissions: [
+          { userId: 'student-1', correct: 1, total: 2, submittedAt: new Date(), answers: [{ position: 1, selectedPosition: 1 }, { position: 2, selectedPosition: 1 }] },
+          { userId: 'student-2', correct: 2, total: 2, submittedAt: new Date(), answers: [{ position: 1, selectedPosition: 2 }, { position: 2, selectedPosition: 1 }] },
+        ],
+      }],
+    }]);
+    expect(result.summary).toEqual({ classCount: 1, studentCount: 2, submissionCount: 2, averageAccuracy: 75, studentsAtRisk: 1 });
+    expect(result.classes[0].students[0]).toEqual(expect.objectContaining({ name: 'Ana Silva', accuracy: 50, alert: true }));
+    expect(result.classes[0].weakSubjects[0]).toEqual({ subject: 'Matemática', attempts: 2, accuracy: 50 });
   });
 });

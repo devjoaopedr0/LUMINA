@@ -17,6 +17,20 @@ export class SimulationsService {
     return rows.map(({ teachers, ...row }) => ({ ...row, isTeacher: teachers.length > 0, joinCode: teachers.length ? row.joinCode : null }));
   }
 
+  async teacherDashboard(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { teacherProfile: { select: { subject: true } } } });
+    if (!user?.teacherProfile) throw new ForbiddenException('Apenas professores podem acessar este painel.');
+    const classes = await this.prisma.class.findMany({
+      where: { archived: false, teachers: { some: { userId } } },
+      select: {
+        id: true, name: true, joinCode: true,
+        members: { select: { joinedAt: true, user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } } },
+        simulations: { select: { id: true, title: true, items: { select: { position: true, subject: true, correctPosition: true } }, submissions: { select: { userId: true, correct: true, total: true, submittedAt: true, answers: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return buildTeacherDashboard(classes);
+  }
   async createClass(userId: string, name: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { teacherProfile: true } });
     if (!user?.teacherProfile) throw new ForbiddenException('Apenas professores podem criar turmas.');
@@ -119,3 +133,41 @@ export class SimulationsService {
     return { id: row.id, title: row.title, createdAt: row.createdAt, className: row.class?.name ?? null, sheetVersion: 1, items: row.items.map(i => ({ id: i.id, questionId: i.questionId, position: i.position, stem: i.stem, subject: i.subject, alternatives: i.alternatives, ...(includeAnswers ? { correctPosition: i.correctPosition } : {}) })) };
   }
 }
+type TeacherClassRow = {
+  id: string; name: string; joinCode: string;
+  members: { joinedAt: Date; user: { id: string; email: string; profile: { firstName: string; lastName: string | null } | null } }[];
+  simulations: { id: string; title: string; items: { position: number; subject: string; correctPosition: number }[]; submissions: { userId: string; correct: number; total: number; submittedAt: Date; answers: unknown }[] }[];
+};
+
+export function buildTeacherDashboard(classes: TeacherClassRow[]) {
+  const dashboardClasses = classes.map(classRoom => {
+    const submissions = classRoom.simulations.flatMap(simulation => simulation.submissions.map(submission => ({ ...submission, simulation })));
+    const students = classRoom.members.map(member => {
+      const own = submissions.filter(item => item.userId === member.user.id);
+      const correct = own.reduce((sum, item) => sum + item.correct, 0);
+      const total = own.reduce((sum, item) => sum + item.total, 0);
+      const accuracy = dashboardPercentage(correct, total);
+      return { id: member.user.id, name: [member.user.profile?.firstName, member.user.profile?.lastName].filter(Boolean).join(' ') || member.user.email, email: member.user.email, joinedAt: member.joinedAt, submissions: own.length, accuracy, alert: total > 0 && accuracy < 60 };
+    });
+    const subjects = new Map<string, { total: number; correct: number }>();
+    for (const submission of submissions) {
+      const selected = new Map((submission.answers as { position: number; selectedPosition: number }[]).map(answer => [answer.position, answer.selectedPosition]));
+      for (const item of submission.simulation.items) {
+        if (!selected.has(item.position)) continue;
+        const current = subjects.get(item.subject) ?? { total: 0, correct: 0 };
+        current.total += 1;
+        if (selected.get(item.position) === item.correctPosition) current.correct += 1;
+        subjects.set(item.subject, current);
+      }
+    }
+    const correct = submissions.reduce((sum, item) => sum + item.correct, 0);
+    const total = submissions.reduce((sum, item) => sum + item.total, 0);
+    return { id: classRoom.id, name: classRoom.name, joinCode: classRoom.joinCode, studentCount: students.length, simulationCount: classRoom.simulations.length, submissionCount: submissions.length, accuracy: dashboardPercentage(correct, total), students, weakSubjects: [...subjects.entries()].map(([subject, value]) => ({ subject, attempts: value.total, accuracy: dashboardPercentage(value.correct, value.total) })).sort((a, b) => a.accuracy - b.accuracy) };
+  });
+  const allStudents = dashboardClasses.flatMap(item => item.students);
+  const totalCorrect = classes.flatMap(item => item.simulations).flatMap(item => item.submissions).reduce((sum, item) => sum + item.correct, 0);
+  const totalQuestions = classes.flatMap(item => item.simulations).flatMap(item => item.submissions).reduce((sum, item) => sum + item.total, 0);
+  return { summary: { classCount: dashboardClasses.length, studentCount: new Set(allStudents.map(item => item.id)).size, submissionCount: dashboardClasses.reduce((sum, item) => sum + item.submissionCount, 0), averageAccuracy: dashboardPercentage(totalCorrect, totalQuestions), studentsAtRisk: new Set(allStudents.filter(item => item.alert).map(item => item.id)).size }, classes: dashboardClasses };
+}
+
+function dashboardPercentage(correct: number, total: number) { return total ? Math.round((correct / total) * 1000) / 10 : 0; }

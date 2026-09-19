@@ -389,7 +389,15 @@ export interface SimulationSummary { id: string; title: string; createdAt: strin
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; alternatives: { position: number; text: string }[]; correctPosition?: number }
 export interface Simulation { id: string; title: string; createdAt: string; className: string | null; sheetVersion: number; items: SimulationItem[] }
 export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; items: { position: number; subject: string; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
-export const apiSimulationClasses = (token: string): Promise<SimulationClass[]> => request('/simulations/classes', { headers: authHeaders(token) });
+export interface TeacherDashboard {
+  summary: { classCount: number; studentCount: number; submissionCount: number; averageAccuracy: number; studentsAtRisk: number };
+  classes: Array<{
+    id: string; name: string; joinCode: string; studentCount: number; simulationCount: number; submissionCount: number; accuracy: number;
+    students: Array<{ id: string; name: string; email: string; joinedAt: string; submissions: number; accuracy: number; alert: boolean }>;
+    weakSubjects: Array<{ subject: string; attempts: number; accuracy: number }>;
+  }>;
+}export const apiSimulationClasses = (token: string): Promise<SimulationClass[]> => request('/simulations/classes', { headers: authHeaders(token) });
+export const apiTeacherDashboard = (token: string): Promise<TeacherDashboard> => request('/simulations/teacher/dashboard', { headers: authHeaders(token) });
 export const apiCreateSimulationClass = (token: string, name: string): Promise<SimulationClass> => request('/simulations/classes', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ name }) });
 export const apiJoinSimulationClass = (token: string, joinCode: string): Promise<SimulationClass> => request('/simulations/classes/join', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ joinCode }) });
 export const apiSimulations = (token: string): Promise<SimulationSummary[]> => request('/simulations', { headers: authHeaders(token) });

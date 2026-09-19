@@ -3,13 +3,13 @@ import { Link, NavLink } from "react-router-dom";
 import {
   ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronRight,
   Award, Clock3, Database, FileText, Flame, History, LayoutDashboard, Lightbulb,
-  LogOut, Menu, Sparkles, TrendingUp, Target, UserRound, X,
+  LogOut, Menu, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, type ApiUser, type EssaySummary, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, type ApiUser, type EssaySummary, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 
 const NAV_ITEMS = [
@@ -82,9 +82,16 @@ export function Dashboard() {
   const [simulations, setSimulations] = useState<SimulationSummary[]>([]);
   const [essays, setEssays] = useState<EssaySummary[]>([]);
   const [questionHistory, setQuestionHistory] = useState<QuestionProgressItem[]>([]);
+  const [teacherDashboard, setTeacherDashboard] = useState<TeacherDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (user?.accountType === 'TEACHER') {
+      const token = getAccessToken();
+      if (!token) return;
+      apiTeacherDashboard(token).then(setTeacherDashboard).catch(() => undefined).finally(() => setLoading(false));
+      return;
+    }
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
@@ -98,7 +105,7 @@ export function Dashboard() {
         if (questionsData.status === 'fulfilled') setQuestionHistory(questionsData.value.items);
       })
       .finally(() => setLoading(false));
-  }, [isStudent]);
+  }, [isStudent, user?.accountType]);
 
   const tasks = session?.tasks ?? [];
   const completedToday = tasks.filter((task) => task.status === "DONE").length;
@@ -158,6 +165,20 @@ export function Dashboard() {
             <Card className="bg-white"><h2 className="font-semibold text-graphite">Dados de alunos</h2><p className="mt-2 text-sm text-graphite-400">Visíveis apenas quando há vínculo com a turma ou permissão institucional.</p></Card>
           </section>}
 
+          {user?.accountType === 'TEACHER' && <section className="mt-6 space-y-6" aria-label="Painel do professor">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[
+              { label: 'Turmas', value: teacherDashboard?.summary.classCount ?? 0, icon: School },
+              { label: 'Alunos', value: teacherDashboard?.summary.studentCount ?? 0, icon: Users },
+              { label: 'Correções', value: teacherDashboard?.summary.submissionCount ?? 0, icon: BookOpenCheck },
+              { label: 'Média geral', value: String(teacherDashboard?.summary.averageAccuracy ?? 0) + '%', icon: TrendingUp },
+              { label: 'Precisam de atenção', value: teacherDashboard?.summary.studentsAtRisk ?? 0, icon: AlertTriangle },
+            ].map(({ label, value, icon: Icon }) => <Card key={label} className="bg-white p-4"><Icon className="h-5 w-5 text-primary-700" /><p className="mt-3 text-2xl font-bold text-graphite">{value}</p><p className="text-xs text-graphite-400">{label}</p></Card>)}</div>
+            {loading ? <Card className="h-40 animate-pulse bg-white" /> : teacherDashboard?.classes.length ? teacherDashboard.classes.map(classRoom => <Card key={classRoom.id} className="bg-white p-0">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-surface-line px-6 py-5"><div><h2 className="text-lg font-semibold text-graphite">{classRoom.name}</h2><p className="mt-1 text-xs text-graphite-400">{classRoom.studentCount} alunos · {classRoom.simulationCount} atividades/provas · código {classRoom.joinCode}</p></div><div className="text-right"><p className="text-2xl font-bold text-graphite">{classRoom.accuracy}%</p><p className="text-xs text-graphite-400">média da turma</p></div></div>
+              <div className="grid gap-6 p-6 lg:grid-cols-[1.5fr_1fr]"><div><h3 className="text-sm font-semibold text-graphite">Desempenho dos alunos</h3><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-graphite-400"><tr><th className="pb-3 font-medium">Aluno</th><th className="pb-3 font-medium">Entregas</th><th className="pb-3 font-medium">Desempenho</th><th className="pb-3 font-medium">Situação</th></tr></thead><tbody className="divide-y divide-surface-line">{classRoom.students.map(student => <tr key={student.id}><td className="py-3"><p className="font-medium text-graphite">{student.name}</p><p className="text-xs text-graphite-400">{student.email}</p></td><td className="py-3">{student.submissions}</td><td className="py-3 font-semibold">{student.accuracy}%</td><td className="py-3">{student.alert ? <span className="rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">Atenção</span> : student.submissions ? <span className="rounded-full bg-success/10 px-2 py-1 text-xs font-semibold text-success">Em dia</span> : <span className="text-xs text-graphite-400">Sem entregas</span>}</td></tr>)}</tbody></table>{!classRoom.students.length && <p className="rounded-xl bg-surface-card p-4 text-sm text-graphite-400">Compartilhe o código da turma para adicionar alunos.</p>}</div></div>
+                <div><h3 className="text-sm font-semibold text-graphite">Conteúdos com baixo desempenho</h3><div className="mt-3 space-y-3">{classRoom.weakSubjects.slice(0, 5).map(subject => <div key={subject.subject} className="rounded-xl bg-surface-card p-4"><div className="flex justify-between gap-3"><p className="text-sm font-medium text-graphite">{subject.subject}</p><span className="text-sm font-bold">{subject.accuracy}%</span></div><p className="mt-1 text-xs text-graphite-400">{subject.attempts} respostas analisadas</p></div>)}{!classRoom.weakSubjects.length && <p className="rounded-xl bg-surface-card p-4 text-sm text-graphite-400">Os alertas aparecem após as primeiras correções.</p>}</div></div></div>
+            </Card>) : <Card className="bg-white text-center"><School className="mx-auto h-8 w-8 text-primary-700" /><h2 className="mt-3 font-semibold text-graphite">Crie sua primeira turma</h2><p className="mt-2 text-sm text-graphite-400">Use a área de simulados para criar uma turma, compartilhar o código e publicar atividades.</p><Link to="/app/simulados" className="mt-5 inline-flex"><Button>Criar turma ou atividade</Button></Link></Card>}
+          </section>}
           {isStudent && <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5" aria-label="Resumo de desempenho">
             {metrics.map(({ label, value, detail, icon: Icon, color }) => (
               <Card key={label} className="bg-white p-4 sm:p-5"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${color}`}><Icon className="h-[18px] w-[18px]" /></div><p className="mt-4 text-xl font-bold text-graphite sm:text-2xl">{value}</p><p className="mt-0.5 text-xs font-medium text-graphite-500 sm:text-sm">{label}</p><p className="mt-1 hidden text-xs text-graphite-400 sm:block">{detail}</p></Card>

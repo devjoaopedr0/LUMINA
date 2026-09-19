@@ -47,6 +47,7 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Redações: editor, temas, salvamento automático, histórico de versões e importação de texto UTF-8 com prévia. Migração aplicada no banco local em 15/09/2026; correção por IA/professor e scanner ainda pendentes.
 - Catálogo de propostas de redação do ENEM 2011–2025 e cadastro de professor com matéria para criação de conteúdo autoral pessoal. Consulte [Redações, professores e scanner](docs/REDAÇÕES_PROFESSORES_SCANNER.md); a migração desta etapa ainda depende da disponibilidade do PostgreSQL local.
 - Fase 3 — Painel do aluno — concluída: visão geral, notas e simulados pendentes, progresso por matéria e assunto/habilidade, metas acadêmicas, cronograma, atividades, recomendação determinística, históricos de estudos, questões, simulados e redações, tempo estudado e sequência de dias.
+- Fase 4 — Painel do professor — em andamento: visão das turmas, lista e desempenho individual dos alunos, média da turma, entregas, alertas pedagógicos e conteúdos com baixo desempenho usam resultados reais dos simulados.
 - LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
 - Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
 - Instituições: o modelo de dados e a resolução de permissões existem, mas não há API nem interface de cadastro, convite, código de turma, gestão de membros/cargos/turmas/períodos.
@@ -60,7 +61,7 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Scanner de cartão-resposta, câmera, visão computacional e correção física.
 - Explicações personalizadas da LuminIA integradas ao histórico acadêmico.
 - Correção de redações por IA/professor, competências, notas e evolução.
-- Dashboards de professor, coordenador, diretor e administração interna.
+- Dashboards de coordenador, diretor e administração interna.
 - Relatórios institucionais, exportação PDF/Excel e comparações entre turmas/períodos.
 - Mapa de Domínio e Lumina Score.
 - Agenda/calendário unificado, lembretes e notificações.
