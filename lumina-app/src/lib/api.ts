@@ -24,6 +24,9 @@ export interface ApiUser {
   schoolName: string | null;
   desiredCourse: string | null;
   targetUniversity: string | null;
+  preferredStudyPeriod: string | null;
+  studySessionMinutes: number | null;
+  weeklyStudyDays: number | null;
   teacherSubject: string | null;
 }
 
@@ -161,6 +164,9 @@ export interface UpdateProfilePayload {
   schoolName?: string | null;
   desiredCourse?: string | null;
   targetUniversity?: string | null;
+  preferredStudyPeriod?: string | null;
+  studySessionMinutes?: number | null;
+  weeklyStudyDays?: number | null;
 }
 
 export function apiUpdateProfile(

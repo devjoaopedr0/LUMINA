@@ -150,6 +150,9 @@ describe('Auth (e2e)', () => {
         schoolName: '  Escola Exemplo  ',
         desiredCourse: '  Medicina  ',
         targetUniversity: '  UFC  ',
+        preferredStudyPeriod: 'NOITE',
+        studySessionMinutes: 50,
+        weeklyStudyDays: 5,
       });
 
     expect(res.status).toBe(200);
@@ -162,6 +165,9 @@ describe('Auth (e2e)', () => {
     expect(res.body.schoolName).toBe('Escola Exemplo');
     expect(res.body.desiredCourse).toBe('Medicina');
     expect(res.body.targetUniversity).toBe('UFC');
+    expect(res.body.preferredStudyPeriod).toBe('NOITE');
+    expect(res.body.studySessionMinutes).toBe(50);
+    expect(res.body.weeklyStudyDays).toBe(5);
     const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${login.body.accessToken}`);
     expect(me.body.schoolName).toBe('Escola Exemplo');
     expect(me.body.desiredCourse).toBe('Medicina');
@@ -190,6 +196,8 @@ describe('Auth (e2e)', () => {
       .set('Authorization', `Bearer ${login.body.accessToken}`)
       .send({ educationLevel: 'DOUTORADO', schoolYear: 10 });
     expect(invalidAcademic.status).toBe(400);
+    const invalidPreferences = await request(app.getHttpServer()).patch('/users/me/profile').set('Authorization', `Bearer ${login.body.accessToken}`).send({ preferredStudyPeriod: 'MADRUGADA', studySessionMinutes: 5, weeklyStudyDays: 8 });
+    expect(invalidPreferences.status).toBe(400);
   });
 
   it('GET /auth/me com token inválido retorna 401', async () => {

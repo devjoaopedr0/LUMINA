@@ -68,6 +68,9 @@ export class UsersService {
       schoolName: user.profile?.schoolName ?? null,
       desiredCourse: user.profile?.desiredCourse ?? null,
       targetUniversity: user.profile?.targetUniversity ?? null,
+      preferredStudyPeriod: user.profile?.preferredStudyPeriod ?? null,
+      studySessionMinutes: user.profile?.studySessionMinutes ?? null,
+      weeklyStudyDays: user.profile?.weeklyStudyDays ?? null,
     });
   }
 }

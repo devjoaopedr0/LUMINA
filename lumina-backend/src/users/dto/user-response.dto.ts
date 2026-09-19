@@ -92,6 +92,18 @@ export class UserResponseDto {
   @ApiProperty({ nullable: true })
   targetUniversity: string | null;
 
+  @Expose()
+  @ApiProperty({ nullable: true })
+  preferredStudyPeriod: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  studySessionMinutes: number | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  weeklyStudyDays: number | null;
+
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);
   }

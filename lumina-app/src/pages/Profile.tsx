@@ -12,7 +12,7 @@ import { getAccessToken } from '@/lib/auth';
 export function Profile() {
   const { user, updateProfile, logout, logoutAll } = useAuth();
   const [form, setForm] = useState({
-    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '', desiredCourse: '', targetUniversity: '',
+    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '', desiredCourse: '', targetUniversity: '', preferredStudyPeriod: '', studySessionMinutes: '', weeklyStudyDays: '',
   });
   const [targetExam, setTargetExam] = useState('');
   const [targetExamDate, setTargetExamDate] = useState('');
@@ -44,6 +44,9 @@ export function Profile() {
       schoolName: user.schoolName ?? '',
       desiredCourse: user.desiredCourse ?? '',
       targetUniversity: user.targetUniversity ?? '',
+      preferredStudyPeriod: user.preferredStudyPeriod ?? '',
+      studySessionMinutes: user.studySessionMinutes?.toString() ?? '',
+      weeklyStudyDays: user.weeklyStudyDays?.toString() ?? '',
     });
   }, [user]);
 
@@ -162,6 +165,9 @@ export function Profile() {
         schoolName: form.schoolName.trim() || null,
         desiredCourse: form.desiredCourse.trim() || null,
         targetUniversity: form.targetUniversity.trim() || null,
+        preferredStudyPeriod: form.preferredStudyPeriod || null,
+        studySessionMinutes: form.studySessionMinutes ? Number(form.studySessionMinutes) : null,
+        weeklyStudyDays: form.weeklyStudyDays ? Number(form.weeklyStudyDays) : null,
       });
       setSuccess(true);
     } catch (caught) {
@@ -275,6 +281,15 @@ export function Profile() {
                 {examError && <p role="alert" className="mt-3 text-sm text-alert">{examError}</p>}
                 {examSuccess && <p className="mt-3 text-sm text-success">Vestibular-alvo salvo.</p>}
                 <button type="button" disabled={savingExam} onClick={() => void saveTargetExam()} className="mt-4 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-700 disabled:opacity-50">{savingExam ? 'Salvando...' : 'Salvar vestibular-alvo'}</button>
+              </div>
+            </div>
+
+            <div className="mt-7 border-t border-surface-line pt-6">
+              <h3 className="mb-4 font-semibold text-graphite">Preferências de estudo</h3>
+              <div className="grid gap-5 sm:grid-cols-3">
+                <Field label="Melhor período"><select value={form.preferredStudyPeriod} onChange={(e) => update('preferredStudyPeriod', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Não informado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option><option value="NOITE">Noite</option><option value="FLEXIVEL">Flexível</option></select></Field>
+                <Field label="Minutos por sessão"><Input type="number" min={15} max={180} step={5} value={form.studySessionMinutes} onChange={(e) => update('studySessionMinutes', e.target.value)} placeholder="Ex.: 50" /></Field>
+                <Field label="Dias por semana"><Input type="number" min={1} max={7} value={form.weeklyStudyDays} onChange={(e) => update('weeklyStudyDays', e.target.value)} placeholder="Ex.: 5" /></Field>
               </div>
             </div>
 

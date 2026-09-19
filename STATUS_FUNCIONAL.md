@@ -8,6 +8,8 @@ Em 17/09/2026, o perfil acadêmico ganhou etapa de ensino, série/ano e escola/c
 
 O perfil também permite informar curso desejado e universidade-alvo. O vestibular-alvo existente no cronograma agora pode ser consultado, editado e limpo na página de perfil, com data opcional. A migração `20260918020000_add_academic_goals` foi aplicada no banco configurado.
 
+As preferências de estudo incluem melhor período, duração desejada por sessão e quantidade de dias por semana. A migração `20260918030000_add_study_preferences` foi aplicada no banco configurado em 18/09/2026.
+
 ## Atualização de 16/09/2026 — simulados
 
 - Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.

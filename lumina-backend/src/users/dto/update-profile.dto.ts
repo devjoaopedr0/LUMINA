@@ -90,4 +90,20 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(120)
   targetUniversity?: string | null;
+
+  @IsOptional()
+  @IsIn(['MANHA', 'TARDE', 'NOITE', 'FLEXIVEL'])
+  preferredStudyPeriod?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(180)
+  studySessionMinutes?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  weeklyStudyDays?: number | null;
 }
