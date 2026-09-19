@@ -9,7 +9,7 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiGetDailySession, apiGetProgress, type StudyProgressSummary, type StudySession } from "@/lib/api";
+import { apiGetDailySession, apiGetProgress, type ApiUser, type StudyProgressSummary, type StudySession } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 
 const NAV_ITEMS = [
@@ -21,6 +21,13 @@ const NAV_ITEMS = [
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
 ];
+
+const MANAGEMENT_PANELS: Partial<Record<ApiUser['accountType'], { title: string; headline: string; action: string }>> = {
+  TEACHER: { title: 'Painel do professor', headline: 'Acompanhe suas turmas e prepare as próximas atividades.', action: 'Gerenciar turmas' },
+  COORDINATOR: { title: 'Painel da coordenação', headline: 'Acompanhe professores, turmas e indicadores pedagógicos.', action: 'Ver turmas' },
+  DIRECTOR: { title: 'Painel da direção', headline: 'Consulte os indicadores acadêmicos da instituição.', action: 'Ver indicadores' },
+  ADMIN: { title: 'Administração da plataforma', headline: 'Gerencie acessos, conteúdos e operações da Lumina.', action: 'Ver operações' },
+};
 
 function formatMinutes(minutes: number) {
   if (minutes < 60) return `${minutes} min`;
@@ -64,19 +71,22 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 export function Dashboard() {
   const { user } = useAuth();
+  const isStudent = user?.accountType === 'STUDENT_INDEPENDENT' || user?.accountType === 'STUDENT_INSTITUTION';
+  const panel = MANAGEMENT_PANELS[user?.accountType ?? 'STUDENT_INDEPENDENT'];
   const [menuOpen, setMenuOpen] = useState(false);
   const [session, setSession] = useState<StudySession | null>(null);
   const [progress, setProgress] = useState<StudyProgressSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
     Promise.all([apiGetDailySession(token), apiGetProgress(token)])
       .then(([daily, progressData]) => { setSession(daily?.session ?? null); setProgress(progressData.summary); })
       .catch(() => undefined)
       .finally(() => setLoading(false));
-  }, []);
+  }, [isStudent]);
 
   const tasks = session?.tasks ?? [];
   const completedToday = tasks.filter((task) => task.status === "DONE").length;
@@ -98,7 +108,7 @@ export function Dashboard() {
         <div className="flex h-20 items-center justify-between px-5 sm:px-8 lg:px-10 xl:px-12">
           <div className="flex items-center gap-3">
             <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)} className="rounded-xl border border-surface-line bg-white p-2.5 lg:hidden"><Menu className="h-5 w-5" /></button>
-            <div><p className="text-xs font-medium capitalize text-graphite-400">{todayLabel}</p><p className="text-sm font-semibold text-graphite">Seu espaço de estudos</p></div>
+            <div><p className="text-xs font-medium capitalize text-graphite-400">{todayLabel}</p><p className="text-sm font-semibold text-graphite">{panel?.title ?? 'Seu espaço de estudos'}</p></div>
           </div>
           <Link aria-label="Abrir perfil" to="/app/perfil" className="flex h-10 w-10 items-center justify-center rounded-full border border-surface-line bg-white text-graphite-500 transition hover:border-primary hover:text-graphite"><UserRound className="h-[18px] w-[18px]" /></Link>
         </div>
@@ -110,21 +120,27 @@ export function Dashboard() {
             <div className="absolute -right-20 -top-28 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
             <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
               <div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-primary"><Sparkles className="h-3.5 w-3.5" />Foco de hoje</span>
-                <h1 className="mt-5 max-w-2xl text-3xl font-semibold leading-tight sm:text-4xl">Olá, {user?.firstName || "estudante"}. Vamos avançar um pouco hoje?</h1>
-                <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/55 sm:text-base">{pendingTasks.length > 0 ? `Você tem ${pendingTasks.length} ${pendingTasks.length === 1 ? "atividade planejada" : "atividades planejadas"} para hoje.` : "Organize seu próximo bloco de estudos e mantenha sua evolução constante."}</p>
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-primary"><Sparkles className="h-3.5 w-3.5" />{panel?.title ?? 'Foco de hoje'}</span>
+                <h1 className="mt-5 max-w-2xl text-3xl font-semibold leading-tight sm:text-4xl">Olá, {user?.firstName || "estudante"}. {panel?.headline ?? 'Vamos avançar um pouco hoje?'}</h1>
+                <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/55 sm:text-base">{panel ? 'Seu acesso respeita o cargo e as permissões atribuídas em cada instituição e turma.' : pendingTasks.length > 0 ? `Você tem ${pendingTasks.length} ${pendingTasks.length === 1 ? "atividade planejada" : "atividades planejadas"} para hoje.` : "Organize seu próximo bloco de estudos e mantenha sua evolução constante."}</p>
               </div>
-              <Link to="/app/cronograma"><Button className="w-full sm:w-auto"><BookOpenCheck className="h-4 w-4" />{pendingTasks.length ? "Começar sessão" : "Planejar estudos"}<ArrowRight className="h-4 w-4" /></Button></Link>
+              <Link to={panel ? '/app/simulados' : '/app/cronograma'}><Button className="w-full sm:w-auto"><BookOpenCheck className="h-4 w-4" />{panel?.action ?? (pendingTasks.length ? "Começar sessão" : "Planejar estudos")}<ArrowRight className="h-4 w-4" /></Button></Link>
             </div>
           </section>
 
-          <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5" aria-label="Resumo de desempenho">
+          {panel && <section className="mt-6 grid gap-4 sm:grid-cols-3" aria-label="Ações de gestão">
+            <Card className="bg-white"><h2 className="font-semibold text-graphite">Acesso por instituição</h2><p className="mt-2 text-sm text-graphite-400">Somente workspaces em que seu vínculo está ativo.</p></Card>
+            <Card className="bg-white"><h2 className="font-semibold text-graphite">Acesso por turma</h2><p className="mt-2 text-sm text-graphite-400">Turmas coordenadas, lecionadas ou concedidas pelo cargo.</p></Card>
+            <Card className="bg-white"><h2 className="font-semibold text-graphite">Dados de alunos</h2><p className="mt-2 text-sm text-graphite-400">Visíveis apenas quando há vínculo com a turma ou permissão institucional.</p></Card>
+          </section>}
+
+          {isStudent && <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5" aria-label="Resumo de desempenho">
             {metrics.map(({ label, value, detail, icon: Icon, color }) => (
               <Card key={label} className="bg-white p-4 sm:p-5"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${color}`}><Icon className="h-[18px] w-[18px]" /></div><p className="mt-4 text-xl font-bold text-graphite sm:text-2xl">{value}</p><p className="mt-0.5 text-xs font-medium text-graphite-500 sm:text-sm">{label}</p><p className="mt-1 hidden text-xs text-graphite-400 sm:block">{detail}</p></Card>
             ))}
-          </section>
+          </section>}
 
-          <section className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
+          {isStudent && <section className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
             <Card className="bg-white p-0">
               <div className="flex items-center justify-between border-b border-surface-line px-6 py-5"><div><h2 className="text-lg font-semibold text-graphite">Plano de hoje</h2><p className="mt-1 text-xs text-graphite-400">Sua prioridade para manter o ritmo</p></div><Link to="/app/cronograma" className="text-xs font-semibold text-primary-700 hover:text-graphite">Ver cronograma</Link></div>
               <div className="p-4 sm:p-6">
@@ -139,7 +155,7 @@ export function Dashboard() {
               <div className="mt-8 flex items-center gap-5"><div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--color-primary) ${completion}%, var(--color-surface-line) 0)` }}><div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-white text-xl font-bold text-graphite">{completion}%</div></div><div><p className="text-sm font-semibold text-graphite">Consistência constrói resultado</p><p className="mt-1 text-xs leading-relaxed text-graphite-400">Cada sessão concluída aproxima você do seu objetivo principal.</p></div></div>
               <div className="mt-7 border-t border-surface-line pt-5"><Link to="/app/questoes" className="group flex items-center justify-between rounded-xl bg-surface-card p-4"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white"><Database className="h-[18px] w-[18px]" /></span><div><p className="text-sm font-semibold text-graphite">Praticar questões</p><p className="text-xs text-graphite-400">Teste o que aprendeu</p></div></div><ArrowRight className="h-4 w-4 text-graphite-300 transition group-hover:translate-x-1" /></Link></div>
             </Card>
-          </section>
+          </section>}
         </div>
       </main>
     </div>

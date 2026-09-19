@@ -338,6 +338,10 @@ export interface WorkspaceAccess {
 export interface WorkspaceRole { id: string; name: string; description: string | null; isSystem: boolean }
 export const apiMyWorkspaceAccess = (token: string): Promise<WorkspaceAccess[]> => request('/workspaces/me/access', { headers: authHeaders(token) });
 export const apiWorkspaceRoles = (token: string, workspaceId: string): Promise<WorkspaceRole[]> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles`, { headers: authHeaders(token) });
+export interface WorkspacePermission { id: string; code: string; name: string; description: string | null }
+export const apiWorkspacePermissions = (token: string, workspaceId: string): Promise<WorkspacePermission[]> => request(`/workspaces/${encodeURIComponent(workspaceId)}/permissions`, { headers: authHeaders(token) });
+export const apiCreateWorkspaceRole = (token: string, workspaceId: string, data: { name: string; description: string; permissionCodes: string[] }): Promise<WorkspaceRole> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(data) });
+export const apiSetWorkspaceRolePermissions = (token: string, workspaceId: string, roleId: string, permissionCodes: string[]): Promise<{ id: string; permissionCodes: string[] }> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}/permissions`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ permissionCodes }) });
 
 export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
 export interface SimulationSummary { id: string; title: string; createdAt: string; className: string | null; questionCount: number }
