@@ -10,6 +10,11 @@ import {
 } from 'class-validator';
 
 export class RegisterDto {
+  @ApiProperty({ required: false, enum: ['STUDENT_INDEPENDENT', 'TEACHER'] })
+  @IsOptional()
+  @IsIn(['STUDENT_INDEPENDENT', 'TEACHER'])
+  accountType?: 'STUDENT_INDEPENDENT' | 'TEACHER';
+
   @ApiProperty({ required: false, description: 'Matéria lecionada. Preencher apenas ao cadastrar uma conta de professor.' })
   @IsOptional()
   @IsString()

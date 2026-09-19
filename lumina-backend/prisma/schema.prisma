@@ -15,6 +15,7 @@ model User {
   passwordHash           String?                 @map("password_hash")
   emailVerified          Boolean                 @default(false) @map("email_verified")
   status                 UserStatus              @default(ACTIVE)
+  accountType            AccountType             @default(STUDENT_INDEPENDENT) @map("account_type")
   lastLogin              DateTime?               @map("last_login")
   createdAt              DateTime                @default(now()) @map("created_at")
   updatedAt              DateTime                @updatedAt @map("updated_at")
@@ -575,6 +576,15 @@ enum UserStatus {
   SUSPENDED
 
   @@map("user_status")
+}
+
+enum AccountType {
+  STUDENT_INDEPENDENT
+  STUDENT_INSTITUTION
+  TEACHER
+  COORDINATOR
+  DIRECTOR
+  ADMIN
 }
 
 /// PENDING: conta institucional criada mas ainda não aprovada/ativada —

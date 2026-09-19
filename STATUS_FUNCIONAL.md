@@ -12,6 +12,8 @@ As preferências de estudo incluem melhor período, duração desejada por sess�
 
 As configurações da conta permitem trocar a senha local mediante confirmação da senha atual. A alteração revoga todas as sessões e exige novo login.
 
+Os tipos de conta são persistidos como aluno independente, aluno institucional, professor, coordenador, diretor ou administrador. O cadastro público permite somente aluno independente e professor; perfis institucionais e administrativos ficam reservados aos futuros fluxos de gestão e convites. A migração `20260918040000_add_account_types` foi aplicada no banco configurado em 18/09/2026.
+
 ## Atualização de 16/09/2026 — simulados
 
 - Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.

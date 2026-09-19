@@ -49,6 +49,7 @@ export class UsersService {
   toPublicUser(user: UserWithProfile): UserResponseDto {
     return new UserResponseDto({
       id: user.id,
+      accountType: user.accountType,
       teacherSubject: user.teacherProfile?.subject ?? null,
       email: user.email,
       emailVerified: user.emailVerified,

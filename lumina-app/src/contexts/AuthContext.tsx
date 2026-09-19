@@ -15,6 +15,7 @@ import {
 import { ACCESS_TOKEN_KEY, clearTokens, getAccessToken, setTokens } from "@/lib/auth";
 
 export interface SignupData {
+  accountType?: 'STUDENT_INDEPENDENT' | 'TEACHER';
   firstName: string;
   lastName: string;
   username: string;

@@ -71,6 +71,7 @@ describe('Auth (e2e)', () => {
     expect(res.body.accessToken).toBeDefined();
     expect(res.body.refreshToken).toBeDefined();
     expect(res.body.user.email).toBe(registerPayload.email);
+    expect(res.body.user.accountType).toBe('STUDENT_INDEPENDENT');
     expect(res.body.user.username).toBe(registerPayload.username);
     expect(res.body.user.passwordHash).toBeUndefined();
     expect(res.body.user.password).toBeUndefined();
@@ -264,6 +265,35 @@ describe('Auth (e2e)', () => {
       .send({ password: 'OutraSenhaForte123' });
 
     expect(res.status).toBe(409);
+  });
+
+  it('cadastra professor e impede autoatribuição de perfis privilegiados', async () => {
+    const teacher = await request(app.getHttpServer()).post('/auth/register').send({
+      ...registerPayload,
+      email: 'professora@exemplo.com',
+      username: 'professora.teste',
+      accountType: 'TEACHER',
+      teacherSubject: 'Matemática',
+    });
+    expect(teacher.status).toBe(201);
+    expect(teacher.body.user.accountType).toBe('TEACHER');
+    expect(teacher.body.user.teacherSubject).toBe('Matemática');
+
+    const privileged = await request(app.getHttpServer()).post('/auth/register').send({
+      ...registerPayload,
+      email: 'admin.teste@exemplo.com',
+      username: 'admin.teste.publico',
+      accountType: 'ADMIN',
+    });
+    expect(privileged.status).toBe(400);
+
+    const teacherWithoutSubject = await request(app.getHttpServer()).post('/auth/register').send({
+      ...registerPayload,
+      email: 'professor.sem.materia@exemplo.com',
+      username: 'professor.sem.materia',
+      accountType: 'TEACHER',
+    });
+    expect(teacherWithoutSubject.status).toBe(400);
   });
 
   it('salva, consulta e limpa o vestibular-alvo da conta', async () => {

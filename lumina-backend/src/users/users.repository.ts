@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, User, UserProfile } from '@prisma/client';
+import { AccountType, Prisma, User, UserProfile } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 export type UserWithProfile = User & { profile: UserProfile | null; teacherProfile?: { subject: string } | null };
@@ -49,6 +49,7 @@ export class UsersRepository {
       lastName: string;
       username: string;
       teacherSubject?: string;
+      accountType: AccountType;
     },
     db: Db = this.prisma,
   ): Promise<UserWithProfile> {
@@ -56,6 +57,7 @@ export class UsersRepository {
       data: {
         email: data.email,
         passwordHash: data.passwordHash,
+        accountType: data.accountType,
         ...(data.teacherSubject ? { teacherProfile: { create: { subject: data.teacherSubject } } } : {}),
         profile: {
           create: {

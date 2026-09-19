@@ -61,6 +61,13 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
+    const accountType = dto.accountType ?? 'STUDENT_INDEPENDENT';
+    if (accountType === 'TEACHER' && !dto.teacherSubject) {
+      throw new BadRequestException('A matéria é obrigatória para contas de professor.');
+    }
+    if (accountType !== 'TEACHER' && dto.teacherSubject) {
+      throw new BadRequestException('A matéria só pode ser informada em contas de professor.');
+    }
     const existingEmail = await this.usersRepository.findByEmail(dto.email);
     if (existingEmail) {
       throw new ConflictException('Já existe uma conta com este e-mail.');
@@ -82,6 +89,7 @@ export class AuthService {
           lastName: dto.lastName,
           username: dto.username,
           teacherSubject: dto.teacherSubject,
+          accountType,
         },
         tx,
       );

@@ -31,6 +31,7 @@ export function Profile() {
   const [success, setSuccess] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const accountTypeLabel = ({ STUDENT_INDEPENDENT: 'Aluno independente', STUDENT_INSTITUTION: 'Aluno de instituição', TEACHER: 'Professor', COORDINATOR: 'Coordenador', DIRECTOR: 'Diretor', ADMIN: 'Administrador' } as const)[user?.accountType ?? 'STUDENT_INDEPENDENT'];
 
   useEffect(() => {
     if (!user) return;
@@ -241,6 +242,7 @@ export function Profile() {
             </div>
             <p className="mt-4 font-semibold text-graphite">{form.firstName || 'Seu nome'} {form.lastName}</p>
             <p className="mt-1 text-xs text-graphite-400">{user?.email}</p>
+            <p className="mt-2 inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-graphite">{accountTypeLabel}</p>
             <div
               role="button"
               tabIndex={0}

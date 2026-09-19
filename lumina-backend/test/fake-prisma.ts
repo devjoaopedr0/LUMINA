@@ -123,6 +123,7 @@ export function createFakePrisma() {
           email: data.email,
           passwordHash: data.passwordHash ?? null,
           googleId: data.googleId ?? null,
+          accountType: data.accountType ?? 'STUDENT_INDEPENDENT',
           sessionVersion: 0,
           emailVerified: data.emailVerified ?? false,
           status: 'ACTIVE',

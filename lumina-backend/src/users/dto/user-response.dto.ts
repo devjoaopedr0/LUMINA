@@ -11,6 +11,10 @@ import { Exclude, Expose } from 'class-transformer';
 @Exclude()
 export class UserResponseDto {
   @Expose()
+  @ApiProperty({ enum: ['STUDENT_INDEPENDENT', 'STUDENT_INSTITUTION', 'TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'] })
+  accountType: string;
+
+  @Expose()
   @ApiProperty({ nullable: true })
   teacherSubject: string | null;
   @Expose()

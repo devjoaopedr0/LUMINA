@@ -92,7 +92,7 @@ export function Signup() {
 
     setSubmitting(true);
     try {
-      const newUser = await signup({ firstName, lastName, username, email, password, ...(accountType === 'professor' ? { teacherSubject } : {}) });
+      const newUser = await signup({ firstName, lastName, username, email, password, accountType: accountType === 'professor' ? 'TEACHER' : 'STUDENT_INDEPENDENT', ...(accountType === 'professor' ? { teacherSubject } : {}) });
       // Conta recém-criada nasce com e-mail não verificado: segue para a tela
       // de confirmação (código de 6 dígitos). Quem já tem e-mail verificado
       // (ex: futuro login social) vai direto ao app.

@@ -5,6 +5,7 @@ import { createApiClient } from "@/lib/api-client-core";
 export { ApiError } from "@/lib/api-client-core";
 
 export interface ApiUser {
+  accountType: 'STUDENT_INDEPENDENT' | 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR' | 'DIRECTOR' | 'ADMIN';
   id: string;
   email: string;
   emailVerified: boolean;
@@ -94,6 +95,7 @@ export function apiMathHistory(token: string): Promise<MathHistory> {
 }
 
 export function apiRegister(payload: {
+  accountType?: 'STUDENT_INDEPENDENT' | 'TEACHER';
   firstName: string;
   lastName: string;
   username: string;
