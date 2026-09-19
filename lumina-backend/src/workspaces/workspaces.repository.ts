@@ -9,6 +9,8 @@ type Db = PrismaService | Prisma.TransactionClient;
 export type WorkspaceMembership = WorkspaceMember & {
   workspace: Workspace;
   role: {
+    id: string;
+    name: string;
     rolePermissions: { permission: { code: string } }[];
   };
 };
@@ -49,6 +51,22 @@ export class WorkspacesRepository {
         role: { include: { rolePermissions: { include: { permission: true } } } },
       },
     }) as Promise<WorkspaceMembership | null>;
+  }
+
+  findMemberships(userId: string, db: Db = this.prisma): Promise<WorkspaceMembership[]> {
+    return db.workspaceMember.findMany({
+      where: { userId, status: 'ACTIVE' },
+      orderBy: { joinedAt: 'asc' },
+      include: { workspace: true, role: { include: { rolePermissions: { include: { permission: true } } } } },
+    }) as Promise<WorkspaceMembership[]>;
+  }
+
+  findRoles(workspaceId: string, db: Db = this.prisma) {
+    return db.role.findMany({
+      where: { workspaceId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, description: true, isSystem: true },
+    });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Workspace | null> {

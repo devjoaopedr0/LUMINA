@@ -16,6 +16,7 @@ export function createFakePrisma() {
   const essayThemes: any[] = [];
   const workspaces: any[] = [];
   const workspaceMembers: any[] = [];
+  const roles: any[] = [];
   const institutions: any[] = [];
   const questions: any[] = [];
   const alternatives: any[] = [];
@@ -234,15 +235,27 @@ export function createFakePrisma() {
         });
         if (!member) return null;
         const workspace = workspaces.find((w) => w.id === member.workspaceId);
-        const role = { rolePermissions: [] };
+        const role = { ...(roles.find((r) => r.id === member.roleId) ?? { id: member.roleId, name: 'Owner' }), rolePermissions: [] };
         return {
           ...member,
           workspace: include?.workspace ? workspace : undefined,
           role: include?.role ? role : undefined,
         };
       }),
+      findMany: vi.fn(async ({ where, include }: any) => workspaceMembers.filter((m) => m.userId === where.userId && (!where.status || m.status === where.status)).map((member) => ({
+        ...member,
+        workspace: include?.workspace ? workspaces.find((w) => w.id === member.workspaceId) : undefined,
+        role: include?.role ? { ...(roles.find((r) => r.id === member.roleId) ?? { id: member.roleId, name: 'Owner' }), rolePermissions: [] } : undefined,
+      }))),
     },
-    role: { create: vi.fn(async () => ({ id: nextId('role') })) },
+    role: {
+      create: vi.fn(async ({ data }: any) => {
+        const role = { id: nextId('role'), description: null, isSystem: false, ...data };
+        roles.push(role);
+        return role;
+      }),
+      findMany: vi.fn(async ({ where }: any) => roles.filter((role) => role.workspaceId === where.workspaceId).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, description, isSystem }) => ({ id, name, description, isSystem }))),
+    },
     emailVerificationCode: {
       create: vi.fn(async () => ({ id: nextId('code') })),
       updateMany: vi.fn(async () => ({ count: 0 })),

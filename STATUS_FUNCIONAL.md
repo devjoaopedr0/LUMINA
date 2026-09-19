@@ -14,6 +14,10 @@ As configurações da conta permitem trocar a senha local mediante confirmação
 
 Os tipos de conta são persistidos como aluno independente, aluno institucional, professor, coordenador, diretor ou administrador. O cadastro público permite somente aluno independente e professor; perfis institucionais e administrativos ficam reservados aos futuros fluxos de gestão e convites. A migração `20260918040000_add_account_types` foi aplicada no banco configurado em 18/09/2026.
 
+## Fase 2 — Controle de acesso
+
+Iniciada em 18/09/2026 com infraestrutura RBAC reutilizável por workspace: decorator e guard de permissões, consulta autenticada dos cargos e permissões efetivas e rota de cargos protegida. Workspaces pessoais concedem acesso de proprietário; workspaces institucionais exigem vínculo ativo e todas as permissões declaradas na rota. A migração `20260918050000_seed_rbac_permissions` registra o catálogo inicial de permissões.
+
 ## Atualização de 16/09/2026 — simulados
 
 - Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.

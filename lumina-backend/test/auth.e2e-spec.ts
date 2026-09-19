@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -364,5 +365,19 @@ describe('Auth (e2e)', () => {
     expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${second.body.accessToken}`)).status).toBe(401);
     expect((await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password })).status).toBe(401);
     expect((await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: 'NovaSenhaForte456' })).status).toBe(200);
+  });
+
+  it('expõe cargo e permissões efetivas e protege a listagem de cargos por RBAC', async () => {
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email: registerPayload.email, password: registerPayload.password });
+    const authorization = `Bearer ${login.body.accessToken}`;
+    const access = await request(app.getHttpServer()).get('/workspaces/me/access').set('Authorization', authorization);
+    expect(access.status).toBe(200);
+    expect(access.body[0].role.name).toBe('Owner');
+    expect(access.body[0].permissions).toEqual(['*']);
+    const roles = await request(app.getHttpServer()).get(`/workspaces/${access.body[0].workspace.id}/roles`).set('Authorization', authorization);
+    expect(roles.status).toBe(200);
+    expect(roles.body.some((role: { name: string }) => role.name === 'Owner')).toBe(true);
+    const denied = await request(app.getHttpServer()).get(`/workspaces/${randomUUID()}/roles`).set('Authorization', authorization);
+    expect(denied.status).toBe(403);
   });
 });

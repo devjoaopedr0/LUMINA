@@ -330,6 +330,15 @@ export interface AuthSession { id: string; createdAt: string; lastUsedAt: string
 export const apiListAuthSessions = (token: string): Promise<AuthSession[]> => request('/auth/sessions', { headers: authHeaders(token) });
 export const apiRevokeAuthSession = (token: string, id: string): Promise<void> => request(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders(token) });
 
+export interface WorkspaceAccess {
+  workspace: { id: string; name: string; type: 'PERSONAL' | 'INSTITUTION' };
+  role: { id: string; name: string };
+  permissions: string[];
+}
+export interface WorkspaceRole { id: string; name: string; description: string | null; isSystem: boolean }
+export const apiMyWorkspaceAccess = (token: string): Promise<WorkspaceAccess[]> => request('/workspaces/me/access', { headers: authHeaders(token) });
+export const apiWorkspaceRoles = (token: string, workspaceId: string): Promise<WorkspaceRole[]> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles`, { headers: authHeaders(token) });
+
 export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
 export interface SimulationSummary { id: string; title: string; createdAt: string; className: string | null; questionCount: number }
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; alternatives: { position: number; text: string }[]; correctPosition?: number }
