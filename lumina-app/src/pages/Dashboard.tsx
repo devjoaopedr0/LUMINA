@@ -89,8 +89,11 @@ export function Dashboard() {
     if (user?.accountType === 'TEACHER') {
       const token = getAccessToken();
       if (!token) return;
-      apiTeacherDashboard(token).then(setTeacherDashboard).catch(() => undefined).finally(() => setLoading(false));
-      return;
+      let active = true;
+      const load = () => apiTeacherDashboard(token).then(data => { if (active) setTeacherDashboard(data); }).catch(() => undefined).finally(() => { if (active) setLoading(false); });
+      void load();
+      const interval = window.setInterval(() => void load(), 30000);
+      return () => { active = false; window.clearInterval(interval); };
     }
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
@@ -124,6 +127,15 @@ export function Dashboard() {
       ? { title: pendingTasks[0].title, detail: 'Concluir a próxima atividade mantém seu cronograma em dia.', to: '/app/cronograma' }
       : { title: 'Faça um diagnóstico', detail: 'Responda algumas questões para receber recomendações baseadas no seu desempenho.', to: '/app/questoes' };
   const maxStudyMinutes = Math.max(1, ...evolution.map((item) => item.studyMinutes));
+
+  function exportTeacherReport() {
+    if (!teacherDashboard) return;
+    const rows = [['Turma', 'Aluno', 'E-mail', 'Entregas', 'Desempenho', 'Alerta']];
+    for (const classRoom of teacherDashboard.classes) for (const student of classRoom.students) rows.push([classRoom.name, student.name, student.email, String(student.submissions), String(student.accuracy) + '%', student.alert ? 'Atenção' : 'Regular']);
+    const csv = rows.map(row => row.map(value => '"' + value.replaceAll('"', '""') + '"').join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'relatorio-turmas.csv'; link.click(); URL.revokeObjectURL(url);
+  }
 
   const metrics = [
     { label: "Tarefas hoje", value: loading ? "—" : String(tasks.length), detail: `${completedToday} concluídas`, icon: CheckCircle2, color: "bg-success/10 text-success" },
@@ -166,6 +178,7 @@ export function Dashboard() {
           </section>}
 
           {user?.accountType === 'TEACHER' && <section className="mt-6 space-y-6" aria-label="Painel do professor">
+            <div className="flex items-center justify-between gap-4"><p className="text-xs text-graphite-400">Atualização automática a cada 30 segundos</p><Button size="sm" variant="outline" onClick={exportTeacherReport} disabled={!teacherDashboard?.classes.length}>Exportar relatório CSV</Button></div>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[
               { label: 'Turmas', value: teacherDashboard?.summary.classCount ?? 0, icon: School },
               { label: 'Alunos', value: teacherDashboard?.summary.studentCount ?? 0, icon: Users },

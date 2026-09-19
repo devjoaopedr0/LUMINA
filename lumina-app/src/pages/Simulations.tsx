@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getAccessToken } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
-import { apiCreateSimulation, apiCreateSimulationClass, apiJoinSimulationClass, apiListQuestions, apiSimulation, apiSimulationClasses, apiSimulationResult, apiSimulations, apiSubmitSimulation, type Question, type Simulation, type SimulationClass, type SimulationResult, type SimulationSummary } from '@/lib/api';
+import { apiCreateSimulation, apiCreateSimulationClass, apiJoinSimulationClass, apiListQuestions, apiSimulation, apiSimulationClasses, apiSimulationResult, apiSimulations, apiSubmitSimulation, type AssessmentType, type Question, type Simulation, type SimulationClass, type SimulationResult, type SimulationSummary } from '@/lib/api';
 
 const token = () => getAccessToken() ?? '';
+const ASSESSMENT_LABEL: Record<AssessmentType, string> = { ACTIVITY: 'Atividade', LIST: 'Lista', TEST: 'Prova', SIMULATION: 'Simulado' };
 
 export function Simulations() {
   const { user } = useAuth();
@@ -19,6 +20,8 @@ export function Simulations() {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [classId, setClassId] = useState('');
+  const [assessmentType, setAssessmentType] = useState<AssessmentType>('SIMULATION');
+  const [dueAt, setDueAt] = useState('');
   const [className, setClassName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [search, setSearch] = useState('');
@@ -115,12 +118,12 @@ export function Simulations() {
           <p className="text-sm text-graphite-400">Selecione de 1 a 90 questões. A ordem de seleção será a ordem da prova.</p>
           <div className="my-4 grid gap-3 sm:grid-cols-2">
             <input value={title} maxLength={160} onChange={e => setTitle(e.target.value)} placeholder="Título do simulado" className="rounded-lg border p-2" />
-            <select value={classId} onChange={e => setClassId(e.target.value)} className="rounded-lg border p-2"><option value="">Simulado pessoal</option>{classes.filter(c => c.isTeacher).map(c => <option key={c.id} value={c.id}>Turma: {c.name}</option>)}</select>
+            <select value={classId} onChange={e => setClassId(e.target.value)} className="rounded-lg border p-2"><option value="">Simulado pessoal</option>{classes.filter(c => c.isTeacher).map(c => <option key={c.id} value={c.id}>Turma: {c.name}</option>)}</select><select value={assessmentType} onChange={e => setAssessmentType(e.target.value as AssessmentType)} className="rounded-lg border p-2"><option value="SIMULATION">Simulado</option><option value="ACTIVITY">Atividade</option><option value="LIST">Lista</option><option value="TEST">Prova</option></select><label className="text-sm text-graphite-500">Prazo opcional<input type="datetime-local" value={dueAt} onChange={e => setDueAt(e.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label>
           </div>
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar questões" className="mb-4 w-full rounded-lg border p-2" />
           <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong> · {q.stem.slice(0, 240)}</span></label>)}</div>
           <div className="my-4 flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1">Anterior</button><span>Página {page} de {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-1">Próxima</button></div>
-          <button disabled={busy || !title.trim() || !selected.length} onClick={() => void run(async () => { const row = await apiCreateSimulation(token(), title, selected, classId || undefined); setSelected([]); setTitle(''); setParams({ id: row.id }); })} className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">Criar simulado com {selected.length} questões</button>
+          <button disabled={busy || !title.trim() || !selected.length} onClick={() => void run(async () => { const row = await apiCreateSimulation(token(), title, selected, classId || undefined, assessmentType, dueAt ? new Date(dueAt).toISOString() : undefined); setSelected([]); setTitle(''); setDueAt(''); setParams({ id: row.id }); })} className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">Criar {ASSESSMENT_LABEL[assessmentType].toLowerCase()} com {selected.length} questões</button>
         </section>
       </>}
     </div>

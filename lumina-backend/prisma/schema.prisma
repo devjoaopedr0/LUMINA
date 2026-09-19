@@ -823,3 +823,10 @@ model UserVestibular {
 
   @@map("user_vestibulares")
 }
+
+enum AssessmentType {
+  ACTIVITY
+  LIST
+  TEST
+  SIMULATION
+}

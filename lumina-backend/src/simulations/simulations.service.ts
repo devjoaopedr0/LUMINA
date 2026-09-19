@@ -55,7 +55,7 @@ export class SimulationsService {
     return { id: row.id, name: row.name, isTeacher: false };
   }
 
-  async create(userId: string, title: string, questionIds: string[], classId?: string) {
+  async create(userId: string, title: string, questionIds: string[], classId?: string, assessmentType: 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION' = 'SIMULATION', dueAt?: string) {
     if (new Set(questionIds).size !== questionIds.length) throw new BadRequestException('O simulado não pode repetir questões.');
     let workspaceId: string;
     if (classId) {
@@ -78,7 +78,7 @@ export class SimulationsService {
     }
     const byId = new Map(questions.map(q => [q.id, q]));
     const row = await this.prisma.simulation.create({ data: {
-      id: randomUUID(), title: title.trim(), createdBy: userId, classId: classId ?? null, workspaceId,
+      id: randomUUID(), title: title.trim(), createdBy: userId, classId: classId ?? null, workspaceId, assessmentType, dueAt: dueAt ? new Date(dueAt) : null,
       items: { create: questionIds.map((id, i) => {
         const q = byId.get(id)!;
         return { id: randomUUID(), questionId: id, position: i + 1, stem: q.stem, subject: q.subject, correctPosition: q.alternatives.find(a => a.isCorrect)!.position, alternatives: q.alternatives.map(a => ({ position: a.position, text: a.text })) };
@@ -88,8 +88,8 @@ export class SimulationsService {
   }
 
   async list(userId: string) {
-    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
-    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
+    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, assessmentType: true, dueAt: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
+    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, assessmentType: r.assessmentType, dueAt: r.dueAt, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
   }
 
   async get(userId: string, id: string, includeAnswers = false) {
@@ -129,8 +129,8 @@ export class SimulationsService {
     return { id: row.id, simulationId: id, correct: row.correct, total: row.total, submittedAt: row.submittedAt, items: row.simulation.items.map(item => ({ position: item.position, subject: item.subject, selectedPosition: byPosition.get(item.position), correctPosition: item.correctPosition, isCorrect: byPosition.get(item.position) === item.correctPosition })) };
   }
 
-  private publicSimulation(row: { id: string; title: string; createdAt: Date; class?: { name: string } | null; items: { id: string; questionId: string | null; position: number; stem: string; subject: string; alternatives: unknown; correctPosition: number }[] }, includeAnswers = false) {
-    return { id: row.id, title: row.title, createdAt: row.createdAt, className: row.class?.name ?? null, sheetVersion: 1, items: row.items.map(i => ({ id: i.id, questionId: i.questionId, position: i.position, stem: i.stem, subject: i.subject, alternatives: i.alternatives, ...(includeAnswers ? { correctPosition: i.correctPosition } : {}) })) };
+  private publicSimulation(row: { id: string; title: string; createdAt: Date; assessmentType?: string; dueAt?: Date | null; class?: { name: string } | null; items: { id: string; questionId: string | null; position: number; stem: string; subject: string; alternatives: unknown; correctPosition: number }[] }, includeAnswers = false) {
+    return { id: row.id, title: row.title, createdAt: row.createdAt, assessmentType: row.assessmentType ?? 'SIMULATION', dueAt: row.dueAt ?? null, className: row.class?.name ?? null, sheetVersion: 1, items: row.items.map(i => ({ id: i.id, questionId: i.questionId, position: i.position, stem: i.stem, subject: i.subject, alternatives: i.alternatives, ...(includeAnswers ? { correctPosition: i.correctPosition } : {}) })) };
   }
 }
 type TeacherClassRow = {

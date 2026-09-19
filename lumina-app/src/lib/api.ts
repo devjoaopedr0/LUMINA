@@ -385,9 +385,10 @@ export const apiCreateWorkspaceRole = (token: string, workspaceId: string, data:
 export const apiSetWorkspaceRolePermissions = (token: string, workspaceId: string, roleId: string, permissionCodes: string[]): Promise<{ id: string; permissionCodes: string[] }> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}/permissions`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ permissionCodes }) });
 
 export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
-export interface SimulationSummary { id: string; title: string; createdAt: string; className: string | null; questionCount: number; result: { correct: number; total: number; submittedAt: string } | null }
+export type AssessmentType = 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION';
+export interface SimulationSummary { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; className: string | null; questionCount: number; result: { correct: number; total: number; submittedAt: string } | null }
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; alternatives: { position: number; text: string }[]; correctPosition?: number }
-export interface Simulation { id: string; title: string; createdAt: string; className: string | null; sheetVersion: number; items: SimulationItem[] }
+export interface Simulation { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; className: string | null; sheetVersion: number; items: SimulationItem[] }
 export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; items: { position: number; subject: string; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
 export interface TeacherDashboard {
   summary: { classCount: number; studentCount: number; submissionCount: number; averageAccuracy: number; studentsAtRisk: number };
@@ -401,7 +402,7 @@ export const apiTeacherDashboard = (token: string): Promise<TeacherDashboard> =>
 export const apiCreateSimulationClass = (token: string, name: string): Promise<SimulationClass> => request('/simulations/classes', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ name }) });
 export const apiJoinSimulationClass = (token: string, joinCode: string): Promise<SimulationClass> => request('/simulations/classes/join', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ joinCode }) });
 export const apiSimulations = (token: string): Promise<SimulationSummary[]> => request('/simulations', { headers: authHeaders(token) });
-export const apiCreateSimulation = (token: string, title: string, questionIds: string[], classId?: string): Promise<Simulation> => request('/simulations', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ title, questionIds, classId }) });
+export const apiCreateSimulation = (token: string, title: string, questionIds: string[], classId?: string, assessmentType: AssessmentType = 'SIMULATION', dueAt?: string): Promise<Simulation> => request('/simulations', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ title, questionIds, classId, assessmentType, dueAt }) });
 export const apiSimulation = (token: string, id: string, answers = false): Promise<Simulation> => request(`/simulations/${id}${answers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
 export const apiSimulationResult = (token: string, id: string): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { headers: authHeaders(token) });
 export const apiSubmitSimulation = (token: string, id: string, answers: { position: number; selectedPosition: number }[]): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers }) });

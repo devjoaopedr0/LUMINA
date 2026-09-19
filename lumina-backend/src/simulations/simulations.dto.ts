@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateClassDto {
@@ -17,6 +17,12 @@ export class CreateSimulationDto {
 
   @IsOptional() @IsUUID()
   classId?: string;
+
+  @IsOptional() @IsIn(['ACTIVITY', 'LIST', 'TEST', 'SIMULATION'])
+  assessmentType?: 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION';
+
+  @IsOptional() @IsDateString()
+  dueAt?: string;
 
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(90) @IsUUID('4', { each: true })
   questionIds!: string[];
