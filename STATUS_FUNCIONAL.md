@@ -46,7 +46,7 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 
 - Redações: editor, temas, salvamento automático, histórico de versões e importação de texto UTF-8 com prévia. Migração aplicada no banco local em 15/09/2026; correção por IA/professor e scanner ainda pendentes.
 - Catálogo de propostas de redação do ENEM 2011–2025 e cadastro de professor com matéria para criação de conteúdo autoral pessoal. Consulte [Redações, professores e scanner](docs/REDAÇÕES_PROFESSORES_SCANNER.md); a migração desta etapa ainda depende da disponibilidade do PostgreSQL local.
-- Dashboard do aluno: navegação lateral, foco diário, métricas reais, progresso e próximas atividades; ainda faltam gráficos avançados e pontos fortes/fracos.
+- Dashboard do aluno: navegação lateral, foco diário, métricas reais, progresso geral, progresso por matéria, pontos fortes e pontos de atenção; ainda faltam histórico consolidado, notas recentes e gráficos de evolução por período.
 - LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
 - Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
 - Instituições: o modelo de dados e a resolução de permissões existem, mas não há API nem interface de cadastro, convite, código de turma, gestão de membros/cargos/turmas/períodos.

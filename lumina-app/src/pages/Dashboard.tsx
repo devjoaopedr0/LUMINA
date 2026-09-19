@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronRight,
-  Clock3, Database, Flame, LayoutDashboard, LogOut, Menu, Sparkles,
+  Clock3, Database, Flame, LayoutDashboard, LogOut, Menu, Sparkles, TrendingUp,
   Target, UserRound, X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiGetDailySession, apiGetProgress, type ApiUser, type StudyProgressSummary, type StudySession } from "@/lib/api";
+import { apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, type ApiUser, type PerformanceBreakdown, type StudyProgressSummary, type StudySession } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 
 const NAV_ITEMS = [
@@ -76,15 +76,19 @@ export function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [session, setSession] = useState<StudySession | null>(null);
   const [progress, setProgress] = useState<StudyProgressSummary | null>(null);
+  const [performance, setPerformance] = useState<PerformanceBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
-    Promise.all([apiGetDailySession(token), apiGetProgress(token)])
-      .then(([daily, progressData]) => { setSession(daily?.session ?? null); setProgress(progressData.summary); })
-      .catch(() => undefined)
+    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token)])
+      .then(([daily, progressData, performanceData]) => {
+        if (daily.status === 'fulfilled') setSession(daily.value?.session ?? null);
+        if (progressData.status === 'fulfilled') setProgress(progressData.value.summary);
+        if (performanceData.status === 'fulfilled') setPerformance(performanceData.value);
+      })
       .finally(() => setLoading(false));
   }, [isStudent]);
 
@@ -93,6 +97,9 @@ export function Dashboard() {
   const pendingTasks = tasks.filter((task) => task.status !== "DONE");
   const completion = useMemo(() => !progress?.totalTasks ? 0 : Math.min(100, Math.round((progress.completedTasks / progress.totalTasks) * 100)), [progress]);
   const todayLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
+  const subjectPerformance = performance?.bySubject.slice(0, 5) ?? [];
+  const strongestSubject = [...subjectPerformance].filter((item) => item.totalAttempts >= 3).sort((a, b) => b.accuracy - a.accuracy)[0];
+  const attentionSubject = [...subjectPerformance].filter((item) => item.totalAttempts >= 3).sort((a, b) => a.accuracy - b.accuracy)[0];
 
   const metrics = [
     { label: "Tarefas hoje", value: loading ? "—" : String(tasks.length), detail: `${completedToday} concluídas`, icon: CheckCircle2, color: "bg-success/10 text-success" },
@@ -154,6 +161,27 @@ export function Dashboard() {
               <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Meta em andamento</h2><p className="mt-1 text-xs text-graphite-400">Visão geral do seu plano</p></div><Target className="h-5 w-5 text-primary-700" /></div>
               <div className="mt-8 flex items-center gap-5"><div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--color-primary) ${completion}%, var(--color-surface-line) 0)` }}><div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-white text-xl font-bold text-graphite">{completion}%</div></div><div><p className="text-sm font-semibold text-graphite">Consistência constrói resultado</p><p className="mt-1 text-xs leading-relaxed text-graphite-400">Cada sessão concluída aproxima você do seu objetivo principal.</p></div></div>
               <div className="mt-7 border-t border-surface-line pt-5"><Link to="/app/questoes" className="group flex items-center justify-between rounded-xl bg-surface-card p-4"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white"><Database className="h-[18px] w-[18px]" /></span><div><p className="text-sm font-semibold text-graphite">Praticar questões</p><p className="text-xs text-graphite-400">Teste o que aprendeu</p></div></div><ArrowRight className="h-4 w-4 text-graphite-300 transition group-hover:translate-x-1" /></Link></div>
+            </Card>
+          </section>}
+
+          {isStudent && <section className="mt-6" aria-labelledby="subject-performance-title">
+            <Card className="bg-white p-0">
+              <div className="flex flex-col gap-3 border-b border-surface-line px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div><h2 id="subject-performance-title" className="text-lg font-semibold text-graphite">Progresso por matéria</h2><p className="mt-1 text-xs text-graphite-400">Desempenho calculado a partir das questões respondidas</p></div>
+                {performance && performance.summary.totalAttempts > 0 && <span className="w-fit rounded-full bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary-700">{performance.summary.accuracy}% de acertos gerais</span>}
+              </div>
+              <div className="p-6">
+                {loading ? <div className="space-y-4">{[1, 2, 3].map((item) => <div key={item} className="h-12 animate-pulse rounded-xl bg-graphite/5" />)}</div> : subjectPerformance.length > 0 ? <>
+                  <div className="space-y-5">{subjectPerformance.map((item) => <div key={item.subject}>
+                    <div className="mb-2 flex items-center justify-between gap-4"><div className="min-w-0"><p className="truncate text-sm font-semibold text-graphite">{item.subject}</p><p className="text-xs text-graphite-400">{item.correct} de {item.totalAttempts} respostas corretas</p></div><span className="text-sm font-bold text-graphite">{item.accuracy}%</span></div>
+                    <div className="h-2 overflow-hidden rounded-full bg-surface-card"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${item.accuracy}%` }} /></div>
+                  </div>)}</div>
+                  {(strongestSubject || attentionSubject) && <div className="mt-7 grid gap-3 border-t border-surface-line pt-5 sm:grid-cols-2">
+                    {strongestSubject && <div className="rounded-xl bg-success/10 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-success">Ponto forte</p><p className="mt-1 text-sm font-semibold text-graphite">{strongestSubject.subject}</p><p className="mt-1 text-xs text-graphite-400">{strongestSubject.accuracy}% de acertos em {strongestSubject.totalAttempts} questões</p></div>}
+                    {attentionSubject && <div className="rounded-xl bg-orange-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-orange-600">Ponto de atenção</p><p className="mt-1 text-sm font-semibold text-graphite">{attentionSubject.subject}</p><p className="mt-1 text-xs text-graphite-400">Pratique mais para elevar os atuais {attentionSubject.accuracy}%</p></div>}
+                  </div>}
+                </> : <div className="flex flex-col items-center px-4 py-9 text-center"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15"><TrendingUp className="h-6 w-6 text-primary-700" /></span><h3 className="mt-4 font-semibold text-graphite">Seu desempenho aparecerá aqui</h3><p className="mt-2 max-w-md text-sm text-graphite-400">Responda questões para acompanhar a evolução por matéria e identificar onde concentrar seus estudos.</p><Link to="/app/questoes" className="mt-5"><Button size="sm">Responder questões</Button></Link></div>}
+              </div>
             </Card>
           </section>}
         </div>

@@ -310,6 +310,24 @@ export interface AttemptResult {
   correctPosition: number;
 }
 
+export interface PerformanceBreakdown {
+  summary: { totalAttempts: number; correct: number; accuracy: number };
+  bySubject: Array<{
+    subjectId: string | null;
+    subject: string;
+    totalAttempts: number;
+    correct: number;
+    accuracy: number;
+  }>;
+  byTopic: Array<{
+    topicId: string | null;
+    topic: string;
+    totalAttempts: number;
+    correct: number;
+    accuracy: number;
+  }>;
+}
+
 function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
@@ -387,6 +405,10 @@ export function apiGetQuestion(
 ): Promise<Question> {
   const qs = includeAnswer ? "?includeAnswer=true" : "";
   return request(`/questions/${id}${qs}`, { headers: authHeaders(accessToken) });
+}
+
+export function apiGetQuestionPerformance(accessToken: string): Promise<PerformanceBreakdown> {
+  return request('/users/me/questions/performance', { headers: authHeaders(accessToken) });
 }
 
 export function apiCreateQuestion(
