@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { buildTeacherDashboard, SimulationsService } from './simulations.service';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { buildCoordinatorDashboard, buildDirectorDashboard, buildTeacherDashboard, SimulationsService } from './simulations.service';
 
 const userId = 'user-1';
 const simulationId = 'simulation-1';
@@ -78,5 +78,65 @@ describe('buildTeacherDashboard', () => {
     expect(result.summary).toEqual({ classCount: 1, studentCount: 2, submissionCount: 2, averageAccuracy: 75, studentsAtRisk: 1 });
     expect(result.classes[0].students[0]).toEqual(expect.objectContaining({ name: 'Ana Silva', accuracy: 50, alert: true }));
     expect(result.classes[0].weakSubjects[0]).toEqual({ subject: 'Matemática', attempts: 2, accuracy: 50 });
+  });
+});
+describe('buildCoordinatorDashboard', () => {
+  it('consolida professores, turmas e desempenho por disciplina', () => {
+    const classes = [{
+      id: 'class-1', name: '3º A', joinCode: 'ABC',
+      members: [{ joinedAt: new Date(), user: { id: 'student-1', email: 'ana@example.com', profile: { firstName: 'Ana', lastName: null } } }],
+      teachers: [{ user: { id: 'teacher-1', email: 'prof@example.com', profile: { firstName: 'Paulo', lastName: 'Lima' }, teacherProfile: { subject: 'Matemática' } } }],
+      simulations: [{ id: 'sim-1', title: 'Prova', items: [{ position: 1, subject: 'Matemática', correctPosition: 2 }], submissions: [{ userId: 'student-1', correct: 0, total: 1, submittedAt: new Date(), answers: [{ position: 1, selectedPosition: 1 }] }] }],
+    }];
+    const teacherDashboard = buildTeacherDashboard(classes);
+    const result = buildCoordinatorDashboard(teacherDashboard, classes);
+    expect(result.summary).toEqual(expect.objectContaining({ classCount: 1, studentCount: 1, teacherCount: 1 }));
+    expect(result.teachers[0]).toEqual(expect.objectContaining({ name: 'Paulo Lima', subject: 'Matemática', classes: ['3º A'] }));
+    expect(result.bySubject[0]).toEqual({ subject: 'Matemática', attempts: 1, accuracy: 0 });
+  });
+});
+
+
+describe('gestão de períodos letivos da coordenação', () => {
+  it('recusa acesso de usuário que não é coordenador', async () => {
+    const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ accountType: 'TEACHER' }) }, academicPeriod: { findMany: vi.fn() } };
+    const service = new SimulationsService(prisma as never, {} as never);
+    await expect(service.coordinatorPeriods(userId)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.academicPeriod.findMany).not.toHaveBeenCalled();
+  });
+
+  it('recusa período cuja data final antecede a inicial', async () => {
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ accountType: 'COORDINATOR' }) },
+      workspaceMember: { findFirst: vi.fn().mockResolvedValue({ workspace: { id: 'workspace-1', name: 'Escola' } }) },
+    };
+    const service = new SimulationsService(prisma as never, {} as never);
+    await expect(service.createCoordinatorPeriod(userId, { name: '2026.2', startsAt: '2026-12-01', endsAt: '2026-08-01' })).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+describe('buildDirectorDashboard', () => {
+  it('consolida membros e evolução acadêmica mensal da instituição', () => {
+    const classes = [{
+      id: 'class-1', name: '3º A', joinCode: 'ABC',
+      members: [{ joinedAt: new Date(), user: { id: 'student-1', email: 'ana@example.com', profile: { firstName: 'Ana', lastName: null } } }],
+      teachers: [{ user: { id: 'teacher-1', email: 'prof@example.com', profile: { firstName: 'Paulo', lastName: null }, teacherProfile: { subject: 'Matemática' } } }],
+      simulations: [
+        { id: 'sim-1', title: 'Prova 1', items: [{ position: 1, subject: 'Matemática', correctPosition: 1 }], submissions: [{ userId: 'student-1', correct: 1, total: 1, submittedAt: new Date('2026-08-10T12:00:00Z'), answers: [{ position: 1, selectedPosition: 1 }] }] },
+        { id: 'sim-2', title: 'Prova 2', items: [{ position: 1, subject: 'Matemática', correctPosition: 1 }], submissions: [{ userId: 'student-1', correct: 0, total: 1, submittedAt: new Date('2026-09-10T12:00:00Z'), answers: [{ position: 1, selectedPosition: 2 }] }] },
+      ],
+    }];
+    const coordinator = buildCoordinatorDashboard(buildTeacherDashboard(classes), classes);
+    const members = [
+      { id: 'member-1', status: 'ACTIVE', joinedAt: new Date(), role: { name: 'Direção' }, user: { id: 'director-1', email: 'diretor@example.com', accountType: 'DIRECTOR', profile: { firstName: 'Dora', lastName: 'Silva' }, teacherProfile: null } },
+      { id: 'member-2', status: 'SUSPENDED', joinedAt: new Date(), role: { name: 'Docente' }, user: { id: 'teacher-1', email: 'prof@example.com', accountType: 'TEACHER', profile: { firstName: 'Paulo', lastName: null }, teacherProfile: { subject: 'Matemática' } } },
+    ];
+    const result = buildDirectorDashboard(coordinator, classes, members, 'Colégio Lumina');
+    expect(result.institutionName).toBe('Colégio Lumina');
+    expect(result.summary).toEqual(expect.objectContaining({ memberCount: 2, activeMemberCount: 1, averageAccuracy: 50 }));
+    expect(result.evolution).toEqual([
+      { month: '2026-08', accuracy: 100, submissions: 1 },
+      { month: '2026-09', accuracy: 0, submissions: 1 },
+    ]);
+    expect(result.members[0]).toEqual(expect.objectContaining({ name: 'Dora Silva', accountType: 'DIRECTOR', status: 'ACTIVE' }));
   });
 });

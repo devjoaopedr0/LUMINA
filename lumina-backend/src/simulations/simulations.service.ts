@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
-import { SimulationAnswerDto } from './simulations.dto';
+import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateInstitutionMemberDto } from './simulations.dto';
 
 @Injectable()
 export class SimulationsService {
@@ -31,6 +31,108 @@ export class SimulationsService {
     });
     return buildTeacherDashboard(classes);
   }
+  async coordinatorDashboard(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { accountType: true } });
+    if (user?.accountType !== 'COORDINATOR') throw new ForbiddenException('Apenas coordenadores podem acessar este painel.');
+    const classes = await this.prisma.class.findMany({
+      where: { archived: false, OR: [{ coordinatorId: userId }, { workspace: { members: { some: { userId, status: 'ACTIVE' } } } }] },
+      select: {
+        id: true, name: true, joinCode: true,
+        members: { select: { joinedAt: true, user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } } },
+        teachers: { select: { user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } }, teacherProfile: { select: { subject: true } } } } } },
+        simulations: { select: { id: true, title: true, items: { select: { position: true, subject: true, correctPosition: true } }, submissions: { select: { userId: true, correct: true, total: true, submittedAt: true, answers: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const dashboard = buildTeacherDashboard(classes);
+    return buildCoordinatorDashboard(dashboard, classes);
+  }
+  async directorDashboard(userId: string) {
+    const workspace = await this.directorWorkspace(userId);
+    const [classes, members] = await Promise.all([
+      this.prisma.class.findMany({
+        where: { workspaceId: workspace.id, archived: false },
+        select: {
+          id: true, name: true, joinCode: true,
+          members: { select: { joinedAt: true, user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } } },
+          teachers: { select: { user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } }, teacherProfile: { select: { subject: true } } } } } },
+          simulations: { select: { id: true, title: true, items: { select: { position: true, subject: true, correctPosition: true } }, submissions: { select: { userId: true, correct: true, total: true, submittedAt: true, answers: true } } } },
+        }, orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.workspaceMember.findMany({
+        where: { workspaceId: workspace.id }, orderBy: { joinedAt: 'asc' },
+        select: { id: true, status: true, joinedAt: true, role: { select: { name: true } }, user: { select: { id: true, email: true, accountType: true, profile: { select: { firstName: true, lastName: true } }, teacherProfile: { select: { subject: true } } } } },
+      }),
+    ]);
+    const coordinator = buildCoordinatorDashboard(buildTeacherDashboard(classes), classes);
+    return buildDirectorDashboard(coordinator, classes, members, workspace.name);
+  }
+
+  async updateDirectorMember(userId: string, memberId: string, dto: UpdateInstitutionMemberDto) {
+    const workspace = await this.directorWorkspace(userId);
+    const member = await this.prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId: workspace.id }, select: { id: true, userId: true } });
+    if (!member) throw new NotFoundException('Usuário não encontrado nesta instituição.');
+    if (member.userId === userId) throw new BadRequestException('O diretor não pode alterar o próprio vínculo por esta tela.');
+    if (dto.accountType === 'TEACHER' && !dto.subject?.trim()) throw new BadRequestException('Informe a disciplina do professor.');
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.status) await tx.workspaceMember.update({ where: { id: memberId }, data: { status: dto.status } });
+      if (dto.accountType) {
+        await tx.user.update({ where: { id: member.userId }, data: { accountType: dto.accountType } });
+        if (dto.accountType === 'TEACHER') await tx.teacherProfile.upsert({ where: { userId: member.userId }, update: { subject: dto.subject!.trim() }, create: { userId: member.userId, subject: dto.subject!.trim() } });
+        else await tx.teacherProfile.deleteMany({ where: { userId: member.userId } });
+      }
+    });
+    return { updated: true };
+  }
+
+  private async directorWorkspace(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { accountType: true } });
+    if (user?.accountType !== 'DIRECTOR') throw new ForbiddenException('Apenas diretores podem acessar este painel.');
+    const membership = await this.prisma.workspaceMember.findFirst({ where: { userId, status: 'ACTIVE', workspace: { type: 'INSTITUTION' } }, select: { workspace: { select: { id: true, name: true } } }, orderBy: { joinedAt: 'asc' } });
+    if (!membership) throw new ForbiddenException('O diretor precisa estar vinculado a uma instituição ativa.');
+    return membership.workspace;
+  }
+
+  async coordinatorPeriods(userId: string) {
+    const workspace = await this.coordinatorWorkspace(userId);
+    return this.prisma.academicPeriod.findMany({ where: { workspaceId: workspace.id }, orderBy: { startsAt: 'desc' } });
+  }
+
+  async createCoordinatorPeriod(userId: string, dto: CreateAcademicPeriodDto) {
+    const workspace = await this.coordinatorWorkspace(userId);
+    const startsAt = new Date(dto.startsAt);
+    const endsAt = new Date(dto.endsAt);
+    if (startsAt > endsAt) throw new BadRequestException('A data inicial deve ser anterior à data final.');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.academicPeriod.updateMany({ where: { workspaceId: workspace.id, active: true }, data: { active: false } });
+        return tx.academicPeriod.create({ data: { id: randomUUID(), workspaceId: workspace.id, name: dto.name.trim(), startsAt, endsAt, active: true } });
+      });
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') throw new ConflictException('Já existe um período com este nome.');
+      throw error;
+    }
+  }
+
+  async updateCoordinatorPeriod(userId: string, periodId: string, dto: UpdateAcademicPeriodDto) {
+    const workspace = await this.coordinatorWorkspace(userId);
+    const period = await this.prisma.academicPeriod.findFirst({ where: { id: periodId, workspaceId: workspace.id } });
+    if (!period) throw new NotFoundException('Período letivo não encontrado.');
+    if (dto.active === undefined) return period;
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.active) await tx.academicPeriod.updateMany({ where: { workspaceId: workspace.id, active: true }, data: { active: false } });
+      return tx.academicPeriod.update({ where: { id: periodId }, data: { active: dto.active } });
+    });
+  }
+
+  private async coordinatorWorkspace(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { accountType: true } });
+    if (user?.accountType !== 'COORDINATOR') throw new ForbiddenException('Apenas coordenadores podem acessar este painel.');
+    const membership = await this.prisma.workspaceMember.findFirst({ where: { userId, status: 'ACTIVE', workspace: { type: 'INSTITUTION' } }, select: { workspace: { select: { id: true, name: true } } }, orderBy: { joinedAt: 'asc' } });
+    if (!membership) throw new ForbiddenException('O coordenador precisa estar vinculado a uma instituição ativa.');
+    return membership.workspace;
+  }
+
   async createClass(userId: string, name: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { teacherProfile: true } });
     if (!user?.teacherProfile) throw new ForbiddenException('Apenas professores podem criar turmas.');
@@ -171,3 +273,44 @@ export function buildTeacherDashboard(classes: TeacherClassRow[]) {
 }
 
 function dashboardPercentage(correct: number, total: number) { return total ? Math.round((correct / total) * 1000) / 10 : 0; }
+type CoordinatorClassRow = TeacherClassRow & {
+  teachers: { user: { id: string; email: string; profile: { firstName: string; lastName: string | null } | null; teacherProfile: { subject: string } | null } }[];
+};
+
+export function buildCoordinatorDashboard(dashboard: ReturnType<typeof buildTeacherDashboard>, classes: CoordinatorClassRow[]) {
+  const teacherMap = new Map<string, { id: string; name: string; email: string; subject: string; classes: string[] }>();
+  for (const classRoom of classes) for (const relation of classRoom.teachers) {
+    const teacher = relation.user;
+    const current = teacherMap.get(teacher.id) ?? { id: teacher.id, name: [teacher.profile?.firstName, teacher.profile?.lastName].filter(Boolean).join(' ') || teacher.email, email: teacher.email, subject: teacher.teacherProfile?.subject ?? 'Não informada', classes: [] };
+    current.classes.push(classRoom.name);
+    teacherMap.set(teacher.id, current);
+  }
+  const subjectMap = new Map<string, { attempts: number; correctEstimate: number }>();
+  for (const classRoom of dashboard.classes) for (const subject of classRoom.weakSubjects) {
+    const current = subjectMap.get(subject.subject) ?? { attempts: 0, correctEstimate: 0 };
+    current.attempts += subject.attempts;
+    current.correctEstimate += subject.attempts * subject.accuracy / 100;
+    subjectMap.set(subject.subject, current);
+  }
+  const bySubject = [...subjectMap.entries()].map(([subject, value]) => ({ subject, attempts: value.attempts, accuracy: value.attempts ? Math.round(value.correctEstimate / value.attempts * 1000) / 10 : 0 })).sort((a, b) => a.accuracy - b.accuracy);
+  return { summary: { ...dashboard.summary, teacherCount: teacherMap.size }, classes: dashboard.classes, teachers: [...teacherMap.values()], bySubject };
+}
+
+
+type DirectorMemberRow = { id: string; status: string; joinedAt: Date; role: { name: string }; user: { id: string; email: string; accountType: string; profile: { firstName: string; lastName: string | null } | null; teacherProfile: { subject: string } | null } };
+
+export function buildDirectorDashboard(coordinator: ReturnType<typeof buildCoordinatorDashboard>, classes: CoordinatorClassRow[], members: DirectorMemberRow[], institutionName: string) {
+  const monthly = new Map<string, { correct: number; total: number; submissions: number }>();
+  for (const submission of classes.flatMap(item => item.simulations).flatMap(item => item.submissions)) {
+    const key = submission.submittedAt.toISOString().slice(0, 7);
+    const current = monthly.get(key) ?? { correct: 0, total: 0, submissions: 0 };
+    current.correct += submission.correct; current.total += submission.total; current.submissions += 1; monthly.set(key, current);
+  }
+  const evolution = [...monthly.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([month, value]) => ({ month, accuracy: dashboardPercentage(value.correct, value.total), submissions: value.submissions }));
+  return {
+    institutionName,
+    summary: { ...coordinator.summary, memberCount: members.length, activeMemberCount: members.filter(item => item.status === 'ACTIVE').length },
+    classes: coordinator.classes, bySubject: coordinator.bySubject, evolution,
+    members: members.map(member => ({ id: member.id, userId: member.user.id, name: [member.user.profile?.firstName, member.user.profile?.lastName].filter(Boolean).join(' ') || member.user.email, email: member.user.email, accountType: member.user.accountType, subject: member.user.teacherProfile?.subject ?? null, status: member.status, role: member.role.name, joinedAt: member.joinedAt })),
+  };
+}

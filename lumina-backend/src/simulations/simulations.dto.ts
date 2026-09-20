@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateClassDto {
@@ -38,4 +38,29 @@ export class SimulationAnswerDto {
 export class SubmitSimulationDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(90) @ValidateNested({ each: true }) @Type(() => SimulationAnswerDto)
   answers!: SimulationAnswerDto[];
+}
+
+
+export class CreateAcademicPeriodDto {
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  name!: string;
+  @IsDateString()
+  startsAt!: string;
+  @IsDateString()
+  endsAt!: string;
+}
+
+export class UpdateAcademicPeriodDto {
+  @IsOptional() @IsBoolean()
+  active?: boolean;
+}
+
+
+export class UpdateInstitutionMemberDto {
+  @IsOptional() @IsIn(['ACTIVE', 'SUSPENDED'])
+  status?: 'ACTIVE' | 'SUSPENDED';
+  @IsOptional() @IsIn(['TEACHER', 'COORDINATOR'])
+  accountType?: 'TEACHER' | 'COORDINATOR';
+  @IsOptional() @IsString() @MaxLength(120)
+  subject?: string;
 }
