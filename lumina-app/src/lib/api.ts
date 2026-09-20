@@ -390,6 +390,31 @@ export interface SimulationSummary { id: string; title: string; createdAt: strin
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; alternatives: { position: number; text: string }[]; correctPosition?: number }
 export interface Simulation { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; className: string | null; sheetVersion: number; items: SimulationItem[] }
 export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; items: { position: number; subject: string; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
+export interface CoordinatorDashboard {
+  summary: TeacherDashboard['summary'] & { teacherCount: number };
+  classes: TeacherDashboard['classes'];
+  teachers: Array<{ id: string; name: string; email: string; subject: string; classes: string[] }>;
+  bySubject: Array<{ subject: string; attempts: number; accuracy: number }>;
+}
+export interface DirectorMember {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  accountType: string;
+  subject: string | null;
+  status: 'ACTIVE' | 'SUSPENDED' | string;
+  role: string;
+  joinedAt: string;
+}
+export interface DirectorDashboard {
+  institutionName: string;
+  summary: CoordinatorDashboard['summary'] & { memberCount: number; activeMemberCount: number };
+  classes: TeacherDashboard['classes'];
+  bySubject: CoordinatorDashboard['bySubject'];
+  evolution: Array<{ month: string; accuracy: number; submissions: number }>;
+  members: DirectorMember[];
+}
 export interface TeacherDashboard {
   summary: { classCount: number; studentCount: number; submissionCount: number; averageAccuracy: number; studentsAtRisk: number };
   classes: Array<{
@@ -399,6 +424,13 @@ export interface TeacherDashboard {
   }>;
 }export const apiSimulationClasses = (token: string): Promise<SimulationClass[]> => request('/simulations/classes', { headers: authHeaders(token) });
 export const apiTeacherDashboard = (token: string): Promise<TeacherDashboard> => request('/simulations/teacher/dashboard', { headers: authHeaders(token) });
+export const apiCoordinatorDashboard = (token: string): Promise<CoordinatorDashboard> => request('/simulations/coordinator/dashboard', { headers: authHeaders(token) });
+export const apiDirectorDashboard = (token: string): Promise<DirectorDashboard> => request('/simulations/director/dashboard', { headers: authHeaders(token) });
+export const apiUpdateDirectorMember = (token: string, memberId: string, data: { status?: 'ACTIVE' | 'SUSPENDED'; accountType?: 'TEACHER' | 'COORDINATOR'; subject?: string }): Promise<{ updated: true }> => request('/simulations/director/members/' + encodeURIComponent(memberId), { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data) });
+export interface AcademicPeriod { id: string; workspaceId: string; name: string; startsAt: string; endsAt: string; active: boolean; createdAt: string; updatedAt: string }
+export const apiCoordinatorPeriods = (token: string): Promise<AcademicPeriod[]> => request('/simulations/coordinator/periods', { headers: authHeaders(token) });
+export const apiCreateCoordinatorPeriod = (token: string, data: { name: string; startsAt: string; endsAt: string }): Promise<AcademicPeriod> => request('/simulations/coordinator/periods', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(data) });
+export const apiUpdateCoordinatorPeriod = (token: string, id: string, active: boolean): Promise<AcademicPeriod> => request(`/simulations/coordinator/periods/${id}`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ active }) });
 export const apiCreateSimulationClass = (token: string, name: string): Promise<SimulationClass> => request('/simulations/classes', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ name }) });
 export const apiJoinSimulationClass = (token: string, joinCode: string): Promise<SimulationClass> => request('/simulations/classes/join', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ joinCode }) });
 export const apiSimulations = (token: string): Promise<SimulationSummary[]> => request('/simulations', { headers: authHeaders(token) });

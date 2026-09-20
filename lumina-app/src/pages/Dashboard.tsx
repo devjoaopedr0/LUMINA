@@ -9,8 +9,9 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, type ApiUser, type EssaySummary, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, type AcademicPeriod, type ApiUser, type EssaySummary, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import { formatCalendarDate } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
@@ -83,9 +84,30 @@ export function Dashboard() {
   const [essays, setEssays] = useState<EssaySummary[]>([]);
   const [questionHistory, setQuestionHistory] = useState<QuestionProgressItem[]>([]);
   const [teacherDashboard, setTeacherDashboard] = useState<TeacherDashboard | null>(null);
+  const [coordinatorDashboard, setCoordinatorDashboard] = useState<CoordinatorDashboard | null>(null);
+  const [directorDashboard, setDirectorDashboard] = useState<DirectorDashboard | null>(null);
+  const [directorBusyId, setDirectorBusyId] = useState('');
+  const [directorError, setDirectorError] = useState('');
+  const [memberSubjects, setMemberSubjects] = useState<Record<string, string>>({});
+  const [academicPeriods, setAcademicPeriods] = useState<AcademicPeriod[]>([]);
+  const [periodForm, setPeriodForm] = useState({ name: '', startsAt: '', endsAt: '' });
+  const [periodBusy, setPeriodBusy] = useState(false);
+  const [periodError, setPeriodError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (user?.accountType === 'DIRECTOR') {
+      const token = getAccessToken();
+      if (!token) return;
+      apiDirectorDashboard(token).then(setDirectorDashboard).catch(() => undefined).finally(() => setLoading(false));
+      return;
+    }
+    if (user?.accountType === 'COORDINATOR') {
+      const token = getAccessToken();
+      if (!token) return;
+      Promise.all([apiCoordinatorDashboard(token), apiCoordinatorPeriods(token)]).then(([dashboard, periods]) => { setCoordinatorDashboard(dashboard); setAcademicPeriods(periods); }).catch(() => undefined).finally(() => setLoading(false));
+      return;
+    }
     if (user?.accountType === 'TEACHER') {
       const token = getAccessToken();
       if (!token) return;
@@ -127,6 +149,9 @@ export function Dashboard() {
       ? { title: pendingTasks[0].title, detail: 'Concluir a próxima atividade mantém seu cronograma em dia.', to: '/app/cronograma' }
       : { title: 'Faça um diagnóstico', detail: 'Responda algumas questões para receber recomendações baseadas no seu desempenho.', to: '/app/questoes' };
   const maxStudyMinutes = Math.max(1, ...evolution.map((item) => item.studyMinutes));
+  const directorWeakestSubject = directorDashboard?.bySubject[0];
+  const directorWeakestClass = directorDashboard?.classes.filter(item => item.submissionCount > 0).sort((a, b) => a.accuracy - b.accuracy)[0];
+  const directorMaxAccuracy = Math.max(1, ...(directorDashboard?.evolution.map(item => item.accuracy) ?? []));
 
   function exportTeacherReport() {
     if (!teacherDashboard) return;
@@ -135,6 +160,68 @@ export function Dashboard() {
     const csv = rows.map(row => row.map(value => '"' + value.replaceAll('"', '""') + '"').join(';')).join('\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = 'relatorio-turmas.csv'; link.click(); URL.revokeObjectURL(url);
+  }
+
+  function exportCoordinatorReport() {
+    if (!coordinatorDashboard) return;
+    const rows = [['Turma', 'Alunos', 'Entregas', 'Desempenho'], ...coordinatorDashboard.classes.map(item => [item.name, String(item.studentCount), String(item.submissionCount), String(item.accuracy) + '%']), [], ['Disciplina', 'Respostas', 'Desempenho'], ...coordinatorDashboard.bySubject.map(item => [item.subject, String(item.attempts), String(item.accuracy) + '%'])];
+    const csv = rows.map(row => row.map(value => '"' + value.replaceAll('"', '""') + '"').join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'relatorio-coordenacao.csv'; link.click(); URL.revokeObjectURL(url);
+  }
+
+  function exportDirectorReport() {
+    if (!directorDashboard) return;
+    const rows = [
+      ['Instituição', directorDashboard.institutionName],
+      ['Turmas', String(directorDashboard.summary.classCount)],
+      ['Alunos', String(directorDashboard.summary.studentCount)],
+      ['Membros ativos', String(directorDashboard.summary.activeMemberCount)],
+      ['Média institucional', String(directorDashboard.summary.averageAccuracy) + '%'],
+      [],
+      ['Turma', 'Alunos', 'Entregas', 'Desempenho'],
+      ...directorDashboard.classes.map(item => [item.name, String(item.studentCount), String(item.submissionCount), String(item.accuracy) + '%']),
+      [],
+      ['Mês', 'Entregas', 'Desempenho'],
+      ...directorDashboard.evolution.map(item => [item.month, String(item.submissions), String(item.accuracy) + '%']),
+      [],
+      ['Usuário', 'E-mail', 'Perfil', 'Cargo', 'Status'],
+      ...directorDashboard.members.map(item => [item.name, item.email, item.accountType, item.role, item.status]),
+    ];
+    const csv = rows.map(row => row.map(value => '"' + value.replaceAll('"', '""') + '"').join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'relatorio-direcao.csv'; link.click(); URL.revokeObjectURL(url);
+  }
+
+  async function updateDirectorMember(memberId: string, data: { status?: 'ACTIVE' | 'SUSPENDED'; accountType?: 'TEACHER' | 'COORDINATOR'; subject?: string }) {
+    const token = getAccessToken();
+    if (!token) return;
+    setDirectorBusyId(memberId); setDirectorError('');
+    try {
+      await apiUpdateDirectorMember(token, memberId, data);
+      setDirectorDashboard(await apiDirectorDashboard(token));
+    } catch (error) {
+      setDirectorError(error instanceof Error ? error.message : 'Não foi possível atualizar o usuário.');
+    } finally {
+      setDirectorBusyId('');
+    }
+  }
+
+  async function createAcademicPeriod() {
+    const token = getAccessToken();
+    if (!token || !periodForm.name.trim() || !periodForm.startsAt || !periodForm.endsAt) return;
+    setPeriodBusy(true); setPeriodError('');
+    try { await apiCreateCoordinatorPeriod(token, periodForm); setAcademicPeriods(await apiCoordinatorPeriods(token)); setPeriodForm({ name: '', startsAt: '', endsAt: '' }); }
+    catch (error) { setPeriodError(error instanceof Error ? error.message : 'Não foi possível criar o período.'); }
+    finally { setPeriodBusy(false); }
+  }
+
+  async function setAcademicPeriodActive(id: string, active: boolean) {
+    const token = getAccessToken(); if (!token) return;
+    setPeriodBusy(true); setPeriodError('');
+    try { await apiUpdateCoordinatorPeriod(token, id, active); setAcademicPeriods(await apiCoordinatorPeriods(token)); }
+    catch (error) { setPeriodError(error instanceof Error ? error.message : 'Não foi possível atualizar o período.'); }
+    finally { setPeriodBusy(false); }
   }
 
   const metrics = [
@@ -177,6 +264,39 @@ export function Dashboard() {
             <Card className="bg-white"><h2 className="font-semibold text-graphite">Dados de alunos</h2><p className="mt-2 text-sm text-graphite-400">Visíveis apenas quando há vínculo com a turma ou permissão institucional.</p></Card>
           </section>}
 
+          {user?.accountType === 'DIRECTOR' && <section className="mt-6 space-y-6" aria-label="Painel da direção">
+            <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold text-graphite">{directorDashboard?.institutionName ?? 'Instituição'}</p><p className="text-xs text-graphite-400">Visão acadêmica, operacional e estratégica consolidada</p></div><Button size="sm" variant="outline" onClick={exportDirectorReport} disabled={!directorDashboard}>Exportar relatório CSV</Button></div>
+            {directorError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{directorError}</p>}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{[
+              { label: 'Turmas', value: directorDashboard?.summary.classCount ?? 0, icon: School },
+              { label: 'Alunos', value: directorDashboard?.summary.studentCount ?? 0, icon: Users },
+              { label: 'Professores', value: directorDashboard?.summary.teacherCount ?? 0, icon: UserRound },
+              { label: 'Entregas', value: directorDashboard?.summary.submissionCount ?? 0, icon: BookOpenCheck },
+              { label: 'Média institucional', value: String(directorDashboard?.summary.averageAccuracy ?? 0) + '%', icon: TrendingUp },
+              { label: 'Membros ativos', value: directorDashboard?.summary.activeMemberCount ?? 0, icon: CheckCircle2 },
+            ].map(({ label, value, icon: Icon }) => <Card key={label} className="bg-white p-4"><Icon className="h-5 w-5 text-primary-700" /><p className="mt-3 text-2xl font-bold text-graphite">{value}</p><p className="text-xs text-graphite-400">{label}</p></Card>)}</div>
+            <div className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
+              <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Evolução das turmas</h2><p className="mt-1 text-xs text-graphite-400">Desempenho mensal consolidado das entregas</p>{directorDashboard?.evolution.length ? <div className="mt-6 flex h-44 items-end gap-3">{directorDashboard.evolution.map(item => <div key={item.month} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2"><span className="text-[10px] font-semibold text-graphite-500">{item.accuracy}%</span><div className="w-full rounded-t bg-primary/75" style={{ height: String(Math.max(8, item.accuracy / directorMaxAccuracy * 100)) + '%' }} title={item.submissions + ' entregas'} /><span className="text-[10px] text-graphite-400">{item.month.slice(5)}/{item.month.slice(2, 4)}</span></div>)}</div> : <p className="mt-5 rounded-xl bg-surface-card p-5 text-sm text-graphite-400">A evolução aparecerá após as primeiras entregas.</p>}</Card>
+              <Card className="bg-graphite text-white"><Lightbulb className="h-6 w-6 text-primary" /><p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-primary">Visão estratégica</p><h2 className="mt-2 text-xl font-semibold">{directorWeakestClass ? 'Priorize ' + directorWeakestClass.name : 'Acompanhe a evolução institucional'}</h2><p className="mt-2 text-sm leading-relaxed text-white/60">{directorWeakestClass ? 'A turma está com ' + directorWeakestClass.accuracy + '% de desempenho consolidado.' : 'Os direcionamentos aparecerão quando houver resultados das turmas.'}</p>{directorWeakestSubject && <p className="mt-4 rounded-xl bg-white/5 p-3 text-sm">Disciplina com maior oportunidade: <strong>{directorWeakestSubject.subject}</strong> ({directorWeakestSubject.accuracy}%).</p>}</Card>
+            </div>
+            <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Desempenho acadêmico por turma</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{directorDashboard?.classes.map(classRoom => <div key={classRoom.id} className="rounded-xl border border-surface-line p-4"><div className="flex justify-between gap-4"><div><p className="font-semibold text-graphite">{classRoom.name}</p><p className="text-xs text-graphite-400">{classRoom.studentCount} alunos · {classRoom.submissionCount} entregas</p></div><span className="text-lg font-bold">{classRoom.accuracy}%</span></div><div className="mt-3 h-2 rounded-full bg-surface-card"><div className="h-2 rounded-full bg-primary" style={{ width: String(classRoom.accuracy) + '%' }} /></div></div>)}{!directorDashboard?.classes.length && <p className="text-sm text-graphite-400">Nenhuma turma institucional disponível.</p>}</div></Card>
+            <Card className="bg-white p-0"><div className="border-b border-surface-line px-6 py-5"><h2 className="text-lg font-semibold text-graphite">Gestão de professores e coordenadores</h2><p className="mt-1 text-xs text-graphite-400">Ative, suspenda e altere o perfil dos membros da instituição.</p></div><div className="overflow-x-auto p-6"><table className="w-full min-w-[840px] text-left text-sm"><thead className="text-xs text-graphite-400"><tr><th className="pb-3 font-medium">Usuário</th><th className="pb-3 font-medium">Perfil</th><th className="pb-3 font-medium">Cargo</th><th className="pb-3 font-medium">Status</th><th className="pb-3 font-medium">Ações</th></tr></thead><tbody className="divide-y divide-surface-line">{directorDashboard?.members.map(member => { const isSelf = member.userId === user?.id; return <tr key={member.id}><td className="py-3"><p className="font-medium text-graphite">{member.name}</p><p className="text-xs text-graphite-400">{member.email}</p></td><td className="py-3">{member.accountType === 'TEACHER' ? 'Professor' : member.accountType === 'COORDINATOR' ? 'Coordenador' : member.accountType === 'DIRECTOR' ? 'Diretor' : member.accountType}</td><td className="py-3">{member.role}</td><td className="py-3"><span className={member.status === 'ACTIVE' ? 'rounded-full bg-success/10 px-2 py-1 text-xs font-semibold text-success' : 'rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700'}>{member.status === 'ACTIVE' ? 'Ativo' : 'Suspenso'}</span></td><td className="py-3"><div className="flex items-center gap-2">{member.accountType === 'TEACHER' ? <Button size="sm" variant="outline" disabled={isSelf || directorBusyId === member.id} onClick={() => void updateDirectorMember(member.id, { accountType: 'COORDINATOR' })}>Tornar coordenador</Button> : member.accountType === 'COORDINATOR' ? <><input aria-label={'Disciplina de ' + member.name} placeholder="Disciplina" value={memberSubjects[member.id] ?? ''} onChange={event => setMemberSubjects(current => ({ ...current, [member.id]: event.target.value }))} className="w-32 rounded-lg border border-surface-line px-2 py-1.5 text-xs" /><Button size="sm" variant="outline" disabled={isSelf || directorBusyId === member.id || !(memberSubjects[member.id] ?? '').trim()} onClick={() => void updateDirectorMember(member.id, { accountType: 'TEACHER', subject: memberSubjects[member.id].trim() })}>Tornar professor</Button></> : null}<Button size="sm" variant="outline" disabled={isSelf || directorBusyId === member.id} onClick={() => void updateDirectorMember(member.id, { status: member.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' })}>{member.status === 'ACTIVE' ? 'Suspender' : 'Ativar'}</Button></div></td></tr>; })}</tbody></table>{!directorDashboard?.members.length && <p className="py-5 text-sm text-graphite-400">Nenhum membro institucional disponível.</p>}</div></Card>
+          </section>}
+
+          {user?.accountType === 'COORDINATOR' && <section className="mt-6 space-y-6" aria-label="Painel da coordenação">
+            <div className="flex items-center justify-between gap-4"><p className="text-xs text-graphite-400">Indicadores pedagógicos consolidados da instituição</p><Button size="sm" variant="outline" onClick={exportCoordinatorReport} disabled={!coordinatorDashboard?.classes.length}>Exportar relatório CSV</Button></div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[
+              { label: 'Turmas', value: coordinatorDashboard?.summary.classCount ?? 0, icon: School },
+              { label: 'Alunos', value: coordinatorDashboard?.summary.studentCount ?? 0, icon: Users },
+              { label: 'Professores', value: coordinatorDashboard?.summary.teacherCount ?? 0, icon: UserRound },
+              { label: 'Média institucional', value: String(coordinatorDashboard?.summary.averageAccuracy ?? 0) + '%', icon: TrendingUp },
+              { label: 'Alunos em atenção', value: coordinatorDashboard?.summary.studentsAtRisk ?? 0, icon: AlertTriangle },
+            ].map(({ label, value, icon: Icon }) => <Card key={label} className="bg-white p-4"><Icon className="h-5 w-5 text-primary-700" /><p className="mt-3 text-2xl font-bold text-graphite">{value}</p><p className="text-xs text-graphite-400">{label}</p></Card>)}</div>
+            <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]"><Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Comparação entre turmas</h2><div className="mt-4 space-y-3">{coordinatorDashboard?.classes.map(classRoom => <div key={classRoom.id} className="rounded-xl border border-surface-line p-4"><div className="flex items-center justify-between gap-4"><div><p className="font-semibold text-graphite">{classRoom.name}</p><p className="text-xs text-graphite-400">{classRoom.studentCount} alunos · {classRoom.submissionCount} entregas</p></div><span className="text-xl font-bold">{classRoom.accuracy}%</span></div><div className="mt-3 h-2 rounded-full bg-surface-card"><div className="h-2 rounded-full bg-primary" style={{ width: String(classRoom.accuracy) + '%' }} /></div></div>)}{!coordinatorDashboard?.classes.length && <p className="text-sm text-graphite-400">Nenhuma turma institucional disponível.</p>}</div></Card>
+              <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Desempenho por disciplina</h2><div className="mt-4 space-y-3">{coordinatorDashboard?.bySubject.slice(0, 6).map(item => <div key={item.subject} className="flex items-center justify-between rounded-xl bg-surface-card p-4"><div><p className="text-sm font-semibold">{item.subject}</p><p className="text-xs text-graphite-400">{item.attempts} respostas</p></div><span className="font-bold">{item.accuracy}%</span></div>)}{!coordinatorDashboard?.bySubject.length && <p className="text-sm text-graphite-400">Aguardando resultados das turmas.</p>}</div></Card></div>
+            <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Acompanhamento dos professores</h2><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{coordinatorDashboard?.teachers.map(teacher => <div key={teacher.id} className="rounded-xl border border-surface-line p-4"><p className="font-semibold text-graphite">{teacher.name}</p><p className="text-xs text-graphite-400">{teacher.subject}</p><p className="mt-3 text-sm">{teacher.classes.join(', ') || 'Sem turma ativa'}</p></div>)}{!coordinatorDashboard?.teachers.length && <p className="text-sm text-graphite-400">Nenhum professor vinculado.</p>}</div></Card>
+            <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Períodos letivos</h2><p className="mt-1 text-xs text-graphite-400">Cadastre o período vigente e preserve o histórico institucional.</p>{periodError && <p role="alert" className="mt-3 text-sm text-red-700">{periodError}</p>}<div className="mt-4 grid gap-3 md:grid-cols-4"><input aria-label="Nome do período" placeholder="Ex.: 2026.2" value={periodForm.name} onChange={event => setPeriodForm(current => ({ ...current, name: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /><input aria-label="Início do período" type="date" value={periodForm.startsAt} onChange={event => setPeriodForm(current => ({ ...current, startsAt: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /><input aria-label="Fim do período" type="date" value={periodForm.endsAt} onChange={event => setPeriodForm(current => ({ ...current, endsAt: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /><Button disabled={periodBusy || !periodForm.name.trim() || !periodForm.startsAt || !periodForm.endsAt} onClick={() => void createAcademicPeriod()}>Criar período</Button></div><div className="mt-5 space-y-2">{academicPeriods.map(period => <div key={period.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-line p-4"><div><p className="font-semibold text-graphite">{period.name}</p><p className="text-xs text-graphite-400">{formatCalendarDate(period.startsAt)} a {formatCalendarDate(period.endsAt)}</p></div><button type="button" disabled={periodBusy} onClick={() => void setAcademicPeriodActive(period.id, !period.active)} className={`rounded-full px-3 py-1 text-xs font-semibold ${period.active ? 'bg-success/10 text-success' : 'bg-surface-card text-graphite-400'}`}>{period.active ? 'Vigente' : 'Ativar'}</button></div>)}{!academicPeriods.length && <p className="text-sm text-graphite-400">Nenhum período letivo cadastrado.</p>}</div></Card>
+          </section>}
           {user?.accountType === 'TEACHER' && <section className="mt-6 space-y-6" aria-label="Painel do professor">
             <div className="flex items-center justify-between gap-4"><p className="text-xs text-graphite-400">Atualização automática a cada 30 segundos</p><Button size="sm" variant="outline" onClick={exportTeacherReport} disabled={!teacherDashboard?.classes.length}>Exportar relatório CSV</Button></div>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[
