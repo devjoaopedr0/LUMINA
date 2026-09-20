@@ -17,6 +17,13 @@ export default defineConfig({
     // pontual, é o tamanho real do grafo de módulos hoje. Timeout maior
     // evita falso-negativo por timeout de hook.
     hookTimeout: 30000,
+    // Idem para o timeout por teste: o DATABASE_URL hoje aponta pro Supabase
+    // remoto (não mais um Postgres local em Docker), então cada chamada HTTP
+    // do e2e paga uma latência de rede de verdade. Testes que encadeiam
+    // vários requests autenticados (ex: trocar senha e revogar sessões) já
+    // passaram do default de 5s só de latência acumulada + bcrypt — não é
+    // flakiness, é o custo real de bater num banco remoto.
+    testTimeout: 20000,
   },
   plugins: [swc.vite()],
 });
