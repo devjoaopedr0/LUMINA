@@ -57,7 +57,7 @@
    -  Alertas pedagógicos
    -  Identificação de alunos com dificuldade
    -  Identificação de conteúdos com baixo desempenho
-5. 5. Painel do coordenador
+5. 5. Painel do coordenador [CONCLUÍDA EM 20/09/2026]
    -  Visão geral das turmas
    -  Comparação entre turmas
    -  Acompanhamento dos professores
@@ -65,7 +65,7 @@
    -  Relatórios pedagógicos
    -  Indicadores da instituição
    -  Gestão de períodos letivos
-6. 6. Painel do diretor
+6. 6. Painel do diretor [CONCLUÍDA EM 20/09/2026]
    -  Indicadores gerais da instituição
    -  Desempenho acadêmico
    -  Evolução das turmas
@@ -229,6 +229,7 @@
     -  Treino de introdução
     -  Treino de desenvolvimento
     -  Treino de conclusão
+    -  Treino de projeto de texto
 21. 21. LuminIA — explicação de conteúdos
     -  Explicar qualquer conteúdo escolar
     -  Explicação resumida

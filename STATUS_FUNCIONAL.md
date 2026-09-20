@@ -1,5 +1,26 @@
 # Status funcional da Lumina
 
+## Atualização de 20/09/2026 — funcionalidade 6: Painel do diretor
+
+- Implementado: indicadores gerais da instituição com turmas, alunos, professores, entregas, média acadêmica e membros ativos.
+- Implementado: desempenho consolidado por turma e disciplina.
+- Implementado: evolução acadêmica mensal com volume de entregas.
+- Implementado: relatório consolidado exportável em CSV.
+- Implementado: gestão de usuários institucionais com ativação e suspensão de vínculos.
+- Implementado: conversão entre professor e coordenador, exigindo disciplina ao definir um professor.
+- Implementado: visão estratégica com indicação da turma e disciplina que demandam maior atenção.
+- Segurança: somente diretor com vínculo institucional ativo acessa os dados; a própria conta do diretor não pode ser alterada pelo painel.
+- Validação: 186 testes aprovados, typecheck do backend e frontend e build de produção do aplicativo.
+## Atualização de 20/09/2026 — funcionalidade 5: Painel do coordenador
+
+- Implementado: visão geral das turmas e comparação por desempenho.
+- Implementado: acompanhamento de professores e disciplinas vinculadas.
+- Implementado: desempenho consolidado por disciplina, média institucional e alunos em atenção.
+- Implementado: relatório pedagógico exportável em CSV.
+- Implementado: cadastro, histórico e ativação de períodos letivos, limitado ao coordenador vinculado a uma instituição ativa.
+- Validação: 185 testes aprovados, typecheck dos três projetos, build completo, schema Prisma válido e 21 migrações aplicadas.
+
+
 ## Referência geral
 
 O inventário completo enviado pelo usuário está preservado em [Funcionalidades gerais](docs/FUNCIONALIDADES_GERAIS.txt). A ordem numerada desse documento orienta as próximas entregas. Na seção 1, o encerramento de todas as sessões foi implementado com revogação de tokens por versão de sessão. A migração `20260916030000_add_session_version` foi aplicada no banco configurado em 16/09/2026. O gerenciamento individual de sessões permite listar e encerrar uma sessão; a migração `20260917010000_add_auth_sessions` foi aplicada no banco configurado em 17/09/2026.
@@ -48,6 +69,8 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Catálogo de propostas de redação do ENEM 2011–2025 e cadastro de professor com matéria para criação de conteúdo autoral pessoal. Consulte [Redações, professores e scanner](docs/REDAÇÕES_PROFESSORES_SCANNER.md); a migração desta etapa ainda depende da disponibilidade do PostgreSQL local.
 - Fase 3 — Painel do aluno — concluída: visão geral, notas e simulados pendentes, progresso por matéria e assunto/habilidade, metas acadêmicas, cronograma, atividades, recomendação determinística, históricos de estudos, questões, simulados e redações, tempo estudado e sequência de dias.
 - Fase 4 — Painel do professor — concluída: turmas e alunos, desempenho individual e geral, relatórios CSV, criação de atividades, listas, provas e simulados com prazo, correção automática, acompanhamento periódico das entregas, alertas pedagógicos e conteúdos com baixo desempenho.
+- Fase 5 — Painel do coordenador — concluída: visão institucional das turmas, comparação de desempenho, acompanhamento dos professores, relatórios pedagógicos e gestão de períodos letivos.
+- Fase 6 — Painel do diretor — concluída: indicadores institucionais, desempenho acadêmico, evolução mensal, relatório consolidado, gestão de usuários e visão estratégica.
 - LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
 - Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
 - Instituições: o modelo de dados e a resolução de permissões existem, mas não há API nem interface de cadastro, convite, código de turma, gestão de membros/cargos/turmas/períodos.
@@ -61,8 +84,8 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Scanner de cartão-resposta, câmera, visão computacional e correção física.
 - Explicações personalizadas da LuminIA integradas ao histórico acadêmico.
 - Correção de redações por IA/professor, competências, notas e evolução.
-- Dashboards de coordenador, diretor e administração interna.
-- Relatórios institucionais, exportação PDF/Excel e comparações entre turmas/períodos.
+- Administração interna da plataforma.
+- Exportação institucional em PDF/Excel e comparações históricas entre períodos.
 - Mapa de Domínio e Lumina Score.
 - Agenda/calendário unificado, lembretes e notificações.
 - Metas independentes, gamificação, XP, níveis, conquistas, streaks e desafios.
