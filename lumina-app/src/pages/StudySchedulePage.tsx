@@ -27,6 +27,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatCalendarDate as formatDateDisplay } from "@/lib/utils";
 import {
   type StudySchedule,
   type StudySubject,
@@ -104,23 +105,6 @@ function formatDate(date: Date | string): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function formatDateDisplay(date: Date | string): string {
-  if (typeof date === "string") {
-    // O backend manda datas-calendário como meia-noite UTC
-    // ("2026-09-08T00:00:00.000Z"). Passar isso por `new Date(...)` e depois
-    // `toLocaleDateString` converte para o fuso do navegador — em
-    // fusos atrás de UTC (ex: America/Sao_Paulo, UTC-3, o público-alvo da
-    // Lumina) isso exibe o dia ANTERIOR ao selecionado. Lendo o
-    // ano/mês/dia direto da string evita essa conversão de fuso.
-    const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      const [, year, month, day] = match;
-      return `${day}/${month}/${year}`;
-    }
-  }
-  return new Date(date).toLocaleDateString("pt-BR");
 }
 
 function minutesToHours(minutes: number): string {
