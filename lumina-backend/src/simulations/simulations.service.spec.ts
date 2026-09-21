@@ -25,6 +25,59 @@ function setup(row: typeof sample | null = sample) {
   return { service, prisma };
 }
 
+describe('SimulationsService.createClass', () => {
+  it('recusa quando o usuário não tem perfil de professor', async () => {
+    const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ teacherProfile: null }) } };
+    const service = new SimulationsService(prisma as never, {} as never);
+
+    await expect(service.createClass(userId, 'Turma A')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('cria a turma no workspace da instituição quando o professor tem vínculo institucional ativo', async () => {
+    const tx = { class: { create: vi.fn().mockResolvedValue({ id: 'class-1', name: 'Turma A', joinCode: 'ABC123' }) } };
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ email: 'prof@exemplo.com', teacherProfile: { subject: 'Matemática' } }) },
+      workspaceMember: {
+        findFirst: vi.fn().mockResolvedValue({ workspace: { id: 'institution-workspace-1' } }),
+      },
+      institution: { findUnique: vi.fn(), create: vi.fn() },
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
+    };
+    const service = new SimulationsService(prisma as never, {} as never);
+
+    await service.createClass(userId, 'Turma A');
+
+    expect(tx.class.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ workspaceId: 'institution-workspace-1' }) }),
+    );
+    // Não deve nem tentar criar/buscar o pseudo-workspace por professor.
+    expect(prisma.institution.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('usa (ou cria) o pseudo-workspace pessoal quando o professor não tem instituição', async () => {
+    const tx = {
+      institution: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ workspace: { id: 'shadow-workspace-1' } }),
+      },
+      class: { create: vi.fn().mockResolvedValue({ id: 'class-1', name: 'Turma A', joinCode: 'ABC123' }) },
+    };
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ email: 'prof@exemplo.com', teacherProfile: { subject: 'Matemática' } }) },
+      workspaceMember: { findFirst: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
+    };
+    const service = new SimulationsService(prisma as never, {} as never);
+
+    await service.createClass(userId, 'Turma A');
+
+    expect(tx.institution.create).toHaveBeenCalled();
+    expect(tx.class.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ workspaceId: 'shadow-workspace-1' }) }),
+    );
+  });
+});
+
 describe('SimulationsService.list', () => {
   it('inclui somente a nota do usuário autenticado na listagem', async () => {
     const findMany = vi.fn().mockResolvedValue([{ id: simulationId, title: 'ENEM', createdAt: new Date(), class: null, submissions: [{ correct: 8, total: 10, submittedAt: new Date() }], _count: { items: 10 } }]);

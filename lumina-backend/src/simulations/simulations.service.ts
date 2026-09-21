@@ -32,10 +32,9 @@ export class SimulationsService {
     return buildTeacherDashboard(classes);
   }
   async coordinatorDashboard(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { accountType: true } });
-    if (user?.accountType !== 'COORDINATOR') throw new ForbiddenException('Apenas coordenadores podem acessar este painel.');
+    const workspace = await this.coordinatorWorkspace(userId);
     const classes = await this.prisma.class.findMany({
-      where: { archived: false, OR: [{ coordinatorId: userId }, { workspace: { members: { some: { userId, status: 'ACTIVE' } } } }] },
+      where: { workspaceId: workspace.id, archived: false },
       select: {
         id: true, name: true, joinCode: true,
         members: { select: { joinedAt: true, user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } } },
@@ -45,7 +44,7 @@ export class SimulationsService {
       orderBy: { createdAt: 'desc' },
     });
     const dashboard = buildTeacherDashboard(classes);
-    return buildCoordinatorDashboard(dashboard, classes);
+    return { workspaceId: workspace.id, ...buildCoordinatorDashboard(dashboard, classes) };
   }
   async directorDashboard(userId: string) {
     const workspace = await this.directorWorkspace(userId);
@@ -65,7 +64,7 @@ export class SimulationsService {
       }),
     ]);
     const coordinator = buildCoordinatorDashboard(buildTeacherDashboard(classes), classes);
-    return buildDirectorDashboard(coordinator, classes, members, workspace.name);
+    return { workspaceId: workspace.id, ...buildDirectorDashboard(coordinator, classes, members, workspace.name) };
   }
 
   async updateDirectorMember(userId: string, memberId: string, dto: UpdateInstitutionMemberDto) {
@@ -136,15 +135,36 @@ export class SimulationsService {
   async createClass(userId: string, name: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { teacherProfile: true } });
     if (!user?.teacherProfile) throw new ForbiddenException('Apenas professores podem criar turmas.');
+
+    // Professor vinculado a uma instituição de verdade (convite aceito via
+    // POST /institutions/invites/accept): a turma nasce dentro do workspace
+    // dessa instituição, para que coordenação/direção enxerguem e
+    // gerenciem essa turma (transferência de aluno, relatórios etc.).
+    // Sem isso, toda turma criada aqui ficava presa num pseudo-workspace
+    // "Turmas de <e-mail>" por professor, inacessível para qualquer
+    // coordenador/diretor — um professor institucional nunca aparecia na
+    // gestão da própria instituição. Reproduzido e corrigido nesta sessão.
+    const institutionMembership = await this.prisma.workspaceMember.findFirst({
+      where: { userId, status: 'ACTIVE', workspace: { type: 'INSTITUTION' } },
+      select: { workspace: { select: { id: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+
     const classRoom = await this.prisma.$transaction(async (tx) => {
-      const email = `turmas+${userId}@lumina.internal`;
-      let institution = await tx.institution.findUnique({ where: { email }, include: { workspace: true } });
-      if (!institution) institution = await tx.institution.create({
-        data: { name: `Turmas de ${user.email}`, email, status: 'ACTIVE', workspace: { create: { name: `Turmas de ${user.email}`, type: 'INSTITUTION' } } },
-        include: { workspace: true },
-      });
+      let workspaceId = institutionMembership?.workspace.id;
+      if (!workspaceId) {
+        // Professor sem instituição (autônomo/independente): mantém o
+        // pseudo-workspace pessoal de turmas, um por professor.
+        const email = `turmas+${userId}@lumina.internal`;
+        let institution = await tx.institution.findUnique({ where: { email }, include: { workspace: true } });
+        if (!institution) institution = await tx.institution.create({
+          data: { name: `Turmas de ${user.email}`, email, status: 'ACTIVE', workspace: { create: { name: `Turmas de ${user.email}`, type: 'INSTITUTION' } } },
+          include: { workspace: true },
+        });
+        workspaceId = institution.workspace!.id;
+      }
       return tx.class.create({
-        data: { id: randomUUID(), workspaceId: institution.workspace!.id, name: name.trim(), joinCode: randomBytes(6).toString('hex').toUpperCase(), createdBy: userId, coordinatorId: userId, teachers: { create: { userId } } },
+        data: { id: randomUUID(), workspaceId, name: name.trim(), joinCode: randomBytes(6).toString('hex').toUpperCase(), createdBy: userId, coordinatorId: userId, teachers: { create: { userId } } },
       });
     });
     return { id: classRoom.id, name: classRoom.name, joinCode: classRoom.joinCode, isTeacher: true };
