@@ -491,20 +491,23 @@ model QuestionAlternative {
 }
 
 model Simulation {
-  id          String   @id @default(uuid()) @db.Uuid
-  title       String   @db.VarChar(160)
-  createdBy   String   @map("created_by") @db.Uuid
-  classId     String?  @map("class_id") @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
-  creator     User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  class       Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  items       SimulationItem[]
-  submissions SimulationSubmission[]
+  id             String         @id @default(uuid()) @db.Uuid
+  title          String         @db.VarChar(160)
+  createdBy      String         @map("created_by") @db.Uuid
+  classId        String?        @map("class_id") @db.Uuid
+  workspaceId    String         @map("workspace_id") @db.Uuid
+  assessmentType AssessmentType @default(SIMULATION) @map("assessment_type")
+  dueAt          DateTime?      @map("due_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  creator        User           @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  class          Class?         @relation(fields: [classId], references: [id], onDelete: SetNull)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items          SimulationItem[]
+  submissions    SimulationSubmission[]
 
   @@index([createdBy, createdAt])
   @@index([classId])
+  @@index([classId, dueAt])
   @@map("simulations")
 }
 
