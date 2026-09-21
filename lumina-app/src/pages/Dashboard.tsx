@@ -9,7 +9,7 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, type AcademicPeriod, type ApiUser, type EssaySummary, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitution, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { formatCalendarDate } from "@/lib/utils";
 
@@ -70,6 +70,44 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
+interface InviteManagementCardProps {
+  workspaceId: string;
+  invites: InstitutionInvite[];
+  inviteForm: { email: string; accountType: 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR'; subject: string };
+  setInviteForm: (updater: (current: { email: string; accountType: 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR'; subject: string }) => { email: string; accountType: 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR'; subject: string }) => void;
+  inviteBusy: boolean;
+  inviteError: string;
+  onCreate: (workspaceId: string) => void;
+  onRevoke: (workspaceId: string, memberId: string) => void;
+}
+
+function InviteManagementCard({ workspaceId, invites, inviteForm, setInviteForm, inviteBusy, inviteError, onCreate, onRevoke }: InviteManagementCardProps) {
+  return (
+    <Card className="bg-white">
+      <h2 className="text-lg font-semibold text-graphite">Convites institucionais</h2>
+      <p className="mt-1 text-xs text-graphite-400">Convide alguém que já tem conta na Lumina — ela precisa aceitar para entrar.</p>
+      {inviteError && <p role="alert" className="mt-3 text-sm text-red-700">{inviteError}</p>}
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <input aria-label="E-mail para convidar" type="email" placeholder="pessoa@exemplo.com" value={inviteForm.email} onChange={event => setInviteForm(current => ({ ...current, email: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm md:col-span-2" />
+        <select aria-label="Perfil do convite" value={inviteForm.accountType} onChange={event => setInviteForm(current => ({ ...current, accountType: event.target.value as InviteManagementCardProps['inviteForm']['accountType'] }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm">
+          <option value="STUDENT_INSTITUTION">Aluno</option>
+          <option value="TEACHER">Professor</option>
+          <option value="COORDINATOR">Coordenador</option>
+        </select>
+        {inviteForm.accountType === 'TEACHER' ? <input aria-label="Disciplina do professor" placeholder="Disciplina" value={inviteForm.subject} onChange={event => setInviteForm(current => ({ ...current, subject: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /> : <div />}
+      </div>
+      <Button size="sm" className="mt-3" disabled={inviteBusy || !inviteForm.email.trim() || (inviteForm.accountType === 'TEACHER' && !inviteForm.subject.trim())} onClick={() => onCreate(workspaceId)}>Enviar convite</Button>
+      <div className="mt-5 space-y-2">
+        {invites.map(invite => <div key={invite.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-line p-3">
+          <div><p className="text-sm font-medium text-graphite">{[invite.user.profile?.firstName, invite.user.profile?.lastName].filter(Boolean).join(' ') || invite.user.email}</p><p className="text-xs text-graphite-400">{invite.user.email} · convidado(a) como {invite.role.name}</p></div>
+          <Button size="sm" variant="outline" disabled={inviteBusy} onClick={() => onRevoke(workspaceId, invite.id)}>Revogar</Button>
+        </div>)}
+        {!invites.length && <p className="text-sm text-graphite-400">Nenhum convite pendente.</p>}
+      </div>
+    </Card>
+  );
+}
+
 export function Dashboard() {
   const { user } = useAuth();
   const isStudent = user?.accountType === 'STUDENT_INDEPENDENT' || user?.accountType === 'STUDENT_INSTITUTION';
@@ -94,18 +132,45 @@ export function Dashboard() {
   const [periodBusy, setPeriodBusy] = useState(false);
   const [periodError, setPeriodError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
+  const [inviteAccepting, setInviteAccepting] = useState(false);
+  const [inviteAcceptError, setInviteAcceptError] = useState('');
+  const [institutionForm, setInstitutionForm] = useState({ name: '', email: '', phone: '' });
+  const [institutionBusy, setInstitutionBusy] = useState(false);
+  const [institutionError, setInstitutionError] = useState('');
+  const [institutionCreated, setInstitutionCreated] = useState(false);
+  const [invites, setInvites] = useState<InstitutionInvite[]>([]);
+  const [inviteForm, setInviteForm] = useState<{ email: string; accountType: 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR'; subject: string }>({ email: '', accountType: 'STUDENT_INSTITUTION', subject: '' });
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+
+  useEffect(() => {
+    // Independe do cargo — qualquer conta pode ter sido convidada para uma
+    // instituição (a mudança de accountType só acontece ao ACEITAR, não ao
+    // ser convidado).
+    const token = getAccessToken();
+    if (!token) return;
+    apiPendingInvite(token).then(setPendingInvite).catch(() => undefined);
+  }, [user?.id]);
 
   useEffect(() => {
     if (user?.accountType === 'DIRECTOR') {
       const token = getAccessToken();
       if (!token) return;
-      apiDirectorDashboard(token).then(setDirectorDashboard).catch(() => undefined).finally(() => setLoading(false));
+      apiDirectorDashboard(token).then((dashboard) => {
+        setDirectorDashboard(dashboard);
+        void apiListInstitutionInvites(token, dashboard.workspaceId).then(setInvites).catch(() => undefined);
+      }).catch(() => undefined).finally(() => setLoading(false));
       return;
     }
     if (user?.accountType === 'COORDINATOR') {
       const token = getAccessToken();
       if (!token) return;
-      Promise.all([apiCoordinatorDashboard(token), apiCoordinatorPeriods(token)]).then(([dashboard, periods]) => { setCoordinatorDashboard(dashboard); setAcademicPeriods(periods); }).catch(() => undefined).finally(() => setLoading(false));
+      Promise.all([apiCoordinatorDashboard(token), apiCoordinatorPeriods(token)]).then(([dashboard, periods]) => {
+        setCoordinatorDashboard(dashboard);
+        setAcademicPeriods(periods);
+        void apiListInstitutionInvites(token, dashboard.workspaceId).then(setInvites).catch(() => undefined);
+      }).catch(() => undefined).finally(() => setLoading(false));
       return;
     }
     if (user?.accountType === 'TEACHER') {
@@ -224,6 +289,58 @@ export function Dashboard() {
     finally { setPeriodBusy(false); }
   }
 
+  async function acceptPendingInvite() {
+    const token = getAccessToken(); if (!token) return;
+    setInviteAccepting(true); setInviteAcceptError('');
+    try {
+      await apiAcceptInvite(token);
+      // O accountType mudou no backend — recarrega pra AuthContext/rotas
+      // de painel refletirem o cargo novo desde o primeiro render.
+      window.location.reload();
+    } catch (error) {
+      setInviteAcceptError(error instanceof Error ? error.message : 'Não foi possível aceitar o convite.');
+      setInviteAccepting(false);
+    }
+  }
+
+  async function createInstitution() {
+    const token = getAccessToken();
+    if (!token || !institutionForm.name.trim() || !institutionForm.email.trim()) return;
+    setInstitutionBusy(true); setInstitutionError('');
+    try {
+      await apiCreateInstitution(token, { name: institutionForm.name.trim(), email: institutionForm.email.trim(), phone: institutionForm.phone.trim() || undefined });
+      setInstitutionCreated(true);
+      window.location.reload();
+    } catch (error) {
+      setInstitutionError(error instanceof Error ? error.message : 'Não foi possível cadastrar a instituição.');
+    } finally {
+      setInstitutionBusy(false);
+    }
+  }
+
+  async function createInvite(workspaceId: string) {
+    const token = getAccessToken();
+    if (!token || !inviteForm.email.trim()) return;
+    setInviteBusy(true); setInviteError('');
+    try {
+      await apiCreateInstitutionInvite(token, workspaceId, { email: inviteForm.email.trim(), accountType: inviteForm.accountType, subject: inviteForm.accountType === 'TEACHER' ? inviteForm.subject.trim() : undefined });
+      setInvites(await apiListInstitutionInvites(token, workspaceId));
+      setInviteForm({ email: '', accountType: 'STUDENT_INSTITUTION', subject: '' });
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : 'Não foi possível enviar o convite.');
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function revokeInvite(workspaceId: string, memberId: string) {
+    const token = getAccessToken(); if (!token) return;
+    setInviteBusy(true); setInviteError('');
+    try { await apiRevokeInstitutionInvite(token, workspaceId, memberId); setInvites(await apiListInstitutionInvites(token, workspaceId)); }
+    catch (error) { setInviteError(error instanceof Error ? error.message : 'Não foi possível revogar o convite.'); }
+    finally { setInviteBusy(false); }
+  }
+
   const metrics = [
     { label: "Tarefas hoje", value: loading ? "—" : String(tasks.length), detail: `${completedToday} concluídas`, icon: CheckCircle2, color: "bg-success/10 text-success" },
     { label: "Tempo planejado", value: loading ? "—" : formatMinutes(session?.scheduledMinutes ?? 0), detail: "para esta sessão", icon: Clock3, color: "bg-primary/15 text-primary-700" },
@@ -258,6 +375,29 @@ export function Dashboard() {
             </div>
           </section>
 
+          {pendingInvite && <section className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5" aria-label="Convite institucional pendente">
+            <p className="text-sm font-semibold text-graphite">Você foi convidado para <strong>{pendingInvite.institutionName}</strong> como <strong>{pendingInvite.roleName}</strong>.</p>
+            {inviteAcceptError && <p role="alert" className="mt-2 text-sm text-red-700">{inviteAcceptError}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" disabled={inviteAccepting} onClick={() => void acceptPendingInvite()}>{inviteAccepting ? 'Aceitando…' : 'Aceitar convite'}</Button>
+              <Button size="sm" variant="outline" onClick={() => setPendingInvite(null)}>Ignorar por agora</Button>
+            </div>
+          </section>}
+
+          {!pendingInvite && (user?.accountType === 'STUDENT_INDEPENDENT' || user?.accountType === 'TEACHER') && <section className="mt-6 rounded-2xl border border-surface-line bg-white p-5" aria-label="Cadastro de instituição">
+            {institutionCreated ? <p className="text-sm text-graphite-500">Instituição cadastrada — atualizando seu painel…</p> : <>
+              <h2 className="font-semibold text-graphite">Representa uma escola ou cursinho?</h2>
+              <p className="mt-1 text-sm text-graphite-400">Cadastre sua instituição para convidar professores e alunos e acompanhar o desempenho de todas as turmas.</p>
+              {institutionError && <p role="alert" className="mt-3 text-sm text-red-700">{institutionError}</p>}
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <input aria-label="Nome da instituição" placeholder="Nome da instituição" value={institutionForm.name} onChange={event => setInstitutionForm(current => ({ ...current, name: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" />
+                <input aria-label="E-mail institucional" type="email" placeholder="contato@instituicao.com" value={institutionForm.email} onChange={event => setInstitutionForm(current => ({ ...current, email: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" />
+                <input aria-label="Telefone (opcional)" placeholder="Telefone (opcional)" value={institutionForm.phone} onChange={event => setInstitutionForm(current => ({ ...current, phone: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" />
+              </div>
+              <Button size="sm" className="mt-4" disabled={institutionBusy || !institutionForm.name.trim() || !institutionForm.email.trim()} onClick={() => void createInstitution()}>{institutionBusy ? 'Cadastrando…' : 'Cadastrar instituição'}</Button>
+            </>}
+          </section>}
+
           {panel && <section className="mt-6 grid gap-4 sm:grid-cols-3" aria-label="Ações de gestão">
             <Card className="bg-white"><h2 className="font-semibold text-graphite">Acesso por instituição</h2><p className="mt-2 text-sm text-graphite-400">Somente workspaces em que seu vínculo está ativo.</p></Card>
             <Card className="bg-white"><h2 className="font-semibold text-graphite">Acesso por turma</h2><p className="mt-2 text-sm text-graphite-400">Turmas coordenadas, lecionadas ou concedidas pelo cargo.</p></Card>
@@ -281,6 +421,7 @@ export function Dashboard() {
             </div>
             <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Desempenho acadêmico por turma</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{directorDashboard?.classes.map(classRoom => <div key={classRoom.id} className="rounded-xl border border-surface-line p-4"><div className="flex justify-between gap-4"><div><p className="font-semibold text-graphite">{classRoom.name}</p><p className="text-xs text-graphite-400">{classRoom.studentCount} alunos · {classRoom.submissionCount} entregas</p></div><span className="text-lg font-bold">{classRoom.accuracy}%</span></div><div className="mt-3 h-2 rounded-full bg-surface-card"><div className="h-2 rounded-full bg-primary" style={{ width: String(classRoom.accuracy) + '%' }} /></div></div>)}{!directorDashboard?.classes.length && <p className="text-sm text-graphite-400">Nenhuma turma institucional disponível.</p>}</div></Card>
             <Card className="bg-white p-0"><div className="border-b border-surface-line px-6 py-5"><h2 className="text-lg font-semibold text-graphite">Gestão de professores e coordenadores</h2><p className="mt-1 text-xs text-graphite-400">Ative, suspenda e altere o perfil dos membros da instituição.</p></div><div className="overflow-x-auto p-6"><table className="w-full min-w-[840px] text-left text-sm"><thead className="text-xs text-graphite-400"><tr><th className="pb-3 font-medium">Usuário</th><th className="pb-3 font-medium">Perfil</th><th className="pb-3 font-medium">Cargo</th><th className="pb-3 font-medium">Status</th><th className="pb-3 font-medium">Ações</th></tr></thead><tbody className="divide-y divide-surface-line">{directorDashboard?.members.map(member => { const isSelf = member.userId === user?.id; return <tr key={member.id}><td className="py-3"><p className="font-medium text-graphite">{member.name}</p><p className="text-xs text-graphite-400">{member.email}</p></td><td className="py-3">{member.accountType === 'TEACHER' ? 'Professor' : member.accountType === 'COORDINATOR' ? 'Coordenador' : member.accountType === 'DIRECTOR' ? 'Diretor' : member.accountType}</td><td className="py-3">{member.role}</td><td className="py-3"><span className={member.status === 'ACTIVE' ? 'rounded-full bg-success/10 px-2 py-1 text-xs font-semibold text-success' : 'rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700'}>{member.status === 'ACTIVE' ? 'Ativo' : 'Suspenso'}</span></td><td className="py-3"><div className="flex items-center gap-2">{member.accountType === 'TEACHER' ? <Button size="sm" variant="outline" disabled={isSelf || directorBusyId === member.id} onClick={() => void updateDirectorMember(member.id, { accountType: 'COORDINATOR' })}>Tornar coordenador</Button> : member.accountType === 'COORDINATOR' ? <><input aria-label={'Disciplina de ' + member.name} placeholder="Disciplina" value={memberSubjects[member.id] ?? ''} onChange={event => setMemberSubjects(current => ({ ...current, [member.id]: event.target.value }))} className="w-32 rounded-lg border border-surface-line px-2 py-1.5 text-xs" /><Button size="sm" variant="outline" disabled={isSelf || directorBusyId === member.id || !(memberSubjects[member.id] ?? '').trim()} onClick={() => void updateDirectorMember(member.id, { accountType: 'TEACHER', subject: memberSubjects[member.id].trim() })}>Tornar professor</Button></> : null}<Button size="sm" variant="outline" disabled={isSelf || directorBusyId === member.id} onClick={() => void updateDirectorMember(member.id, { status: member.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' })}>{member.status === 'ACTIVE' ? 'Suspender' : 'Ativar'}</Button></div></td></tr>; })}</tbody></table>{!directorDashboard?.members.length && <p className="py-5 text-sm text-graphite-400">Nenhum membro institucional disponível.</p>}</div></Card>
+            {directorDashboard && <InviteManagementCard workspaceId={directorDashboard.workspaceId} invites={invites} inviteForm={inviteForm} setInviteForm={setInviteForm} inviteBusy={inviteBusy} inviteError={inviteError} onCreate={createInvite} onRevoke={revokeInvite} />}
           </section>}
 
           {user?.accountType === 'COORDINATOR' && <section className="mt-6 space-y-6" aria-label="Painel da coordenação">
@@ -296,6 +437,7 @@ export function Dashboard() {
               <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Desempenho por disciplina</h2><div className="mt-4 space-y-3">{coordinatorDashboard?.bySubject.slice(0, 6).map(item => <div key={item.subject} className="flex items-center justify-between rounded-xl bg-surface-card p-4"><div><p className="text-sm font-semibold">{item.subject}</p><p className="text-xs text-graphite-400">{item.attempts} respostas</p></div><span className="font-bold">{item.accuracy}%</span></div>)}{!coordinatorDashboard?.bySubject.length && <p className="text-sm text-graphite-400">Aguardando resultados das turmas.</p>}</div></Card></div>
             <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Acompanhamento dos professores</h2><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{coordinatorDashboard?.teachers.map(teacher => <div key={teacher.id} className="rounded-xl border border-surface-line p-4"><p className="font-semibold text-graphite">{teacher.name}</p><p className="text-xs text-graphite-400">{teacher.subject}</p><p className="mt-3 text-sm">{teacher.classes.join(', ') || 'Sem turma ativa'}</p></div>)}{!coordinatorDashboard?.teachers.length && <p className="text-sm text-graphite-400">Nenhum professor vinculado.</p>}</div></Card>
             <Card className="bg-white"><h2 className="text-lg font-semibold text-graphite">Períodos letivos</h2><p className="mt-1 text-xs text-graphite-400">Cadastre o período vigente e preserve o histórico institucional.</p>{periodError && <p role="alert" className="mt-3 text-sm text-red-700">{periodError}</p>}<div className="mt-4 grid gap-3 md:grid-cols-4"><input aria-label="Nome do período" placeholder="Ex.: 2026.2" value={periodForm.name} onChange={event => setPeriodForm(current => ({ ...current, name: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /><input aria-label="Início do período" type="date" value={periodForm.startsAt} onChange={event => setPeriodForm(current => ({ ...current, startsAt: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /><input aria-label="Fim do período" type="date" value={periodForm.endsAt} onChange={event => setPeriodForm(current => ({ ...current, endsAt: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" /><Button disabled={periodBusy || !periodForm.name.trim() || !periodForm.startsAt || !periodForm.endsAt} onClick={() => void createAcademicPeriod()}>Criar período</Button></div><div className="mt-5 space-y-2">{academicPeriods.map(period => <div key={period.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-line p-4"><div><p className="font-semibold text-graphite">{period.name}</p><p className="text-xs text-graphite-400">{formatCalendarDate(period.startsAt)} a {formatCalendarDate(period.endsAt)}</p></div><button type="button" disabled={periodBusy} onClick={() => void setAcademicPeriodActive(period.id, !period.active)} className={`rounded-full px-3 py-1 text-xs font-semibold ${period.active ? 'bg-success/10 text-success' : 'bg-surface-card text-graphite-400'}`}>{period.active ? 'Vigente' : 'Ativar'}</button></div>)}{!academicPeriods.length && <p className="text-sm text-graphite-400">Nenhum período letivo cadastrado.</p>}</div></Card>
+            {coordinatorDashboard && <InviteManagementCard workspaceId={coordinatorDashboard.workspaceId} invites={invites} inviteForm={inviteForm} setInviteForm={setInviteForm} inviteBusy={inviteBusy} inviteError={inviteError} onCreate={createInvite} onRevoke={revokeInvite} />}
           </section>}
           {user?.accountType === 'TEACHER' && <section className="mt-6 space-y-6" aria-label="Painel do professor">
             <div className="flex items-center justify-between gap-4"><p className="text-xs text-graphite-400">Atualização automática a cada 30 segundos</p><Button size="sm" variant="outline" onClick={exportTeacherReport} disabled={!teacherDashboard?.classes.length}>Exportar relatório CSV</Button></div>

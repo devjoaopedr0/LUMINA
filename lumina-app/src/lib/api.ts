@@ -391,6 +391,7 @@ export interface SimulationItem { id: string; position: number; stem: string; su
 export interface Simulation { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; className: string | null; sheetVersion: number; items: SimulationItem[] }
 export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; items: { position: number; subject: string; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
 export interface CoordinatorDashboard {
+  workspaceId: string;
   summary: TeacherDashboard['summary'] & { teacherCount: number };
   classes: TeacherDashboard['classes'];
   teachers: Array<{ id: string; name: string; email: string; subject: string; classes: string[] }>;
@@ -408,6 +409,7 @@ export interface DirectorMember {
   joinedAt: string;
 }
 export interface DirectorDashboard {
+  workspaceId: string;
   institutionName: string;
   summary: CoordinatorDashboard['summary'] & { memberCount: number; activeMemberCount: number };
   classes: TeacherDashboard['classes'];
@@ -427,6 +429,16 @@ export const apiTeacherDashboard = (token: string): Promise<TeacherDashboard> =>
 export const apiCoordinatorDashboard = (token: string): Promise<CoordinatorDashboard> => request('/simulations/coordinator/dashboard', { headers: authHeaders(token) });
 export const apiDirectorDashboard = (token: string): Promise<DirectorDashboard> => request('/simulations/director/dashboard', { headers: authHeaders(token) });
 export const apiUpdateDirectorMember = (token: string, memberId: string, data: { status?: 'ACTIVE' | 'SUSPENDED'; accountType?: 'TEACHER' | 'COORDINATOR'; subject?: string }): Promise<{ updated: true }> => request('/simulations/director/members/' + encodeURIComponent(memberId), { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data) });
+
+export interface Institution { id: string; name: string; email: string; phone: string | null; status: string; workspace: { id: string; name: string } }
+export interface PendingInvite { id: string; institutionName: string; roleName: string }
+export interface InstitutionInvite { id: string; status: string; createdAt: string; user: { email: string; profile: { firstName: string; lastName: string | null } | null }; role: { name: string } }
+export const apiCreateInstitution = (token: string, data: { name: string; email: string; phone?: string }): Promise<Institution> => request('/institutions', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(data) });
+export const apiPendingInvite = (token: string): Promise<PendingInvite | null> => request('/institutions/invites/pending', { headers: authHeaders(token) });
+export const apiAcceptInvite = (token: string): Promise<unknown> => request('/institutions/invites/accept', { method: 'POST', headers: authHeaders(token) });
+export const apiCreateInstitutionInvite = (token: string, workspaceId: string, data: { email: string; accountType: 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR'; subject?: string }): Promise<InstitutionInvite> => request(`/workspaces/${workspaceId}/invites`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(data) });
+export const apiListInstitutionInvites = (token: string, workspaceId: string): Promise<InstitutionInvite[]> => request(`/workspaces/${workspaceId}/invites`, { headers: authHeaders(token) });
+export const apiRevokeInstitutionInvite = (token: string, workspaceId: string, memberId: string): Promise<{ revoked: true }> => request(`/workspaces/${workspaceId}/invites/${memberId}`, { method: 'DELETE', headers: authHeaders(token) });
 export interface AcademicPeriod { id: string; workspaceId: string; name: string; startsAt: string; endsAt: string; active: boolean; createdAt: string; updatedAt: string }
 export const apiCoordinatorPeriods = (token: string): Promise<AcademicPeriod[]> => request('/simulations/coordinator/periods', { headers: authHeaders(token) });
 export const apiCreateCoordinatorPeriod = (token: string, data: { name: string; startsAt: string; endsAt: string }): Promise<AcademicPeriod> => request('/simulations/coordinator/periods', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(data) });
