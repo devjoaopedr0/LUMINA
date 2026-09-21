@@ -1,5 +1,15 @@
 # Status funcional da Lumina
 
+## Atualização de 20/09/2026 — funcionalidade 7: Gestão de instituições
+
+- Implementado: cadastro de instituição (POST /institutions) — cria a Institution + Workspace, semeia os 4 cargos institucionais padrão (Diretor, Coordenador, Professor, Aluno) e vincula quem criou como Diretor.
+- Implementado: convites institucionais por e-mail (Diretor/Coordenador convidam; a pessoa precisa já ter conta na Lumina — convite para e-mail sem conta ainda não é suportado) com aceite explícito pelo convidado.
+- Implementado: transferência de aluno entre turmas da mesma instituição.
+- Corrigido: turma criada por professor institucional agora nasce no workspace da instituição (antes caía num pseudo-workspace individual por professor, invisível para coordenação/direção).
+- Corrigido: schema drift do model Simulation (assessmentType/dueAt ausentes do schema.prisma apesar de já aplicados no banco) — corrigia um 500 em GET /simulations para qualquer usuário.
+- Pendente: convite para e-mail ainda sem conta cadastrada; conceito de "ano letivo" tratado hoje via período letivo (Fase 5), sem campo dedicado; interface de gestão de membros/turmas ainda concentrada no painel do diretor, sem tela própria de "gestão de instituições".
+- Validação: 207 testes aprovados, typecheck e build dos três projetos, fluxo completo (cadastro → convite → aceite → transferência de turma) verificado ao vivo contra o banco configurado.
+
 ## Atualização de 20/09/2026 — funcionalidade 6: Painel do diretor
 
 - Implementado: indicadores gerais da instituição com turmas, alunos, professores, entregas, média acadêmica e membros ativos.
@@ -73,7 +83,7 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Fase 6 — Painel do diretor — concluída: indicadores institucionais, desempenho acadêmico, evolução mensal, relatório consolidado, gestão de usuários e visão estratégica.
 - LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
 - Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
-- Instituições: o modelo de dados e a resolução de permissões existem, mas não há API nem interface de cadastro, convite, código de turma, gestão de membros/cargos/turmas/períodos.
+- Instituições: cadastro, convites (só para e-mail já cadastrado), transferência entre turmas e gestão de membros (painel do diretor) implementados; código de turma e períodos letivos já existiam. Falta convite para e-mail sem conta, tela dedicada de gestão de instituições (hoje é só o painel do diretor) e edição/arquivamento de turma fora do fluxo de criação.
 - Provas antigas: o catálogo de exames e suas questões existe; faltam experiência de prova completa, cadernos, gabaritos e comparação entre provas.
 - Recomendações: os dados de desempenho necessários já são coletados; falta o motor adaptativo e a interface de recomendações.
 - Perfil: a foto local é armazenada como imagem compactada no perfil; armazenamento de objetos dedicado ainda não existe. Preferências do usuário ainda não possuem modelo/API/tela.

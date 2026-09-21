@@ -73,7 +73,7 @@
    -  Gestão de usuários
    -  Gestão de professores e coordenadores
    -  Visão estratégica da instituição
-7. 7. Gestão de instituições
+7. 7. Gestão de instituições [CONCLUÍDA EM 20/09/2026]
    -  Cadastro de instituição
    -  Gerenciamento de alunos
    -  Gerenciamento de professores
