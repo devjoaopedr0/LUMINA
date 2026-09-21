@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -9,6 +9,7 @@ import { WorkspacePermissionsGuard } from './workspace-permissions.guard';
 import { WorkspacesRepository } from './workspaces.repository';
 import { WorkspacesService } from './workspaces.service';
 import { SaveWorkspaceRoleDto, SetRolePermissionsDto } from './workspace-roles.dto';
+import { CreateInviteDto, TransferClassMemberDto } from './workspace-invites.dto';
 import { AccessScopesService } from './access-scopes.service';
 
 @ApiTags('workspaces')
@@ -56,6 +57,38 @@ export class WorkspacesController {
   @RequireWorkspacePermissions(WORKSPACE_PERMISSIONS.ROLE_MANAGE)
   setRolePermissions(@Param('workspaceId') workspaceId: string, @Param('roleId') roleId: string, @Body() dto: SetRolePermissionsDto) {
     return this.service.setRolePermissions(workspaceId, roleId, dto.permissionCodes);
+  }
+
+  @Post(':workspaceId/invites')
+  @UseGuards(WorkspacePermissionsGuard)
+  @RequireWorkspacePermissions(WORKSPACE_PERMISSIONS.MEMBER_MANAGE)
+  @ApiOperation({ summary: 'Convida um usuário já cadastrado na Lumina para entrar na instituição.' })
+  createInvite(@Param('workspaceId') workspaceId: string, @Body() dto: CreateInviteDto) {
+    return this.service.createInvite(workspaceId, dto);
+  }
+
+  @Get(':workspaceId/invites')
+  @UseGuards(WorkspacePermissionsGuard)
+  @RequireWorkspacePermissions(WORKSPACE_PERMISSIONS.MEMBER_MANAGE)
+  @ApiOperation({ summary: 'Lista os convites institucionais pendentes.' })
+  listInvites(@Param('workspaceId') workspaceId: string) {
+    return this.service.listInvites(workspaceId);
+  }
+
+  @Delete(':workspaceId/invites/:memberId')
+  @UseGuards(WorkspacePermissionsGuard)
+  @RequireWorkspacePermissions(WORKSPACE_PERMISSIONS.MEMBER_MANAGE)
+  @ApiOperation({ summary: 'Revoga um convite institucional ainda pendente.' })
+  revokeInvite(@Param('workspaceId') workspaceId: string, @Param('memberId') memberId: string) {
+    return this.service.revokeInvite(workspaceId, memberId);
+  }
+
+  @Patch(':workspaceId/classes/transfer')
+  @UseGuards(WorkspacePermissionsGuard)
+  @RequireWorkspacePermissions(WORKSPACE_PERMISSIONS.CLASS_MANAGE)
+  @ApiOperation({ summary: 'Transfere um aluno de uma turma para outra dentro da mesma instituição.' })
+  transferClassMember(@Param('workspaceId') workspaceId: string, @Body() dto: TransferClassMemberDto) {
+    return this.service.transferClassMember(workspaceId, dto);
   }
 
   @Get('access/classes/:classId')
