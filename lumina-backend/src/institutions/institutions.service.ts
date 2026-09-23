@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, WorkspaceMemberStatus, WorkspaceType } from '@prisma/client';
+import { InstitutionStatus, Prisma, WorkspaceMemberStatus, WorkspaceType } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { WORKSPACE_PERMISSIONS } from '../workspaces/workspace-permissions.constants';
 import { CreateInstitutionDto } from './institutions.dto';
@@ -29,10 +29,13 @@ export class InstitutionsService {
    * 4 cargos institucionais padrão (Diretor/Coordenador com as permissões de
    * RBAC já existentes; Professor/Aluno sem permissão de workspace — a
    * autoridade deles vem do vínculo com turmas específicas, não do
-   * workspace inteiro) e vincula quem criou como Diretor ACTIVE. A
-   * instituição nasce PENDING (default do schema) — ainda não há um fluxo
-   * de aprovação/pagamento institucional; isso não bloqueia o uso agora,
-   * só reflete que a ativação formal é uma etapa futura. */
+   * workspace inteiro) e vincula quem criou como Diretor ACTIVE.
+   * A instituição nasce ACTIVE: ainda não há fluxo de aprovação/pagamento
+   * institucional e a política de turmas exige instituição ativa
+   * (assertInstitutionClassMember) — deixar PENDING bloquearia toda a gestão
+   * de turmas de uma escola recém-cadastrada sem caminho para ativá-la.
+   * Quando o licenciamento pago com aprovação assistida existir, o cadastro
+   * passa a nascer PENDING e a ativação entra no fluxo de onboarding. */
   async createInstitution(userId: string, dto: CreateInstitutionDto) {
     return this.prisma.$transaction(tx => InstitutionsService.createInTransaction(tx, userId, dto));
   }
@@ -51,6 +54,7 @@ export class InstitutionsService {
           name: dto.name.trim(),
           email: dto.email.trim().toLowerCase(),
           phone: dto.phone?.trim() || null,
+          status: InstitutionStatus.ACTIVE,
           workspace: { create: { name: dto.name.trim(), type: WorkspaceType.INSTITUTION } },
         },
         include: { workspace: true },

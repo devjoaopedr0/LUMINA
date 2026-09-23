@@ -52,6 +52,11 @@ describe('InstitutionsService', () => {
       await service.createInstitution('user-1', { name: 'Escola Lumina', email: 'Escola@Exemplo.com' });
 
       expect(tx.institution.findUnique).toHaveBeenCalledWith({ where: { email: 'escola@exemplo.com' } });
+      // Instituição nasce ACTIVE: sem fluxo de ativação ainda, e a política
+      // de turmas exige instituição ativa (assertInstitutionClassMember).
+      expect(tx.institution.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'ACTIVE' }) }),
+      );
       const roleNames = tx.role.create.mock.calls.map((call) => call[0].data.name);
       expect(roleNames).toEqual([ROLE_DIRETOR, ROLE_COORDENADOR, ROLE_PROFESSOR, ROLE_ALUNO]);
 

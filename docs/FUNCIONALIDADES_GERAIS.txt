@@ -85,7 +85,7 @@
    -  Convites para entrada na instituição
    -  Código de acesso à turma
    -  Transferência entre turmas
-8. 8. Gestão de turmas [API E INTERFACE INTEGRADAS EM 22/09/2026 — VALIDAÇÃO FINAL PENDENTE]
+8. 8. Gestão de turmas [INTEGRADA E VALIDADA VIA API EM 23/09/2026 — VALIDAÇÃO VISUAL NO NAVEGADOR PENDENTE]
    -  Criar turma
    -  Editar turma
    -  Arquivar turma
