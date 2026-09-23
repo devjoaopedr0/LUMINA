@@ -245,6 +245,7 @@ model AcademicPeriod {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  classes     Class[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId, startsAt])
@@ -321,25 +322,35 @@ model RolePermission {
 /// referenciar um Workspace com type = INSTITUTION. Precisa ser validada na
 /// camada de aplicação (ou via trigger) antes de criar/mover uma turma.
 model Class {
-  id            String         @id @default(uuid()) @db.Uuid
-  workspaceId   String         @map("workspace_id") @db.Uuid
-  name          String
-  description   String?
-  joinCode      String         @unique @map("join_code")
-  maxStudents   Int?           @map("max_students")
-  coordinatorId String?        @map("coordinator_id") @db.Uuid
-  archived      Boolean        @default(false)
-  createdBy     String         @map("created_by") @db.Uuid
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  members       ClassMember[]
-  teachers      ClassTeacher[]
-  simulations   Simulation[]
-  coordinator   User?          @relation("ClassCoordinator", fields: [coordinatorId], references: [id])
-  creator       User           @relation("ClassCreatedBy", fields: [createdBy], references: [id])
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id               String          @id @default(uuid()) @db.Uuid
+  workspaceId      String          @map("workspace_id") @db.Uuid
+  name             String
+  description      String?
+  joinCode         String          @unique @map("join_code")
+  maxStudents      Int?            @map("max_students")
+  coordinatorId    String?         @map("coordinator_id") @db.Uuid
+  subjectId        String?         @map("subject_id") @db.Uuid
+  academicPeriodId String?         @map("academic_period_id") @db.Uuid
+  /// Ano/série da turma (ex: 3 = "3º ano") — mesma convenção de
+  /// UserProfile.schoolYear. Organização por ano letivo em si já é
+  /// coberta por academicPeriodId (Fase 5: períodos letivos).
+  gradeYear        Int?            @map("grade_year")
+  archived         Boolean         @default(false)
+  createdBy        String          @map("created_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  members          ClassMember[]
+  teachers         ClassTeacher[]
+  simulations      Simulation[]
+  coordinator      User?           @relation("ClassCoordinator", fields: [coordinatorId], references: [id])
+  creator          User            @relation("ClassCreatedBy", fields: [createdBy], references: [id])
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subject          Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  academicPeriod   AcademicPeriod? @relation(fields: [academicPeriodId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
+  @@index([subjectId])
+  @@index([academicPeriodId])
   @@map("classes")
 }
 
@@ -384,6 +395,7 @@ model Subject {
   updatedAt DateTime   @updatedAt @map("updated_at")
   questions Question[] @relation("QuestionSubject")
   topics    Topic[]    @relation("TopicSubject")
+  classes   Class[]
 
   @@map("subjects")
 }

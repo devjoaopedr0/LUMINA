@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider } from "@/contexts/AuthProvider";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
@@ -14,12 +14,14 @@ import { Profile } from "@/pages/Profile";
 import { MentalMath } from "@/pages/MentalMath";
 import { Essays } from "@/pages/Essays";
 import { Simulations } from "@/pages/Simulations";
+import { Classes } from "@/pages/Classes";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
         <Route path="/app/simulados" element={<ProtectedRoute><Simulations /></ProtectedRoute>} />
         <Route path="/app/redacoes" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
         <Route path="/app/redacoes/:id" element={<ProtectedRoute><Essays /></ProtectedRoute>} />

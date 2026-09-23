@@ -63,6 +63,7 @@ export function Simulations() {
     <div className="mx-auto max-w-5xl">
       <div className="print:hidden"><Link to="/app" className="text-sm font-semibold">← Voltar à visão geral</Link></div>
       <h1 className="mt-6 text-3xl font-bold">Simulados</h1>
+      <Link to="/app/turmas" className="my-4 inline-block underline print:hidden">Gerenciar turmas, vínculos e histórico</Link>
       {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700 print:hidden">{error}</p>}
       {id ? simulation ? <>
         <div className="my-5 flex gap-3 print:hidden">

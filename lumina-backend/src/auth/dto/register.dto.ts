@@ -7,9 +7,17 @@ import {
   MinLength,
   IsIn,
   IsOptional,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreateInstitutionDto } from '../../institutions/institutions.dto';
 
 export class RegisterDto {
+  @ApiProperty({ required: false, type: CreateInstitutionDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateInstitutionDto)
+  institution?: CreateInstitutionDto;
   @ApiProperty({ required: false, enum: ['STUDENT_INDEPENDENT', 'TEACHER'] })
   @IsOptional()
   @IsIn(['STUDENT_INDEPENDENT', 'TEACHER'])

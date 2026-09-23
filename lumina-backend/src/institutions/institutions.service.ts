@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { WorkspaceMemberStatus, WorkspaceType } from '@prisma/client';
+import { Prisma, WorkspaceMemberStatus, WorkspaceType } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { WORKSPACE_PERMISSIONS } from '../workspaces/workspace-permissions.constants';
 import { CreateInstitutionDto } from './institutions.dto';
@@ -34,15 +34,18 @@ export class InstitutionsService {
    * de aprovação/pagamento institucional; isso não bloqueia o uso agora,
    * só reflete que a ativação formal é uma etapa futura. */
   async createInstitution(userId: string, dto: CreateInstitutionDto) {
-    const existing = await this.prisma.institution.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
+    return this.prisma.$transaction(tx => InstitutionsService.createInTransaction(tx, userId, dto));
+  }
+
+  static async createInTransaction(tx: Prisma.TransactionClient, userId: string, dto: CreateInstitutionDto) {
+    const existing = await tx.institution.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
     if (existing) throw new ConflictException('Já existe uma instituição cadastrada com este e-mail.');
 
-    const permissions = await this.prisma.permission.findMany({
+    const permissions = await tx.permission.findMany({
       where: { code: { in: Object.values(WORKSPACE_PERMISSIONS) } },
     });
     const permissionId = (code: string) => permissions.find((p) => p.code === code)?.id;
 
-    return this.prisma.$transaction(async (tx) => {
       const institution = await tx.institution.create({
         data: {
           name: dto.name.trim(),
@@ -109,7 +112,6 @@ export class InstitutionsService {
       await tx.user.update({ where: { id: userId }, data: { accountType: 'DIRECTOR' } });
 
       return tx.institution.findUniqueOrThrow({ where: { id: institution.id }, include: { workspace: true } });
-    });
   }
 
   /** Só consulta — não muda nada. Existe para o frontend poder mostrar "você

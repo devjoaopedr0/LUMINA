@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { AuthContext, type AuthContextValue, type SignupData } from './AuthContext';
 import {
   apiLogin,
   apiLogoutAll,
@@ -13,31 +14,6 @@ import {
   type ApiUser,
 } from "@/lib/api";
 import { ACCESS_TOKEN_KEY, clearTokens, getAccessToken, setTokens } from "@/lib/auth";
-
-export interface SignupData {
-  accountType?: 'STUDENT_INDEPENDENT' | 'TEACHER';
-  firstName: string;
-  lastName: string;
-  username: string;
-  email: string;
-  password: string;
-  teacherSubject?: string;
-}
-
-interface AuthContextValue {
-  user: ApiUser | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<ApiUser>;
-  signup: (data: SignupData) => Promise<ApiUser>;
-  setPassword: (password: string) => Promise<ApiUser>;
-  verifyEmail: (code: string) => Promise<ApiUser>;
-  resendVerification: () => Promise<void>;
-  updateProfile: (data: UpdateProfilePayload) => Promise<ApiUser>;
-  logout: () => void;
-  logoutAll: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
@@ -151,8 +127,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth deve ser usado dentro de um AuthProvider");
-  return ctx;
-}

@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+vi.mock('./class-membership-policy', () => ({ assertInstitutionClassMember: vi.fn().mockResolvedValue(undefined) }));
 import { WorkspacesService } from './workspaces.service';
 
 describe('WorkspacesService — convites institucionais', () => {
@@ -90,6 +91,12 @@ describe('WorkspacesService — convites institucionais', () => {
   });
 
   describe('transferClassMember', () => {
+    it('recusa transferência para turma arquivada', async () => {
+      const prisma = { class: { findFirst: vi.fn().mockResolvedValueOnce({ id: 'c1' }).mockResolvedValueOnce({ id: 'c2', archived: true }) } };
+      const service = new WorkspacesService(prisma as never);
+      await expect(service.transferClassMember('workspace-1', { studentId: 's1', fromClassId: 'c1', toClassId: 'c2' })).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('recusa transferir para a mesma turma', async () => {
       const service = new WorkspacesService({} as never);
       await expect(
@@ -151,7 +158,7 @@ describe('WorkspacesService — convites institucionais', () => {
     });
 
     it('move o aluno para a turma de destino dentro de uma transação', async () => {
-      const tx = { classMember: { delete: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({ id: 'new-membership' }) } };
+      const tx = { class: { update: vi.fn().mockResolvedValue({ archived: false, maxStudents: null }) }, classMember: { delete: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({ id: 'new-membership' }) } };
       const prisma = {
         class: {
           findFirst: vi

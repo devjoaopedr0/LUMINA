@@ -9,7 +9,7 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitution, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { formatCalendarDate } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/app/cronograma", label: "Cronograma", icon: CalendarDays },
   { to: "/app/questoes", label: "Banco de questões", icon: Database },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
+  { to: "/app/turmas", label: "Turmas", icon: School },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
@@ -135,10 +136,6 @@ export function Dashboard() {
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   const [inviteAccepting, setInviteAccepting] = useState(false);
   const [inviteAcceptError, setInviteAcceptError] = useState('');
-  const [institutionForm, setInstitutionForm] = useState({ name: '', email: '', phone: '' });
-  const [institutionBusy, setInstitutionBusy] = useState(false);
-  const [institutionError, setInstitutionError] = useState('');
-  const [institutionCreated, setInstitutionCreated] = useState(false);
   const [invites, setInvites] = useState<InstitutionInvite[]>([]);
   const [inviteForm, setInviteForm] = useState<{ email: string; accountType: 'STUDENT_INSTITUTION' | 'TEACHER' | 'COORDINATOR'; subject: string }>({ email: '', accountType: 'STUDENT_INSTITUTION', subject: '' });
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -303,21 +300,6 @@ export function Dashboard() {
     }
   }
 
-  async function createInstitution() {
-    const token = getAccessToken();
-    if (!token || !institutionForm.name.trim() || !institutionForm.email.trim()) return;
-    setInstitutionBusy(true); setInstitutionError('');
-    try {
-      await apiCreateInstitution(token, { name: institutionForm.name.trim(), email: institutionForm.email.trim(), phone: institutionForm.phone.trim() || undefined });
-      setInstitutionCreated(true);
-      window.location.reload();
-    } catch (error) {
-      setInstitutionError(error instanceof Error ? error.message : 'Não foi possível cadastrar a instituição.');
-    } finally {
-      setInstitutionBusy(false);
-    }
-  }
-
   async function createInvite(workspaceId: string) {
     const token = getAccessToken();
     if (!token || !inviteForm.email.trim()) return;
@@ -382,20 +364,6 @@ export function Dashboard() {
               <Button size="sm" disabled={inviteAccepting} onClick={() => void acceptPendingInvite()}>{inviteAccepting ? 'Aceitando…' : 'Aceitar convite'}</Button>
               <Button size="sm" variant="outline" onClick={() => setPendingInvite(null)}>Ignorar por agora</Button>
             </div>
-          </section>}
-
-          {!pendingInvite && (user?.accountType === 'STUDENT_INDEPENDENT' || user?.accountType === 'TEACHER') && <section className="mt-6 rounded-2xl border border-surface-line bg-white p-5" aria-label="Cadastro de instituição">
-            {institutionCreated ? <p className="text-sm text-graphite-500">Instituição cadastrada — atualizando seu painel…</p> : <>
-              <h2 className="font-semibold text-graphite">Representa uma escola ou cursinho?</h2>
-              <p className="mt-1 text-sm text-graphite-400">Cadastre sua instituição para convidar professores e alunos e acompanhar o desempenho de todas as turmas.</p>
-              {institutionError && <p role="alert" className="mt-3 text-sm text-red-700">{institutionError}</p>}
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <input aria-label="Nome da instituição" placeholder="Nome da instituição" value={institutionForm.name} onChange={event => setInstitutionForm(current => ({ ...current, name: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" />
-                <input aria-label="E-mail institucional" type="email" placeholder="contato@instituicao.com" value={institutionForm.email} onChange={event => setInstitutionForm(current => ({ ...current, email: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" />
-                <input aria-label="Telefone (opcional)" placeholder="Telefone (opcional)" value={institutionForm.phone} onChange={event => setInstitutionForm(current => ({ ...current, phone: event.target.value }))} className="rounded-xl border border-surface-line px-3 py-2 text-sm" />
-              </div>
-              <Button size="sm" className="mt-4" disabled={institutionBusy || !institutionForm.name.trim() || !institutionForm.email.trim()} onClick={() => void createInstitution()}>{institutionBusy ? 'Cadastrando…' : 'Cadastrar instituição'}</Button>
-            </>}
           </section>}
 
           {panel && <section className="mt-6 grid gap-4 sm:grid-cols-3" aria-label="Ações de gestão">

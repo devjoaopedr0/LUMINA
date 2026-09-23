@@ -95,6 +95,7 @@ export function apiMathHistory(token: string): Promise<MathHistory> {
 }
 
 export function apiRegister(payload: {
+  institution?: { name: string; email: string; phone?: string };
   accountType?: 'STUDENT_INDEPENDENT' | 'TEACHER';
   firstName: string;
   lastName: string;
@@ -445,6 +446,24 @@ export const apiCreateCoordinatorPeriod = (token: string, data: { name: string; 
 export const apiUpdateCoordinatorPeriod = (token: string, id: string, active: boolean): Promise<AcademicPeriod> => request(`/simulations/coordinator/periods/${id}`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ active }) });
 export const apiCreateSimulationClass = (token: string, name: string): Promise<SimulationClass> => request('/simulations/classes', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ name }) });
 export const apiJoinSimulationClass = (token: string, joinCode: string): Promise<SimulationClass> => request('/simulations/classes/join', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ joinCode }) });
+
+export interface ClassDetail {
+  id: string; name: string; description: string | null; archived: boolean; canManage: boolean;
+  joinCode: string | null; maxStudents: number | null; gradeYear: number | null;
+  subject: { id: string; name: string } | null;
+  academicPeriod: { id: string; name: string } | null;
+  availableSubjects: Array<{ id: string; name: string }>;
+  availablePeriods: Array<{ id: string; name: string }>;
+  teachers: Array<{ id: string; name: string; email: string; subject: string | null }>;
+  members: Array<{ id: string; name: string; email: string; joinedAt: string }>;
+  timeline: Array<{ id: string; title: string; assessmentType: string; createdAt: string; questionCount: number; submissionCount: number }>;
+}
+export const apiManagedClasses = (token: string): Promise<Array<SimulationClass & { archived: boolean }>> => request('/simulations/classes?includeArchived=true', { headers: authHeaders(token) });
+export const apiClassDetail = (token: string, id: string): Promise<ClassDetail> => request(`/simulations/classes/${id}`, { headers: authHeaders(token) });
+export const apiUpdateClass = (token: string, id: string, data: { name: string; description: string; maxStudents?: number | null; gradeYear?: number | null; subjectId?: string | null; academicPeriodId?: string | null }) => request(`/simulations/classes/${id}`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data) });
+export const apiArchiveClass = (token: string, id: string, archived: boolean) => request(`/simulations/classes/${id}/archive`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ archived }) });
+export const apiLinkClassUser = (token: string, id: string, kind: 'teachers' | 'members', email: string) => request(`/simulations/classes/${id}/${kind}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ email }) });
+export const apiUnlinkClassUser = (token: string, id: string, kind: 'teachers' | 'members', userId: string) => request(`/simulations/classes/${id}/${kind}/${userId}`, { method: 'DELETE', headers: authHeaders(token) });
 export const apiSimulations = (token: string): Promise<SimulationSummary[]> => request('/simulations', { headers: authHeaders(token) });
 export const apiCreateSimulation = (token: string, title: string, questionIds: string[], classId?: string, assessmentType: AssessmentType = 'SIMULATION', dueAt?: string): Promise<Simulation> => request('/simulations', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ title, questionIds, classId, assessmentType, dueAt }) });
 export const apiSimulation = (token: string, id: string, answers = false): Promise<Simulation> => request(`/simulations/${id}${answers ? '?answers=true' : ''}`, { headers: authHeaders(token) });

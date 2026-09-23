@@ -83,6 +83,35 @@ describe('Auth (e2e)', () => {
     expect(res.status).toBe(409);
   });
 
+  it('POST /auth/register com dados institucionais cria a conta do responsável como DIRECTOR e a instituição', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        firstName: 'Paulo',
+        lastName: 'Diretor',
+        username: 'paulo.diretor',
+        email: 'diretor.instituicao@exemplo.com',
+        password: 'SenhaForte123',
+        institution: { name: 'Instituto Exemplo', email: 'instituto.exemplo@contato.com' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.accountType).toBe('DIRECTOR');
+  });
+
+  it('POST /auth/register rejeita cadastro institucional combinado com accountType (400)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        ...registerPayload,
+        username: 'responsavel.invalido',
+        email: 'responsavel.invalido@exemplo.com',
+        accountType: 'STUDENT_INDEPENDENT',
+        institution: { name: 'Escola', email: 'escola@exemplo.com' },
+      });
+    expect(res.status).toBe(400);
+  });
+
   it('POST /auth/register rejeita payload com e-mail malformado (400)', async () => {
     const res = await request(app.getHttpServer())
       .post('/auth/register')

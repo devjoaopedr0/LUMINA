@@ -54,15 +54,16 @@ export function Profile() {
     });
   }, [user]);
 
+  const userId = user?.id;
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     const token = getAccessToken();
     if (!token) return;
     void apiGetUserVestibular(token).then((goal) => {
       setTargetExam(goal?.customName ?? goal?.exam?.name ?? '');
       setTargetExamDate(goal?.targetDate?.slice(0, 10) ?? '');
     }).catch(() => setExamError('Não foi possível carregar o vestibular-alvo.'));
-  }, [user?.id]);
+  }, [userId]);
 
   async function saveTargetExam() {
     const token = getAccessToken();

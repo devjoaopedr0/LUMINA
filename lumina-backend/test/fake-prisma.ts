@@ -29,6 +29,10 @@ export function createFakePrisma() {
   // IDs de verdade (UUID v4), como o Postgres gera — necessário porque o
   // ParseUUIDPipe valida o formato dos params de rota. O prefixo é ignorado.
   const nextId = (_prefix?: string) => randomUUID();
+  // Permissões de workspace que o cadastro institucional consulta para
+  // compor os cargos de Diretor e Coordenador.
+  const permissions: any[] = ['ROLE_MANAGE', 'MEMBER_MANAGE', 'CLASS_MANAGE', 'REPORT_VIEW']
+    .map((code) => ({ id: nextId('permission'), code }));
 
   const withProfile = (user: any) => ({
     ...user,
@@ -209,6 +213,48 @@ export function createFakePrisma() {
             }
           : institution;
       }),
+      create: vi.fn(async ({ data }: any) => {
+        const id = nextId('institution');
+        const now = new Date();
+        const institution = {
+          id,
+          name: data.name,
+          email: data.email,
+          phone: data.phone ?? null,
+          status: 'PENDING',
+          createdAt: now,
+          updatedAt: now,
+        };
+        institutions.push(institution);
+        if (data.workspace?.create) {
+          workspaces.push({
+            id: nextId('workspace'),
+            name: data.workspace.create.name,
+            type: data.workspace.create.type,
+            institutionId: id,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+        return {
+          ...institution,
+          workspace: workspaces.find((w) => w.institutionId === id) ?? null,
+        };
+      }),
+      findUniqueOrThrow: vi.fn(async ({ where, include }: any) => {
+        const institution = institutions.find((i) => i.id === where.id);
+        return include?.workspace
+          ? {
+              ...institution,
+              workspace: workspaces.find((w) => w.institutionId === institution.id) ?? null,
+            }
+          : institution;
+      }),
+    },
+    permission: {
+      findMany: vi.fn(async ({ where }: any) =>
+        permissions.filter((p) => !where?.code?.in || where.code.in.includes(p.code)),
+      ),
     },
     workspaceMember: {
       create: vi.fn(async ({ data }: any) => {

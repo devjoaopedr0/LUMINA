@@ -19,6 +19,7 @@ import { UsersService } from '../users/users.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { InstitutionsService } from '../institutions/institutions.service';
 import { EmailVerificationCodeRepository } from './email-verification-codes.repository';
 import { GoogleProfile } from './interfaces/google-profile.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -62,6 +63,9 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     const accountType = dto.accountType ?? 'STUDENT_INDEPENDENT';
+    if (dto.institution && (dto.accountType || dto.teacherSubject)) {
+      throw new BadRequestException('O cadastro institucional não pode ser combinado com outro tipo de conta.');
+    }
     if (accountType === 'TEACHER' && !dto.teacherSubject) {
       throw new BadRequestException('A matéria é obrigatória para contas de professor.');
     }
@@ -89,12 +93,13 @@ export class AuthService {
           lastName: dto.lastName,
           username: dto.username,
           teacherSubject: dto.teacherSubject,
-          accountType,
+          accountType: dto.institution ? 'DIRECTOR' : accountType,
         },
         tx,
       );
 
       await this.createPersonalWorkspace(tx, createdUser.id, dto.firstName);
+      if (dto.institution) await InstitutionsService.createInTransaction(tx, createdUser.id, dto.institution);
 
       return createdUser;
     });

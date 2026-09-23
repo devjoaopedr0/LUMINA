@@ -7,6 +7,7 @@ import { defineConfig } from 'vitest/config';
 // isso o plugin unplugin-swc, recomendado pela própria doc do Nest para
 // testar com Vitest.
 export default defineConfig({
+  oxc: false,
   test: {
     include: ['src/**/*.spec.ts', 'test/**/*.e2e-spec.ts'],
     globals: true,

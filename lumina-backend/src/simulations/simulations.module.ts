@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Module, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Module, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
 import { QuestionsModule } from '../questions/questions.module';
-import { CreateAcademicPeriodDto, CreateClassDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateInstitutionMemberDto } from './simulations.dto';
+import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 
 @ApiTags('simulations')
@@ -13,9 +13,16 @@ import { SimulationsService } from './simulations.service';
 @Controller('simulations')
 export class SimulationsController {
   constructor(private readonly service: SimulationsService) {}
-  @Get('classes') classes(@CurrentUser() user: UserWithProfile) { return this.service.classes(user.id); }
+  @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
   @Post('classes/join') joinClass(@CurrentUser() user: UserWithProfile, @Body() dto: JoinClassDto) { return this.service.joinClass(user.id, dto.joinCode); }
+  @Get('classes/:id') classDetail(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.classDetail(user.id, id); }
+  @Patch('classes/:id') updateClass(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateClassDto) { return this.service.updateClass(user.id, id, dto); }
+  @Patch('classes/:id/archive') archiveClass(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ArchiveClassDto) { return this.service.setClassArchived(user.id, id, dto.archived); }
+  @Post('classes/:id/teachers') addClassTeacher(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClassMemberEmailDto) { return this.service.addClassTeacher(user.id, id, dto.email); }
+  @Delete('classes/:id/teachers/:teacherId') removeClassTeacher(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('teacherId', ParseUUIDPipe) teacherId: string) { return this.service.removeClassTeacher(user.id, id, teacherId); }
+  @Post('classes/:id/members') addClassMember(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClassMemberEmailDto) { return this.service.addClassMember(user.id, id, dto.email); }
+  @Delete('classes/:id/members/:studentId') removeClassMember(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('studentId', ParseUUIDPipe) studentId: string) { return this.service.removeClassMember(user.id, id, studentId); }
   @Get('teacher/dashboard') teacherDashboard(@CurrentUser() user: UserWithProfile) { return this.service.teacherDashboard(user.id); }
   @Get('coordinator/dashboard') coordinatorDashboard(@CurrentUser() user: UserWithProfile) { return this.service.coordinatorDashboard(user.id); }
   @Get('director/dashboard') directorDashboard(@CurrentUser() user: UserWithProfile) { return this.service.directorDashboard(user.id); }

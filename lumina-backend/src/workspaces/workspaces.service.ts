@@ -8,6 +8,7 @@ import {
 } from '../institutions/institutions.service';
 import { CreateInviteDto, TransferClassMemberDto } from './workspace-invites.dto';
 import { SaveWorkspaceRoleDto } from './workspace-roles.dto';
+import { assertInstitutionClassMember } from './class-membership-policy';
 
 const ACCOUNT_TYPE_TO_ROLE_NAME: Record<string, string> = {
   STUDENT_INSTITUTION: ROLE_ALUNO,
@@ -138,6 +139,7 @@ export class WorkspacesService {
     if (!fromClass || !toClass) {
       throw new NotFoundException('Uma das turmas informadas não pertence a esta instituição.');
     }
+    if (toClass.archived) throw new BadRequestException('A turma de destino está arquivada.');
 
     const membership = await this.prisma.classMember.findUnique({
       where: { classId_userId: { classId: dto.fromClassId, userId: dto.studentId } },
@@ -153,6 +155,12 @@ export class WorkspacesService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const destination = await tx.class.update({ where: { id: dto.toClassId }, data: { updatedAt: new Date() } });
+        if (destination.archived) throw new BadRequestException('A turma de destino está arquivada.');
+        await assertInstitutionClassMember(tx, workspaceId, destination.createdBy, dto.studentId);
+        if (destination.maxStudents !== null && await tx.classMember.count({ where: { classId: dto.toClassId } }) >= destination.maxStudents) {
+          throw new BadRequestException('A turma de destino já atingiu o número máximo de alunos.');
+        }
         await tx.classMember.delete({ where: { id: membership.id } });
         return tx.classMember.create({ data: { classId: dto.toClassId, userId: dto.studentId } });
       });

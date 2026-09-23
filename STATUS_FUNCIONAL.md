@@ -1,5 +1,30 @@
 # Status funcional da Lumina
 
+## Atualização de 23/09/2026 — Cadastro de instituição na criação da conta
+
+- A pedido do usuário, o cadastro de instituição deixou de existir no dashboard (passo pós-criação de usuário) e passou a acontecer **na criação da conta**: a opção "Sou instituição" agora coleta nome, e-mail institucional e telefone (opcional) além dos dados do responsável.
+- Backend: `RegisterDto` aceita um objeto `institution` aninhado (validado por `ValidateNested`); `AuthService.register` cria o usuário como `DIRECTOR` e, **na mesma transação**, a instituição com workspace, os 4 cargos padrão (Diretor/Coordenador/Professor/Aluno) e o vínculo ACTIVE do responsável como Diretor. Conflito de e-mail institucional desfaz todo o cadastro.
+- Regra de negócio: cadastro institucional não pode ser combinado com `accountType`/`teacherSubject` (400).
+- Frontend: formulário completo em `Signup.tsx` para o perfil "instituição"; removido o bloco "Representa uma escola ou cursinho?" do dashboard (estado, handler e import correspondentes).
+- Endpoint `POST /institutions` (autenticado) permanece disponível e reutiliza a mesma lógica transacional.
+- Testes: 3 novos casos unitários em `auth.service.spec.ts` (DIRECTOR + instituição na mesma transação; rejeição de combinação com accountType; rollback quando o e-mail institucional já existe); 2 novos casos e2e em `auth.e2e-spec.ts`; fake do Prisma e2e estendido com os delegates `permission` e `institution.create`/`findUniqueOrThrow` usados pelo cadastro (o erro `Cannot read properties of undefined (reading 'findMany')` foi justamente esse gap do fake, não do código real).
+- Verificações: typecheck e build do backend e do aplicativo aprovados; lint do aplicativo com zero erros e zero avisos; suíte de testes do backend com **234 aprovados em 17 arquivos**.
+
+## Atualização de 22/09/2026 — funcionalidade 8: Gestão de turmas
+
+- Retomada a implementação iniciada nas alterações locais posteriores ao commit `db3087a` (item 7).
+- Integrada a página `/app/turmas`, acessível pelo dashboard e pela área de simulados.
+- Implementados edição de nome/descrição/limite, arquivamento e desarquivamento, vínculo e remoção de professores/alunos por conta cadastrada, associação de disciplina, período letivo e ano/série.
+- Detalhe da turma apresenta composição e histórico de atividades, questões e contagem de entregas. A interface distingue consulta de gerenciamento conforme a autorização retornada pela API.
+- Listagem permite consultar turmas arquivadas e turmas institucionais para usuários com `CLASS_MANAGE`. Novos vínculos são recusados em turmas arquivadas.
+- Banco: `prisma migrate deploy` confirmou as 22 migrações aplicadas, incluindo `20260921120000_add_class_organization`.
+- Lotação: ingresso por código e matrícula direta usam a mesma transação, com bloqueio da linha da turma antes da contagem. Matrículas já existentes são idempotentes mesmo em turma lotada.
+- Edição: limpar disciplina, período, ano/série e limite agora persiste a remoção do valor, em vez de manter silenciosamente o anterior.
+- Revisão adicional: transferência recusa destino arquivado e revalida vagas dentro da transação; edição não permite reduzir limite abaixo das matrículas; nome nulo retorna erro de validação de negócio.
+- Regra aprovada pelo usuário: turmas institucionais exigem vínculo ativo para ingresso, matrícula direta e transferência. Consulta/gestão e inclusão de professor também verificam vínculo institucional. Turmas técnicas de professores independentes preservam ingresso sem convite institucional.
+- Validação: suíte completa com 227 testes aprovados em 17 arquivos; após adicionar duas regressões, os 42 testes dos módulos de simulados e convites passaram. Builds de backend e aplicativo aprovados; typecheck do backend aprovado; lint do aplicativo com zero erros e zero avisos. Corrigida configuração Oxc/SWC do Vitest e separados componentes React de exports auxiliares para Fast Refresh.
+- Pendente antes de encerrar o item: validação autenticada da nova interface no navegador (ferramenta indisponível nesta sessão: `browser.disconnected`). A criação de turma continua no fluxo existente de simulados.
+
 ## Atualização de 20/09/2026 — funcionalidade 7: Gestão de instituições
 
 - Implementado: cadastro de instituição (POST /institutions) — cria a Institution + Workspace, semeia os 4 cargos institucionais padrão (Diretor, Coordenador, Professor, Aluno) e vincula quem criou como Diretor.
@@ -83,10 +108,10 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Fase 6 — Painel do diretor — concluída: indicadores institucionais, desempenho acadêmico, evolução mensal, relatório consolidado, gestão de usuários e visão estratégica.
 - LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
 - Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
-- Instituições: cadastro, convites (só para e-mail já cadastrado), transferência entre turmas e gestão de membros (painel do diretor) implementados; código de turma e períodos letivos já existiam. Falta convite para e-mail sem conta, tela dedicada de gestão de instituições (hoje é só o painel do diretor) e edição/arquivamento de turma fora do fluxo de criação.
+- Instituições: cadastro, convites (só para e-mail já cadastrado), transferência entre turmas e gestão de membros (painel do diretor) implementados; código de turma e períodos letivos já existiam. Falta convite para e-mail sem conta e tela dedicada de gestão de instituições. Edição/arquivamento de turmas já têm interface própria no item 8.
 - Provas antigas: o catálogo de exames e suas questões existe; faltam experiência de prova completa, cadernos, gabaritos e comparação entre provas.
 - Recomendações: os dados de desempenho necessários já são coletados; falta o motor adaptativo e a interface de recomendações.
-- Perfil: a foto local é armazenada como imagem compactada no perfil; armazenamento de objetos dedicado ainda não existe. Preferências do usuário ainda não possuem modelo/API/tela.
+- Perfil: a foto local é armazenada como imagem compactada no perfil; armazenamento de objetos dedicado ainda não existe. Preferências de estudo possuem persistência e edição desde 18/09/2026.
 
 ## Não iniciado
 

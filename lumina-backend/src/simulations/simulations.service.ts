@@ -1,17 +1,18 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { assertInstitutionClassMember } from '../workspaces/class-membership-policy';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
-import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateInstitutionMemberDto } from './simulations.dto';
+import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 
 @Injectable()
 export class SimulationsService {
   constructor(private readonly prisma: PrismaService, private readonly access: QuestionAccessService) {}
 
-  async classes(userId: string) {
+  async classes(userId: string, includeArchived = false) {
     const rows = await this.prisma.class.findMany({
-      where: { archived: false, OR: [{ teachers: { some: { userId } } }, { members: { some: { userId } } }] },
-      select: { id: true, name: true, joinCode: true, teachers: { where: { userId }, select: { id: true } } },
+      where: { ...(includeArchived ? {} : { archived: false }), OR: [{ teachers: { some: { userId } } }, { members: { some: { userId } } }, { workspace: { members: { some: { userId, status: 'ACTIVE', role: { rolePermissions: { some: { permission: { code: 'CLASS_MANAGE' } } } } } } } }] },
+      select: { id: true, name: true, archived: true, joinCode: true, teachers: { where: { userId }, select: { id: true } } },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map(({ teachers, ...row }) => ({ ...row, isTeacher: teachers.length > 0, joinCode: teachers.length ? row.joinCode : null }));
@@ -173,8 +174,217 @@ export class SimulationsService {
   async joinClass(userId: string, code: string) {
     const row = await this.prisma.class.findUnique({ where: { joinCode: code.trim().toUpperCase() } });
     if (!row || row.archived) throw new NotFoundException('Código de turma inválido.');
-    await this.prisma.classMember.upsert({ where: { classId_userId: { classId: row.id, userId } }, update: {}, create: { classId: row.id, userId } });
+    await this.enrollClassMember(row.id, userId);
     return { id: row.id, name: row.name, isTeacher: false };
+  }
+
+  /** Autorização para VER a turma (detalhe/histórico): qualquer membro,
+   * professor, o coordenador designado, quem criou, ou quem tem
+   * CLASS_MANAGE/MEMBER_MANAGE/REPORT_VIEW no workspace. */
+  private async assertCanViewClass(userId: string, classId: string) {
+    const classRoom = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: { teachers: { where: { userId } }, members: { where: { userId } } },
+    });
+    if (!classRoom) throw new NotFoundException('Turma não encontrada.');
+    await assertInstitutionClassMember(this.prisma, classRoom.workspaceId, classRoom.createdBy, userId);
+    if (classRoom.createdBy === userId || classRoom.coordinatorId === userId || classRoom.teachers.length || classRoom.members.length) return classRoom;
+    const granted = await this.hasAnyWorkspacePermission(userId, classRoom.workspaceId, ['CLASS_MANAGE', 'MEMBER_MANAGE', 'REPORT_VIEW']);
+    if (granted) return classRoom;
+    throw new ForbiddenException('Você não possui acesso a esta turma.');
+  }
+
+  /** Autorização para GERENCIAR a turma (editar, arquivar, vincular
+   * professor/aluno) — mais estrita que assertCanViewClass (que também deixa
+   * qualquer membro simplesmente ver). Não filtra turma arquivada de
+   * propósito: desarquivar é uma dessas ações. */
+  private async assertCanManageClass(userId: string, classId: string) {
+    const classRoom = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: { teachers: { where: { userId } } },
+    });
+    if (!classRoom) throw new NotFoundException('Turma não encontrada.');
+    await assertInstitutionClassMember(this.prisma, classRoom.workspaceId, classRoom.createdBy, userId);
+    if (classRoom.createdBy === userId || classRoom.coordinatorId === userId || classRoom.teachers.length) return classRoom;
+    if (await this.hasAnyWorkspacePermission(userId, classRoom.workspaceId, ['CLASS_MANAGE'])) return classRoom;
+    throw new ForbiddenException('Você não tem permissão para gerenciar esta turma.');
+  }
+
+  private async hasAnyWorkspacePermission(userId: string, workspaceId: string, codes: string[]) {
+    const membership = await this.prisma.workspaceMember.findFirst({
+      where: { userId, workspaceId, status: 'ACTIVE' },
+      include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+    });
+    return Boolean(membership?.role.rolePermissions.some((rp) => codes.includes(rp.permission.code)));
+  }
+
+  async updateClass(userId: string, classId: string, dto: UpdateClassDto) {
+    const classRoom = await this.assertCanManageClass(userId, classId);
+    if (dto.name !== undefined && !dto.name?.trim()) throw new BadRequestException('Informe o nome da turma.');
+    if (dto.subjectId) {
+      const subject = await this.prisma.subject.findUnique({ where: { id: dto.subjectId } });
+      if (!subject) throw new NotFoundException('Disciplina não encontrada.');
+    }
+    if (dto.academicPeriodId) {
+      const period = await this.prisma.academicPeriod.findFirst({ where: { id: dto.academicPeriodId, workspaceId: classRoom.workspaceId } });
+      if (!period) throw new NotFoundException('Período letivo não encontrado nesta instituição.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.maxStudents != null) {
+        await tx.class.update({ where: { id: classId }, data: { updatedAt: new Date() } });
+        if (await tx.classMember.count({ where: { classId } }) > dto.maxStudents) throw new BadRequestException('O limite não pode ser menor que o número de alunos matriculados.');
+      }
+      return tx.class.update({
+      where: { id: classId },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
+        ...(dto.maxStudents !== undefined ? { maxStudents: dto.maxStudents } : {}),
+        ...(dto.subjectId !== undefined ? { subjectId: dto.subjectId } : {}),
+        ...(dto.academicPeriodId !== undefined ? { academicPeriodId: dto.academicPeriodId } : {}),
+        ...(dto.gradeYear !== undefined ? { gradeYear: dto.gradeYear } : {}),
+      },
+      });
+    });
+  }
+
+  async setClassArchived(userId: string, classId: string, archived: boolean) {
+    await this.assertCanManageClass(userId, classId);
+    return this.prisma.class.update({ where: { id: classId }, data: { archived } });
+  }
+
+  /** Vincula um professor já cadastrado (com perfil de professor) à turma —
+   * mesma exigência de createClass, só que aqui pra ADICIONAR um segundo
+   * professor a uma turma já existente. */
+  async addClassTeacher(userId: string, classId: string, email: string) {
+    const classRoom = await this.assertCanManageClass(userId, classId);
+    if (classRoom.archived) throw new BadRequestException('Desarquive a turma antes de adicionar vínculos.');
+    const teacher = await this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      include: { teacherProfile: true },
+    });
+    if (!teacher) throw new NotFoundException('Não existe conta com este e-mail.');
+    if (!teacher.teacherProfile) {
+      throw new BadRequestException('Esta conta ainda não tem perfil de professor.');
+    }
+    await assertInstitutionClassMember(this.prisma, classRoom.workspaceId, classRoom.createdBy, teacher.id);
+    await this.prisma.classTeacher.upsert({
+      where: { classId_userId: { classId, userId: teacher.id } },
+      update: {},
+      create: { classId, userId: teacher.id },
+    });
+    return { linked: true };
+  }
+
+  async removeClassTeacher(userId: string, classId: string, teacherUserId: string) {
+    const classRoom = await this.assertCanManageClass(userId, classId);
+    if (classRoom.createdBy === teacherUserId) {
+      throw new BadRequestException('Não é possível remover quem criou a turma — arquive a turma se necessário.');
+    }
+    await this.prisma.classTeacher.deleteMany({ where: { classId, userId: teacherUserId } });
+    return { removed: true };
+  }
+
+  /** Vincula um aluno já cadastrado diretamente à turma — alternativa ao
+   * código de ingresso, pra quando é o professor/coordenação que já sabe
+   * quem quer matricular (não exige vínculo institucional prévio do aluno,
+   * igual joinClass já não exige). */
+  async addClassMember(userId: string, classId: string, email: string) {
+    const classRoom = await this.assertCanManageClass(userId, classId);
+    if (classRoom.archived) throw new BadRequestException('Desarquive a turma antes de adicionar vínculos.');
+    const student = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!student) throw new NotFoundException('Não existe conta com este e-mail.');
+    await this.enrollClassMember(classId, student.id);
+    return { linked: true };
+  }
+
+  private async enrollClassMember(classId: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Serializa matrículas da mesma turma para que duas requisições não ocupem a última vaga.
+      const row = await tx.class.update({ where: { id: classId }, data: { updatedAt: new Date() } });
+      if (row.archived) throw new BadRequestException('Desarquive a turma antes de adicionar vínculos.');
+      await assertInstitutionClassMember(tx, row.workspaceId, row.createdBy, userId);
+      const existing = await tx.classMember.findUnique({ where: { classId_userId: { classId, userId } } });
+      if (existing) return existing;
+      if (row.maxStudents !== null && await tx.classMember.count({ where: { classId } }) >= row.maxStudents) {
+        throw new BadRequestException('A turma já atingiu o número máximo de alunos.');
+      }
+      return tx.classMember.upsert({ where: { classId_userId: { classId, userId } }, update: {}, create: { classId, userId } });
+    });
+  }
+
+  async removeClassMember(userId: string, classId: string, studentUserId: string) {
+    await this.assertCanManageClass(userId, classId);
+    await this.prisma.classMember.deleteMany({ where: { classId, userId: studentUserId } });
+    return { removed: true };
+  }
+
+  /** Detalhe + histórico da turma: composição (disciplina, período, ano,
+   * professores, alunos) e a linha do tempo de atividades/simulados criados
+   * nela, com contagem de entregas — a base de "histórico da turma". */
+  async classDetail(userId: string, classId: string) {
+    const access = await this.assertCanViewClass(userId, classId);
+    const canManage = access.createdBy === userId || access.coordinatorId === userId || access.teachers.length > 0 || await this.hasAnyWorkspacePermission(userId, access.workspaceId, ['CLASS_MANAGE']);
+    const classRoom = await this.prisma.class.findUniqueOrThrow({
+      where: { id: classId },
+      include: {
+        subject: { select: { id: true, name: true } },
+        academicPeriod: { select: { id: true, name: true, startsAt: true, endsAt: true, active: true } },
+        coordinator: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } },
+        teachers: {
+          select: { user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } }, teacherProfile: { select: { subject: true } } } } },
+        },
+        members: {
+          orderBy: { joinedAt: 'asc' },
+          select: { joinedAt: true, user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } },
+        },
+        simulations: {
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, title: true, assessmentType: true, dueAt: true, createdAt: true, _count: { select: { submissions: true, items: true } } },
+        },
+      },
+    });
+
+    return {
+      id: classRoom.id,
+      canManage,
+      availablePeriods: canManage ? await this.prisma.academicPeriod.findMany({ where: { workspaceId: classRoom.workspaceId }, select: { id: true, name: true }, orderBy: { startsAt: 'desc' } }) : [],
+      availableSubjects: canManage ? await this.prisma.subject.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
+      name: classRoom.name,
+      description: classRoom.description,
+      joinCode: canManage ? classRoom.joinCode : null,
+      maxStudents: classRoom.maxStudents,
+      archived: classRoom.archived,
+      gradeYear: classRoom.gradeYear,
+      subject: classRoom.subject,
+      academicPeriod: classRoom.academicPeriod,
+      coordinator: classRoom.coordinator && {
+        id: classRoom.coordinator.id,
+        name: [classRoom.coordinator.profile?.firstName, classRoom.coordinator.profile?.lastName].filter(Boolean).join(' ') || classRoom.coordinator.email,
+        email: classRoom.coordinator.email,
+      },
+      teachers: classRoom.teachers.map((t) => ({
+        id: t.user.id,
+        name: [t.user.profile?.firstName, t.user.profile?.lastName].filter(Boolean).join(' ') || t.user.email,
+        email: t.user.email,
+        subject: t.user.teacherProfile?.subject ?? null,
+      })),
+      members: classRoom.members.map((m) => ({
+        id: m.user.id,
+        name: [m.user.profile?.firstName, m.user.profile?.lastName].filter(Boolean).join(' ') || m.user.email,
+        email: m.user.email,
+        joinedAt: m.joinedAt,
+      })),
+      timeline: classRoom.simulations.map((s) => ({
+        id: s.id,
+        title: s.title,
+        assessmentType: s.assessmentType,
+        dueAt: s.dueAt,
+        createdAt: s.createdAt,
+        submissionCount: s._count.submissions,
+        questionCount: s._count.items,
+      })),
+    };
   }
 
   async create(userId: string, title: string, questionIds: string[], classId?: string, assessmentType: 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION' = 'SIMULATION', dueAt?: string) {

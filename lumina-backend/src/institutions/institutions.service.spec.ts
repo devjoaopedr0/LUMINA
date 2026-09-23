@@ -5,8 +5,17 @@ import { InstitutionsService, ROLE_ALUNO, ROLE_COORDENADOR, ROLE_DIRETOR, ROLE_P
 function makeTx(overrides: Record<string, unknown> = {}) {
   return {
     institution: {
+      findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: 'institution-1', workspace: { id: 'workspace-1' } }),
       findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'institution-1', workspace: { id: 'workspace-1' } }),
+    },
+    permission: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'perm-role', code: 'ROLE_MANAGE' },
+        { id: 'perm-member', code: 'MEMBER_MANAGE' },
+        { id: 'perm-class', code: 'CLASS_MANAGE' },
+        { id: 'perm-report', code: 'REPORT_VIEW' },
+      ]),
     },
     role: {
       create: vi.fn().mockImplementation(({ data }: { data: { name: string } }) =>
@@ -22,37 +31,27 @@ function makeTx(overrides: Record<string, unknown> = {}) {
 describe('InstitutionsService', () => {
   describe('createInstitution', () => {
     it('recusa quando já existe instituição com o mesmo e-mail', async () => {
-      const prisma = {
+      const tx = {
         institution: { findUnique: vi.fn().mockResolvedValue({ id: 'existing' }) },
         permission: { findMany: vi.fn() },
       };
+      const prisma = { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)) };
       const service = new InstitutionsService(prisma as never);
 
       await expect(
         service.createInstitution('user-1', { name: 'Escola', email: 'escola@exemplo.com' }),
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(prisma.permission.findMany).not.toHaveBeenCalled();
+      expect(tx.permission.findMany).not.toHaveBeenCalled();
     });
 
     it('cria a instituição, os 4 cargos e vincula o criador como Diretor ACTIVE', async () => {
       const tx = makeTx();
-      const prisma = {
-        institution: { findUnique: vi.fn().mockResolvedValue(null) },
-        permission: {
-          findMany: vi.fn().mockResolvedValue([
-            { id: 'perm-role', code: 'ROLE_MANAGE' },
-            { id: 'perm-member', code: 'MEMBER_MANAGE' },
-            { id: 'perm-class', code: 'CLASS_MANAGE' },
-            { id: 'perm-report', code: 'REPORT_VIEW' },
-          ]),
-        },
-        $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
-      };
+      const prisma = { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)) };
       const service = new InstitutionsService(prisma as never);
 
       await service.createInstitution('user-1', { name: 'Escola Lumina', email: 'Escola@Exemplo.com' });
 
-      expect(prisma.institution.findUnique).toHaveBeenCalledWith({ where: { email: 'escola@exemplo.com' } });
+      expect(tx.institution.findUnique).toHaveBeenCalledWith({ where: { email: 'escola@exemplo.com' } });
       const roleNames = tx.role.create.mock.calls.map((call) => call[0].data.name);
       expect(roleNames).toEqual([ROLE_DIRETOR, ROLE_COORDENADOR, ROLE_PROFESSOR, ROLE_ALUNO]);
 

@@ -64,3 +64,29 @@ export class UpdateInstitutionMemberDto {
   @IsOptional() @IsString() @MaxLength(120)
   subject?: string;
 }
+
+
+export class UpdateClassDto {
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(120)
+  name?: string;
+  @IsOptional() @IsString() @MaxLength(500)
+  description?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(500)
+  maxStudents?: number | null;
+  @IsOptional() @IsUUID()
+  subjectId?: string | null;
+  @IsOptional() @IsUUID()
+  academicPeriodId?: string | null;
+  @IsOptional() @IsInt() @Min(1) @Max(12)
+  gradeYear?: number | null;
+}
+
+export class ArchiveClassDto {
+  @IsBoolean()
+  archived!: boolean;
+}
+
+export class ClassMemberEmailDto {
+  @IsString() @IsNotEmpty() @MaxLength(254)
+  email!: string;
+}
