@@ -13,6 +13,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Sparkles,
   Trash2,
   Upload,
   X,
@@ -28,6 +29,7 @@ import {
   apiCreateQuestion,
   apiDeleteQuestion,
   apiGetQuestion,
+  apiGetSimilarQuestions,
   apiImportQuestionFile,
   apiGetSubjectTopics,
   apiListExams,
@@ -163,6 +165,7 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
   const [year, setYear] = useState(initial?.year?.toString() ?? "");
   const [examNumber, setExamNumber] = useState(initial?.examNumber?.toString() ?? "");
   const [stem, setStem] = useState(initial?.stem ?? "");
+  const [explanation, setExplanation] = useState(initial?.explanation ?? "");
   const [alternatives, setAlternatives] = useState<QuestionAlternativePayload[]>(
     initial?.alternatives
       ? initial.alternatives.map((a) => ({ text: a.text, isCorrect: a.isCorrect ?? false }))
@@ -249,6 +252,7 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
       year: year ? Number(year) : null,
       examNumber: examNumber ? Number(examNumber) : null,
       stem: stem.trim(),
+      explanation: explanation.trim() || undefined,
       alternatives,
     };
 
@@ -408,6 +412,21 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
       </div>
 
       <div>
+        <label htmlFor="explanation" className="mb-1.5 block text-sm font-medium text-graphite">
+          Gabarito comentado <span className="font-normal text-graphite-400">(opcional)</span>
+        </label>
+        <textarea
+          id="explanation"
+          value={explanation}
+          onChange={(e) => setExplanation(e.target.value)}
+          placeholder="Explique a resposta correta para quem estuda..."
+          maxLength={4000}
+          rows={3}
+          className="min-h-[96px] w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30"
+        />
+      </div>
+
+      <div>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium text-graphite">Alternativas</span>
           {alternatives.length < 6 && (
@@ -484,13 +503,17 @@ interface QuestionCardProps {
   question: Question;
   onEdit: (question: Question) => void;
   onDelete: (question: Question) => void;
+  showSimilar?: boolean;
 }
 
-function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
+function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: QuestionCardProps) {
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [result, setResult] = useState<AttemptResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [similarItems, setSimilarItems] = useState<Question[] | null>(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
 
   const origin = [
     question.exam,
@@ -499,6 +522,25 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
   ]
     .filter(Boolean)
     .join(" · ");
+
+  async function loadSimilar() {
+    if (similarItems !== null || similarLoading) return;
+    setSimilarLoading(true);
+    setSimilarError(null);
+    const token = getAccessToken() ?? "";
+    try {
+      const data = await apiGetSimilarQuestions(token, question.id, 5);
+      setSimilarItems(data.items);
+    } catch (err) {
+      setSimilarError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível carregar questões semelhantes."
+      );
+    } finally {
+      setSimilarLoading(false);
+    }
+  }
 
   async function handleAnswer() {
     if (selectedPosition === null) {
@@ -562,6 +604,21 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
           <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-medium text-graphite-500">
             {origin}
           </span>
+          {question.stats && question.stats.attempts > 0 && (
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                question.stats.accuracyPercent >= 60
+                  ? "border-success/25 bg-success/10 text-success"
+                  : question.stats.accuracyPercent >= 40
+                    ? "border-primary/30 bg-primary/10 text-primary-700"
+                    : "border-alert/25 bg-alert/10 text-alert"
+              }`}
+              title="Estatísticas de acerto no banco"
+            >
+              {question.stats.attempts} {question.stats.attempts === 1 ? "resposta" : "respostas"} ·{" "}
+              {question.stats.accuracyPercent}% de acerto
+            </span>
+          )}
         </div>
         {question.canManage && (
           <div className="flex items-center gap-1.5">
@@ -644,6 +701,15 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
         </div>
       )}
 
+      {result && question.explanation && (
+        <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <p className="text-xs font-semibold text-primary-700">Gabarito comentado</p>
+          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-graphite-600">
+            {question.explanation}
+          </p>
+        </div>
+      )}
+
       <div className="mt-4 flex justify-end">
         {result ? (
           <Button type="button" variant="outline" size="sm" onClick={reset}>
@@ -661,6 +727,66 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
           </Button>
         )}
       </div>
+
+      {showSimilar && (
+        <div className="mt-5 border-t border-surface-line pt-4">
+          {similarItems === null && !similarLoading && !similarError && (
+            <button
+              type="button"
+              onClick={loadSimilar}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 transition-colors hover:text-graphite"
+            >
+              <Sparkles className="h-4 w-4" />
+              Ver questões semelhantes
+            </button>
+          )}
+          {similarLoading && (
+            <span className="inline-flex items-center gap-2 text-sm text-graphite-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Buscando questões semelhantes...
+            </span>
+          )}
+          {similarError && !similarItems && (
+            <p className="flex items-start gap-2 text-sm text-alert">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{similarError}</span>
+            </p>
+          )}
+          {similarItems !== null && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-graphite">
+                  Questões semelhantes ({similarItems.length})
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimilarItems(null);
+                    setSimilarError(null);
+                  }}
+                  className="text-xs font-medium text-graphite-400 transition-colors hover:text-graphite"
+                >
+                  Fechar
+                </button>
+              </div>
+              {similarItems.length === 0 && (
+                <p className="text-sm text-graphite-400">
+                  Nenhuma questão muito parecida por aqui — ajuste os filtros para explorar o banco.
+                </p>
+              )}
+              {similarItems.map((item) => (
+                <QuestionCard
+                  key={item.id}
+                  question={item}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  showSimilar={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

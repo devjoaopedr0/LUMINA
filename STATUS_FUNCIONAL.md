@@ -1,5 +1,15 @@
 # Status funcional da Lumina
 
+## Atualização de 23/09/2026 — funcionalidade 9: Banco de questões (estatísticas agregadas, gabarito comentado e questões semelhantes)
+
+- O item 9 já possuía ~90% da base (CRUD, importação JSON/CSV, filtros, tentativas e favoritos). Esta entrega fecha as lacunas restantes: **estatísticas agregadas de acerto por questão**, **questões semelhantes**, **exibição do gabarito comentado na interface** e **campo "explicação" no formulário de criação/edição**.
+- Backend: `QuestionStatsDto` (`attempts`, `correct`, `accuracyPercent`) presente na listagem (1 consulta agregada por página, sem N+1), no detalhe e no resultado da tentativa; `SimilarQuestionsDto` (`items`, `limit`) na rota `GET /questions/:id/similar`, rankeando por proximidade (mesmo assunto +10/+8, mesma disciplina +6/+3, mesmo exame +3/+2, mesma dificuldade +1), excluindo a própria questão, limitado aos workspaces acessíveis (pessoal + banco) e com limite clampado em 1–12 (default 5). Contagens via `countsByQuestionIds` (`findMany` + `select`, compatível com o fake de testes).
+- Frontend: card de questão com badge de taxa de acerto (verde ≥60%, âmbar ≥40%, vermelho abaixo), gabarito comentado exibido após responder, seção "Questões semelhantes" com carregamento sob demanda (cards aninhados sem botão próprio, para não recursar) e textarea "Gabarito comentado" no formulário.
+- Correção descoberta no build de produção (`tsc -p tsconfig.build.json`): o `findSimilar` não compilava — spreads de `OR` com `mode: 'insensitive'` quebravam a tipagem do Prisma e a chamada a `findMany` omitia `skip` (obrigatório em `FindManyOptions`). Corrigido com arrays `Prisma.QuestionWhereInput[]` construídos via `push` e `{ skip: 0, take: 60 }`. O `npm test` (vitest) não pegou porque transpila sem checagem de tipos — builds do backend voltaram a verificar os tipos.
+- Testes: 8 novos casos em `questions.service.spec.ts` (stats na listagem/detalhe/tentativa; rankeamento do `findSimilar`, exclusão da própria questão, clamp do limite, fronteira de visibilidade e 404 para outro workspace) e cobertura e2e; suíte completa com **242 testes aprovados em 17 arquivos**; typecheck e build do aplicativo aprovados.
+- Validação ao vivo (backend real em `localhost:3001` + Postgres configurado, sem navegador): script `validate-item9.mjs` com todos os checks positivos — criação de questão com explicação (eco no response), listagem com `stats`/`explanation` nos itens, tentativa correta e errada refletindo `attempts`/`correct`/`accuracyPercent` no resultado e no detalhe, `GET /questions/:id/similar` sem incluir a própria e com `limit` clampado em 12, e remoção da questão de teste (404 no detalhe). Permanece pendente apenas a validação visual da interface no navegador (ferramenta indisponível: `browser.disconnected`).
+- Lacunas que dependem de evolução de catálogo (registradas no inventário): filtros por **subassunto/habilidade/banca** (não há modelo de dados para esses eixos) e **conteúdo UECE** (o mecanismo de importação está pronto; o conteúdo depende do catálogo).
+
 ## Atualização de 23/09/2026 — Cadastro de instituição na criação da conta
 
 - A pedido do usuário, o cadastro de instituição deixou de existir no dashboard (passo pós-criação de usuário) e passou a acontecer **na criação da conta**: a opção "Sou instituição" agora coleta nome, e-mail institucional e telefone (opcional) além dos dados do responsável.
@@ -92,7 +102,7 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 
 - Autenticação: cadastro com e-mail/senha, login, Google OAuth, criação/vinculação de conta Google, recuperação e redefinição de senha, verificação e reenvio de e-mail, JWT e consulta da sessão.
 - Perfil: consulta e edição de nome, sobrenome, username, telefone, nascimento e bio; foto local com clique/drag and drop, recorte e compactação no navegador.
-- Banco de questões: cadastro, edição, exclusão, importação em lote por arquivo JSON/CSV com relatório, destino protegido para o banco central, deduplicação, alternativas, resposta e correção automática.
+- Banco de questões: cadastro, edição, exclusão, importação em lote por arquivo JSON/CSV com relatório, destino protegido para o banco central, deduplicação, alternativas, resposta e correção automática, estatísticas agregadas de acerto por questão, questões semelhantes rankeadas por proximidade e gabarito comentado por questão (campo "explicação" no formulário).
 - Catálogo educacional: disciplinas, assuntos, provas/vestibulares, ano, dificuldade e classificação estruturada.
 - Histórico de questões: tentativas, acertos/erros, tempo de resposta, favoritos, progresso e desempenho por disciplina/assunto.
 - Cronograma pessoal: vestibular-alvo, dias e tempo disponível, catálogo com 15 disciplinas do ENEM, divisão por matéria, sessões, tarefas, conclusão, reagendamento, sala exclusiva de cronômetro e progresso agregado.

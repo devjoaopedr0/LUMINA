@@ -95,7 +95,7 @@
    -  Organização por período
    -  Organização por ano
    -  Histórico da turma
-9. 9. Banco de questões
+9. 9. Banco de questões [INTEGRADA E VALIDADA VIA API EM 23/09/2026 — VALIDAÇÃO VISUAL NO NAVEGADOR PENDENTE]
    -  Questões internas
    -  Questões de vestibulares
    -  Questões do ENEM

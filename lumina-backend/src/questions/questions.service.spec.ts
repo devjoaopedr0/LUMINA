@@ -56,6 +56,7 @@ describe('QuestionsService', () => {
     };
     questionAttemptsRepository = {
       create: vi.fn(),
+      countsByQuestionIds: vi.fn().mockResolvedValue(new Map()),
     };
     questionAccessService = {
       getPersonalWorkspaceOrThrow: vi.fn().mockResolvedValue(baseWorkspace),
@@ -443,7 +444,12 @@ describe('QuestionsService', () => {
 
       const result = await service.answer('user-1', 'question-1', { selectedPosition: 3 });
 
-      expect(result).toEqual({ isCorrect: true, selectedPosition: 3, correctPosition: 3 });
+      expect(result).toEqual({
+        isCorrect: true,
+        selectedPosition: 3,
+        correctPosition: 3,
+        stats: null,
+      });
       expect(questionAttemptsRepository.create).toHaveBeenCalledWith(
         {
           questionId: 'question-1',
@@ -521,6 +527,124 @@ describe('QuestionsService', () => {
         true,
       );
       expect(result).toEqual({ isFavorite: true });
+    });
+  });
+
+  describe('estatísticas de acerto por questão', () => {
+    it('inclui as estatísticas agregadas na listagem quando há tentativas', async () => {
+      questionsRepository.count.mockResolvedValue(1);
+      questionsRepository.findMany.mockResolvedValue([{ ...baseQuestion, alternatives }]);
+      questionAttemptsRepository.countsByQuestionIds.mockResolvedValue(
+        new Map([['question-1', { attempts: 4, correct: 3 }]]),
+      );
+
+      const result = await service.findAll('user-1', { page: 1, limit: 20 });
+
+      expect(questionAttemptsRepository.countsByQuestionIds).toHaveBeenCalledWith(['question-1']);
+      expect(result.items[0].stats).toEqual({ attempts: 4, correct: 3, accuracyPercent: 75 });
+    });
+
+    it('expõe stats null na listagem quando a questão ainda não tem tentativas', async () => {
+      questionsRepository.count.mockResolvedValue(1);
+      questionsRepository.findMany.mockResolvedValue([{ ...baseQuestion, alternatives }]);
+
+      const result = await service.findAll('user-1', { page: 1, limit: 20 });
+
+      expect(result.items[0].stats).toBeNull();
+    });
+
+    it('inclui stats no detalhe da questão', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionAttemptsRepository.countsByQuestionIds.mockResolvedValue(
+        new Map([['question-1', { attempts: 2, correct: 1 }]]),
+      );
+
+      const result = await service.findById('user-1', 'question-1', false);
+
+      expect(result.stats).toEqual({ attempts: 2, correct: 1, accuracyPercent: 50 });
+    });
+
+    it('retorna stats já contando a tentativa registrada', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionAttemptsRepository.countsByQuestionIds.mockResolvedValue(
+        new Map([['question-1', { attempts: 1, correct: 1 }]]),
+      );
+
+      const result = await service.answer('user-1', 'question-1', { selectedPosition: 3 });
+
+      expect(result.stats).toEqual({ attempts: 1, correct: 1, accuracyPercent: 100 });
+    });
+  });
+
+  describe('findSimilar', () => {
+    const similarQuestion = (overrides: Record<string, unknown> = {}) => ({
+      ...baseQuestion,
+      id: 'question-2',
+      alternatives,
+      ...overrides,
+    });
+
+    it('prioriza questões do mesmo assunto e exclui a própria', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionsRepository.findMany.mockResolvedValue([
+        similarQuestion({ id: 'question-3' }),
+        similarQuestion({ id: 'question-2', topicId: 'topic-2' }),
+        { ...baseQuestion, alternatives },
+      ]);
+
+      const result = await service.findSimilar('user-1', 'question-1', 5);
+
+      expect(questionsRepository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: { in: ['ws-1'] },
+          OR: expect.arrayContaining([{ topicId: 'topic-1' }]),
+        }),
+        expect.objectContaining({ take: 60 }),
+      );
+      expect(result.items.map((item) => item.id)).toEqual(['question-3', 'question-2']);
+      expect(result.limit).toBe(5);
+    });
+
+    it('respeita o limite informado e o teto de segurança', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionsRepository.findMany.mockResolvedValue([]);
+
+      await expect(service.findSimilar('user-1', 'question-1', 999)).resolves.toMatchObject({
+        items: [],
+        limit: 12,
+      });
+      await expect(service.findSimilar('user-1', 'question-1')).resolves.toMatchObject({
+        limit: 5,
+      });
+    });
+
+    it('usa a fronteira de visibilidade do usuário (workspace pessoal + banco)', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionsRepository.findMany.mockResolvedValue([]);
+      questionAccessService.getBankWorkspace.mockResolvedValue({
+        id: 'ws-banco',
+        name: 'Banco Lumina',
+        type: 'INSTITUTION',
+      });
+
+      await service.findSimilar('user-1', 'question-1', 5);
+
+      expect(questionsRepository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: { in: ['ws-1', 'ws-banco'] } }),
+        expect.anything(),
+      );
+    });
+
+    it('lança NotFoundException para questão de outro workspace', async () => {
+      questionsRepository.findById.mockResolvedValue({
+        ...baseQuestion,
+        workspaceId: 'outro-workspace',
+        alternatives,
+      });
+
+      await expect(service.findSimilar('user-1', 'question-1', 5)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

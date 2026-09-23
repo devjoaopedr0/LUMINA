@@ -495,14 +495,19 @@ export function createFakePrisma() {
       }),
       findMany: vi.fn(async ({ where, take = Infinity }: any) => {
         const inWorkspaces = Array.isArray(where?.workspaceId?.in);
+        const inQuestions = Array.isArray(where?.questionId?.in);
         return attempts
           .filter(
             (a) =>
               (!where?.userId || a.userId === where.userId) &&
               (!where?.workspaceId ||
-                inWorkspaces
+                (inWorkspaces
                   ? where.workspaceId.in.includes(a.workspaceId)
-                  : a.workspaceId === where.workspaceId),
+                  : a.workspaceId === where.workspaceId)) &&
+              (!where?.questionId ||
+                (inQuestions
+                  ? where.questionId.in.includes(a.questionId)
+                  : a.questionId === where.questionId)),
           )
           .slice(0, take)
           .map((a) => ({

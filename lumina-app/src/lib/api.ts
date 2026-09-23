@@ -205,6 +205,8 @@ export interface Question {
   examNumber: number | null;
   sourcePdf?: { url: string; page: number } | null;
   stem: string;
+  explanation?: string | null;
+  stats?: QuestionStats | null;
   alternatives: QuestionAlternative[];
   canManage?: boolean;
   createdAt: string;
@@ -302,6 +304,7 @@ export interface QuestionPayload {
   year?: number | null;
   examNumber?: number | null;
   stem: string;
+  explanation?: string;
   alternatives: QuestionAlternativePayload[];
 }
 
@@ -309,6 +312,18 @@ export interface AttemptResult {
   isCorrect: boolean;
   selectedPosition: number;
   correctPosition: number;
+  stats?: QuestionStats | null;
+}
+
+export interface QuestionStats {
+  attempts: number;
+  correct: number;
+  accuracyPercent: number;
+}
+
+export interface SimilarQuestions {
+  items: Question[];
+  limit: number;
 }
 
 export interface PerformanceBreakdown {
@@ -500,6 +515,16 @@ export function apiGetQuestion(
 ): Promise<Question> {
   const qs = includeAnswer ? "?includeAnswer=true" : "";
   return request(`/questions/${id}${qs}`, { headers: authHeaders(accessToken) });
+}
+
+export function apiGetSimilarQuestions(
+  accessToken: string,
+  id: string,
+  limit = 5
+): Promise<SimilarQuestions> {
+  return request(`/questions/${id}/similar?limit=${limit}`, {
+    headers: authHeaders(accessToken),
+  });
 }
 
 export function apiGetQuestionPerformance(accessToken: string): Promise<PerformanceBreakdown> {

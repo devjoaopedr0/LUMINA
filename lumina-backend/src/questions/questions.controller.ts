@@ -35,6 +35,7 @@ import {
   AttemptResultDto,
   PaginatedQuestionsDto,
   QuestionResponseDto,
+  SimilarQuestionsDto,
 } from './dto/question-response.dto';
 import { QueryQuestionsDto } from './dto/query-questions.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -169,6 +170,21 @@ export class QuestionsController {
     @Query('includeAnswer') includeAnswer?: string,
   ): Promise<QuestionResponseDto> {
     return this.questionsService.findById(user.id, id, includeAnswer === 'true');
+  }
+
+  @Get(':id/similar')
+  @ApiOperation({
+    summary:
+      'Retorna questões semelhantes (mesmo assunto, disciplina ou exame), excluindo a própria — dentro dos workspaces acessíveis ao usuário.',
+  })
+  @ApiResponse({ status: 200, type: SimilarQuestionsDto })
+  @ApiResponse({ status: 404, description: 'Questão não encontrada.' })
+  similar(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit?: string,
+  ): Promise<SimilarQuestionsDto> {
+    return this.questionsService.findSimilar(user.id, id, limit ? Number(limit) : undefined);
   }
 
   @Patch(':id')

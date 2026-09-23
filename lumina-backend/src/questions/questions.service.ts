@@ -6,7 +6,10 @@ import {
 import { Prisma, QuestionDifficulty, QuestionSourceType, Workspace } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from './question-access.service';
-import { QuestionAttemptsRepository } from './question-attempts.repository';
+import {
+  AttemptCounts,
+  QuestionAttemptsRepository,
+} from './question-attempts.repository';
 import { UserQuestionProgressRepository } from './user-question-progress.repository';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { CreateAttemptDto } from './dto/create-attempt.dto';
@@ -14,6 +17,8 @@ import {
   AttemptResultDto,
   PaginatedQuestionsDto,
   QuestionResponseDto,
+  QuestionStatsDto,
+  SimilarQuestionsDto,
 } from './dto/question-response.dto';
 import { QueryQuestionsDto, QuestionSort } from './dto/query-questions.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -33,6 +38,8 @@ interface QuestionClassification {
 @Injectable()
 export class QuestionsService {
   private static readonly MAX_ALTERNATIVES = 6;
+  private static readonly DEFAULT_SIMILAR_LIMIT = 5;
+  private static readonly MAX_SIMILAR_LIMIT = 12;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -106,7 +113,7 @@ export class QuestionsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const [total, items, canManageBank] = await Promise.all([
+    const [total, rows, canManageBank] = await Promise.all([
       this.questionsRepository.count(where),
       this.questionsRepository.findMany(where, {
         skip: (page - 1) * limit,
@@ -116,12 +123,19 @@ export class QuestionsService {
       bank ? this.questionAccessService.hasManagePermission(userId, bank.id) : false,
     ]);
 
+    // Estatísticas agregadas de acerto de todas as questões da página — uma
+    // única consulta, sem N+1.
+    const statsByQuestion = await this.questionAttemptsRepository.countsByQuestionIds(
+      rows.map((question) => question.id),
+    );
+
     return {
-      items: items.map((question) =>
+      items: rows.map((question) =>
         this.toResponse(
           question,
           question.workspaceId === personal?.id ||
             (question.workspaceId === bank?.id && canManageBank),
+          QuestionsService.toStats(statsByQuestion.get(question.id)),
         ),
       ),
       total,
@@ -142,15 +156,19 @@ export class QuestionsService {
     includeAnswer: boolean,
   ): Promise<QuestionResponseDto> {
     const question = await this.findAccessible(userId, id);
+    const stats = (await this.questionAttemptsRepository.countsByQuestionIds([question.id])).get(
+      question.id,
+    );
     if (includeAnswer) {
       await this.questionAccessService.assertCanManage(userId, question.workspaceId);
-      return this.toAuthorResponse(question, true);
+      return this.toAuthorResponse(question, true, QuestionsService.toStats(stats));
     }
     const personal = await this.questionAccessService.getPersonalWorkspace(userId);
     return this.toResponse(
       question,
       question.workspaceId === personal?.id ||
         (await this.questionAccessService.hasManagePermission(userId, question.workspaceId)),
+      QuestionsService.toStats(stats),
     );
   }
 
@@ -255,10 +273,14 @@ export class QuestionsService {
       await this.questionProgressRepository.recordAttempt(userId, question.id, isCorrect, tx);
     });
 
+    // Estatísticas agregadas já contando a tentativa recém-registrada.
+    const counts = await this.questionAttemptsRepository.countsByQuestionIds([question.id]);
+
     return {
       isCorrect,
       selectedPosition: dto.selectedPosition,
       correctPosition: correct.position,
+      stats: QuestionsService.toStats(counts.get(question.id)),
     };
   }
 
@@ -290,6 +312,97 @@ export class QuestionsService {
     if (!bank) throw new NotFoundException('Banco central de questões não encontrado.');
     await this.questionAccessService.assertCanManage(userId, bank.id);
     return bank;
+  }
+
+  /** Questões semelhantes à informada (mesmo assunto, depois mesma disciplina,
+   * depois mesmo exame), sempre excluindo a própria e limitadas aos workspaces
+   * acessíveis ao usuário — a mesma fronteira de visibilidade da listagem. */
+  async findSimilar(
+    userId: string,
+    id: string,
+    limit?: number,
+  ): Promise<SimilarQuestionsDto> {
+    const question = await this.findAccessible(userId, id);
+
+    const parsed = Number(limit);
+    const effectiveLimit = Number.isFinite(parsed)
+      ? Math.min(Math.max(1, Math.floor(parsed)), QuestionsService.MAX_SIMILAR_LIMIT)
+      : QuestionsService.DEFAULT_SIMILAR_LIMIT;
+
+    const [personal, bank] = await Promise.all([
+      this.questionAccessService.getPersonalWorkspace(userId),
+      this.questionAccessService.getBankWorkspace(),
+    ]);
+    const workspaceIds = unique(
+      [personal?.id, bank?.id].filter((wid): wid is string => Boolean(wid)),
+    );
+
+    // Pools de candidatos em ordem de proximidade: cada pool soma pontos de
+    // base, e características idênticas à questão de referência somam extras.
+    const pools: Array<{ where: Prisma.QuestionWhereInput; base: number }> = [];
+
+    if (question.topicId || question.topic) {
+      const topicOr: Prisma.QuestionWhereInput[] = [];
+      if (question.topicId) topicOr.push({ topicId: question.topicId });
+      if (question.topic) {
+        topicOr.push({ topic: { equals: question.topic, mode: 'insensitive' } });
+      }
+      pools.push({ where: { workspaceId: { in: workspaceIds }, OR: topicOr }, base: 10 });
+    }
+
+    if (question.subjectId || question.subject) {
+      const subjectOr: Prisma.QuestionWhereInput[] = [];
+      if (question.subjectId) subjectOr.push({ subjectId: question.subjectId });
+      if (question.subject) {
+        subjectOr.push({ subject: { equals: question.subject, mode: 'insensitive' } });
+      }
+      pools.push({ where: { workspaceId: { in: workspaceIds }, OR: subjectOr }, base: 6 });
+    }
+
+    if (question.exam) {
+      pools.push({
+        where: {
+          workspaceId: { in: workspaceIds },
+          exam: { equals: question.exam, mode: 'insensitive' },
+        },
+        base: 3,
+      });
+    }
+
+    const ranked = new Map<string, { question: QuestionWithAlternatives; score: number }>();
+    const consider = (candidate: QuestionWithAlternatives, score: number) => {
+      if (candidate.id === id) return;
+      const previous = ranked.get(candidate.id);
+      if (!previous || score > previous.score) {
+        ranked.set(candidate.id, { question: candidate, score });
+      }
+    };
+
+    for (const pool of pools) {
+      const candidates = await this.questionsRepository.findMany(pool.where, {
+        skip: 0,
+        take: 60,
+      });
+      for (const candidate of candidates) {
+        let score = pool.base;
+        if (candidate.topicId && candidate.topicId === question.topicId) score += 8;
+        if (candidate.subjectId && candidate.subjectId === question.subjectId) score += 3;
+        if (candidate.examId && candidate.examId === question.examId) score += 2;
+        if (candidate.difficulty === question.difficulty) score += 1;
+        consider(candidate, score);
+      }
+    }
+
+    const items = [...ranked.values()]
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.question.createdAt.getTime() - a.question.createdAt.getTime(),
+      )
+      .slice(0, effectiveLimit)
+      .map((entry) => this.toResponse(entry.question));
+
+    return { items, limit: effectiveLimit };
   }
 
   // ---------------------------------------------------------------------------
@@ -419,6 +532,16 @@ export class QuestionsService {
     return { contains: value, mode: 'insensitive' };
   }
 
+  /** Converte contagens agregadas em estatísticas públicas; null sem tentativas. */
+  private static toStats(counts: AttemptCounts | undefined): QuestionStatsDto | null {
+    if (!counts || counts.attempts === 0) return null;
+    return {
+      attempts: counts.attempts,
+      correct: counts.correct,
+      accuracyPercent: Math.round((counts.correct / counts.attempts) * 100),
+    };
+  }
+
   private resolveSort(sort: QuestionSort | undefined): Prisma.QuestionOrderByWithRelationInput[] {
     switch (sort) {
       case 'oldest':
@@ -434,7 +557,11 @@ export class QuestionsService {
   }
 
   /** Visão pública: esconde qual alternativa é a correta. */
-  private toResponse(question: QuestionWithAlternatives, canManage = false): QuestionResponseDto {
+  private toResponse(
+    question: QuestionWithAlternatives,
+    canManage = false,
+    stats: QuestionStatsDto | null = null,
+  ): QuestionResponseDto {
     return {
       id: question.id,
       sourceType: question.sourceType,
@@ -454,6 +581,7 @@ export class QuestionsService {
       imageUrl: question.imageUrl,
       sourcePdf: sourcePdfFromMetadata(question.metadata),
       canManage,
+      stats,
       alternatives: question.alternatives.map((alternative) => ({
         id: alternative.id,
         text: alternative.text,
@@ -465,9 +593,13 @@ export class QuestionsService {
   }
 
   /** Visão de autor: inclui isCorrect nas alternativas (para criar/editar). */
-  private toAuthorResponse(question: QuestionWithAlternatives, canManage = true): QuestionResponseDto {
+  private toAuthorResponse(
+    question: QuestionWithAlternatives,
+    canManage = true,
+    stats: QuestionStatsDto | null = null,
+  ): QuestionResponseDto {
     return {
-      ...this.toResponse(question, canManage),
+      ...this.toResponse(question, canManage, stats),
       alternatives: question.alternatives.map((alternative) => ({
         id: alternative.id,
         text: alternative.text,

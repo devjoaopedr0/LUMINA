@@ -23,6 +23,17 @@ export class QuestionAlternativeDto {
   isCorrect?: boolean;
 }
 
+export class QuestionStatsDto {
+  @ApiProperty({ description: 'Total de respostas registradas na questão.' })
+  attempts: number;
+
+  @ApiProperty({ description: 'Respostas corretas.' })
+  correct: number;
+
+  @ApiProperty({ description: 'Percentual de acerto arredondado (0-100).' })
+  accuracyPercent: number;
+}
+
 export class QuestionResponseDto {
   @ApiProperty()
   id: string;
@@ -68,6 +79,12 @@ export class QuestionResponseDto {
 
   @ApiPropertyOptional({ description: 'Gabarito comentado / explicação.' })
   explanation?: string | null;
+
+  @ApiPropertyOptional({
+    type: () => QuestionStatsDto,
+    description: 'Estatísticas agregadas de acerto da questão (null enquanto não houver respostas).',
+  })
+  stats?: QuestionStatsDto | null;
 
   @ApiPropertyOptional({ description: 'URL de imagem de apoio.' })
   imageUrl?: string | null;
@@ -123,4 +140,18 @@ export class AttemptResultDto {
 
   @ApiProperty({ description: 'Posição da alternativa correta.' })
   correctPosition: number;
+
+  @ApiPropertyOptional({
+    type: () => QuestionStatsDto,
+    description: 'Estatísticas agregadas de acerto da questão, já contando esta tentativa.',
+  })
+  stats?: QuestionStatsDto | null;
+}
+
+export class SimilarQuestionsDto {
+  @ApiProperty({ type: () => [QuestionResponseDto] })
+  items: QuestionResponseDto[];
+
+  @ApiProperty({ example: 5, description: 'Limite efetivo aplicado.' })
+  limit: number;
 }
