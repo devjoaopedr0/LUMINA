@@ -184,12 +184,58 @@ Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do r
 - Instituições: cadastro, convites (só para e-mail já cadastrado), transferência entre turmas e gestão de membros (painel do diretor) implementados; código de turma e períodos letivos já existiam. Falta convite para e-mail sem conta e tela dedicada de gestão de instituições. Edição/arquivamento de turmas já têm interface própria no item 8.
 - Provas antigas: o catálogo de exames e suas questões existe; faltam experiência de prova completa, cadernos, gabaritos e comparação entre provas.
 - Recomendações: os dados de desempenho necessários já são coletados; falta o motor adaptativo e a interface de recomendações.
-- Perfil: a foto local é armazenada como imagem compactada no perfil; armazenamento de objetos dedicado ainda não existe. Preferências de estudo possuem persistência e edição desde 18/09/2026.
+- Perfil: a foto local é armazenada como imagem compactada no perfil; armazenamento de objetos dedicado ainda não existe. Preferências de estudo possuem persistência e edição desde 18/09## AtualizaÃ§Ã£o de 26/09/2026 â€” itens 14, 15 e 16: Simulados com cronÃ´metro, modo prova real e simulado adaptativo
 
-## Não iniciado
+Entrega vertical dos itens 14 (Simulados), 15 (Modo prova real) e 16 (Simulado adaptativo) do inventÃ¡rio. A base de simulados jÃ¡ existia (criaÃ§Ã£o, listagem, envio, correÃ§Ã£o, cartÃ£o-resposta); esta entrega acrescenta o cronÃ´metro, o modo "prova real" e o simulado adaptativo com algoritmo IRT simplificado.
 
-- Janela de aplicação, cronômetro de prova e relatórios avançados pós-simulado.
-- Scanner de cartão-resposta, câmera, visão computacional e correção física.
+### Itens 14 e 15: CronÃ´metro e Modo Prova Real
+
+- **MigraÃ§Ã£o** 20260926211841_add_simulation_timer_real_exam:
+  - simulation.duration_minutes (Int, opcional): duraÃ§Ã£o em minutos
+  - simulation.is_real_exam (Boolean, default false): modo prova real
+  - simulation.started_at (DateTime): quando o aluno iniciou a resoluÃ§Ã£o
+  - simulation_item.area (String, opcional): Ã¡rea do conhecimento (estilo ENEM)
+
+- **Backend** (SimulationsService):
+  - CreateSimulationDto com durationMinutes (1â€“600) e isRealExam
+  - ValidaÃ§Ã£o: modo prova real exige duraÃ§Ã£o
+  - submit grava startedAt no submission
+  - submission devolve startedAt, 	imeSpentMinutes calculado, rea por item
+  - list/get expÃµem durationMinutes e isRealExam
+
+- **Frontend** (Simulations.tsx):
+  - CronÃ´metro visual (MM:SS) no header durante a resoluÃ§Ã£o
+  - **Modo prova real**: timer obrigatÃ³rio, badge vermelho, envio automÃ¡tico ao fim do tempo, botÃ£o manual desabilitado enquanto timer roda
+  - Ãrea do conhecimento exibida no cartÃ£o da questÃ£o (print + responder)
+  - FormulÃ¡rio de criaÃ§Ã£o: campos DuraÃ§Ã£o (min) e checkbox "Modo prova real"
+  - Lista de simulados mostra badges de duraÃ§Ã£o e "Prova real"
+  - Resultado inclui tempo gasto e hora de inÃ­cio
+
+### Item 16: Simulado Adaptativo (IRT simplificado)
+
+- **MigraÃ§Ã£o** 20260926213730_add_adaptive_simulation:
+  - daptive_simulation_sessions: userId, examId, status (IN_PROGRESS/COMPLETED/ABANDONED), estimatedAbility (0â€“1), skills (JSON por habilidade)
+  - daptive_simulation_steps: sessionId, userId, questionId, difficulty, skill, subSkill, selectedPosition, isCorrect, bilityBefore, bilityAfter, 	imeSpentSeconds
+  - AssessmentType.ADAPTIVE adicionado ao enum
+
+- **Backend** (AdaptiveSimulationService):
+  - start/examId â†’ cria sessÃ£o com bility = 0.5
+  - 
+extQuestion: escolhe questÃ£o cuja dificuldade mais aproxima da bility atual; prioriza habilidades nÃ£o testadas
+  - nswer: atualiza bility via IRT 1PL simplificado â€” bility += (isCorrect ? +1 : -1) * stepSize * (1 - difficultyFactor); grava step com bilityBefore/After
+  - CritÃ©rio de parada: 20 questÃµes OU 3 habilidades "fortes" (ability > 0.8, total â‰¥ 2) OU 3 "fracas" (ability < 0.2, total â‰¥ 2)
+  - summary: diagnÃ³stico com strongAreas, weakAreas, tabela por habilidade (acertos, total, precisÃ£o, ability)
+  - Endpoints: POST /adaptive/start, GET /adaptive/:id/next, POST /adaptive/:id/answer, POST /adaptive/:id/finish, POST /adaptive/:id/abandon, GET /adaptive/:id/summary, GET /adaptive
+
+- **Frontend** (AdaptiveSimulation.tsx):
+  - PÃ¡gina /app/simulados/adaptativo: lista de sessÃµes, nova sessÃ£o com examId opcional
+  - Durante a sessÃ£o: cronÃ´metro, questÃ£o atual com alternativas, habilidade e dificuldade visÃ­veis
+  - Feedback imediato: certo/errado + mudanÃ§a de ability
+  - DiagnÃ³stico final: pontos fortes, lacunas, tabela detalhada por habilidade
+
+- **Testes**: suÃ­te backend **404 testes / 24 arquivos verdes**; app **4 checks verdes**; builds limpos nos dois projetos.
+
+## NÃ£o iniciadoesposta, câmera, visão computacional e correção física.
 - Explicações personalizadas da LuminIA integradas ao histórico acadêmico.
 - Correção de redações por IA/professor, competências, notas e evolução.
 - Administração interna da plataforma.

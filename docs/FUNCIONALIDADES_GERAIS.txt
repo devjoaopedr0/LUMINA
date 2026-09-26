@@ -179,7 +179,7 @@
     -  Simulação do ENEM
     -  Resultado liberado somente ao final
     -  Relatório de estratégia de prova
-16. 16. Simulado adaptativo
+16. 16. Simulado adaptativo [INTEGRADA EM 26/09/2026 - ALGORITMO IRT SIMPLIFICADO]
     -  Dificuldade muda conforme desempenho
     -  Questões mais fáceis ou difíceis automaticamente
     -  Identificação do nível real do aluno
