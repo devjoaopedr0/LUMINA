@@ -33,6 +33,7 @@ model User {
    createdQuestions       Question[]              @relation("QuestionCreatedBy")
    profile                UserProfile?
    questionProgress       UserQuestionProgress[]
+   errorNotebook          ErrorNotebookEntry[]
    workspaceMembers       WorkspaceMember[]
    studySchedule          StudySchedule?
    studyTimeLogs          StudyTimeLog[]
@@ -473,6 +474,7 @@ model Question {
   topicRef     Topic?                 @relation("QuestionTopic", fields: [topicId], references: [id])
   workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   progress     UserQuestionProgress[]
+  errorNotebook ErrorNotebookEntry[]
 
   @@index([workspaceId])
   @@index([workspaceId, subject])
@@ -609,6 +611,66 @@ model UserQuestionProgress {
   @@index([userId, markedForReview])
   @@index([questionId])
   @@map("user_question_progress")
+}
+
+/// Item 13 do inventário: por que o aluno errou. É enum (e não texto livre)
+/// porque o valor do agrupamento é a classificação; o que não couber na lista
+/// vira OUTRO, com a explicação em `notes`.
+enum ErrorReason {
+  FALTA_CONTEUDO
+  ERRO_INTERPRETACAO
+  ERRO_CALCULO
+  FALTA_ATENCAO
+  CHUTE
+  TEMPO_INSUFICIENTE
+  CONFUSAO_CONCEITOS
+  OUTRO
+}
+
+/// ABERTA: errou e ainda não acertou o bastante para considerar resolvida.
+/// DOMINADA: acertou `ERROR_NOTEBOOK_MASTERED_STREAK` vezes seguidas depois
+/// do erro — continua no histórico (a evolução é o que prova o progresso),
+/// mas sai da fila do que precisa ser refeito.
+enum ErrorNotebookStatus {
+  ABERTA
+  DOMINADA
+}
+
+/// Item 12 do inventário: caderno de erros. Uma linha por par (aluno,
+/// questão), criada sozinha no primeiro erro e mantida nas repetições —
+/// guarda o motivo do erro, a observação pessoal, a revisão combinada e a
+/// evolução das tentativas (`evolution`, texto curto tipo "EEAA").
+/// A dificuldade é a da questão (fonte única), mostrada e filtrada pela
+/// interface a partir daqui.
+model ErrorNotebookEntry {
+  id                 String              @id @default(uuid()) @db.Uuid
+  userId             String              @map("user_id") @db.Uuid
+  questionId         String              @map("question_id") @db.Uuid
+  reason             ErrorReason?
+  /// Observação pessoal do aluno ("refiz o cálculo e errei o sinal").
+  notes              String?
+  status             ErrorNotebookStatus @default(ABERTA)
+  /// Quantas vezes o aluno errou esta questão desde que ela entrou no caderno.
+  wrongAttempts      Int                 @default(1) @map("wrong_attempts")
+  /// Acertos seguidos desde o último erro (evolução da retomada).
+  correctStreak      Int                 @default(0) @map("correct_streak")
+  /// Linha do tempo em caracteres: "E" = erro, "A" = acerto. Truncada em 40.
+  evolution          String              @default("")
+  /// Revisão combinada pelo aluno (o item "criar revisão futura").
+  reviewScheduledAt  DateTime?           @map("review_scheduled_at")
+  firstWrongAt       DateTime            @default(now()) @map("first_wrong_at")
+  lastWrongAt        DateTime            @default(now()) @map("last_wrong_at")
+  resolvedAt         DateTime?           @map("resolved_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  question           Question            @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, status])
+  @@index([userId, reviewScheduledAt])
+  @@index([questionId])
+  @@map("error_notebook_entries")
 }
 
 enum UserStatus {

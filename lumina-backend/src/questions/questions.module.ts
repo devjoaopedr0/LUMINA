@@ -17,6 +17,9 @@ import { QuestionsController } from './questions.controller';
 import { QuestionsRepository } from './questions.repository';
 import { QuestionsService } from './questions.service';
 import { QuestionTextSearchRepository } from './question-text-search.repository';
+import { ErrorNotebookController } from './error-notebook.controller';
+import { ErrorNotebookRepository } from './error-notebook.repository';
+import { ErrorNotebookService } from './error-notebook.service';
 import { SubjectsRepository } from './subjects.repository';
 import { UserQuestionProgressRepository } from './user-question-progress.repository';
 import {
@@ -31,6 +34,7 @@ import {
     QuestionsController,
     QuestionCatalogController,
     QuestionPerformanceController,
+    ErrorNotebookController,
   ],
   exports: [
     QuestionAccessService,
@@ -38,12 +42,15 @@ import {
     QuestionsRepository,
     QuestionImportService,
     QuestionTextSearchRepository,
+    ErrorNotebookService,
   ],
   providers: [
     QuestionsService,
     QuestionsRepository,
     QuestionAttemptsRepository,
     UserQuestionProgressRepository,
+    ErrorNotebookRepository,
+    ErrorNotebookService,
     QuestionTextSearchRepository,
     SubjectsRepository,
     ExamsRepository,

@@ -16,6 +16,7 @@ describe('QuestionsService', () => {
   let examsRepository: any;
   let textSearchRepository: any;
   let hintProvider: StudyGuideHintProvider;
+  let errorNotebookService: any;
 
   const baseWorkspace = { id: 'ws-1', name: 'Workspace de Maria', type: 'PERSONAL' };
   const baseQuestion = {
@@ -94,6 +95,10 @@ describe('QuestionsService', () => {
       findIdsMatching: vi.fn().mockResolvedValue([]),
     };
     hintProvider = new StudyGuideHintProvider();
+    errorNotebookService = {
+      registerAttempt: vi.fn().mockResolvedValue(null),
+      toEntryDto: vi.fn(),
+    };
 
     service = new QuestionsService(
       prisma,
@@ -106,6 +111,7 @@ describe('QuestionsService', () => {
       textSearchRepository,
       hintProvider,
       new QuestionHintsService(hintProvider),
+      errorNotebookService,
     );
   });
 
@@ -464,6 +470,8 @@ describe('QuestionsService', () => {
         // nenhuma alternativa tem explicação escrita pelo autor neste caso
         explanations: [],
         stats: null,
+        // questão que não está no caderno: nada a mostrar aqui
+        errorNotebook: null,
       });
       expect(questionAttemptsRepository.create).toHaveBeenCalledWith(
         {
@@ -482,6 +490,25 @@ describe('QuestionsService', () => {
         true,
         prisma,
       );
+    });
+
+    it('a tentativa também é registrada no caderno de erros, na mesma transação', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      const entrada = { id: 'entry-1', questionId: 'question-1', status: 'ABERTA' };
+      errorNotebookService.registerAttempt.mockResolvedValue(entrada);
+      errorNotebookService.toEntryDto.mockReturnValue({ questionId: 'question-1' });
+
+      const result = await service.answer('user-1', 'question-1', { selectedPosition: 1 });
+
+      expect(errorNotebookService.registerAttempt).toHaveBeenCalledWith(
+        'user-1',
+        'question-1',
+        false,
+        prisma,
+      );
+      // A interface recebe o estado novo do caderno na mesma resposta, sem
+      // precisar chamar o caderno de novo.
+      expect(result.errorNotebook).toEqual({ questionId: 'question-1' });
     });
 
     it('retorna erro quando a posição escolhida não é a correta', async () => {

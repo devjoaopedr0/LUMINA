@@ -24,6 +24,8 @@ import {
   SimilarQuestionsDto,
 } from './dto/question-response.dto';
 import { QuestionHintDto } from './dto/question-resolution.dto';
+import { ErrorNotebookEntryDto } from './dto/error-notebook.dto';
+import { ErrorNotebookService } from './error-notebook.service';
 import { QueryQuestionsDto, QuestionSort } from './dto/query-questions.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QUESTION_HINTS_PROVIDER, QuestionHintsService } from './hints/question-hints.service';
@@ -59,6 +61,7 @@ export class QuestionsService {
     private readonly textSearchRepository: QuestionTextSearchRepository,
     @Inject(QUESTION_HINTS_PROVIDER) private readonly hintProvider: HintProvider,
     private readonly hintsService: QuestionHintsService,
+    private readonly errorNotebookService: ErrorNotebookService,
   ) {}
 
   async create(userId: string, dto: CreateQuestionDto): Promise<QuestionResponseDto> {
@@ -292,8 +295,10 @@ export class QuestionsService {
 
     const isCorrect = selected.isCorrect;
 
-    // Tentativa + progresso na mesma transação: o histórico nunca diverge do
-    // contador de desempenho do aluno.
+    // Tentativa + progresso + caderno de erros na mesma transação: o histórico
+    // nunca diverge do contador de desempenho do aluno, e não existe erro no
+    // caderno sem a tentativa que o produziu.
+    let notebook: ErrorNotebookEntryDto | null = null;
     await this.prisma.$transaction(async (tx) => {
       await this.questionAttemptsRepository.create(
         {
@@ -307,6 +312,16 @@ export class QuestionsService {
         tx,
       );
       await this.questionProgressRepository.recordAttempt(userId, question.id, isCorrect, tx);
+      // Errar cria (ou reabre) a entrada do caderno; acertar só evolui uma
+      // entrada que já existe. Devolve o estado novo para a interface mostrar
+      // sem segunda chamada.
+      const entry = await this.errorNotebookService.registerAttempt(
+        userId,
+        question.id,
+        isCorrect,
+        tx,
+      );
+      if (entry) notebook = this.errorNotebookService.toEntryDto(entry);
     });
 
     // Estatísticas agregadas já contando a tentativa recém-registrada.
@@ -322,6 +337,8 @@ export class QuestionsService {
         dto.selectedPosition,
       ),
       stats: QuestionsService.toStats(counts.get(question.id)),
+      // Presente só quando a questão está no caderno (depois de um erro).
+      errorNotebook: notebook,
     };
   }
 

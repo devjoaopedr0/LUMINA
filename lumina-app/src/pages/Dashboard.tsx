@@ -3,13 +3,13 @@ import { Link, NavLink } from "react-router-dom";
 import {
   ArrowRight, BookOpenCheck, Bookmark, CalendarDays, CheckCircle2, ChevronRight,
   Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb,
-  LogOut, Menu, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X,
+  LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiGetReviewQuestions, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetErrorNotebookSummary, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiGetReviewQuestions, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type ErrorNotebookSummary, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { formatCalendarDate } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
   { to: "/app/cronograma", label: "Cronograma", icon: CalendarDays },
   { to: "/app/questoes", label: "Banco de questões", icon: Database },
+  { to: "/app/caderno-de-erros", label: "Caderno de erros", icon: NotebookPen },
   { to: "/app/busca-web", label: "Buscar questões na web", icon: Globe },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
   { to: "/app/turmas", label: "Turmas", icon: School },
@@ -125,6 +126,8 @@ export function Dashboard() {
   const [questionHistory, setQuestionHistory] = useState<QuestionProgressItem[]>([]);
   const [reviewQueue, setReviewQueue] = useState<QuestionProgressItem[]>([]);
   const [reviewQueueError, setReviewQueueError] = useState(false);
+  const [notebook, setNotebook] = useState<ErrorNotebookSummary | null>(null);
+  const [notebookError, setNotebookError] = useState(false);
   const [teacherDashboard, setTeacherDashboard] = useState<TeacherDashboard | null>(null);
   const [coordinatorDashboard, setCoordinatorDashboard] = useState<CoordinatorDashboard | null>(null);
   const [directorDashboard, setDirectorDashboard] = useState<DirectorDashboard | null>(null);
@@ -185,8 +188,8 @@ export function Dashboard() {
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
-    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token), apiGetReviewQuestions(token)])
-      .then(([daily, progressData, performanceData, simulationData, essayData, questionsData, reviewData]) => {
+    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token), apiGetReviewQuestions(token), apiGetErrorNotebookSummary(token)])
+      .then(([daily, progressData, performanceData, simulationData, essayData, questionsData, reviewData, notebookData]) => {
         if (daily.status === 'fulfilled') { setSession(daily.value?.session ?? null); setSchedule(daily.value?.schedule ?? null); }
         if (progressData.status === 'fulfilled') { setProgress(progressData.value.summary); setEvolution(progressData.value.evolution ?? []); }
         if (performanceData.status === 'fulfilled') setPerformance(performanceData.value);
@@ -197,6 +200,8 @@ export function Dashboard() {
         // Falhou? A interface diz que não carregou — senão afirmaria "nada
         // marcado para revisar" quando é a fila que não veio.
         else setReviewQueueError(true);
+        if (notebookData.status === 'fulfilled') { setNotebook(notebookData.value); setNotebookError(false); }
+        else setNotebookError(true);
       })
       .finally(() => setLoading(false));
   }, [isStudent, user?.accountType]);
@@ -473,12 +478,21 @@ export function Dashboard() {
             </Card>
           </section>}
 
-          {isStudent && <section className="mt-6 grid gap-6 xl:grid-cols-2" aria-label="Resultados e próximos simulados">
+          {isStudent && <section className="mt-6 grid gap-6 xl:grid-cols-3" aria-label="Resultados, simulados e caderno de erros">
             <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Notas recentes</h2><p className="mt-1 text-xs text-graphite-400">Seus últimos simulados corrigidos</p></div><Award className="h-5 w-5 text-primary-700" /></div>
               <div className="mt-5 space-y-3">{recentResults.length ? recentResults.map((item) => <Link key={item.id} to={`/app/simulados?id=${item.id}`} className="flex items-center justify-between rounded-xl border border-surface-line p-4 hover:border-primary/50"><div><p className="text-sm font-semibold text-graphite">{item.title}</p><p className="mt-1 text-xs text-graphite-400">{new Date(item.result!.submittedAt).toLocaleDateString('pt-BR')} · {item.result!.correct} de {item.result!.total} acertos</p></div><span className="text-xl font-bold text-graphite">{Math.round((item.result!.correct / item.result!.total) * 100)}%</span></Link>) : <p className="rounded-xl bg-surface-card p-5 text-sm text-graphite-400">Conclua um simulado para registrar sua primeira nota.</p>}</div>
             </Card>
             <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Próximos simulados</h2><p className="mt-1 text-xs text-graphite-400">Avaliações disponíveis para responder</p></div><BookOpenCheck className="h-5 w-5 text-primary-700" /></div>
               <div className="mt-5 space-y-3">{nextSimulations.length ? nextSimulations.map((item) => <Link key={item.id} to={`/app/simulados?id=${item.id}`} className="group flex items-center justify-between rounded-xl border border-surface-line p-4 hover:border-primary/50"><div><p className="text-sm font-semibold text-graphite">{item.title}</p><p className="mt-1 text-xs text-graphite-400">{item.questionCount} questões{item.className ? ` · ${item.className}` : ''}</p></div><ArrowRight className="h-4 w-4 text-graphite-300 group-hover:text-primary-700" /></Link>) : <p className="rounded-xl bg-surface-card p-5 text-sm text-graphite-400">Nenhum simulado pendente no momento.</p>}</div>
+            </Card>
+            <Card className="bg-white" data-notebook-summary><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Caderno de erros</h2><p className="mt-1 text-xs text-graphite-400">O que você errou e ainda precisa refazer</p></div><NotebookPen className="h-5 w-5 text-primary-700" /></div>
+              {notebook ? <div className="mt-5 space-y-3">
+                <div className="flex items-center justify-between rounded-xl border border-surface-line p-4"><p className="text-sm text-graphite-500">Abertas</p><span className="text-xl font-bold text-graphite">{notebook.open}</span></div>
+                <div className="flex items-center justify-between rounded-xl border border-surface-line p-4"><p className="text-sm text-graphite-500">Para revisar hoje</p><span className={`text-xl font-bold ${notebook.dueToday ? 'text-orange-600' : 'text-graphite'}`}>{notebook.dueToday}</span></div>
+                <div className="flex items-center justify-between rounded-xl border border-surface-line p-4"><p className="text-sm text-graphite-500">Sem motivo classificado</p><span className="text-xl font-bold text-graphite">{notebook.withoutReason}</span></div>
+                <p className="text-xs text-graphite-400">{notebook.mastered} {notebook.mastered === 1 ? 'questão já dominada' : 'questões já dominadas'}.</p>
+              </div> : <p className="mt-5 rounded-xl bg-surface-card p-5 text-sm text-graphite-400">{notebookError ? 'Não foi possível carregar o caderno de erros.' : 'Carregando seu caderno de erros...'}</p>}
+              <Link to="/app/caderno-de-erros" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-primary-700">Abrir caderno de erros <ArrowRight className="h-3.5 w-3.5" /></Link>
             </Card>
           </section>}
 

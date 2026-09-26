@@ -1,4 +1,5 @@
 import type { QuestionDifficulty, WebSearchHit } from './api';
+import { positionLetter } from './question-labels.ts';
 
 /**
  * Regras da transcrição de questão vinda da busca web.
@@ -15,14 +16,9 @@ export const MIN_STEM = 5;
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 6;
 
-const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-/** Letra da alternativa a partir da POSIÇÃO (1-based): 1 = A, 2 = B...
- * Mesma convenção do banco de questões e da posição gravada no banco, para
- * a letra que o usuário vê aqui ser a mesma que aparece depois de salvar. */
-export function positionLetter(position: number): string {
-  return LETTERS[position - 1] ?? String(position);
-}
+/** Reexportado para quem já importa daqui: a convenção de letra é a mesma em
+ * toda a interface e mora em `question-labels`. */
+export { positionLetter };
 
 /** Conteúdo transcrito pelo usuário a partir do resultado da busca. É o que
  * realmente vai para o banco — a Lumina não baixa nem guarda o texto da

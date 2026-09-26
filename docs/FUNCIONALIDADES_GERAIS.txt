@@ -128,7 +128,7 @@
     -  Classificação automática da questão
     -  Possibilidade de salvar no banco interno
     -  Respeito a direitos autorais e condições de uso
-11. 11. Resolução de questões [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITENS "ADICIONAR AO CADERNO DE ERROS" (ITEM 12) E "PEDIR AJUDA À LUMINIA" (DEPENDE DO BACKEND DE IA) PENDENTES]
+11. 11. Resolução de questões [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITEM "PEDIR AJUDA À LUMINIA" (DEPENDE DO BACKEND DE IA) PENDENTE; SUBITEM "ADICIONAR AO CADERNO DE ERROS" ENTREGUE NO ITEM 12]
     -  Responder dentro da plataforma
     -  Correção automática
     -  Feedback imediato
@@ -139,17 +139,17 @@
     -  Pedir ajuda à LuminIA
     -  Pedir dica sem ver a resposta
     -  Resolver questão semelhante
-12. 12. Caderno de erros
+12. 12. Caderno de erros [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026]
     -  Salvar automaticamente questões erradas
     -  Organizar por matéria
     -  Organizar por assunto
     -  Registrar motivo do erro
-    -  Registrar dificuldade
+    -  Registrar dificuldade  [FONTE ÚNICA: A DIFICULDADE DA PRÓPRIA QUESTÃO - NO CADERNO ELA É RECORTE, NÃO ESCOLHA DO ALUNO]
     -  Criar revisão futura
     -  Reapresentar a questão
     -  Mostrar evolução após repetição
     -  Adicionar observações pessoais
-13. 13. Classificação do motivo do erro
+13. 13. Classificação do motivo do erro [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITEM "SUGERIDA PELA LUMINIA" DEPENDE DO BACKEND DE IA]
     -  Falta de conteúdo
     -  Erro de interpretação
     -  Erro de cálculo
@@ -157,7 +157,7 @@
     -  Chute
     -  Tempo insuficiente
     -  Confusão entre conceitos
-    -  Classificação manual ou sugerida pela LuminIA
+    -  Classificação manual ou sugerida pela LuminIA  [HOJE MANUAL; A SUGESTÃO AUTOMÁTICA DEPENDE DO BACKEND DE IA]
 14. 14. Simulados
     -  Criar simulado
     -  Simulados completos

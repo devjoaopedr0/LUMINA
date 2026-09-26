@@ -9,6 +9,7 @@ import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
+import { ErrorNotebookPage } from "@/pages/ErrorNotebook";
 import { WebQuestionSearch } from "@/pages/WebQuestionSearch";
 import { StudySchedulePage } from "@/pages/StudySchedulePage";
 import { Profile } from "@/pages/Profile";
@@ -62,6 +63,14 @@ function App() {
           element={
             <ProtectedRoute>
               <QuestionBank />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/caderno-de-erros"
+          element={
+            <ProtectedRoute>
+              <ErrorNotebookPage />
             </ProtectedRoute>
           }
         />

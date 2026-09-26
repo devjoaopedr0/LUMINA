@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { QuestionDifficulty, QuestionSourceType } from '@prisma/client';
+import { ErrorNotebookEntryDto } from './error-notebook.dto';
 
 /**
  * Formato público de uma questão. As alternativas vêm SEM marcar a correta
@@ -188,6 +189,14 @@ export class AttemptResultDto {
     description: 'Estatísticas agregadas de acerto da questão, já contando esta tentativa.',
   })
   stats?: QuestionStatsDto | null;
+
+  @ApiPropertyOptional({
+    type: () => ErrorNotebookEntryDto,
+    nullable: true,
+    description:
+      'Estado da questão no caderno de erros depois desta tentativa. Errar cria ou reabre a entrada; acertar evolui uma entrada existente e devolve null quando a questão não está no caderno.',
+  })
+  errorNotebook?: ErrorNotebookEntryDto | null;
 }
 
 /** Explicação de uma alternativa, entregue só depois da resposta. */

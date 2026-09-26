@@ -339,6 +339,9 @@ export interface AttemptResult {
   correctPosition: number;
   explanations?: AlternativeFeedback[];
   stats?: QuestionStats | null;
+  /** Estado da questão no caderno de erros depois desta tentativa. Vem junto
+   * para a interface não precisar de uma segunda chamada ao responder. */
+  errorNotebook?: ErrorNotebookEntry | null;
 }
 
 /** Dica que destrava a questão sem revelar a resposta. */
@@ -785,6 +788,148 @@ export function apiSetQuestionReview(
 ): Promise<{ markedForReview: boolean }> {
   return request(`/questions/${id}/review`, {
     method: markedForReview ? "POST" : "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+// =============================================================================
+// Caderno de erros
+// =============================================================================
+
+/** Motivos do erro (item 13 do inventário). O valor vai para o servidor; o
+ *  rótulo é o que o aluno lê. `OUTRO` cobre o que não cabe na lista. */
+export type ErrorReason =
+  | "FALTA_CONTEUDO"
+  | "ERRO_INTERPRETACAO"
+  | "ERRO_CALCULO"
+  | "FALTA_ATENCAO"
+  | "CHUTE"
+  | "TEMPO_INSUFICIENTE"
+  | "CONFUSAO_CONCEITOS"
+  | "OUTRO";
+
+/** ABERTA: errou e ainda não acertou o bastante. DOMINADA: dois acertos
+ *  seguidos depois do erro — continua no histórico, sai da fila. */
+export type ErrorNotebookStatus = "ABERTA" | "DOMINADA";
+
+export interface ErrorNotebookEntry {
+  questionId: string;
+  subject: string;
+  topic: string;
+  difficulty: QuestionDifficulty;
+  exam: string;
+  year: number | null;
+  examNumber: number | null;
+  /** Enunciado truncado: o cartão do caderno não precisa da questão inteira. */
+  stem: string;
+  reason: ErrorReason | null;
+  notes: string | null;
+  status: ErrorNotebookStatus;
+  wrongAttempts: number;
+  correctStreak: number;
+  /** "E" = erro, "A" = acerto. A linha do tempo do aprendizado. */
+  evolution: string;
+  reviewScheduledAt: string | null;
+  due: boolean;
+  firstWrongAt: string;
+  lastWrongAt: string;
+  resolvedAt: string | null;
+}
+
+export interface ErrorNotebookPage {
+  items: ErrorNotebookEntry[];
+  total: number;
+  page: number;
+  totalPages: number;
+  limit: number;
+}
+
+export interface ErrorNotebookFacet {
+  label: string;
+  value: string;
+  open: number;
+  mastered: number;
+}
+
+export interface ErrorNotebookSummary {
+  total: number;
+  open: number;
+  mastered: number;
+  dueToday: number;
+  withoutReason: number;
+  bySubject: ErrorNotebookFacet[];
+  byTopic: ErrorNotebookFacet[];
+  byReason: ErrorNotebookFacet[];
+}
+
+export interface ErrorNotebookFilters {
+  page?: number;
+  limit?: number;
+  status?: "ABERTA" | "DOMINADA" | "TODAS" | "";
+  subject?: string;
+  topic?: string;
+  reason?: string;
+  difficulty?: string;
+  due?: boolean;
+}
+
+export function apiGetErrorNotebook(
+  accessToken: string,
+  filters: ErrorNotebookFilters = {}
+): Promise<ErrorNotebookPage> {
+  const query = new URLSearchParams();
+  if (filters.page && filters.page > 1) query.set("page", String(filters.page));
+  if (filters.limit) query.set("limit", String(filters.limit));
+  if (filters.status && filters.status !== "TODAS") query.set("status", filters.status);
+  if (filters.subject) query.set("subject", filters.subject);
+  if (filters.topic) query.set("topic", filters.topic);
+  if (filters.reason) query.set("reason", filters.reason);
+  if (filters.difficulty) query.set("difficulty", filters.difficulty);
+  if (filters.due) query.set("due", "true");
+  const suffix = query.toString();
+  return request(`/users/me/error-notebook${suffix ? `?${suffix}` : ""}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiGetErrorNotebookSummary(
+  accessToken: string
+): Promise<ErrorNotebookSummary> {
+  return request("/users/me/error-notebook/summary", {
+    headers: authHeaders(accessToken),
+  });
+}
+
+/** Inclui a questão no caderno manualmente (a entrada automática é o erro). */
+export function apiAddErrorNotebookEntry(
+  accessToken: string,
+  questionId: string
+): Promise<ErrorNotebookEntry> {
+  return request(`/users/me/error-notebook/${encodeURIComponent(questionId)}`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+  });
+}
+
+/** Motivo do erro, observação pessoal e revisão combinada (data AAAA-MM-DD). */
+export function apiUpdateErrorNotebookEntry(
+  accessToken: string,
+  questionId: string,
+  changes: { reason?: ErrorReason | null; notes?: string | null; reviewScheduledOn?: string | null }
+): Promise<ErrorNotebookEntry> {
+  return request(`/users/me/error-notebook/${encodeURIComponent(questionId)}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+}
+
+export function apiRemoveErrorNotebookEntry(
+  accessToken: string,
+  questionId: string
+): Promise<void> {
+  return request(`/users/me/error-notebook/${encodeURIComponent(questionId)}`, {
+    method: "DELETE",
     headers: authHeaders(accessToken),
   });
 }

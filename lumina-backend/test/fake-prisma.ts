@@ -25,6 +25,7 @@ export function createFakePrisma() {
   const topics: any[] = [];
   const exams: any[] = [];
   const progress: any[] = [];
+  const notebookEntries: any[] = [];
   let counter = 0;
   // IDs de verdade (UUID v4), como o Postgres gera — necessário porque o
   // ParseUUIDPipe valida o formato dos params de rota. O prefixo é ignorado.
@@ -51,6 +52,74 @@ export function createFakePrisma() {
     profile: profiles.find((p) => p.userId === user.id) ?? null,
     teacherProfile: teacherProfiles.find((p) => p.userId === user.id) ?? null,
   });
+
+  /** Projeção de `select` do Prisma (inclusive aninhado), como o banco faria. */
+  const project = (row: any, select: any): any => {
+    if (row === null || row === undefined) return row;
+    if (!select) return row;
+    const out: any = {};
+    for (const [key, value] of Object.entries(select)) {
+      if (value === true) out[key] = row[key];
+      else if (value && typeof value === 'object' && 'select' in value) {
+        out[key] = project(row[key], value.select);
+      }
+    }
+    return out;
+  };
+
+  /** Entrada do caderno + resumo da questão, como `include`/`select` pedem.
+   *  A questão entra por `include` numa busca e por `select` na listagem — as
+   *  duas formas precisam devolver o mesmo conteúdo. */
+  const withNotebookQuestion = (entry: any, include: any, select: any) => {
+    const question = questions.find((q) => q.id === entry.questionId) ?? null;
+    const questionSelect = include?.question?.select ?? select?.question?.select;
+    const wantsQuestion = Boolean(include?.question) || Boolean(select?.question);
+    const base = wantsQuestion ? { ...entry, question: project(question, questionSelect) } : entry;
+    return project(base, select);
+  };
+
+  const applyNotebookData = (entry: any, data: any) => {
+    for (const [key, value] of Object.entries(data ?? {})) {
+      if (value === undefined) continue;
+      entry[key] =
+        value && typeof value === 'object' && 'increment' in value
+          ? (entry[key] ?? 0) + value.increment
+          : value;
+    }
+  };
+
+  /** Filtro de `error_notebook_entries`: usuário, situação, motivo, revisão
+   *  vencida e os campos da questão (matéria, assunto, dificuldade). */
+  const matchesNotebookWhere = (where: any, entry: any): boolean => {
+    if (!where) return true;
+    if (where.userId && entry.userId !== where.userId) return false;
+    if (where.status && entry.status !== where.status) return false;
+    if (where.reason !== undefined && entry.reason !== where.reason) return false;
+    if (where.reviewScheduledAt) {
+      const filtro = where.reviewScheduledAt;
+      // `not: null` no Prisma significa "a coluna não é nula".
+      if (filtro.not === null && entry.reviewScheduledAt === null) return false;
+      if (filtro.lte && !(entry.reviewScheduledAt && entry.reviewScheduledAt <= filtro.lte)) {
+        return false;
+      }
+    }
+    if (where.question) {
+      const question = questions.find((q) => q.id === entry.questionId);
+      if (!question) return false;
+      for (const field of ['subject', 'topic', 'difficulty'] as const) {
+        const filtro = where.question[field];
+        if (filtro === undefined) continue;
+        // O Prisma aceita igualdade direta (`difficulty: 'DIFICIL'`) ou
+        // explícita (`{ equals, mode }`); o fake aceita as duas formas.
+        const pedido =
+          filtro && typeof filtro === 'object' ? filtro.equals : filtro;
+        if (pedido === undefined) continue;
+        const atual = String(question[field] ?? '').toLowerCase();
+        if (atual !== String(pedido).toLowerCase()) return false;
+      }
+    }
+    return true;
+  };
 
   const withAlternatives = (question: any) => ({
     ...question,
@@ -523,6 +592,11 @@ export function createFakePrisma() {
           .filter((i) => i >= 0)
           .reverse();
         altIndexes.forEach((i) => alternatives.splice(i, 1));
+        // ON DELETE CASCADE: questão apagada não deixa pendência no caderno de
+        // quem errou.
+        for (let i = notebookEntries.length - 1; i >= 0; i--) {
+          if (notebookEntries[i].questionId === question.id) notebookEntries.splice(i, 1);
+        }
         return question;
       }),
     },
@@ -631,6 +705,103 @@ export function createFakePrisma() {
         }));
       }),
       count: vi.fn(async ({ where }: any) => progress.filter(matchesProgressWhere(where)).length),
+    },
+    errorNotebookEntry: {
+      findUnique: vi.fn(async ({ where, include, select }: any) => {
+        const { userId, questionId } = where.userId_questionId ?? {};
+        const entry = notebookEntries.find(
+          (e) => e.userId === userId && e.questionId === questionId,
+        );
+        if (!entry) return null;
+        return withNotebookQuestion(entry, include, select);
+      }),
+      create: vi.fn(async ({ data, include, select }: any) => {
+        const now = new Date();
+        const entry = {
+          id: nextId('notebook'),
+          userId: data.userId,
+          questionId: data.questionId,
+          reason: data.reason ?? null,
+          notes: data.notes ?? null,
+          status: data.status ?? 'ABERTA',
+          wrongAttempts: data.wrongAttempts ?? 1,
+          correctStreak: data.correctStreak ?? 0,
+          evolution: data.evolution ?? '',
+          reviewScheduledAt: data.reviewScheduledAt ?? null,
+          firstWrongAt: data.firstWrongAt ?? now,
+          lastWrongAt: data.lastWrongAt ?? now,
+          resolvedAt: data.resolvedAt ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        notebookEntries.push(entry);
+        return withNotebookQuestion(entry, include, select);
+      }),
+      update: vi.fn(async ({ where, data, include, select }: any) => {
+        const entry = notebookEntries.find((e) => e.id === where.id);
+        applyNotebookData(entry, data);
+        entry.updatedAt = new Date();
+        return withNotebookQuestion(entry, include, select);
+      }),
+      upsert: vi.fn(async ({ where, create, update, include, select }: any) => {
+        const { userId, questionId } = where.userId_questionId ?? {};
+        let entry = notebookEntries.find(
+          (e) => e.userId === userId && e.questionId === questionId,
+        );
+        if (entry) {
+          applyNotebookData(entry, update ?? {});
+          return withNotebookQuestion(entry, include, select);
+        }
+        entry = {
+          id: nextId('notebook'),
+          userId: create.userId,
+          questionId: create.questionId,
+          reason: create.reason ?? null,
+          notes: create.notes ?? null,
+          status: create.status ?? 'ABERTA',
+          wrongAttempts: create.wrongAttempts ?? 1,
+          correctStreak: create.correctStreak ?? 0,
+          evolution: create.evolution ?? '',
+          reviewScheduledAt: create.reviewScheduledAt ?? null,
+          firstWrongAt: create.firstWrongAt ?? new Date(),
+          lastWrongAt: create.lastWrongAt ?? new Date(),
+          resolvedAt: create.resolvedAt ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        notebookEntries.push(entry);
+        return withNotebookQuestion(entry, include, select);
+      }),
+      findMany: vi.fn(async ({ where, skip = 0, take = Infinity, orderBy, include, select }: any) => {
+        const list = notebookEntries
+          .filter((e) => matchesNotebookWhere(where, e))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        // Abertas antes das dominadas (ordem alfabética do enum: ABERTA < DOMINADA)
+        // e, dentro do grupo, o erro mais recente primeiro.
+        for (const clause of orderBy ?? []) {
+          if (clause.status) {
+            list.sort((a, b) => String(a.status).localeCompare(String(b.status)));
+          }
+          if (clause.lastWrongAt) {
+            list.sort((a, b) => b.lastWrongAt.getTime() - a.lastWrongAt.getTime());
+          }
+        }
+        return list.slice(skip, skip + take).map((e) => withNotebookQuestion(e, include, select));
+      }),
+      deleteMany: vi.fn(async ({ where }: any) => {
+        const before = notebookEntries.length;
+        for (let i = notebookEntries.length - 1; i >= 0; i--) {
+          const entry = notebookEntries[i];
+          const matches =
+            (!where?.userId || entry.userId === where.userId) &&
+            (!where?.questionId || entry.questionId === where.questionId);
+          if (matches) notebookEntries.splice(i, 1);
+        }
+        return { count: before - notebookEntries.length };
+      }),
+      count: vi.fn(async ({ where }: any) =>
+        notebookEntries.filter((e) => matchesNotebookWhere(where, e)).length,
+      ),
     },
     $transaction: vi.fn(async (cb: any) => Array.isArray(cb) ? Promise.all(cb) : cb(fake)),
     onModuleInit: vi.fn(),

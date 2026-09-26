@@ -8,30 +8,26 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
-  Lightbulb,
   Loader2,
   LogOut,
   Pencil,
   Plus,
-  RotateCcw,
   Search,
   Sparkles,
   Trash2,
   Upload,
   X,
-  XCircle,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { QuestionResolution } from "@/components/QuestionResolution";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  apiAnswerQuestion,
   apiCreateQuestion,
   apiDeleteQuestion,
   apiGetQuestion,
-  apiGetQuestionHint,
   apiGetSimilarQuestions,
   apiImportQuestionFile,
   apiGetSubjectTopics,
@@ -41,36 +37,19 @@ import {
   apiSetQuestionReview,
   apiUpdateQuestion,
   ApiError,
-  type AttemptResult,
   type Exam,
   type PaginatedQuestions,
   type Question,
   type QuestionAlternativePayload,
   type QuestionDifficulty,
   type QuestionFilters,
-  type QuestionHint,
   type QuestionPayload,
   type QuestionImportReport,
   type Subject,
   type Topic,
 } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
-
-const DIFFICULTY_LABEL: Record<QuestionDifficulty, string> = {
-  FACIL: "Fácil",
-  MEDIA: "Média",
-  DIFICIL: "Difícil",
-};
-
-const DIFFICULTY_BADGE: Record<QuestionDifficulty, string> = {
-  FACIL: "border-success/25 bg-success/10 text-success",
-  MEDIA: "border-primary/30 bg-primary/10 text-primary-700",
-  DIFICIL: "border-alert/25 bg-alert/10 text-alert",
-};
-
-function positionLetter(position: number): string {
-  return String.fromCharCode(64 + position);
-}
+import { CLASSE_DIFICULDADE, origemDaQuestao, positionLetter, ROTULO_DIFICULDADE } from "@/lib/question-labels";
 
 function filterSelectClass() {
   return "h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30";
@@ -538,30 +517,13 @@ interface QuestionCardProps {
 }
 
 function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: QuestionCardProps) {
-  const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
-  const [result, setResult] = useState<AttemptResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [similarItems, setSimilarItems] = useState<Question[] | null>(null);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [similarError, setSimilarError] = useState<string | null>(null);
   const [markedForReview, setMarkedForReview] = useState(question.progress?.markedForReview ?? false);
   const [togglingReview, setTogglingReview] = useState(false);
-  const [hints, setHints] = useState<QuestionHint[]>([]);
-  const [hintLoading, setHintLoading] = useState(false);
-  const [hintError, setHintError] = useState<string | null>(null);
 
-  /** O servidor informa o teto de dicas (hoje 3). Chegou nele, não há o que pedir. */
-  const semMaisDicas =
-    hints.length > 0 && hints.length >= (hints[hints.length - 1]?.maxLevel ?? 3);
-
-  const origin = [
-    question.exam,
-    question.year ? String(question.year) : null,
-    question.examNumber ? `questão ${question.examNumber}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const origin = origemDaQuestao(question);
 
   async function loadSimilar() {
     if (similarItems !== null || similarLoading) return;
@@ -599,69 +561,6 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
     }
   }
 
-  /** Pede mais uma dica. As dicas empilham (nível 1, 2, 3) e param no máximo
-   * informado pelo servidor; nenhuma delas revela a alternativa correta. */
-  async function askHint() {
-    const nextLevel = hints.length + 1;
-    setHintLoading(true);
-    setHintError(null);
-    const token = getAccessToken() ?? "";
-    try {
-      const hint = await apiGetQuestionHint(token, question.id, nextLevel);
-      setHints((current) => [...current, hint]);
-    } catch (err) {
-      setHintError(
-        err instanceof ApiError ? err.message : "Não foi possível obter a dica."
-      );
-    } finally {
-      setHintLoading(false);
-    }
-  }
-
-  async function handleAnswer() {
-    if (selectedPosition === null) {
-      setError("Escolha uma alternativa para responder.");
-      return;
-    }
-    setError(null);
-    setSubmitting(true);
-    const token = getAccessToken() ?? "";
-    try {
-      const attempt = await apiAnswerQuestion(token, question.id, selectedPosition);
-      setResult(attempt);
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Não foi possível registrar sua resposta. Tente novamente."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function reset() {
-    setSelectedPosition(null);
-    setResult(null);
-    setError(null);
-  }
-
-  function alternativeStyle(position: number): string {
-    if (result) {
-      if (position === result.correctPosition) {
-        return "border-success bg-success/5 text-graphite";
-      }
-      if (position === result.selectedPosition && !result.isCorrect) {
-        return "border-alert bg-alert/5 text-alert";
-      }
-      return "border-surface-line bg-white text-graphite-500";
-    }
-    if (selectedPosition === position) {
-      return "border-primary bg-primary/10 text-graphite";
-    }
-    return "border-surface-line bg-white text-graphite hover:border-graphite/30";
-  }
-
   return (
     <Card className="bg-white" data-question-id={question.id}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -673,13 +572,15 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
             {question.topic}
           </span>
           <span
-            className={`rounded-full border px-3 py-1 text-xs font-semibold ${DIFFICULTY_BADGE[question.difficulty]}`}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${CLASSE_DIFICULDADE[question.difficulty]}`}
           >
-            {DIFFICULTY_LABEL[question.difficulty]}
+            {ROTULO_DIFICULDADE[question.difficulty]}
           </span>
-          <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-medium text-graphite-500">
-            {origin}
-          </span>
+          {origin && (
+            <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-medium text-graphite-500">
+              {origin}
+            </span>
+          )}
           {question.stats && question.stats.attempts > 0 && (
             <span
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
@@ -740,147 +641,11 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
       </p>
       {question.sourcePdf ? <a className="mt-2 inline-block text-sm text-primary-700 underline" href={`${question.sourcePdf.url}#page=${question.sourcePdf.page}`} target="_blank" rel="noopener noreferrer">Ver página {question.sourcePdf.page} no PDF oficial</a> : null}
 
-      <div className="mt-5 flex flex-col gap-2.5">
-        {question.alternatives.map((alternative) => (
-          <button
-            key={alternative.id}
-            type="button"
-            onClick={() => {
-              setSelectedPosition(alternative.position);
-              setError(null);
-            }}
-            disabled={result !== null || submitting}
-            className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all disabled:cursor-default ${alternativeStyle(alternative.position)}`}
-          >
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-xs font-semibold text-graphite-600">
-              {positionLetter(alternative.position)}
-            </span>
-            <span className="text-sm leading-relaxed">{alternative.text}</span>
-            {result && alternative.position === result.correctPosition && (
-              <CheckCircle2 className="ml-auto mt-0.5 h-5 w-5 shrink-0 text-success" />
-            )}
-            {result && alternative.position === result.selectedPosition && !result.isCorrect && (
-              <XCircle className="ml-auto mt-0.5 h-5 w-5 shrink-0 text-alert" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {hints.length > 0 && (
-        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
-          <p className="text-xs font-semibold text-primary-700">
-            {hints.length === 1 ? "Dica" : "Dicas (" + hints.length + ")"}
-          </p>
-          <ul className="mt-2 flex flex-col gap-2">
-            {hints.map((hint, index) => (
-              <li key={hint.level} className="text-sm leading-relaxed text-graphite-600">
-                <span className="font-semibold text-graphite">{index + 1}.</span>{" "}
-                {hint.hint}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-graphite-400">
-            As dicas ajudam a destravar a questão, mas nunca revelam a alternativa correta.
-          </p>
-        </div>
-      )}
-
-      {hintError && (
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{hintError}</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {result && (
-        <div
-          className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-sm ${
-            result.isCorrect
-              ? "border-success/25 bg-success/5 text-graphite-600"
-              : "border-alert/25 bg-alert/5 text-alert"
-          }`}
-        >
-          {result.isCorrect ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-          ) : (
-            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-alert" />
-          )}
-          <span>
-            {result.isCorrect
-              ? "Acertou!"
-              : `Errou — a alternativa correta é a ${positionLetter(result.correctPosition)}.`}
-          </span>
-        </div>
-      )}
-
-      {result && question.explanation && (
-        <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-          <p className="text-xs font-semibold text-primary-700">Gabarito comentado</p>
-          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-graphite-600">
-            {question.explanation}
-          </p>
-        </div>
-      )}
-
-      {result && result.explanations && result.explanations.length > 0 && (
-        <div className="mt-3 rounded-xl border border-surface-line bg-white p-3">
-          <p className="text-xs font-semibold text-graphite">Por que cada alternativa está assim</p>
-          <ul className="mt-2 flex flex-col gap-2">
-            {result.explanations.map((feedback) => (
-              <li key={feedback.position} className="text-sm leading-relaxed text-graphite-600">
-                <span className="font-semibold text-graphite">
-                  {positionLetter(feedback.position)}
-                  {feedback.selected ? " (sua resposta)" : ""}:
-                </span>{" "}
-                {feedback.explanation}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="mt-4 flex items-center justify-between gap-3">
-        {result ? (
-          <span />
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={askHint}
-            disabled={hintLoading || semMaisDicas}
-          >
-            {hintLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Lightbulb className="h-4 w-4" />
-            )}
-            {hints.length === 0 ? "Pedir dica" : semMaisDicas ? "Sem mais dicas" : "Outra dica"}
-          </Button>
-        )}
-        {result ? (
-          <Button type="button" variant="outline" size="sm" onClick={reset}>
-            <RotateCcw className="h-4 w-4" />
-            Responder novamente
-          </Button>
-        ) : (
-          <Button type="button" size="sm" onClick={handleAnswer} disabled={submitting}>
-            {submitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4" />
-            )}
-            Responder
-          </Button>
-        )}
-      </div>
+      <QuestionResolution
+        questionId={question.id}
+        alternatives={question.alternatives}
+        explanation={question.explanation}
+      />
 
       {showSimilar && (
         <div className="mt-5 border-t border-surface-line pt-4">
