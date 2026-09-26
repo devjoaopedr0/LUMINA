@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateClassDto {
@@ -98,4 +98,142 @@ export class ArchiveClassDto {
 export class ClassMemberEmailDto {
   @IsString() @IsNotEmpty() @MaxLength(254)
   email!: string;
+}
+
+// =============================================================================
+// Answer Sheet Scanner (item 17 do inventário)
+// =============================================================================
+
+export class CreateAnswerSheetTemplateDto {
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  name!: string;
+
+  @IsOptional() @IsString()
+  description?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MarkerDto)
+  markers!: MarkerDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BubbleLayoutDto)
+  layout!: BubbleLayoutDto[];
+
+  @IsOptional() @IsInt() @Min(100) @Max(5000)
+  expectedWidth?: number;
+
+  @IsOptional() @IsInt() @Min(100) @Max(5000)
+  expectedHeight?: number;
+}
+
+export class MarkerDto {
+  @IsString() @IsIn(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'])
+  name!: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
+
+  @IsNumber()
+  x!: number;
+
+  @IsNumber()
+  y!: number;
+}
+
+export class BubbleLayoutDto {
+  @IsInt() @Min(1) @Max(200)
+  questionNumber!: number;
+
+  @IsArray() @ValidateNested({ each: true }) @Type(() => BubbleDto)
+  bubbles!: BubbleDto[];
+}
+
+export class BubbleDto {
+  @IsInt() @Min(1) @Max(10)
+  position!: number;
+
+  @IsNumber()
+  x!: number;
+
+  @IsNumber()
+  y!: number;
+
+  @IsNumber() @Min(1)
+  radius!: number;
+}
+
+export class AnswerSheetTemplateResponseDto {
+  id: string;
+  name: string;
+  description: string | null;
+  markersJson: any;
+  layoutJson: any;
+  expectedWidth: number | null;
+  expectedHeight: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class PresignedUploadUrlDto {
+  @IsUUID()
+  templateId!: string;
+
+  @IsOptional() @IsUUID()
+  simulationId?: string;
+
+  @IsString() @IsIn(['image/jpeg', 'image/png', 'application/pdf'])
+  contentType!: string;
+}
+
+export class PresignedUploadUrlResponseDto {
+  uploadUrl: string;
+  uploadId: string;
+  key: string;
+  expiresIn: number;
+}
+
+export class AnswerSheetUploadResponseDto {
+  id: string;
+  templateId: string;
+  simulationId: string | null;
+  studentId: string;
+  fileUrl: string;
+  metaJson: any;
+  status: string;
+  createdAt: Date;
+}
+
+export class AnswerSheetProcessingResponseDto {
+  id: string;
+  uploadId: string;
+  detectedAnswers: Record<string, number>;
+  confidenceJson: Record<string, number>;
+  warningsJson: any[];
+  totalQuestions: number;
+  answeredCount: number;
+  lowConfidenceCount: number;
+  status: string;
+  errorMessage: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+}
+
+export class AnswerSheetSubmissionResponseDto {
+  id: string;
+  processingId: string;
+  simulationId: string;
+  studentId: string;
+  finalAnswers: Record<string, number>;
+  correct: number;
+  total: number;
+  submittedAt: Date;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+}
+
+export class ReviewAnswerSheetDto {
+  @IsObject()
+  finalAnswers!: Record<string, number>;
+
+  @IsOptional() @IsUUID()
+  reviewedBy?: string;
 }

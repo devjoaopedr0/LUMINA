@@ -46,8 +46,11 @@ model User {
   simulationSubmissions    SimulationSubmission[]
   adaptiveSessions         AdaptiveSimulationSession[]
   adaptiveSteps            AdaptiveSimulationStep[]
+  answerSheetUploads       AnswerSheetUpload[]
+  answerSheetSubmissions   AnswerSheetSubmission[]
+  answerSheetReviews       AnswerSheetSubmission[] @relation("AnswerSheetReview")
 
-   @@map("users")
+  @@map("users")
 }
 
 model AuthSession {
@@ -530,7 +533,9 @@ model Simulation {
   class          Class?         @relation(fields: [classId], references: [id], onDelete: SetNull)
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   items          SimulationItem[]
-  submissions    SimulationSubmission[]
+  submissions           SimulationSubmission[]
+  answerSheetUploads    AnswerSheetUpload[]
+  answerSheetSubmissions AnswerSheetSubmission[]
 
   @@index([createdBy, createdAt])
   @@index([classId])
@@ -999,6 +1004,115 @@ model AdaptiveSimulationStep {
   @@index([sessionId, createdAt])
   @@index([userId, createdAt])
   @@map("adaptive_simulation_steps")
+}
+
+/// Modelo de gabarito (template) para folha de respostas.
+/// Define a posição dos marcadores de referência e das bolhas de resposta.
+model AnswerSheetTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(120)
+  description String?  @db.Text
+  /** JSON com coordenadas normalizadas (0-1) dos 4 marcadores de canto para alinhamento:
+   *  { topLeft: {x,y}, topRight: {x,y}, bottomLeft: {x,y}, bottomRight: {x,y} } */
+  markersJson Json
+  /** JSON com layout das bolhas por questão:
+   *  [{ questionNumber: 1, bubbles: [{ position: 1, x, y, radius }, ...] }, ...] */
+  layoutJson  Json
+  /** Dimensões esperadas da imagem (px) para validação rápida. */
+  expectedWidth  Int?
+  expectedHeight Int?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  uploads        AnswerSheetUpload[]
+
+  @@map("answer_sheet_templates")
+}
+
+/// Upload de imagem de cartão-resposta pelo aluno/professor.
+model AnswerSheetUpload {
+  id           String   @id @default(uuid()) @db.Uuid
+  templateId   String   @map("template_id") @db.Uuid
+  template     AnswerSheetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  simulationId String?  @map("simulation_id") @db.Uuid
+  simulation   Simulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+  studentId    String   @map("student_id") @db.Uuid
+  student      User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  /** URL do arquivo original (storage). */
+  fileUrl      String
+  /** Metadados da imagem: { width, height, mimeType, sizeBytes }. */
+  metaJson     Json
+  status       AnswerSheetStatus @default(PENDING)
+  /** Processamento associado (1:1 quando concluído). */
+  processing   AnswerSheetProcessing?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([simulationId, studentId])
+  @@index([studentId, createdAt])
+  @@map("answer_sheet_uploads")
+}
+
+/// Resultado do processamento OCR de um cartão-resposta.
+model AnswerSheetProcessing {
+  id          String   @id @default(uuid()) @db.Uuid
+  uploadId    String   @unique @map("upload_id") @db.Uuid
+  upload      AnswerSheetUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  submission  AnswerSheetSubmission?
+  /** Respostas detectadas: { questionNumber: selectedPosition (1-5) }. */
+  detectedAnswers Json
+  /** Confiança por questão: { questionNumber: 0.0-1.0 }. */
+  confidenceJson  Json
+  /** Alertas: bolhas não marcadas, múltiplas marcas, baixa confiança. */
+  warningsJson    Json
+  /** Total de questões do gabarito. */
+  totalQuestions  Int
+  /** Quantas questões tiveram resposta detectada. */
+  answeredCount   Int
+  /** Quantas questões têm confiança baixa (< 0.7). */
+  lowConfidenceCount Int
+  status          AnswerSheetProcessingStatus @default(PROCESSING)
+  errorMessage    String?
+  startedAt       DateTime  @default(now()) @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+
+  @@map("answer_sheet_processings")
+}
+
+/// Submissão de simulado via cartão-resposta físico (link com SimulationSubmission).
+model AnswerSheetSubmission {
+  id                   String   @id @default(uuid()) @db.Uuid
+  processingId         String   @unique @map("processing_id") @db.Uuid
+  processing           AnswerSheetProcessing @relation(fields: [processingId], references: [id], onDelete: Cascade)
+  simulationId         String   @map("simulation_id") @db.Uuid
+  simulation           Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  studentId            String   @map("student_id") @db.Uuid
+  student              User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  /** Respostas finais após revisão humana (se houver). */
+  finalAnswers         Json
+  correct              Int
+  total                Int
+  submittedAt          DateTime @default(now()) @map("submitted_at")
+  reviewedBy           String?  @map("reviewed_by") @db.Uuid
+  reviewer             User?    @relation("AnswerSheetReview", fields: [reviewedBy], references: [id])
+  reviewedAt           DateTime? @map("reviewed_at")
+
+  @@index([simulationId, studentId])
+  @@index([studentId, submittedAt])
+  @@map("answer_sheet_submissions")
+}
+
+enum AnswerSheetStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  NEEDS_REVIEW
+}
+
+enum AnswerSheetProcessingStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 enum AdaptiveSessionStatus {
