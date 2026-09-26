@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
+  Bookmark,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Database,
+  Lightbulb,
   Loader2,
   LogOut,
   Pencil,
@@ -29,12 +31,14 @@ import {
   apiCreateQuestion,
   apiDeleteQuestion,
   apiGetQuestion,
+  apiGetQuestionHint,
   apiGetSimilarQuestions,
   apiImportQuestionFile,
   apiGetSubjectTopics,
   apiListExams,
   apiListQuestions,
   apiListSubjects,
+  apiSetQuestionReview,
   apiUpdateQuestion,
   ApiError,
   type AttemptResult,
@@ -44,6 +48,7 @@ import {
   type QuestionAlternativePayload,
   type QuestionDifficulty,
   type QuestionFilters,
+  type QuestionHint,
   type QuestionPayload,
   type QuestionImportReport,
   type Subject,
@@ -168,7 +173,11 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
   const [explanation, setExplanation] = useState(initial?.explanation ?? "");
   const [alternatives, setAlternatives] = useState<QuestionAlternativePayload[]>(
     initial?.alternatives
-      ? initial.alternatives.map((a) => ({ text: a.text, isCorrect: a.isCorrect ?? false }))
+      ? initial.alternatives.map((a) => ({
+          text: a.text,
+          isCorrect: a.isCorrect ?? false,
+          explanation: a.explanation ?? "",
+        }))
       : emptyAlternatives()
   );
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +208,16 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
   function updateAlternative(index: number, text: string) {
     setAlternatives((current) =>
       current.map((alternative, i) => (i === index ? { ...alternative, text } : alternative))
+    );
+  }
+
+  /** "Por que esta alternativa está errada" (opcional). É o texto que o aluno
+   * só lê depois de responder — antes, entregaria o gabarito. */
+  function updateAlternativeExplanation(index: number, explanation: string) {
+    setAlternatives((current) =>
+      current.map((alternative, i) =>
+        i === index ? { ...alternative, explanation } : alternative
+      )
     );
   }
 
@@ -458,13 +477,25 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
               <span className="mt-3.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-xs font-semibold text-graphite-500">
                 {positionLetter(index + 1)}
               </span>
-              <Input
-                value={alternative.text}
-                onChange={(e) => updateAlternative(index, e.target.value)}
-                placeholder={`Texto da alternativa ${positionLetter(index + 1)}`}
-                maxLength={1000}
-                className="flex-1"
-              />
+              <div className="flex flex-1 flex-col gap-2">
+                <Input
+                  value={alternative.text}
+                  onChange={(e) => updateAlternative(index, e.target.value)}
+                  placeholder={`Texto da alternativa ${positionLetter(index + 1)}`}
+                  maxLength={1000}
+                />
+                <Input
+                  value={alternative.explanation ?? ""}
+                  onChange={(e) => updateAlternativeExplanation(index, e.target.value)}
+                  placeholder={
+                    alternative.isCorrect
+                      ? "Por que esta é a correta (opcional)"
+                      : "Por que esta está errada (opcional)"
+                  }
+                  maxLength={2000}
+                  className="text-xs"
+                />
+              </div>
               {alternatives.length > 2 && (
                 <button
                   type="button"
@@ -514,6 +545,15 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
   const [similarItems, setSimilarItems] = useState<Question[] | null>(null);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [similarError, setSimilarError] = useState<string | null>(null);
+  const [markedForReview, setMarkedForReview] = useState(question.progress?.markedForReview ?? false);
+  const [togglingReview, setTogglingReview] = useState(false);
+  const [hints, setHints] = useState<QuestionHint[]>([]);
+  const [hintLoading, setHintLoading] = useState(false);
+  const [hintError, setHintError] = useState<string | null>(null);
+
+  /** O servidor informa o teto de dicas (hoje 3). Chegou nele, não há o que pedir. */
+  const semMaisDicas =
+    hints.length > 0 && hints.length >= (hints[hints.length - 1]?.maxLevel ?? 3);
 
   const origin = [
     question.exam,
@@ -539,6 +579,42 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
       );
     } finally {
       setSimilarLoading(false);
+    }
+  }
+
+  /** Marca/desmarca a questão para revisar. O estado otimista é revertido se a
+   * chamada falhar, para o botão nunca mentir sobre o que está salvo. */
+  async function toggleReview() {
+    const next = !markedForReview;
+    setMarkedForReview(next);
+    setTogglingReview(true);
+    const token = getAccessToken() ?? "";
+    try {
+      const data = await apiSetQuestionReview(token, question.id, next);
+      setMarkedForReview(data.markedForReview);
+    } catch {
+      setMarkedForReview(!next);
+    } finally {
+      setTogglingReview(false);
+    }
+  }
+
+  /** Pede mais uma dica. As dicas empilham (nível 1, 2, 3) e param no máximo
+   * informado pelo servidor; nenhuma delas revela a alternativa correta. */
+  async function askHint() {
+    const nextLevel = hints.length + 1;
+    setHintLoading(true);
+    setHintError(null);
+    const token = getAccessToken() ?? "";
+    try {
+      const hint = await apiGetQuestionHint(token, question.id, nextLevel);
+      setHints((current) => [...current, hint]);
+    } catch (err) {
+      setHintError(
+        err instanceof ApiError ? err.message : "Não foi possível obter a dica."
+      );
+    } finally {
+      setHintLoading(false);
     }
   }
 
@@ -587,7 +663,7 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
   }
 
   return (
-    <Card className="bg-white">
+    <Card className="bg-white" data-question-id={question.id}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-semibold text-graphite">
@@ -619,6 +695,23 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
               {question.stats.accuracyPercent}% de acerto
             </span>
           )}
+          <button
+            type="button"
+            onClick={toggleReview}
+            disabled={togglingReview}
+            aria-pressed={markedForReview}
+            title={
+              markedForReview ? "Remover da lista de revisão" : "Marcar para revisar depois"
+            }
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+              markedForReview
+                ? "border-primary/30 bg-primary/10 text-primary-700"
+                : "border-surface-line bg-white text-graphite-500 hover:text-graphite"
+            }`}
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${markedForReview ? "fill-current" : ""}`} />
+            {markedForReview ? "Para revisar" : "Revisar depois"}
+          </button>
         </div>
         {question.canManage && (
           <div className="flex items-center gap-1.5">
@@ -673,6 +766,32 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
         ))}
       </div>
 
+      {hints.length > 0 && (
+        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <p className="text-xs font-semibold text-primary-700">
+            {hints.length === 1 ? "Dica" : "Dicas (" + hints.length + ")"}
+          </p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {hints.map((hint, index) => (
+              <li key={hint.level} className="text-sm leading-relaxed text-graphite-600">
+                <span className="font-semibold text-graphite">{index + 1}.</span>{" "}
+                {hint.hint}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-graphite-400">
+            As dicas ajudam a destravar a questão, mas nunca revelam a alternativa correta.
+          </p>
+        </div>
+      )}
+
+      {hintError && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{hintError}</span>
+        </div>
+      )}
+
       {error && (
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -710,7 +829,42 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
         </div>
       )}
 
-      <div className="mt-4 flex justify-end">
+      {result && result.explanations && result.explanations.length > 0 && (
+        <div className="mt-3 rounded-xl border border-surface-line bg-white p-3">
+          <p className="text-xs font-semibold text-graphite">Por que cada alternativa está assim</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {result.explanations.map((feedback) => (
+              <li key={feedback.position} className="text-sm leading-relaxed text-graphite-600">
+                <span className="font-semibold text-graphite">
+                  {positionLetter(feedback.position)}
+                  {feedback.selected ? " (sua resposta)" : ""}:
+                </span>{" "}
+                {feedback.explanation}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        {result ? (
+          <span />
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={askHint}
+            disabled={hintLoading || semMaisDicas}
+          >
+            {hintLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Lightbulb className="h-4 w-4" />
+            )}
+            {hints.length === 0 ? "Pedir dica" : semMaisDicas ? "Sem mais dicas" : "Outra dica"}
+          </Button>
+        )}
         {result ? (
           <Button type="button" variant="outline" size="sm" onClick={reset}>
             <RotateCcw className="h-4 w-4" />

@@ -10,11 +10,13 @@ import {
   TopicPerformanceDto,
 } from './dto/progress-response.dto';
 
-/** Query aceita por GET /users/me/questions/progress e /favorites. */
+/** Query aceita por GET /users/me/questions/progress, /favorites e /review. */
 export interface ProgressQuery {
   page?: number;
   limit?: number;
   favorites?: string;
+  /** 'true' filtra só as questões marcadas para revisar. */
+  review?: string;
 }
 
 /**
@@ -30,12 +32,19 @@ export class QuestionPerformanceService {
     private readonly questionProgressRepository: UserQuestionProgressRepository,
   ) {}
 
-  /** Progresso do usuário em questões (com filtro opcional de favoritos). */
+  /** Progresso do usuário em questões (com filtro opcional de favoritos ou de
+   * revisão). As duas marcações são independentes: favoritar é gostar,
+   * revisar é retomar depois. */
   async getProgress(userId: string, query: ProgressQuery): Promise<PaginatedProgressDto> {
     await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
-    const where = query.favorites === 'true' ? { isFavorite: true } : undefined;
+    const where =
+      query.favorites === 'true'
+        ? { isFavorite: true }
+        : query.review === 'true'
+          ? { markedForReview: true }
+          : undefined;
 
     const [total, rows] = await Promise.all([
       this.questionProgressRepository.countByUser(userId, where),
@@ -58,6 +67,12 @@ export class QuestionPerformanceService {
   /** Apenas as questões favoritas do usuário. */
   async getFavorites(userId: string, query: ProgressQuery): Promise<PaginatedProgressDto> {
     return this.getProgress(userId, { ...query, favorites: 'true' });
+  }
+
+  /** Apenas as questões que o aluno marcou para revisar — a fila de retomada
+   * ("o que eu combinei de voltar a fazer"). */
+  async getMarkedForReview(userId: string, query: ProgressQuery): Promise<PaginatedProgressDto> {
+    return this.getProgress(userId, { ...query, review: 'true' });
   }
 
   /** Estatísticas de desempenho por disciplina e por assunto, agregadas do
@@ -146,6 +161,7 @@ function toProgressDto(row: ProgressWithQuestion): QuestionProgressDto {
     incorrectAttempts: row.incorrectAttempts,
     lastAttemptAt: row.lastAttemptAt,
     isFavorite: row.isFavorite,
+    markedForReview: row.markedForReview,
     accuracy: percentage(row.correctAttempts, row.attempts),
   };
 }

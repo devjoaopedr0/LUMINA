@@ -34,6 +34,9 @@ export class QuestionProgressDto {
   @ApiProperty()
   isFavorite: boolean;
 
+  @ApiProperty({ description: 'O usuário marcou esta questão para revisar.' })
+  markedForReview: boolean;
+
   @ApiProperty({ description: 'Taxa de acerto em percentual (0-100).' })
   accuracy: number;
 }

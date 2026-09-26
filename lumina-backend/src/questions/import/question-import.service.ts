@@ -224,6 +224,7 @@ export class QuestionImportService {
           text: alternative.text,
           position: index + 1,
           isCorrect: alternative.isCorrect,
+          explanation: alternative.explanation,
         })),
       },
       tx,
@@ -260,6 +261,7 @@ function toExternalQuestion(dto: ImportQuestionDto): ExternalQuestion {
     options: dto.options.map((option) => ({
       text: option.text,
       correct: option.correct,
+      explanation: option.explanation,
     })),
     correctLetter: dto.correctLetter,
     correctOptionIndex: dto.correctOptionIndex,

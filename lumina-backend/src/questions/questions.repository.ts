@@ -35,7 +35,7 @@ export interface CreateQuestionData {
   topicId?: string | null;
   examId?: string | null;
   metadata?: Prisma.JsonValue | null;
-  alternatives: { text: string; position: number; isCorrect: boolean }[];
+  alternatives: { text: string; position: number; isCorrect: boolean; explanation?: string | null }[];
 }
 
 export interface FindManyOptions {
@@ -156,7 +156,7 @@ export class QuestionsRepository {
 
   createAlternatives(
     questionId: string,
-    alternatives: { text: string; position: number; isCorrect: boolean }[],
+    alternatives: { text: string; position: number; isCorrect: boolean; explanation?: string | null }[],
     db: Db = this.prisma,
   ): Promise<Prisma.BatchPayload> {
     return db.questionAlternative.createMany({

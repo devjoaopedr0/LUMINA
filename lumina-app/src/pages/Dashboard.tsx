@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
-  ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronRight,
+  ArrowRight, BookOpenCheck, Bookmark, CalendarDays, CheckCircle2, ChevronRight,
   Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb,
   LogOut, Menu, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X,
 } from "lucide-react";
@@ -9,7 +9,7 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
+import { apiEssays, apiGetDailySession, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiGetReviewQuestions, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { formatCalendarDate } from "@/lib/utils";
 
@@ -123,6 +123,8 @@ export function Dashboard() {
   const [simulations, setSimulations] = useState<SimulationSummary[]>([]);
   const [essays, setEssays] = useState<EssaySummary[]>([]);
   const [questionHistory, setQuestionHistory] = useState<QuestionProgressItem[]>([]);
+  const [reviewQueue, setReviewQueue] = useState<QuestionProgressItem[]>([]);
+  const [reviewQueueError, setReviewQueueError] = useState(false);
   const [teacherDashboard, setTeacherDashboard] = useState<TeacherDashboard | null>(null);
   const [coordinatorDashboard, setCoordinatorDashboard] = useState<CoordinatorDashboard | null>(null);
   const [directorDashboard, setDirectorDashboard] = useState<DirectorDashboard | null>(null);
@@ -183,14 +185,18 @@ export function Dashboard() {
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
-    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token)])
-      .then(([daily, progressData, performanceData, simulationData, essayData, questionsData]) => {
+    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token), apiGetReviewQuestions(token)])
+      .then(([daily, progressData, performanceData, simulationData, essayData, questionsData, reviewData]) => {
         if (daily.status === 'fulfilled') { setSession(daily.value?.session ?? null); setSchedule(daily.value?.schedule ?? null); }
         if (progressData.status === 'fulfilled') { setProgress(progressData.value.summary); setEvolution(progressData.value.evolution ?? []); }
         if (performanceData.status === 'fulfilled') setPerformance(performanceData.value);
         if (simulationData.status === 'fulfilled') setSimulations(simulationData.value);
         if (essayData.status === 'fulfilled') setEssays(essayData.value.items);
         if (questionsData.status === 'fulfilled') setQuestionHistory(questionsData.value.items);
+        if (reviewData.status === 'fulfilled') { setReviewQueue(reviewData.value.items); setReviewQueueError(false); }
+        // Falhou? A interface diz que não carregou — senão afirmaria "nada
+        // marcado para revisar" quando é a fila que não veio.
+        else setReviewQueueError(true);
       })
       .finally(() => setLoading(false));
   }, [isStudent, user?.accountType]);
@@ -490,10 +496,11 @@ export function Dashboard() {
             <Card className="bg-white"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-graphite">Meta acadêmica</h2><p className="mt-1 text-xs text-graphite-400">Seu objetivo principal</p></div><Target className="h-5 w-5 text-primary-700" /></div><div className="mt-5 space-y-3"><div className="rounded-xl bg-surface-card p-4"><p className="text-xs text-graphite-400">Curso desejado</p><p className="mt-1 text-sm font-semibold text-graphite">{user?.desiredCourse || 'Defina no seu perfil'}</p></div><div className="rounded-xl bg-surface-card p-4"><p className="text-xs text-graphite-400">Universidade ou vestibular</p><p className="mt-1 text-sm font-semibold text-graphite">{user?.targetUniversity || schedule?.objective || 'Defina no seu perfil ou cronograma'}</p></div></div></Card>
           </section>}
 
-          {isStudent && <section className="mt-6 grid gap-4 md:grid-cols-3" aria-label="Históricos recentes">
+          {isStudent && <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Históricos recentes">
             <Card className="bg-white"><div className="flex items-center gap-3"><Database className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Histórico de questões</h2></div><div className="mt-4 space-y-3">{questionHistory.slice(0, 3).map((item) => <div key={item.questionId}><p className="truncate text-sm font-medium text-graphite">{item.subject} · {item.topic || 'Geral'}</p><p className="text-xs text-graphite-400">{item.accuracy}% de acertos · {item.attempts} tentativas</p></div>)}{!questionHistory.length && <p className="text-sm text-graphite-400">Sem questões respondidas.</p>}</div><Link to="/app/questoes" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Abrir banco de questões</Link></Card>
             <Card className="bg-white"><div className="flex items-center gap-3"><BookOpenCheck className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Histórico de simulados</h2></div><div className="mt-4 space-y-3">{recentResults.map((item) => <div key={item.id}><p className="truncate text-sm font-medium text-graphite">{item.title}</p><p className="text-xs text-graphite-400">{item.result!.correct}/{item.result!.total} acertos · {new Date(item.result!.submittedAt).toLocaleDateString('pt-BR')}</p></div>)}{!recentResults.length && <p className="text-sm text-graphite-400">Sem simulados concluídos.</p>}</div><Link to="/app/simulados" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Ver simulados</Link></Card>
             <Card className="bg-white"><div className="flex items-center gap-3"><FileText className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Histórico de redações</h2></div><div className="mt-4 space-y-3">{essays.slice(0, 3).map((item) => <div key={item.id}><p className="truncate text-sm font-medium text-graphite">{item.title || 'Redação sem título'}</p><p className="text-xs text-graphite-400">{item.wordCount} palavras · versão {item.version}</p></div>)}{!essays.length && <p className="text-sm text-graphite-400">Sem redações salvas.</p>}</div><Link to="/app/redacoes" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Ver redações</Link></Card>
+            <Card className="bg-white" data-review-queue><div className="flex items-center gap-3"><Bookmark className="h-5 w-5 text-primary-700" /><h2 className="font-semibold text-graphite">Para revisar</h2></div><div className="mt-4 space-y-3">{reviewQueue.slice(0, 3).map((item) => <div key={item.questionId}><p className="truncate text-sm font-medium text-graphite">{item.subject} · {item.topic || 'Geral'}</p><p className="text-xs text-graphite-400">{item.attempts ? `${item.accuracy}% de acertos · ${item.attempts} tentativa${item.attempts === 1 ? '' : 's'}` : 'Ainda não respondida'}</p></div>)}{!reviewQueue.length && <p className="text-sm text-graphite-400">{reviewQueueError ? "Não foi possível carregar a fila de revisão." : 'Nada marcado para revisar. Use o botão "Revisar depois" no banco de questões.'}</p>}</div><Link to="/app/questoes" className="mt-5 inline-flex text-xs font-semibold text-primary-700">Abrir banco de questões</Link></Card>
           </section>}
         </div>
       </main>

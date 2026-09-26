@@ -128,7 +128,7 @@
     -  Classificação automática da questão
     -  Possibilidade de salvar no banco interno
     -  Respeito a direitos autorais e condições de uso
-11. 11. Resolução de questões
+11. 11. Resolução de questões [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITENS "ADICIONAR AO CADERNO DE ERROS" (ITEM 12) E "PEDIR AJUDA À LUMINIA" (DEPENDE DO BACKEND DE IA) PENDENTES]
     -  Responder dentro da plataforma
     -  Correção automática
     -  Feedback imediato

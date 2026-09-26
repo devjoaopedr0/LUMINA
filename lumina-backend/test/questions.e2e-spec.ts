@@ -85,6 +85,18 @@ describe('Questions (e2e)', () => {
     ],
   };
 
+  /** Mesma questão, agora com a explicação de cada alternativa escrita pelo
+   * autor — o gabarito comentado por alternativa. */
+  const questionWithExplanations = {
+    ...questionPayload,
+    alternatives: [
+      { text: '4', isCorrect: false, explanation: '2^2 = 4: o expoente foi trocado.' },
+      { text: '6', isCorrect: false },
+      { text: '8', isCorrect: true, explanation: '2^3 = 8.' },
+      { text: '10', isCorrect: false },
+    ],
+  };
+
   const auth = () => ({ Authorization: `Bearer ${accessToken}` });
 
   /** Insere uma questão diretamente no banco central (via fake) para testar o
@@ -262,6 +274,156 @@ describe('Questions (e2e)', () => {
       .send({ selectedPosition: 9 });
 
     expect(res.status).toBe(400);
+  });
+
+  it('a visão de responder nunca entrega a explicação das alternativas', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionWithExplanations);
+
+    const res = await request(app.getHttpServer())
+      .get(`/questions/${created.body.id}`)
+      .set(auth());
+
+    expect(res.status).toBe(200);
+    expect(res.body.alternatives.every((a: any) => a.explanation === undefined)).toBe(true);
+  });
+
+  it('a visão de autor entrega a explicação de cada alternativa', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionWithExplanations);
+
+    const res = await request(app.getHttpServer())
+      .get(`/questions/${created.body.id}`)
+      .set(auth())
+      .query({ includeAnswer: 'true' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.alternatives[0].explanation).toBe('2^2 = 4: o expoente foi trocado.');
+  });
+
+  it('POST /questions/:id/attempt devolve a explicação das alternativas erradas', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionWithExplanations);
+
+    const res = await request(app.getHttpServer())
+      .post(`/questions/${created.body.id}/attempt`)
+      .set(auth())
+      .send({ selectedPosition: 1 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.explanations).toEqual([
+      {
+        position: 1,
+        text: '4',
+        isCorrect: false,
+        selected: true,
+        explanation: '2^2 = 4: o expoente foi trocado.',
+      },
+      {
+        position: 3,
+        text: '8',
+        isCorrect: true,
+        selected: false,
+        explanation: '2^3 = 8.',
+      },
+    ]);
+  });
+
+  it('GET /questions/:id/hint entrega dica sem revelar a alternativa correta', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionPayload);
+
+    const res = await request(app.getHttpServer())
+      .get(`/questions/${created.body.id}/hint`)
+      .set(auth())
+      .query({ level: 1 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.level).toBe(1);
+    expect(res.body.maxLevel).toBe(3);
+    expect(res.body.provider).toBe('rules');
+    expect(res.body.hint).toContain('Matemática');
+    // a alternativa correta da questão é "8": a dica não pode conter o gabarito
+    expect(res.body.hint).not.toMatch(/\b8\b/);
+  });
+
+  it('GET /questions/:id/hint recusa nível fora de 1..3 (400)', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionPayload);
+
+    const res = await request(app.getHttpServer())
+      .get(`/questions/${created.body.id}/hint`)
+      .set(auth())
+      .query({ level: 9 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('dica não conta como tentativa (não altera as estatísticas da questão)', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionPayload);
+
+    await request(app.getHttpServer())
+      .get(`/questions/${created.body.id}/hint`)
+      .set(auth())
+      .query({ level: 2 });
+
+    const res = await request(app.getHttpServer())
+      .get(`/questions/${created.body.id}`)
+      .set(auth());
+
+    expect(res.body.stats).toBeNull();
+  });
+
+  it('POST /questions/:id/review marca para revisar e o estado volta na listagem', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/questions')
+      .set(auth())
+      .send(questionPayload);
+
+    const marked = await request(app.getHttpServer())
+      .post(`/questions/${created.body.id}/review`)
+      .set(auth());
+
+    expect(marked.status).toBe(200);
+    expect(marked.body).toEqual({ markedForReview: true });
+
+    const list = await request(app.getHttpServer()).get('/questions').set(auth());
+    const item = list.body.items.find((q: any) => q.id === created.body.id);
+    expect(item.progress.markedForReview).toBe(true);
+    // favoritar e revisar são decisões independentes
+    expect(item.progress.isFavorite).toBe(false);
+
+    const reviewList = await request(app.getHttpServer())
+      .get('/users/me/questions/review')
+      .set(auth());
+    expect(reviewList.body.items.map((p: any) => p.questionId)).toContain(created.body.id);
+    expect(reviewList.body.items[0].markedForReview).toBe(true);
+
+    const unmarked = await request(app.getHttpServer())
+      .delete(`/questions/${created.body.id}/review`)
+      .set(auth());
+    expect(unmarked.body).toEqual({ markedForReview: false });
+  });
+
+  it('POST /questions/:id/review de questão inacessível devolve 404', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/questions/11111111-2222-4333-8444-555555555555/review')
+      .set(auth());
+
+    expect(res.status).toBe(404);
   });
 
   it('PATCH /questions/:id atualiza campos e substitui alternativas', async () => {

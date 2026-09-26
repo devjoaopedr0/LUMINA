@@ -19,6 +19,11 @@ import { QuestionsService } from './questions.service';
 import { QuestionTextSearchRepository } from './question-text-search.repository';
 import { SubjectsRepository } from './subjects.repository';
 import { UserQuestionProgressRepository } from './user-question-progress.repository';
+import {
+  createDefaultHintProvider,
+  QUESTION_HINTS_PROVIDER,
+  QuestionHintsService,
+} from './hints/question-hints.service';
 
 @Module({
   imports: [WorkspacesModule],
@@ -51,6 +56,10 @@ import { UserQuestionProgressRepository } from './user-question-progress.reposit
     CsvQuestionNormalizer,
     QuestionImportService,
     EnemImportService,
+    QuestionHintsService,
+    // O provedor de dicas é trocável por token: para plugar um modelo de
+    // linguagem basta registrar outro HintProvider aqui.
+    { provide: QUESTION_HINTS_PROVIDER, useFactory: createDefaultHintProvider },
   ],
 })
 export class QuestionsModule {}

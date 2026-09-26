@@ -188,6 +188,10 @@ export function WebQuestionSearch() {
           options: transcribed.options.map((text, index) => ({
             text,
             correct: index === transcribed.correctIndex,
+            // "Por que esta está errada", quando o usuário escreveu. Vazio
+            // vira null no servidor — a questão simplesmente não detalha o
+            // distrator.
+            explanation: transcribed.optionExplanations[index]?.trim() || undefined,
           })),
           explanation: transcribed.explanation.trim() || undefined,
         },

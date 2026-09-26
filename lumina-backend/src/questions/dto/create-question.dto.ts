@@ -30,6 +30,15 @@ export class AlternativeDto {
   })
   @IsBoolean({ message: 'is_correct deve ser true ou false.' })
   isCorrect: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Por que esta alternativa está errada. O aluno só vê isso depois de responder — antes, revelaria o gabarito.',
+  })
+  @IsOptional()
+  @IsString({ message: 'A explicação da alternativa deve ser um texto.' })
+  @MaxLength(2000, { message: 'A explicação da alternativa deve ter no máximo 2000 caracteres.' })
+  explanation?: string;
 }
 
 export class CreateQuestionDto {

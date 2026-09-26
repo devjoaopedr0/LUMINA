@@ -34,6 +34,18 @@ export function createFakePrisma() {
   const permissions: any[] = ['ROLE_MANAGE', 'MEMBER_MANAGE', 'CLASS_MANAGE', 'REPORT_VIEW']
     .map((code) => ({ id: nextId('permission'), code }));
 
+  /** Filtro do `user_question_progress`: usuário, favoritos, revisão e lote de
+   * questões. Usado tanto pelo `findMany` quanto pelo `count`. */
+  const matchesProgressWhere = (where: any) => (p: any) =>
+    (!where?.userId || p.userId === where.userId) &&
+    (where?.isFavorite === undefined || p.isFavorite === where.isFavorite) &&
+    (where?.markedForReview === undefined ||
+      p.markedForReview === where.markedForReview) &&
+    (!where?.questionId ||
+      (Array.isArray(where.questionId.in)
+        ? where.questionId.in.includes(p.questionId)
+        : p.questionId === where.questionId));
+
   const withProfile = (user: any) => ({
     ...user,
     profile: profiles.find((p) => p.userId === user.id) ?? null,
@@ -470,6 +482,7 @@ export function createFakePrisma() {
             text: alternative.text,
             position: alternative.position,
             isCorrect: alternative.isCorrect,
+            explanation: alternative.explanation ?? null,
             createdAt: now,
           });
         });
@@ -534,6 +547,9 @@ export function createFakePrisma() {
             text: alternative.text,
             position: alternative.position,
             isCorrect: alternative.isCorrect,
+            // A explicação do distrator é opcional: só o autor a escreve e o
+            // aluno só a vê depois de responder.
+            explanation: alternative.explanation ?? null,
             createdAt: new Date(),
           });
         });
@@ -595,6 +611,7 @@ export function createFakePrisma() {
           correctAttempts: create.correctAttempts ?? 0,
           incorrectAttempts: create.incorrectAttempts ?? 0,
           isFavorite: create.isFavorite ?? false,
+          markedForReview: create.markedForReview ?? false,
           lastAttemptAt: create.lastAttemptAt ?? null,
           createdAt: now,
           updatedAt: now,
@@ -605,11 +622,7 @@ export function createFakePrisma() {
       findMany: vi.fn(async ({ where, skip = 0, take = Infinity, orderBy }: any) => {
         void orderBy;
         const rows = progress
-          .filter(
-            (p) =>
-              (!where?.userId || p.userId === where.userId) &&
-              (where?.isFavorite === undefined || p.isFavorite === where.isFavorite),
-          )
+          .filter(matchesProgressWhere(where))
           .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
           .slice(skip, skip + take);
         return rows.map((p) => ({
@@ -617,13 +630,7 @@ export function createFakePrisma() {
           question: questions.find((q) => q.id === p.questionId) ?? null,
         }));
       }),
-      count: vi.fn(async ({ where }: any) =>
-        progress.filter(
-          (p) =>
-            (!where?.userId || p.userId === where.userId) &&
-            (where?.isFavorite === undefined || p.isFavorite === where.isFavorite),
-        ).length,
-      ),
+      count: vi.fn(async ({ where }: any) => progress.filter(matchesProgressWhere(where)).length),
     },
     $transaction: vi.fn(async (cb: any) => Array.isArray(cb) ? Promise.all(cb) : cb(fake)),
     onModuleInit: vi.fn(),

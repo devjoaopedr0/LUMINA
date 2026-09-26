@@ -38,6 +38,11 @@ import {
   SimilarQuestionsDto,
 } from './dto/question-response.dto';
 import { QueryQuestionsDto } from './dto/query-questions.dto';
+import {
+  QuestionHintDto,
+  QuestionHintQueryDto,
+  QuestionReviewStateDto,
+} from './dto/question-resolution.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { EnemImportService } from './import/enem/enem-import.service';
 import { QuestionImportService } from './import/question-import.service';
@@ -227,6 +232,46 @@ export class QuestionsController {
     @Body() dto: CreateAttemptDto,
   ): Promise<AttemptResultDto> {
     return this.questionsService.answer(user.id, id, dto);
+  }
+
+  @Get(':id/hint')
+  @ApiOperation({
+    summary:
+      'Dica para destravar a questão sem revelar a resposta. Níveis 1 a 3, do mais leve ao quase resolutivo.',
+  })
+  @ApiResponse({ status: 200, type: QuestionHintDto })
+  @ApiResponse({ status: 404, description: 'Questão não encontrada.' })
+  @ApiResponse({ status: 400, description: 'Nível de dica fora da faixa válida (1-3).' })
+  hint(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: QuestionHintQueryDto,
+  ): Promise<QuestionHintDto> {
+    return this.questionsService.hint(user.id, id, query.level);
+  }
+
+  @Post(':id/review')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Marca a questão como "para revisar" (compromisso de retomar depois).',
+  })
+  @ApiResponse({ status: 200, type: QuestionReviewStateDto })
+  markForReview(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QuestionReviewStateDto> {
+    return this.questionsService.toggleMarkedForReview(user.id, id, true);
+  }
+
+  @Delete(':id/review')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a marcação "para revisar".' })
+  @ApiResponse({ status: 200, type: QuestionReviewStateDto })
+  unmarkForReview(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QuestionReviewStateDto> {
+    return this.questionsService.toggleMarkedForReview(user.id, id, false);
   }
 
   @Post(':id/favorite')

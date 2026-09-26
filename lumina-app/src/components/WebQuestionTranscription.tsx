@@ -11,22 +11,21 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { safeSourceLink } from "@/lib/source-link";
 import type { QuestionDifficulty, WebSearchHit } from "@/lib/api";
+import {
+  adicionarOpcao,
+  initialTranscriptionState,
+  MAX_OPTIONS,
+  MIN_OPTIONS,
+  prepararTranscricaoParaEnvio,
+  positionLetter,
+  removerOpcao,
+  validarTranscricao,
+  type TranscribedQuestion,
+} from "@/lib/question-transcription";
 
-/** Conteúdo transcrito pelo usuário a partir do resultado da busca. É o que
- * realmente vai para o banco — a Lumina não baixa nem guarda o texto da
- * página de origem, então o preenchimento é responsabilidade de quem está
- * usando a plataforma. */
-export interface TranscribedQuestion {
-  subject: string;
-  topic: string;
-  exam: string;
-  year: string;
-  difficulty: QuestionDifficulty;
-  stem: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-}
+// O tipo vive no módulo de regras (que o teste rápido importa direto); aqui
+// ele segue exposto para quem já importava daqui.
+export type { TranscribedQuestion };
 
 const DIFFICULTIES: Array<{ value: QuestionDifficulty; label: string }> = [
   { value: "FACIL", label: "Fácil" },
@@ -34,43 +33,12 @@ const DIFFICULTIES: Array<{ value: QuestionDifficulty; label: string }> = [
   { value: "DIFICIL", label: "Difícil" },
 ];
 
-const LETTERS = ["A", "B", "C", "D", "E", "F"];
-
-const MIN_STEM = 5;
-const MIN_OPTIONS = 2;
-const MAX_OPTIONS = 6;
-
-/** Letra da alternativa a partir da POSIÇÃO (1-based): 1 = A, 2 = B...
- * Mesma convenção do banco de questões e da posição gravada no banco, para
- * a letra que o usuário vê aqui ser a mesma que aparece depois de salvar. */
-function positionLetter(position: number): string {
-  return LETTERS[position - 1] ?? String(position);
-}
-
 function fieldClass() {
   return "h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30";
 }
 
 function areaClass() {
   return "min-h-[110px] w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30";
-}
-
-function initialState(hit: WebSearchHit): TranscribedQuestion {
-  const classification = hit.classification;
-  // O trecho da busca é só um pedaço do enunciado: entra como ponto de
-  // partida para o usuário completar, nunca como conteúdo final.
-  const snippet = (hit.snippet ?? "").trim();
-  return {
-    subject: classification?.subject ?? "",
-    topic: classification?.topic ?? "",
-    exam: classification?.exam ?? "",
-    year: classification?.year ? String(classification.year) : "",
-    difficulty: classification?.difficulty ?? "MEDIA",
-    stem: snippet.length >= MIN_STEM ? snippet : "",
-    options: ["", ""],
-    correctIndex: 0,
-    explanation: "",
-  };
 }
 
 export function WebQuestionTranscriptionForm({
@@ -86,7 +54,9 @@ export function WebQuestionTranscriptionForm({
   onCancel: () => void;
   onSubmit: (value: TranscribedQuestion) => void;
 }) {
-  const [form, setForm] = useState<TranscribedQuestion>(() => initialState(hit));
+  const [form, setForm] = useState<TranscribedQuestion>(() =>
+    initialTranscriptionState(hit),
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const update = <K extends keyof TranscribedQuestion>(
@@ -103,61 +73,24 @@ export function WebQuestionTranscriptionForm({
     }));
   };
 
-  const addOption = () => {
-    setForm((current) =>
-      current.options.length >= MAX_OPTIONS
-        ? current
-        : { ...current, options: [...current.options, ""] },
-    );
+  const updateOptionExplanation = (index: number, value: string) => {
+    setForm((current) => ({
+      ...current,
+      optionExplanations: current.optionExplanations.map((item, i) =>
+        i === index ? value : item
+      ),
+    }));
   };
-
-  const removeOption = (index: number) => {
-    setForm((current) => {
-      const options = current.options.filter((_, i) => i !== index);
-      const correctIndex =
-        current.correctIndex === index
-          ? 0
-          : current.correctIndex > index
-            ? current.correctIndex - 1
-            : current.correctIndex;
-      return { ...current, options, correctIndex };
-    });
-  };
-
-  function validate(value: TranscribedQuestion): string | null {
-    if (value.subject.trim().length < 2) {
-      return "Informe a disciplina (mínimo 2 letras).";
-    }
-    if (value.stem.trim().length < MIN_STEM) {
-      return `O enunciado precisa de pelo menos ${MIN_STEM} caracteres.`;
-    }
-    const filled = value.options.map((option) => option.trim()).filter(Boolean);
-    if (filled.length < MIN_OPTIONS) {
-      return `Transcreva pelo menos ${MIN_OPTIONS} alternativas.`;
-    }
-    if (!value.options[value.correctIndex]?.trim()) {
-      return "Marque qual alternativa está correta.";
-    }
-    return null;
-  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const message = validate(form);
+    const message = validarTranscricao(form);
     setLocalError(message);
     if (message) return;
 
     // Alternativas vazias no meio da lista são descartadas e o gabarito
-    // é reposicionado para a alternativa correta survive à limpeza.
-    const kept = form.options
-      .map((option, index) => ({ option: option.trim(), index }))
-      .filter(({ option }) => option.length > 0);
-
-    onSubmit({
-      ...form,
-      options: kept.map(({ option }) => option),
-      correctIndex: kept.findIndex(({ index }) => index === form.correctIndex),
-    });
+    // é reposicionado para a alternativa correta sobreviver à limpeza.
+    onSubmit(prepararTranscricaoParaEnvio(form));
   }
 
   const message = localError ?? error;
@@ -288,7 +221,7 @@ export function WebQuestionTranscriptionForm({
           {form.options.length < MAX_OPTIONS && (
             <button
               type="button"
-              onClick={addOption}
+              onClick={() => setForm(adicionarOpcao)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-700 transition-colors hover:text-graphite"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -300,43 +233,56 @@ export function WebQuestionTranscriptionForm({
           {form.options.map((option, index) => (
             <div
               key={index}
-              className="flex items-start gap-2 rounded-xl border border-surface-line bg-white p-2.5"
+              className="flex flex-col gap-2 rounded-xl border border-surface-line bg-white p-2.5"
             >
-              <button
-                type="button"
-                onClick={() => update("correctIndex", index)}
-                title="Marcar como correta"
-                aria-label={`Marcar alternativa ${positionLetter(index + 1)} como correta`}
-                aria-pressed={form.correctIndex === index}
-                className={`mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                  form.correctIndex === index
-                    ? "border-success bg-success text-white"
-                    : "border-surface-line text-transparent hover:border-graphite/40"
-                }`}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-              </button>
-              <span className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-xs font-semibold text-graphite-500">
-                {positionLetter(index + 1)}
-              </span>
-              <Input
-                value={option}
-                onChange={(e) => updateOption(index, e.target.value)}
-                placeholder={`Texto da alternativa ${positionLetter(index + 1)}`}
-                maxLength={1000}
-                className="flex-1"
-              />
-              {form.options.length > MIN_OPTIONS && (
+              <div className="flex items-start gap-2">
                 <button
                   type="button"
-                  onClick={() => removeOption(index)}
-                  className="mt-3 text-graphite-400 transition-colors hover:text-alert"
-                  title="Remover alternativa"
-                  aria-label={`Remover alternativa ${positionLetter(index + 1)}`}
+                  onClick={() => update("correctIndex", index)}
+                  title="Marcar como correta"
+                  aria-label={`Marcar alternativa ${positionLetter(index + 1)} como correta`}
+                  aria-pressed={form.correctIndex === index}
+                  className={`mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                    form.correctIndex === index
+                      ? "border-success bg-success text-white"
+                      : "border-surface-line text-transparent hover:border-graphite/40"
+                  }`}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <CheckCircle2 className="h-4 w-4" />
                 </button>
-              )}
+                <span className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-xs font-semibold text-graphite-500">
+                  {positionLetter(index + 1)}
+                </span>
+                <Input
+                  value={option}
+                  onChange={(e) => updateOption(index, e.target.value)}
+                  placeholder={`Texto da alternativa ${positionLetter(index + 1)}`}
+                  maxLength={1000}
+                  className="flex-1"
+                />
+                {form.options.length > MIN_OPTIONS && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((current) => removerOpcao(current, index))}
+                    className="mt-3 text-graphite-400 transition-colors hover:text-alert"
+                    title="Remover alternativa"
+                    aria-label={`Remover alternativa ${positionLetter(index + 1)}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <Input
+                value={form.optionExplanations[index] ?? ""}
+                onChange={(e) => updateOptionExplanation(index, e.target.value)}
+                placeholder={
+                  form.correctIndex === index
+                    ? "Por que esta é a correta (opcional)"
+                    : "Por que esta está errada (opcional)"
+                }
+                maxLength={2000}
+                className="ml-8 text-xs"
+              />
             </div>
           ))}
         </div>

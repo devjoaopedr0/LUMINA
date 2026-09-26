@@ -190,6 +190,19 @@ export interface QuestionAlternative {
   text: string;
   position: number;
   isCorrect?: boolean;
+  /** Por que a alternativa está errada. Só vem na visão de autor e no
+   * resultado da tentativa — na tela de responder viria junto o gabarito. */
+  explanation?: string | null;
+}
+
+/** Estado do aluno na questão. Vem null quando ele ainda não interagiu. */
+export interface QuestionUserProgress {
+  attempts: number;
+  correctAttempts: number;
+  incorrectAttempts: number;
+  lastAttemptAt: string | null;
+  isFavorite: boolean;
+  markedForReview: boolean;
 }
 
 export interface Question {
@@ -207,6 +220,7 @@ export interface Question {
   stem: string;
   explanation?: string | null;
   stats?: QuestionStats | null;
+  progress?: QuestionUserProgress | null;
   alternatives: QuestionAlternative[];
   canManage?: boolean;
   createdAt: string;
@@ -291,6 +305,8 @@ export interface QuestionFilters {
 export interface QuestionAlternativePayload {
   text: string;
   isCorrect: boolean;
+  /** Por que esta alternativa está errada (opcional). */
+  explanation?: string;
 }
 
 export interface QuestionPayload {
@@ -308,11 +324,29 @@ export interface QuestionPayload {
   alternatives: QuestionAlternativePayload[];
 }
 
+/** Explicação de uma alternativa, entregue só depois da resposta. */
+export interface AlternativeFeedback {
+  position: number;
+  text: string;
+  isCorrect: boolean;
+  selected: boolean;
+  explanation: string;
+}
+
 export interface AttemptResult {
   isCorrect: boolean;
   selectedPosition: number;
   correctPosition: number;
+  explanations?: AlternativeFeedback[];
   stats?: QuestionStats | null;
+}
+
+/** Dica que destrava a questão sem revelar a resposta. */
+export interface QuestionHint {
+  level: number;
+  hint: string;
+  provider: string;
+  maxLevel: number;
 }
 
 export interface QuestionStats {
@@ -356,6 +390,7 @@ export interface QuestionProgressItem {
   incorrectAttempts: number;
   lastAttemptAt: string | null;
   isFavorite: boolean;
+  markedForReview: boolean;
   accuracy: number;
 }
 
@@ -533,6 +568,11 @@ export function apiGetQuestionPerformance(accessToken: string): Promise<Performa
 
 export function apiGetQuestionProgress(accessToken: string, limit = 5): Promise<QuestionProgressPage> {
   return request(`/users/me/questions/progress?page=1&limit=${limit}`, { headers: authHeaders(accessToken) });
+}
+
+/** Fila de retomada: o que o aluno marcou para revisar. */
+export function apiGetReviewQuestions(accessToken: string, limit = 5): Promise<QuestionProgressPage> {
+  return request(`/users/me/questions/review?page=1&limit=${limit}`, { headers: authHeaders(accessToken) });
 }
 
 export function apiCreateQuestion(
@@ -722,6 +762,30 @@ export function apiAnswerQuestion(
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ selectedPosition }),
+  });
+}
+
+/** Dica que destrava a questão sem revelar a resposta. Níveis 1 a 3: quanto
+ * maior, mais detalhada — e ainda sem dar o gabarito. */
+export function apiGetQuestionHint(
+  accessToken: string,
+  id: string,
+  level = 1
+): Promise<QuestionHint> {
+  return request(`/questions/${id}/hint?level=${level}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+/** Marca a questão para revisar (ou desmarca) e devolve o novo estado. */
+export function apiSetQuestionReview(
+  accessToken: string,
+  id: string,
+  markedForReview: boolean
+): Promise<{ markedForReview: boolean }> {
+  return request(`/questions/${id}/review`, {
+    method: markedForReview ? "POST" : "DELETE",
+    headers: authHeaders(accessToken),
   });
 }
 

@@ -1,27 +1,33 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, QuestionDifficulty, QuestionSourceType, Workspace } from '@prisma/client';
+import { Prisma, QuestionDifficulty, QuestionSourceType, UserQuestionProgress, Workspace } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from './question-access.service';
 import {
   AttemptCounts,
   QuestionAttemptsRepository,
 } from './question-attempts.repository';
-import { UserQuestionProgressRepository } from './user-question-progress.repository';
+import { UserQuestionProgressRepository, UserQuestionState } from './user-question-progress.repository';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { CreateAttemptDto } from './dto/create-attempt.dto';
 import {
+  AlternativeFeedbackDto,
   AttemptResultDto,
   PaginatedQuestionsDto,
   QuestionResponseDto,
   QuestionStatsDto,
+  QuestionUserProgressDto,
   SimilarQuestionsDto,
 } from './dto/question-response.dto';
+import { QuestionHintDto } from './dto/question-resolution.dto';
 import { QueryQuestionsDto, QuestionSort } from './dto/query-questions.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { QUESTION_HINTS_PROVIDER, QuestionHintsService } from './hints/question-hints.service';
+import { HintProvider } from './hints/hint-provider.interface';
 import { QuestionWithAlternatives, QuestionsRepository } from './questions.repository';
 import { SubjectsRepository } from './subjects.repository';
 import { ExamsRepository } from './exams.repository';
@@ -51,6 +57,8 @@ export class QuestionsService {
     private readonly subjectsRepository: SubjectsRepository,
     private readonly examsRepository: ExamsRepository,
     private readonly textSearchRepository: QuestionTextSearchRepository,
+    @Inject(QUESTION_HINTS_PROVIDER) private readonly hintProvider: HintProvider,
+    private readonly hintsService: QuestionHintsService,
   ) {}
 
   async create(userId: string, dto: CreateQuestionDto): Promise<QuestionResponseDto> {
@@ -143,15 +151,25 @@ export class QuestionsService {
       rows.map((question) => question.id),
     );
 
+    // Progresso do aluno nas questões da página (favorita, marcada para
+    // revisar, já respondeu) — outra consulta única, também sem N+1. É o que
+    // permite à interface mostrar o estado real de cada cartão.
+    const progressRows = await this.questionProgressRepository.findManyForQuestions(
+      userId,
+      rows.map((question) => question.id),
+    );
+    const progressByQuestion = new Map(progressRows.map((progress) => [progress.questionId, progress]));
+
     return {
-      items: rows.map((question) =>
-        this.toResponse(
+      items: rows.map((question) => ({
+        ...this.toResponse(
           question,
           question.workspaceId === personal?.id ||
             (question.workspaceId === bank?.id && canManageBank),
           QuestionsService.toStats(statsByQuestion.get(question.id)),
         ),
-      ),
+        progress: QuestionsService.toUserProgress(progressByQuestion.get(question.id)),
+      })),
       total,
       page,
       totalPages: Math.ceil(total / limit),
@@ -178,12 +196,16 @@ export class QuestionsService {
       return this.toAuthorResponse(question, true, QuestionsService.toStats(stats));
     }
     const personal = await this.questionAccessService.getPersonalWorkspace(userId);
-    return this.toResponse(
-      question,
-      question.workspaceId === personal?.id ||
-        (await this.questionAccessService.hasManagePermission(userId, question.workspaceId)),
-      QuestionsService.toStats(stats),
-    );
+    const progress = await this.questionProgressRepository.find(userId, question.id);
+    return {
+      ...this.toResponse(
+        question,
+        question.workspaceId === personal?.id ||
+          (await this.questionAccessService.hasManagePermission(userId, question.workspaceId)),
+        QuestionsService.toStats(stats),
+      ),
+      progress: QuestionsService.toUserProgress(progress),
+    };
   }
 
   async update(userId: string, id: string, dto: UpdateQuestionDto): Promise<QuestionResponseDto> {
@@ -294,8 +316,47 @@ export class QuestionsService {
       isCorrect,
       selectedPosition: dto.selectedPosition,
       correctPosition: correct.position,
+      // As explicações do autor só saem aqui — depois que o aluno respondeu.
+      explanations: QuestionsService.toAlternativeFeedback(
+        question.alternatives,
+        dto.selectedPosition,
+      ),
       stats: QuestionsService.toStats(counts.get(question.id)),
     };
+  }
+
+  /**
+   * Dica para destravar a questão sem entregar a resposta. Não grava nada:
+   * a dica é ajuda de estudo, não tentativa.
+   */
+  async hint(userId: string, questionId: string, level?: number): Promise<QuestionHintDto> {
+    const question = await this.findAccessible(userId, questionId);
+    return this.hintsService.hint(
+      {
+        stem: question.stem,
+        subject: question.subject,
+        topic: question.topic,
+        difficulty: question.difficulty,
+        alternatives: question.alternatives.map((alternative) => ({
+          text: alternative.text,
+          isCorrect: alternative.isCorrect,
+        })),
+      },
+      level,
+    );
+  }
+
+  /** Marca (ou desmarca) a questão para revisar. Sem body, alterna o estado. */
+  async toggleMarkedForReview(
+    userId: string,
+    questionId: string,
+    marked?: boolean,
+  ): Promise<{ markedForReview: boolean }> {
+    const question = await this.findAccessible(userId, questionId);
+    const current = await this.questionProgressRepository.find(userId, question.id);
+    const next = marked ?? !(current?.markedForReview ?? false);
+    await this.questionProgressRepository.setMarkedForReview(userId, question.id, next);
+    return { markedForReview: next };
   }
 
   /** Favorita/desfavorita uma questão. Sem body, alterna o estado atual. */
@@ -517,7 +578,7 @@ export class QuestionsService {
   /** Regras de negócio das alternativas: pelo menos 2, no máximo MAX, textos
    * não vazios e exatamente uma correta. */
   private validateAlternatives(
-    alternatives: { text: string; isCorrect: boolean }[],
+    alternatives: { text: string; isCorrect: boolean; explanation?: string | null }[],
   ): void {
     const correctCount = alternatives.filter((alternative) => alternative.isCorrect).length;
     if (correctCount !== 1) {
@@ -531,14 +592,16 @@ export class QuestionsService {
   }
 
   /** Converte alternativas do DTO para o formato persistido, normalizando o
-   * texto e atribuindo a posição (1 = A, 2 = B, ...). */
+   * texto e atribuindo a posição (1 = A, 2 = B, ...). A explicação do
+   * distrator é opcional e normalizada para null quando não vier. */
   private normalizeAlternatives(
-    alternatives: { text: string; isCorrect: boolean }[],
-  ): { text: string; position: number; isCorrect: boolean }[] {
+    alternatives: { text: string; isCorrect: boolean; explanation?: string | null }[],
+  ): { text: string; position: number; isCorrect: boolean; explanation: string | null }[] {
     return alternatives.map((alternative, index) => ({
       text: alternative.text.trim(),
       position: index + 1,
       isCorrect: alternative.isCorrect,
+      explanation: alternative.explanation?.trim() || null,
     }));
   }
 
@@ -554,6 +617,41 @@ export class QuestionsService {
       correct: counts.correct,
       accuracyPercent: Math.round((counts.correct / counts.attempts) * 100),
     };
+  }
+
+  /** Progresso do aluno em uma questão, para a interface saber o estado real
+   * (favorita, marcada para revisão, já respondida). null quando o aluno ainda
+   * não interagiu com a questão — aí a interface trata como "nada marcado". */
+  private static toUserProgress(
+    progress: UserQuestionState | null | undefined,
+  ): QuestionUserProgressDto | null {
+    if (!progress) return null;
+    return {
+      attempts: progress.attempts,
+      correctAttempts: progress.correctAttempts,
+      incorrectAttempts: progress.incorrectAttempts,
+      lastAttemptAt: progress.lastAttemptAt,
+      isFavorite: progress.isFavorite,
+      markedForReview: progress.markedForReview,
+    };
+  }
+
+  /** Explicações por alternativa para o resultado da tentativa. Só entram as
+   * alternativas que o AUTOR explicou (a lista vem vazia quando a questão não
+   * detalha os distratores) e, como o nome diz, só depois de responder. */
+  private static toAlternativeFeedback(
+    alternatives: { text: string; position: number; isCorrect: boolean; explanation?: string | null }[],
+    selectedPosition: number,
+  ): AlternativeFeedbackDto[] {
+    return alternatives
+      .filter((alternative) => Boolean(alternative.explanation?.trim()))
+      .map((alternative) => ({
+        position: alternative.position,
+        text: alternative.text,
+        isCorrect: alternative.isCorrect,
+        selected: alternative.position === selectedPosition,
+        explanation: (alternative.explanation ?? '').trim(),
+      }));
   }
 
   private resolveSort(sort: QuestionSort | undefined): Prisma.QuestionOrderByWithRelationInput[] {
@@ -606,7 +704,9 @@ export class QuestionsService {
     };
   }
 
-  /** Visão de autor: inclui isCorrect nas alternativas (para criar/editar). */
+  /** Visão de autor: inclui isCorrect e a explicação de cada alternativa (para
+   * criar/editar). A visão de responder nunca leva `explanation`: ela revelaria
+   * quais alternativas estão erradas — e, portanto, o gabarito. */
   private toAuthorResponse(
     question: QuestionWithAlternatives,
     canManage = true,
@@ -619,6 +719,7 @@ export class QuestionsService {
         text: alternative.text,
         position: alternative.position,
         isCorrect: alternative.isCorrect,
+        explanation: alternative.explanation,
       })),
     };
   }
