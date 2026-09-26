@@ -1,5 +1,21 @@
 # Status funcional da Lumina
 
+## Atualização de 26/09/2026 — validação visual da funcionalidade 10 (Busca de questões na web) e correções
+
+Validação feita no navegador (Chromium via Playwright, ambiente efêmero fora do repositório) contra backend e aplicativo reais: **22 verificações, todas aprovadas** — busca com e sem acento, aviso de modo demonstração, link de origem absoluto, estado vazio, botão desabilitado abaixo de 3 caracteres, abertura do formulário sem gravação, validações do formulário, letras A–F, marcação do gabarito, aviso de salvamento, fechamento do formulário, conteúdo gravado no banco, deduplicação e exibição no banco de questões, sem erro de JavaScript e sem resposta HTTP ≥ 400.
+
+A validação encontrou **quatro defeitos reais**, todos corrigidos:
+
+- **Salvamento sempre devolvia 400 (bloqueante).** `SaveWebQuestionDto.sourceUrl` usava `@IsUrl()` com `require_tld` implícito em `true`, então *todo* link de `localhost` era rejeitado — ou seja, o salvamento só funcionaria em domínio real, jamais em desenvolvimento. Corrigido com `require_tld: false`, mantendo a exigência de esquema `http(s)`.
+- **Conteúdo salvo era lixo.** O botão "Salvar" gravava o trecho da busca como enunciado, com duas alternativas de preenchimento e **sem gabarito**. Substituído pelo formulário de transcrição `WebQuestionTranscription`: enunciado (pré-preenchido com o trecho, para completar e corrigir), alternativas A–F com marcação da alternativa correta, gabarito comentado e classificação editável. Nenhum POST acontece até o envio do formulário.
+- **Busca sem acento não encontrava.** `stem contains "funcoes"` não casa com "Funções". Nova extensão `unaccent` (migration `20260926120000_add_unaccent_text_search`) aplicada **dos dois lados** do `ILIKE` — coluna e termo —, tanto em `GET /search/web` quanto em `GET /questions?search=`. Implementação por pré-filtro de ids com SQL parametrizado (`QuestionTextSearchRepository` + `buildTextSearchSql`), mantendo paginação, ordenação, `total` e estatísticas no Prisma; com teto de 2000 ids e escape dos curingas do LIKE. Sem a extensão no banco, o serviço registra aviso e cai no `contains` tradicional em vez de derrubar a busca com 500. Sem índice, de propósito: `unaccent(text)` é `STABLE` e função `STABLE` não pode entrar em expressão de índice sem wrapper `IMMUTABLE`; o caminho de upgrade (wrapper `IMMUTABLE` + GIN/pg_trgm) está documentado.
+- **Alternativas rotuladas com a letra errada.** O formulário usava `positionLetter(index + 1)` sobre um índice já baseado em zero, então a primeira alternativa aparecia como **B** (depois C, D...) e a sexta como "6" em vez de F — a letra vista na tela não era a do gabarito. `positionLetter` passou a receber a posição 1-based, igual ao banco de questões e à posição gravada.
+
+Além disso: o link do modo demonstração passou a ser absoluto (montado a partir de `FRONTEND_URL`) — link interno violava o contrato de atribuição em `http(s)` —, o `demoHits` estático foi removido, e `src/lib/source-link.ts` centraliza a regra de que só `http(s)` vira `href`, fechando o vetor de XSS de `javascript:` em resultado de busca.
+
+- Testes: **321 aprovados em 22 arquivos** (era 299 em 21) — 8 novos e2e no `search.e2e-spec.ts` (busca sem acento com e sem acento, o mesmo filtro na listagem do banco, isolamento entre workspaces no caminho de SQL cru, link absoluto, `sourceUrl` de `localhost` aceito, esquemas não-`http(s)` recusados, exatamente uma alternativa correta na posição transcrita e recusa de questão sem gabarito), unitários do construtor de SQL/escape/fallback e cobertura de `questionAlternative.findMany`, `$queryRaw` e `where.id.in` no fake do Prisma. Typecheck, build e lint aprovados nos dois projetos.
+- Documentação: `docs/BUSCA_WEB.md` passou a descrever a transcrição obrigatória, a regra de TLD do `sourceUrl`, a busca sem acento (com a estratégia de índice e o caminho de upgrade) e a interface.
+
 ## Atualização de 25/09/2026 — funcionalidade 10: Busca de questões na web
 
 - Backend: módulo `SearchModule` com `GET /search/web` (busca) e `POST /search/save` (salvar no banco interno), ambos autenticados (`JwtAuthGuard` + `@CurrentUser()`). Busca por conteúdo (`q`), prova (`exam`), disciplina (`subject`), assunto (`topic`), dificuldade (`difficulty`) e limite (1–20, padrão 10).

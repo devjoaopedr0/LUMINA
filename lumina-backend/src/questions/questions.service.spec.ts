@@ -12,6 +12,7 @@ describe('QuestionsService', () => {
   let questionProgressRepository: any;
   let subjectsRepository: any;
   let examsRepository: any;
+  let textSearchRepository: any;
 
   const baseWorkspace = { id: 'ws-1', name: 'Workspace de Maria', type: 'PERSONAL' };
   const baseQuestion = {
@@ -84,6 +85,9 @@ describe('QuestionsService', () => {
       findById: vi.fn(),
       findOrCreate: vi.fn(),
     };
+    textSearchRepository = {
+      findIdsMatching: vi.fn().mockResolvedValue([]),
+    };
 
     service = new QuestionsService(
       prisma,
@@ -93,6 +97,7 @@ describe('QuestionsService', () => {
       questionProgressRepository,
       subjectsRepository,
       examsRepository,
+      textSearchRepository,
     );
   });
 

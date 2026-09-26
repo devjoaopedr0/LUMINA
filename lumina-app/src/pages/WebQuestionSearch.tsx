@@ -16,6 +16,10 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import {
+  WebQuestionTranscriptionForm,
+  type TranscribedQuestion,
+} from "@/components/WebQuestionTranscription";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   apiSaveWebQuestion,
@@ -26,6 +30,7 @@ import {
   type WebSearchHit,
   type WebSearchResults,
 } from "@/lib/api";
+import { safeSourceLink } from "@/lib/source-link";
 import { getAccessToken } from "@/lib/auth";
 
 const DIFFICULTIES: Array<{ value: "" | QuestionDifficulty; label: string }> = [
@@ -97,8 +102,9 @@ export function WebQuestionSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [savingId, setSavingId] = useState<number | null>(null);
-  const [savedId, setSavedId] = useState<number | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [transcribingKey, setTranscribingKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -116,7 +122,8 @@ export function WebQuestionSearch() {
 
     setLoading(true);
     setError(null);
-    setSavedId(null);
+    setSavedKey(null);
+    setTranscribingKey(null);
     setSaveError(null);
     setNotice(null);
 
@@ -138,24 +145,29 @@ export function WebQuestionSearch() {
   }
 
   /** Abre o link original para o usuário conferir a fonte e transcrever a
-   * questão. Deliberadamente NÃO baixa nem armazena o conteúdo da página. */
+   * questão. Deliberadamente NÃO baixa nem armazena o conteúdo da página —
+   * e só navega em http(s), nunca em outro esquema. */
   function openSource(hit: WebSearchHit) {
-    if (!hit.link) return;
-    const target = /^https?:\/\//i.test(hit.link) ? hit.link : `${window.location.origin}${hit.link}`;
+    const target = safeSourceLink(hit.link);
+    if (!target) return;
     window.open(target, "_blank", "noopener,noreferrer");
   }
 
-  /** A transcrição/editação da questão é feita pelo usuário; esta função
-   * apenas confirma a intenção de salvar o resultado atual. */
-  async function handleSave(hit: WebSearchHit, index: number) {
+  /** A questão só entra no banco depois que o usuário transcreve o
+   * enunciado, as alternativas e marca o gabarito. O que a busca devolveu
+   * (trecho + classificação) serve de ponto de partida e é sobrescrito pelo
+   * conteúdo transcrito — a atribuição da fonte continua sendo a do resultado. */
+  async function handleSave(hit: WebSearchHit, key: string, transcribed: TranscribedQuestion) {
     const token = getAccessToken();
     if (!token) return;
-    if (!hit.link) {
-      setSaveError("Este resultado não tem link de origem — não é possível atribuir a fonte.");
+    if (!/^https?:\/\//i.test(hit.link)) {
+      setSaveError(
+        "Este resultado não tem um link http(s) de origem — não é possível atribuir a fonte.",
+      );
       return;
     }
 
-    setSavingId(index);
+    setSavingKey(key);
     setSaveError(null);
     setNotice(null);
 
@@ -167,19 +179,21 @@ export function WebQuestionSearch() {
           sourceType: "IMPORTED",
           sourceName: hit.sourceName ?? "Fonte web",
           sourceId: hit.sourceId,
-          exam: hit.classification?.exam ?? undefined,
-          year: hit.classification?.year ?? undefined,
-          subject: hit.classification?.subject ?? "Não classificada",
-          topic: hit.classification?.topic ?? undefined,
-          difficulty: hit.classification?.difficulty ?? "MEDIA",
-          stem: hit.snippet ?? hit.title,
-          options: [
-            { text: "Alternativa 1 (transcrever do original)" },
-            { text: "Alternativa 2 (transcrever do original)" },
-          ],
+          exam: transcribed.exam.trim() || undefined,
+          year: transcribed.year ? Number(transcribed.year) : undefined,
+          subject: transcribed.subject.trim(),
+          topic: transcribed.topic.trim() || undefined,
+          difficulty: transcribed.difficulty,
+          stem: transcribed.stem.trim(),
+          options: transcribed.options.map((text, index) => ({
+            text,
+            correct: index === transcribed.correctIndex,
+          })),
+          explanation: transcribed.explanation.trim() || undefined,
         },
       });
-      setSavedId(index);
+      setSavedKey(key);
+      setTranscribingKey(null);
       if (report.imported > 0) {
         setNotice(
           `Questão salva no banco (${report.imported} importada` +
@@ -193,7 +207,7 @@ export function WebQuestionSearch() {
     } catch (err) {
       setSaveError(errorMessage(err));
     } finally {
-      setSavingId(null);
+      setSavingKey(null);
     }
   }
 
@@ -338,7 +352,7 @@ export function WebQuestionSearch() {
           </Card>
         )}
 
-        {saveError && (
+        {saveError && !transcribingKey && (
           <Card className="mt-4 flex items-start gap-3 border-alert/30 bg-alert/10">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-alert" />
             <p className="text-sm text-alert">{saveError}</p>
@@ -360,43 +374,67 @@ export function WebQuestionSearch() {
               </Card>
             ) : (
               <ul className="mt-4 space-y-3">
-                {results.items.map((hit, index) => (
-                  <li key={`${hit.link}-${index}`}>
-                    <Card className="bg-white">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-base font-semibold text-graphite">{hit.title}</h3>
-                          <p className="mt-1 text-sm text-graphite/70">
-                            {hit.snippet ?? "Sem trecho disponível."}
-                          </p>
-                          <div className="mt-3">
-                            <ClassificationBadges classification={hit.classification} />
+                {results.items.map((hit, index) => {
+                  const key = `${hit.link}-${index}`;
+                  const isTranscribing = transcribingKey === key;
+                  const isSaved = savedKey === key;
+                  return (
+                    <li key={key}>
+                      <Card className="bg-white">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-base font-semibold text-graphite">{hit.title}</h3>
+                            <p className="mt-1 text-sm text-graphite/70">
+                              {hit.snippet ?? "Sem trecho disponível."}
+                            </p>
+                            <div className="mt-3">
+                              <ClassificationBadges classification={hit.classification} />
+                            </div>
+                            <p className="mt-2 truncate text-xs text-graphite-400">
+                              Fonte: {hit.sourceName ?? "—"} · {hit.link}
+                            </p>
                           </div>
-                          <p className="mt-2 truncate text-xs text-graphite-400">
-                            Fonte: {hit.sourceName ?? "—"} · {hit.link}
-                          </p>
+                          <div className="flex shrink-0 flex-col gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openSource(hit)}>
+                              <ExternalLink className="h-4 w-4" /> Ver original
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setTranscribingKey(isTranscribing ? null : key);
+                                setSaveError(null);
+                                setNotice(null);
+                              }}
+                              disabled={savingKey === key}
+                            >
+                              {isSaved ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ) : isTranscribing ? (
+                                <AlertCircle className="h-4 w-4" />
+                              ) : (
+                                <Save className="h-4 w-4" />
+                              )}
+                              {isSaved ? "Salva" : isTranscribing ? "Fechar" : "Salvar"}
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 flex-col gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openSource(hit)}>
-                            <ExternalLink className="h-4 w-4" /> Ver original
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleSave(hit, index)}
-                            disabled={savingId === index}
-                          >
-                            {savingId === index ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4" />
-                            )}
-                            {savedId === index ? "Salva" : "Salvar"}
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  </li>
-                ))}
+
+                        {isTranscribing && (
+                          <WebQuestionTranscriptionForm
+                            hit={hit}
+                            saving={savingKey === key}
+                            error={saveError}
+                            onCancel={() => {
+                              setTranscribingKey(null);
+                              setSaveError(null);
+                            }}
+                            onSubmit={(transcribed) => handleSave(hit, key, transcribed)}
+                          />
+                        )}
+                      </Card>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 

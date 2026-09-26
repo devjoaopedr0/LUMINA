@@ -54,6 +54,14 @@ export function createFakePrisma() {
         if (!where.workspaceId.in.includes(question.workspaceId)) return false;
       } else if (question.workspaceId !== where.workspaceId) return false;
     }
+    // Pré-filtro de ids vindo da busca textual (unaccent no banco): a
+    // listagem restringe por este `in` em vez de repetir o `contains` acento
+    // sensível no Prisma.
+    if (where.id) {
+      if (Array.isArray(where.id?.in)) {
+        if (!where.id.in.includes(question.id)) return false;
+      } else if (question.id !== where.id) return false;
+    }
     if (where.difficulty && question.difficulty !== where.difficulty) return false;
     if (where.year && question.year !== where.year) return false;
     if (where.examNumber && question.examNumber !== where.examNumber) return false;
@@ -82,7 +90,40 @@ export function createFakePrisma() {
 
   const findSubjectByName = (name: string) => subjects.find((s) => s.name === name);
 
+  /** Emula o `unaccent()` do Postgres, para a busca textual do fake casar
+   * "funcoes" com "Funções" como o banco real faz. */
+  const unaccent = (value: string) =>
+    value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
   const fake: any = {
+    /**
+     * Só a busca textual (QuestionTextSearchRepository) usa SQL cru. O
+     * formato dos parâmetros é o de `buildTextSearchSql`: primeiro os
+     * workspaceIds, depois o padrão ILIKE (uma vez por coluna pesquisável) e
+     * por último o teto de ids. Reproduz o `unaccent(coluna) ILIKE unaccent($1)`
+     * devolvendo só os ids, como o banco faria.
+     */
+    $queryRaw: vi.fn(async (sql: any) => {
+      const values = (sql?.values ?? []).map((value: unknown) => String(value));
+      const patternIndex = values.findIndex((v: string) => v.startsWith('%') && v.endsWith('%'));
+      if (patternIndex < 0) return [];
+
+      const workspaceIds = values.slice(0, patternIndex);
+      // o padrão vem escapado para o LIKE; aqui só precisa virar texto
+      const needle = unaccent(values[patternIndex].slice(1, -1).replace(/\\(.)/g, '$1'));
+      const limit = Number(values[values.length - 1]) || questions.length;
+
+      return questions
+        .filter((q) => workspaceIds.length === 0 || workspaceIds.includes(q.workspaceId))
+        .filter((q) =>
+          (['stem', 'topic', 'subject', 'exam'] as const).some((field) =>
+            unaccent(String(q[field] ?? '')).includes(needle),
+          ),
+        )
+        .slice(0, limit)
+        .map((q) => ({ id: q.id }));
+    }),
+
     userVestibular: {
       findUnique: vi.fn(async ({ where }: any) => vestibulares.find(v => v.userId === where.userId) ?? null),
       upsert: vi.fn(async ({ where, create, update }: any) => {
@@ -473,6 +514,11 @@ export function createFakePrisma() {
       }),
     },
     questionAlternative: {
+      findMany: vi.fn(async ({ where }: any = {}) =>
+        where?.questionId
+          ? alternatives.filter((a) => a.questionId === where.questionId)
+          : [...alternatives],
+      ),
       deleteMany: vi.fn(async ({ where }: any) => {
         const before = alternatives.length;
         for (let i = alternatives.length - 1; i >= 0; i--) {

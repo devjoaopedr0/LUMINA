@@ -199,6 +199,105 @@ describe('Busca de questões na web (e2e — item 10)', () => {
         .set('Authorization', bearer())
         .expect(400);
     });
+
+    // A busca textual é insensível a acento (unaccent no banco): o aluno
+    // digita "funcoes" sem acento o tempo todo e precisa achar "Funções".
+    it('encontra a questão com acento tanto digitando com quanto sem acento', async () => {
+      await seedBankQuestion();
+
+      const semAcento = await request(app.getHttpServer())
+        .get('/search/web?q=funcoes')
+        .set('Authorization', bearer())
+        .expect(200);
+      const comAcento = await request(app.getHttpServer())
+        .get('/search/web?q=funções')
+        .set('Authorization', bearer())
+        .expect(200);
+
+      // O enunciado semeado fala de "função" e o assunto é "Funções
+      // exponenciais": os dois termos têm de achar a mesma questão.
+      expect(semAcento.body.total).toBeGreaterThan(0);
+      expect(comAcento.body.total).toBeGreaterThan(0);
+      expect(semAcento.body.items.map((i: any) => i.link).sort()).toEqual(
+        comAcento.body.items.map((i: any) => i.link).sort(),
+      );
+    });
+
+    it('a busca sem acento também vale para a listagem do banco de questões', async () => {
+      await seedBankQuestion();
+
+      const semAcento = await request(app.getHttpServer())
+        .get('/questions?search=funcoes&limit=50')
+        .set('Authorization', bearer())
+        .expect(200);
+      const comAcento = await request(app.getHttpServer())
+        .get('/questions?search=funções&limit=50')
+        .set('Authorization', bearer())
+        .expect(200);
+
+      expect(semAcento.body.total).toBeGreaterThan(0);
+      expect(semAcento.body.total).toBe(comAcento.body.total);
+    });
+
+    it('nunca devolve o link de outro workspace, mesmo com o mesmo termo', async () => {
+      // Outro usuário, com questão exclusively dele sobre o mesmo tema.
+      const outro = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          firstName: 'Bruno',
+          lastName: 'Alves',
+          username: 'bruno.alves',
+          email: 'bruno@exemplo.com',
+          password: 'SenhaForte123',
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/questions/import/json')
+        .set('Authorization', `Bearer ${outro.body.accessToken}`)
+        .send({
+          target: 'PERSONAL',
+          questions: [
+            {
+              sourceType: 'IMPORTED',
+              sourceName: 'privado',
+              subject: 'Geografia',
+              topic: 'Termo exclusivo do Bruno',
+              difficulty: 'FACIL',
+              exam: 'PRIV',
+              stem: 'Termo exclusivo do Bruno sobre populacao urbana.',
+              options: [
+                { text: 'Alternativa um', correct: true },
+                { text: 'Alternativa dois' },
+              ],
+            },
+          ],
+        })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .get('/search/web?q=populacao+urbana')
+        .set('Authorization', bearer())
+        .expect(200);
+
+      expect(response.body.total).toBe(0);
+      expect(response.body.items).toEqual([]);
+    });
+
+    it('devolve o link como URL absoluta http(s) (exigência do POST /search/save)', async () => {
+      const seeded = await seedBankQuestion();
+
+      const response = await request(app.getHttpServer())
+        .get('/search/web?q=exponencial')
+        .set('Authorization', bearer())
+        .expect(200);
+
+      const hit = response.body.items.find((item: any) => item.link.includes(seeded.id));
+      expect(hit).toBeDefined();
+      // Sem URL absoluta o save é rejeitado com 400 (o DTO exige http(s)).
+      expect(hit.link).toMatch(/^https?:\/\/.+\/app\/questoes\//);
+      expect(() => new URL(hit.link)).not.toThrow();
+    });
   });
 
   describe('POST /search/save', () => {
@@ -329,6 +428,96 @@ describe('Busca de questões na web (e2e — item 10)', () => {
         .expect(201);
       expect(second.body.imported).toBe(0);
       expect(second.body.duplicates).toBe(1);
+    });
+
+    // O link do modo demonstração é a URL do próprio app, que em
+    // desenvolvimento é localhost:5174 — sem TLD. Exigir TLD rejeitava todo
+    // save com 400 e deixava a funcionalidade inutilizável fora de produção.
+    it('aceita sourceUrl em localhost (sem TLD), como o modo demonstração gera', async () => {
+      const payload = {
+        ...webPayload('300hz'),
+        sourceUrl: 'http://localhost:5174/app/questoes/2191d701-1d5a-4362-9092-a1ee88a42452',
+      };
+
+      const response = await request(app.getHttpServer())
+        .post('/search/save')
+        .set('Authorization', bearer())
+        .send(payload)
+        .expect(201);
+      expect(response.body.imported).toBe(1);
+
+      const saved = await persistedBySource(payload.sourceUrl);
+      expect(saved).toBeTruthy();
+      expect(saved.sourceId).toBe(payload.sourceUrl);
+    });
+
+    it('continua recusando esquemas que não sejam http(s) (400)', async () => {
+      for (const sourceUrl of [
+        'javascript:alert(1)',
+        'data:text/html,<script>alert(1)</script>',
+        'ftp://exemplo.org/questao',
+      ]) {
+        await request(app.getHttpServer())
+          .post('/search/save')
+          .set('Authorization', bearer())
+          .send({ ...webPayload('esquema-perigoso'), sourceUrl })
+          .expect(400);
+      }
+    });
+
+    it('guarda exatamente uma alternativa correta, na posição transcrita', async () => {
+      const payload = {
+        ...webPayload('400hz'),
+        question: {
+          ...webPayload('400hz').question,
+          stem: 'Gabarito transcrito na terceira alternativa, para conferir a posição.',
+          options: [
+            { text: 'primeira alternativa' },
+            { text: 'segunda alternativa' },
+            { text: 'terceira alternativa', correct: true },
+            { text: 'quarta alternativa' },
+          ],
+          correctOptionIndex: undefined,
+        },
+      };
+
+      await request(app.getHttpServer())
+        .post('/search/save')
+        .set('Authorization', bearer())
+        .send(payload)
+        .expect(201);
+
+      const saved = await persistedBySource('https://exemplo.org/questoes/400hz');
+      expect(saved).toBeTruthy();
+
+      const alternativas = (await fakePrisma.questionAlternative.findMany({})).filter(
+        (a: any) => a.questionId === saved.id,
+      );
+      expect(alternativas).toHaveLength(4);
+      expect(alternativas.filter((a: any) => a.isCorrect)).toHaveLength(1);
+      const correta = alternativas.find((a: any) => a.isCorrect);
+      expect(correta.text).toBe('terceira alternativa');
+      expect(correta.position).toBe(3);
+    });
+
+    it('recusa questão sem gabarito indicado (nunca inventa a resposta)', async () => {
+      const base = webPayload('500hz');
+      const response = await request(app.getHttpServer())
+        .post('/search/save')
+        .set('Authorization', bearer())
+        .send({
+          ...base,
+          question: {
+            ...base.question,
+            options: [{ text: 'primeira alternativa' }, { text: 'segunda alternativa' }],
+            correctOptionIndex: undefined,
+          },
+        })
+        .expect(201);
+
+      expect(response.body.imported).toBe(0);
+      expect(response.body.invalid).toBe(1);
+      expect(response.body.details[0].message).toMatch(/alternativa correta/i);
     });
   });
 });

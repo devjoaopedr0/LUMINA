@@ -135,7 +135,14 @@ export class SaveWebQuestionDto {
   @ApiProperty({ description: 'URL da fonte original (preservada em sourceId).' })
   @IsString()
   @IsUrl(
-    { require_protocol: true, protocols: ['http', 'https'] },
+    {
+      require_protocol: true,
+      // Sem TLD obrigatório: em desenvolvimento o app roda em
+      // localhost:5174 e o link da fonte (modo demonstração) é uma URL do
+      // próprio app — exigir TLD rejeitava todo save com 400.
+      require_tld: false,
+      protocols: ['http', 'https'],
+    },
     { message: 'sourceUrl deve ser uma URL http(s) válida (link original da fonte).' },
   )
   @MaxLength(2048)

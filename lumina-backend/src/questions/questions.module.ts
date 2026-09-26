@@ -16,6 +16,7 @@ import { QuestionPerformanceController } from './question-performance.controller
 import { QuestionsController } from './questions.controller';
 import { QuestionsRepository } from './questions.repository';
 import { QuestionsService } from './questions.service';
+import { QuestionTextSearchRepository } from './question-text-search.repository';
 import { SubjectsRepository } from './subjects.repository';
 import { UserQuestionProgressRepository } from './user-question-progress.repository';
 
@@ -31,12 +32,14 @@ import { UserQuestionProgressRepository } from './user-question-progress.reposit
     QuestionsService,
     QuestionsRepository,
     QuestionImportService,
+    QuestionTextSearchRepository,
   ],
   providers: [
     QuestionsService,
     QuestionsRepository,
     QuestionAttemptsRepository,
     UserQuestionProgressRepository,
+    QuestionTextSearchRepository,
     SubjectsRepository,
     ExamsRepository,
     QuestionAccessService,

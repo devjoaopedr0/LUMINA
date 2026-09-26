@@ -25,6 +25,7 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QuestionWithAlternatives, QuestionsRepository } from './questions.repository';
 import { SubjectsRepository } from './subjects.repository';
 import { ExamsRepository } from './exams.repository';
+import { QuestionTextSearchRepository } from './question-text-search.repository';
 
 interface QuestionClassification {
   subject: string;
@@ -49,6 +50,7 @@ export class QuestionsService {
     private readonly questionProgressRepository: UserQuestionProgressRepository,
     private readonly subjectsRepository: SubjectsRepository,
     private readonly examsRepository: ExamsRepository,
+    private readonly textSearchRepository: QuestionTextSearchRepository,
   ) {}
 
   async create(userId: string, dto: CreateQuestionDto): Promise<QuestionResponseDto> {
@@ -108,7 +110,19 @@ export class QuestionsService {
     if (query.year) where.year = query.year;
     if (query.sourceType) where.sourceType = query.sourceType;
     if (query.examNumber) where.examNumber = query.examNumber;
-    if (query.search?.trim()) where.stem = this.contains(query.search.trim());
+
+    // Busca por palavra-chave passa por um pré-filtro de ids que ignora
+    // acento e maiúsculas (unaccent no banco). O restante da listagem
+    // (paginação, ordenação, total e estatísticas) continua no Prisma, e o
+    // filtro antigo em `stem` sai daqui para não restringir duas vezes —
+    // ver QuestionTextSearchRepository.
+    if (query.search?.trim()) {
+      const ids = await this.textSearchRepository.findIdsMatching(
+        query.search,
+        workspaceIds,
+      );
+      where.id = { in: ids };
+    }
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;

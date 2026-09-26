@@ -80,13 +80,65 @@ exibe esse estado ao usuário com um aviso explícito.
 ```
 
 `sourceUrl` precisa ser uma URL `http`/`https` válida — é ela que vira o
-`sourceId` da questão salva.
+`sourceId` da questão salva. O TLD **não** é exigido: em desenvolvimento o
+link do modo demonstração é a URL do próprio app (`http://localhost:5174/...`).
+Esquemas diferentes de `http(s)` (`javascript:`, `data:`, `ftp:`) são recusados
+com 400, e a interface só transforma o link em alvo de clique quando ele é
+seguro — um resultado com outro esquema aparece como texto.
+
+O payload precisa trazer **o conteúdo transcrito** e **exatamente uma
+alternativa correta** (`options[i].correct = true`, ou `correctLetter` /
+`correctOptionIndex`). Sem gabarito a questão é recusada como inválida — a
+Lumina nunca inventa a resposta.
 
 Resposta (`ImportReportDto`):
 
 ```json
 { "total": 1, "imported": 1, "duplicates": 0, "invalid": 0, "errors": 0, "details": [] }
 ```
+
+## Busca sem acento
+
+A busca por conteúdo é insensível a acento **e** a maiúsculas: digitar
+`funcoes` encontra `Funções exponenciais`, e digitar `funções` continua
+encontrando. Isso vale para a busca web (`GET /search/web`) e para a busca por
+palavra-chave do banco de questões (`GET /questions?search=`).
+
+A implementação é uma extensão `unaccent` do PostgreSQL, aplicada aos dois
+lados do `ILIKE` — colunas e termo procurado:
+
+- migration `20260926120000_add_unaccent_text_search` cria a extensão;
+- `QuestionTextSearchRepository` (`src/questions/question-text-search.repository.ts`)
+  resolve, por SQL parametrizado, **quais ids** casam com o termo dentro dos
+  workspaces do usuário;
+- a listagem segue com `id IN (...)` no Prisma — paginação, ordenação, `total`
+  e estatísticas continuam sendo decididos pelo Prisma, sem SQL cru;
+- se a extensão não existir no banco (ambiente sem a migration aplicada), o
+  serviço registra um aviso e cai no `contains` tradicional, em vez de
+  derrubar a busca com erro 500.
+
+Sem índice de propósito: `unaccent(text)` é `STABLE` no PostgreSQL e função
+`STABLE` não pode aparecer em expressão de índice sem um wrapper `IMMUTABLE`. A
+busca já é restrita aos workspaces do usuário. Se o volume um dia justificar, o
+caminho é o wrapper `IMMUTABLE` documentado na própria doc do `unaccent` mais um
+índice GIN com `pg_trgm`.
+
+## Interface
+
+`/app/busca-web` (link "Buscar questões na web" no menu do aluno):
+
+- filtros de conteúdo, prova, disciplina e dificuldade; o botão só habilita com
+  3 caracteres ou mais;
+- cada resultado mostra título, trecho, selos de classificação automática e a
+  fonte com o link original; botão **Ver original** abre a página de origem em
+  nova aba;
+- o aviso de modo demonstração explica que a busca não saiu da internet e como
+  configurar as chaves do Google CSE;
+- **Salvar** abre o formulário de transcrição: enunciado (pré-preenchido com o
+  trecho da busca, para o usuário completar e corrigir), alternativas A–F com
+  marcação do gabarito, gabarito comentado e a classificação (disciplina,
+  assunto, prova, ano, dificuldade) editável. Nada é gravado enquanto o
+  formulário não é enviado — clicar em "Salvar" sozinho não cria nada.
 
 ## Ativando a busca real (Google CSE)
 
