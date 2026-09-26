@@ -117,7 +117,7 @@
    -  Explicação
    -  Estatísticas de acerto
    -  Questões semelhantes
-10. 10. Busca de questões na web
+10. 10. Busca de questões na web [INTEGRADA E VALIDADA VIA API EM 25/09/2026 — VALIDAÇÃO VISUAL NO NAVEGADOR PENDENTE]
     -  LuminIA pesquisa questões públicas na internet
     -  Busca por conteúdo
     -  Busca por vestibular

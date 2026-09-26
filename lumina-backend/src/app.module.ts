@@ -14,6 +14,7 @@ import { SimulationsModule } from './simulations/simulations.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { InstitutionsModule } from './institutions/institutions.module';
+import { SearchModule } from './search/search.module';
 import { validateEnv } from './config/env.validation';
 import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 
@@ -39,6 +40,7 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
     MentalMathModule,
     EssaysModule,
     SimulationsModule,
+    SearchModule,
   ],
   providers: [
     RateLimitMiddleware,

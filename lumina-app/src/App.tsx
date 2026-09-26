@@ -9,6 +9,7 @@ import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
+import { WebQuestionSearch } from "@/pages/WebQuestionSearch";
 import { StudySchedulePage } from "@/pages/StudySchedulePage";
 import { Profile } from "@/pages/Profile";
 import { MentalMath } from "@/pages/MentalMath";
@@ -23,6 +24,7 @@ function App() {
       <Routes>
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
         <Route path="/app/simulados" element={<ProtectedRoute><Simulations /></ProtectedRoute>} />
+        <Route path="/app/busca-web" element={<ProtectedRoute><WebQuestionSearch /></ProtectedRoute>} />
         <Route path="/app/redacoes" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
         <Route path="/app/redacoes/:id" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
         <Route path="/app/calculo-mental" element={<ProtectedRoute><MentalMath /></ProtectedRoute>} />

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronRight,
-  Award, Clock3, Database, FileText, Flame, History, LayoutDashboard, Lightbulb,
+  Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb,
   LogOut, Menu, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
   { to: "/app/cronograma", label: "Cronograma", icon: CalendarDays },
   { to: "/app/questoes", label: "Banco de questões", icon: Database },
+  { to: "/app/busca-web", label: "Buscar questões na web", icon: Globe },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
   { to: "/app/turmas", label: "Turmas", icon: School },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },

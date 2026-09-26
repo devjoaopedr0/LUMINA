@@ -1,5 +1,19 @@
 # Status funcional da Lumina
 
+## Atualização de 25/09/2026 — funcionalidade 10: Busca de questões na web
+
+- Backend: módulo `SearchModule` com `GET /search/web` (busca) e `POST /search/save` (salvar no banco interno), ambos autenticados (`JwtAuthGuard` + `@CurrentUser()`). Busca por conteúdo (`q`), prova (`exam`), disciplina (`subject`), assunto (`topic`), dificuldade (`difficulty`) e limite (1–20, padrão 10).
+- Dois provedores implementando `WebSearchProvider`: `GoogleCseSearchProvider` (Google Programmable Search Engine, com timeout via `AbortController` e tradução de HTTP 401/403/429/5xx em `WebSearchProviderError` com código) e `DemoWebSearchProvider` (modo demonstração, vasculha o banco acessível do usuário — pessoal + banco central). O `SearchService` escolhe o Google CSE quando `GOOGLE_CSE_ID` e `GOOGLE_CSE_API_KEY` existem e, sem elas, o modo demonstração.
+- O response **sempre** explicita `provider` (`google-cse` | `demo`) e `demoMode` (boolean), para o cliente nunca confundir busca real com demonstração. A interface exibe um aviso explícito de modo demonstração e explica como ativar a busca real.
+- Cada resultado devolve apenas metadados públicos (título, link, trecho), atribuição (`sourceName`, `sourceId`) e a **classificação automática** (disciplina, assunto, prova, ano e dificuldade) casada com o catálogo Lumina. O conteúdo integral nunca é baixado nem armazenado.
+- `POST /search/save` reusa o pipeline real de importação (`QuestionImportService.importFromDtos`), que valida, classifica no catálogo e **deduplica** por conteúdo. O serviço força `sourceType=IMPORTED` e sobrescreve a origem informada no payload por `sourceName` = nome da fonte e `sourceId` = URL original — a atribuição nunca é perdida, mesmo que o cliente envie outra origem.
+- Direitos autorais: a Lumina armazena apenas metadados públicos e o conteúdo **transcrito pelo usuário**. O `sourceUrl` passou a ser validado como URL http(s) real (estava sem validação, o que quebrava a rota com o `ValidationPipe` em modo estrito).
+- Frontend: página "Buscar questões na web" (`/app/busca-web`) com formulário de filtros, cards com link para a fonte original, classificação, aviso de modo demonstração e ação "Salvar"; item adicionado ao menu lateral.
+- Correções encontradas durante a validação (invisíveis ao typecheck): o controller usava `@Req()` em vez de `@CurrentUser()` **e não aplicava `@UseGuards(JwtAuthGuard)`** — as rotas ficavam desprotegidas; o `sourceUrl` do DTO não tinha decorador de validação; e o fake-prisma ignorava a cláusula `OR` usada no filtro da busca.
+- Testes: **299 aprovados em 21 arquivos** (era 242) — 41 unitários (16 do Google CSE cobrindo configuração, mapeamento, limites e cada tradução de erro; 11 do provedor demo; 14 do `SearchService` cobrindo seleção de provedor, normalização de filtros, limites e a preservação de atribuição) e 16 e2e no fluxo HTTP completo (autenticação, validação, modo demo, classificação, filtros, workspace de destino e deduplicação). Typecheck e build aprovados nos dois projetos.
+- Documentação: `docs/BUSCA_WEB.md` descreve a configuração opcional do Google CSE, a política de direitos autorais e o comportamento do modo demonstração.
+- Pendente: validação visual no navegador (ferramenta indisponível neste ambiente). A entrega está validada via API e testes automatizados.
+
 ## Atualização de 23/09/2026 — funcionalidade 9: Banco de questões (estatísticas agregadas, gabarito comentado e questões semelhantes)
 
 - O item 9 já possuía ~90% da base (CRUD, importação JSON/CSV, filtros, tentativas e favoritos). Esta entrega fecha as lacunas restantes: **estatísticas agregadas de acerto por questão**, **questões semelhantes**, **exibição do gabarito comentado na interface** e **campo "explicação" no formulário de criação/edição**.

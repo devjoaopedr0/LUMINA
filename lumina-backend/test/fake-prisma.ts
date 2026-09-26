@@ -64,6 +64,13 @@ export function createFakePrisma() {
     if (where.sourceType && question.sourceType !== where.sourceType) return false;
     if (where.sourceId && question.sourceId !== where.sourceId) return false;
     if (where.contentHash && question.contentHash !== where.contentHash) return false;
+    // Cláusula OR: ao menos um dos ramos precisa casar com a questão. Usada
+    // pela busca de questões na web (item 10) para varrer assunto/tópico/
+    // prova/enunciado pelo mesmo termo. Os ramos são reavaliados por esta
+    // mesma função, então cada um aplica seus próprios filtros.
+    if (Array.isArray(where.OR)) {
+      if (!where.OR.some((clause: any) => questionMatches(question, clause))) return false;
+    }
     for (const field of ['subject', 'topic', 'exam'] as const) {
       const filter = where[field];
       if (filter?.contains && !question[field].toLowerCase().includes(filter.contains.toLowerCase())) {

@@ -592,6 +592,108 @@ export function apiImportQuestionFile(
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Item 10 — Busca de questões públicas na web.
+ *
+ * O backend devolve APENAS metadados públicos do resultado (título, link,
+ * trecho) + atribuição da fonte + classificação automática. O conteúdo
+ * integral NUNCA vem da web: o usuário transcreve a questão e só então a
+ * salva, sempre marcada como IMPORTED com o link original preservado.
+ * ------------------------------------------------------------------ */
+
+export interface WebQuestionClassification {
+  subject?: string | null;
+  subjectId?: string | null;
+  topic?: string | null;
+  topicId?: string | null;
+  exam?: string | null;
+  examId?: string | null;
+  year?: number | null;
+  difficulty?: QuestionDifficulty | null;
+}
+
+export interface WebSearchHit {
+  title: string;
+  link: string;
+  snippet?: string;
+  sourceName?: string;
+  sourceId?: string;
+  classification?: WebQuestionClassification | null;
+}
+
+export interface WebSearchQuery {
+  q: string;
+  exam?: string;
+  subject?: string;
+  topic?: string;
+  difficulty?: QuestionDifficulty;
+  limit?: number;
+}
+
+export interface WebSearchResults {
+  /** Provedor ativo: "google-cse" (busca real) ou "demo" (demonstração). */
+  provider: string;
+  /** true quando a busca NÃO saiu do provedor real (sem chaves do Google CSE). */
+  demoMode: boolean;
+  query: WebSearchQuery;
+  items: WebSearchHit[];
+  total: number;
+}
+
+/** Questão transcrita pelo usuário a partir de um resultado da web. */
+export interface WebQuestionPayload {
+  sourceType: "OFFICIAL" | "PARTNER" | "GENERATED" | "IMPORTED";
+  sourceName: string;
+  sourceId?: string;
+  exam?: string;
+  year?: number;
+  examNumber?: number;
+  subject: string;
+  topic?: string;
+  difficulty: QuestionDifficulty;
+  stem: string;
+  options: Array<{ text: string; correct?: boolean }>;
+  correctOptionIndex?: number;
+  correctLetter?: string;
+  explanation?: string;
+}
+
+export interface SaveWebQuestionPayload {
+  /** URL original da fonte — preservada como `sourceId` da questão. */
+  sourceUrl: string;
+  sourceName: string;
+  question: WebQuestionPayload;
+}
+
+export function apiSearchWebQuestions(
+  accessToken: string,
+  filters: WebSearchQuery
+): Promise<WebSearchResults> {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.exam) params.set("exam", filters.exam);
+  if (filters.subject) params.set("subject", filters.subject);
+  if (filters.topic) params.set("topic", filters.topic);
+  if (filters.difficulty) params.set("difficulty", filters.difficulty);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  return request(`/search/web?${params.toString()}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+/** Salva a questão transcrita no banco via pipeline de importação
+ * (validação, deduplicação e atribuição preservada). Retorna o relatório. */
+export function apiSaveWebQuestion(
+  accessToken: string,
+  payload: SaveWebQuestionPayload
+): Promise<QuestionImportReport> {
+  return request("/search/save", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
 export function apiListSubjects(accessToken: string): Promise<Subject[]> {
   return request("/subjects", { headers: authHeaders(accessToken) });
 }
