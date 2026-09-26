@@ -21,7 +21,7 @@ import {
 } from '@/lib/api';
 
 const token = () => getAccessToken() ?? '';
-const ASSESSMENT_LABEL: Record<AssessmentType, string> = { ACTIVITY: 'Atividade', LIST: 'Lista', TEST: 'Prova', SIMULATION: 'Simulado' };
+const ASSESSMENT_LABEL: Record<AssessmentType, string> = { ACTIVITY: 'Atividade', LIST: 'Lista', TEST: 'Prova', SIMULATION: 'Simulado', ADAPTIVE: 'Simulado Adaptativo' };
 
 /** Converte segundos em MM:SS. */
 function formatTime(seconds: number) {

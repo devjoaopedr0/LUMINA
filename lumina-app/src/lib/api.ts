@@ -439,11 +439,53 @@ export const apiCreateWorkspaceRole = (token: string, workspaceId: string, data:
 export const apiSetWorkspaceRolePermissions = (token: string, workspaceId: string, roleId: string, permissionCodes: string[]): Promise<{ id: string; permissionCodes: string[] }> => request(`/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}/permissions`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ permissionCodes }) });
 
 export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
-export type AssessmentType = 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION';
+export type AssessmentType = 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION' | 'ADAPTIVE';
 export interface SimulationSummary { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; durationMinutes: number | null; isRealExam: boolean; className: string | null; questionCount: number; result: { correct: number; total: number; submittedAt: string } | null }
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; area: string | null; alternatives: { position: number; text: string }[]; correctPosition?: number }
 export interface Simulation { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; durationMinutes: number | null; isRealExam: boolean; className: string | null; sheetVersion: number; items: SimulationItem[] }
 export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; startedAt: string | null; timeSpentMinutes: number | null; items: { position: number; subject: string; area: string | null; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
+
+// Adaptive Simulation (item 16)
+export interface AdaptiveSessionSummary {
+  id: string;
+  examId: string | null;
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
+  estimatedAbility: number;
+  startedAt: string;
+  finishedAt: string | null;
+  stepsCount: number;
+}
+export interface AdaptiveNextQuestion {
+  questionId: string;
+  stem: string;
+  subject: string;
+  topic: string;
+  difficulty: QuestionDifficulty;
+  alternatives: { position: number; text: string }[];
+  skill: string;
+  subSkill?: string;
+}
+export interface AdaptiveAnswerResult {
+  isCorrect: boolean;
+  correctPosition: number;
+  abilityBefore: number;
+  abilityAfter: number;
+  skill: string;
+  estimatedAbility: number;
+  finished: boolean;
+  diagnosis?: Array<{ skill: string; correct: number; total: number; ability: number }>;
+}
+export interface AdaptiveSessionSummaryDetail {
+  sessionId: string;
+  status: string;
+  estimatedAbility: number;
+  steps: number;
+  skills: Array<{ skill: string; correct: number; total: number; accuracy: number; ability: number }>;
+  strongAreas: string[];
+  weakAreas: string[];
+  startedAt: string;
+  finishedAt: string | null;
+}
 export interface CoordinatorDashboard {
   workspaceId: string;
   summary: TeacherDashboard['summary'] & { teacherCount: number };
@@ -522,6 +564,15 @@ export const apiCreateSimulation = (token: string, title: string, questionIds: s
 export const apiSimulation = (token: string, id: string, answers = false): Promise<Simulation> => request(`/simulations/${id}${answers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
 export const apiSimulationResult = (token: string, id: string): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { headers: authHeaders(token) });
 export const apiSubmitSimulation = (token: string, id: string, answers: { position: number; selectedPosition: number }[]): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers }) });
+
+// Adaptive Simulation (item 16)
+export const apiAdaptiveStart = (token: string, examId?: string): Promise<{ sessionId: string }> => request('/simulations/adaptive/start', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ examId }) });
+export const apiAdaptiveNext = (token: string, id: string): Promise<AdaptiveNextQuestion | null> => request(`/simulations/adaptive/${id}/next`, { headers: authHeaders(token) });
+export const apiAdaptiveAnswer = (token: string, id: string, answer: { questionId: string; selectedPosition: number; timeSpentSeconds?: number }): Promise<AdaptiveAnswerResult> => request(`/simulations/adaptive/${id}/answer`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(answer) });
+export const apiAdaptiveFinish = (token: string, id: string): Promise<void> => request(`/simulations/adaptive/${id}/finish`, { method: 'POST', headers: authHeaders(token) });
+export const apiAdaptiveAbandon = (token: string, id: string): Promise<void> => request(`/simulations/adaptive/${id}/abandon`, { method: 'POST', headers: authHeaders(token) });
+export const apiAdaptiveSummary = (token: string, id: string): Promise<AdaptiveSessionSummaryDetail> => request(`/simulations/adaptive/${id}/summary`, { headers: authHeaders(token) });
+export const apiAdaptiveList = (token: string): Promise<AdaptiveSessionSummary[]> => request('/simulations/adaptive', { headers: authHeaders(token) });
 
 export function apiListQuestions(
   accessToken: string,

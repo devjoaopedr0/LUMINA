@@ -42,8 +42,10 @@ model User {
    essays                 Essay[]
    teacherProfile         TeacherProfile?
   authoredEssayThemes    EssayTheme[]
-  createdSimulations     Simulation[]
-  simulationSubmissions  SimulationSubmission[]
+  createdSimulations       Simulation[]
+  simulationSubmissions    SimulationSubmission[]
+  adaptiveSessions         AdaptiveSimulationSession[]
+  adaptiveSteps            AdaptiveSimulationStep[]
 
    @@map("users")
 }
@@ -428,7 +430,8 @@ model Exam {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
   questions   Question[] @relation("QuestionExam")
-  userVestibulares UserVestibular[]
+  userVestibulares    UserVestibular[]
+  adaptiveSessions    AdaptiveSimulationSession[]
 
   @@index([name, year])
   @@map("exams")
@@ -473,8 +476,9 @@ model Question {
   subjectRef   Subject?               @relation("QuestionSubject", fields: [subjectId], references: [id])
   topicRef     Topic?                 @relation("QuestionTopic", fields: [topicId], references: [id])
   workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  progress     UserQuestionProgress[]
-  errorNotebook ErrorNotebookEntry[]
+  progress         UserQuestionProgress[]
+  errorNotebook    ErrorNotebookEntry[]
+  adaptiveSteps    AdaptiveSimulationStep[]
 
   @@index([workspaceId])
   @@index([workspaceId, subject])
@@ -941,4 +945,64 @@ enum AssessmentType {
   LIST
   TEST
   SIMULATION
+  ADAPTIVE
+}
+
+/// Sessão de simulado adaptativo: o nível de dificuldade muda em tempo real
+/// conforme o desempenho do aluno. Cada passo escolhe a próxima questão
+/// baseada no histórico de acertos/erros por habilidade.
+model AdaptiveSimulationSession {
+  id               String                 @id @default(uuid()) @db.Uuid
+  userId           String                 @map("user_id") @db.Uuid
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** Exame alvo (ENEM, FUVEST, etc.) — define o catálogo de habilidades. */
+  examId           String?                @map("exam_id") @db.Uuid
+  exam             Exam?                  @relation(fields: [examId], references: [id])
+  status           AdaptiveSessionStatus  @default(IN_PROGRESS)
+  /** Estimativa atual do nível do aluno (0.0 a 1.0, estilo IRT simplificado). */
+  estimatedAbility Float                  @default(0.5) @map("estimated_ability")
+  /** Habilidades avaliadas até agora: JSON { habilidade: { correct, total, ability } }. */
+  skills           Json                   @default("{}")
+  startedAt        DateTime               @default(now()) @map("started_at")
+  finishedAt       DateTime?              @map("finished_at")
+  steps            AdaptiveSimulationStep[]
+
+  @@index([userId, status])
+  @@map("adaptive_simulation_sessions")
+}
+
+/// Cada passo do simulado adaptativo: a questão apresentada, a resposta e o
+/// efeito na estimativa de habilidade.
+model AdaptiveSimulationStep {
+  id                     String   @id @default(uuid()) @db.Uuid
+  sessionId              String   @map("session_id") @db.Uuid
+  session                AdaptiveSimulationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId                 String   @map("user_id") @db.Uuid
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId             String   @map("question_id") @db.Uuid
+  question               Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /** Dificuldade da questão no momento da apresentação (FACIL/MEDIA/DIFICIL). */
+  difficulty             QuestionDifficulty
+  /** Habilidade principal testada (ex.: "Funções exponenciais"). */
+  skill                  String
+  /** Sub-habilidade mais granular (opcional). */
+  subSkill               String?  @map("sub_skill")
+  selectedPosition       Int      @map("selected_position")
+  isCorrect              Boolean  @map("is_correct")
+  /** Estimativa de habilidade ANTES desta questão. */
+  abilityBefore          Float    @map("ability_before")
+  /** Estimativa de habilidade DEPOIS desta questão. */
+  abilityAfter           Float    @map("ability_after")
+  timeSpentSeconds       Int?     @map("time_spent_seconds")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  @@index([sessionId, createdAt])
+  @@index([userId, createdAt])
+  @@map("adaptive_simulation_steps")
+}
+
+enum AdaptiveSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
 }
