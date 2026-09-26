@@ -516,6 +516,11 @@ model Simulation {
   workspaceId    String         @map("workspace_id") @db.Uuid
   assessmentType AssessmentType @default(SIMULATION) @map("assessment_type")
   dueAt          DateTime?      @map("due_at")
+  /** Duração do simulado em minutos (opcional). Quando definido, o cronômetro
+   *  roda na resolução e o envio automático ocorre no fim do tempo. */
+  durationMinutes Int?          @map("duration_minutes")
+  /** Modo "prova real": cronômetro obrigatório, sem dicas, resultado só ao final. */
+  isRealExam     Boolean        @default(false) @map("is_real_exam")
   createdAt      DateTime       @default(now()) @map("created_at")
   creator        User           @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   class          Class?         @relation(fields: [classId], references: [id], onDelete: SetNull)
@@ -534,6 +539,8 @@ model SimulationSubmission {
   simulationId String   @map("simulation_id") @db.Uuid
   userId       String   @map("user_id") @db.Uuid
   answers      Json
+  /** Quando o aluno iniciou a resolução (para cronômetro e modo prova real). */
+  startedAt    DateTime? @default(now()) @map("started_at")
   correct      Int
   total        Int
   submittedAt  DateTime @default(now()) @map("submitted_at")
@@ -554,6 +561,8 @@ model SimulationItem {
   alternatives     Json
   correctPosition  Int      @map("correct_position")
   subject          String
+  /** Área do conhecimento (ex.: "Matemática e suas Tecnologias", "Ciências da Natureza") — usado no modo prova real estilo ENEM. */
+  area             String?  @db.VarChar(80)
   simulation       Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
   question         Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
 

@@ -387,8 +387,9 @@ export class SimulationsService {
     };
   }
 
-  async create(userId: string, title: string, questionIds: string[], classId?: string, assessmentType: 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION' = 'SIMULATION', dueAt?: string) {
+  async create(userId: string, title: string, questionIds: string[], classId?: string, assessmentType: 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION' = 'SIMULATION', dueAt?: string, durationMinutes?: number, isRealExam?: boolean) {
     if (new Set(questionIds).size !== questionIds.length) throw new BadRequestException('O simulado não pode repetir questões.');
+    if (isRealExam && !durationMinutes) throw new BadRequestException('Modo prova real exige duração em minutos.');
     let workspaceId: string;
     if (classId) {
       const [teacher, user] = await Promise.all([
@@ -410,7 +411,7 @@ export class SimulationsService {
     }
     const byId = new Map(questions.map(q => [q.id, q]));
     const row = await this.prisma.simulation.create({ data: {
-      id: randomUUID(), title: title.trim(), createdBy: userId, classId: classId ?? null, workspaceId, assessmentType, dueAt: dueAt ? new Date(dueAt) : null,
+      id: randomUUID(), title: title.trim(), createdBy: userId, classId: classId ?? null, workspaceId, assessmentType, dueAt: dueAt ? new Date(dueAt) : null, durationMinutes, isRealExam: isRealExam ?? false,
       items: { create: questionIds.map((id, i) => {
         const q = byId.get(id)!;
         return { id: randomUUID(), questionId: id, position: i + 1, stem: q.stem, subject: q.subject, correctPosition: q.alternatives.find(a => a.isCorrect)!.position, alternatives: q.alternatives.map(a => ({ position: a.position, text: a.text })) };
@@ -420,8 +421,8 @@ export class SimulationsService {
   }
 
   async list(userId: string) {
-    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, assessmentType: true, dueAt: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
-    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, assessmentType: r.assessmentType, dueAt: r.dueAt, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
+    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, assessmentType: true, dueAt: true, durationMinutes: true, isRealExam: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
+    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, assessmentType: r.assessmentType, dueAt: r.dueAt, durationMinutes: r.durationMinutes, isRealExam: r.isRealExam, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
   }
 
   async get(userId: string, id: string, includeAnswers = false) {
@@ -445,7 +446,7 @@ export class SimulationsService {
     }
     const correct = simulation.items.filter(item => byPosition.get(item.position) === item.correctPosition).length;
     try {
-      await this.prisma.simulationSubmission.create({ data: { id: randomUUID(), simulationId: id, userId, answers: answers.map(a => ({ position: a.position, selectedPosition: a.selectedPosition })), correct, total: simulation.items.length } });
+      await this.prisma.simulationSubmission.create({ data: { id: randomUUID(), simulationId: id, userId, answers: answers.map(a => ({ position: a.position, selectedPosition: a.selectedPosition })), correct, total: simulation.items.length, startedAt: new Date() } });
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') throw new ConflictException('Este simulado já foi enviado.');
       throw error;
@@ -458,11 +459,30 @@ export class SimulationsService {
     if (!row) throw new NotFoundException('Resultado não encontrado.');
     const answers = row.answers as { position: number; selectedPosition: number }[];
     const byPosition = new Map(answers.map(a => [a.position, a.selectedPosition]));
-    return { id: row.id, simulationId: id, correct: row.correct, total: row.total, submittedAt: row.submittedAt, items: row.simulation.items.map(item => ({ position: item.position, subject: item.subject, selectedPosition: byPosition.get(item.position), correctPosition: item.correctPosition, isCorrect: byPosition.get(item.position) === item.correctPosition })) };
+    const timeSpentMinutes = row.startedAt ? Math.max(1, Math.round((row.submittedAt.getTime() - row.startedAt.getTime()) / 60000)) : null;
+    return { id: row.id, simulationId: id, correct: row.correct, total: row.total, submittedAt: row.submittedAt, startedAt: row.startedAt ?? null, timeSpentMinutes, items: row.simulation.items.map(item => ({ position: item.position, subject: item.subject, area: item.area ?? null, selectedPosition: byPosition.get(item.position), correctPosition: item.correctPosition, isCorrect: byPosition.get(item.position) === item.correctPosition })) };
   }
 
-  private publicSimulation(row: { id: string; title: string; createdAt: Date; assessmentType?: string; dueAt?: Date | null; class?: { name: string } | null; items: { id: string; questionId: string | null; position: number; stem: string; subject: string; alternatives: unknown; correctPosition: number }[] }, includeAnswers = false) {
-    return { id: row.id, title: row.title, createdAt: row.createdAt, assessmentType: row.assessmentType ?? 'SIMULATION', dueAt: row.dueAt ?? null, className: row.class?.name ?? null, sheetVersion: 1, items: row.items.map(i => ({ id: i.id, questionId: i.questionId, position: i.position, stem: i.stem, subject: i.subject, alternatives: i.alternatives, ...(includeAnswers ? { correctPosition: i.correctPosition } : {}) })) };
+  private publicSimulation(row: {
+    id: string; title: string; createdAt: Date; assessmentType?: string;
+    dueAt?: Date | null; class?: { name: string } | null;
+    durationMinutes?: number | null; isRealExam?: boolean;
+    items: { id: string; questionId: string | null; position: number; stem: string; subject: string; area?: string | null; alternatives: unknown; correctPosition: number }[]
+  }, includeAnswers = false) {
+    return {
+      id: row.id, title: row.title, createdAt: row.createdAt,
+      assessmentType: row.assessmentType ?? 'SIMULATION',
+      dueAt: row.dueAt ?? null, className: row.class?.name ?? null,
+      durationMinutes: row.durationMinutes ?? null,
+      isRealExam: row.isRealExam ?? false,
+      sheetVersion: 1,
+      items: row.items.map(i => ({
+        id: i.id, questionId: i.questionId, position: i.position,
+        stem: i.stem, subject: i.subject, area: i.area ?? null,
+        alternatives: i.alternatives,
+        ...(includeAnswers ? { correctPosition: i.correctPosition } : {}),
+      })),
+    };
   }
 }
 type TeacherClassRow = {

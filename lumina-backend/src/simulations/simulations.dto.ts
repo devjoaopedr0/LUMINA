@@ -24,6 +24,15 @@ export class CreateSimulationDto {
   @IsOptional() @IsDateString()
   dueAt?: string;
 
+  /** Duração em minutos (opcional). Se informado, o cronômetro roda na resolução
+   *  e o envio automático ocorre no fim do tempo. */
+  @IsOptional() @IsInt() @Min(1) @Max(600)
+  durationMinutes?: number;
+
+  /** Modo "prova real": cronômetro obrigatório, sem dicas, resultado só ao final. */
+  @IsOptional() @IsBoolean()
+  isRealExam?: boolean;
+
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(90) @IsUUID('4', { each: true })
   questionIds!: string[];
 }
