@@ -7,6 +7,7 @@ import { QuestionsModule } from '../questions/questions.module';
 import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
+import { AnswerSheetService } from './answer-sheet.service';
 
 @ApiTags('simulations')
 @ApiBearerAuth()
@@ -16,6 +17,7 @@ export class SimulationsController {
   constructor(
     private readonly service: SimulationsService,
     private readonly adaptiveService: AdaptiveSimulationService,
+    private readonly answerSheetService: AnswerSheetService,
   ) {}
   @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
@@ -48,7 +50,20 @@ export class SimulationsController {
   @Post('adaptive/:id/abandon') adaptiveAbandon(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.adaptiveService.abandon(id); }
   @Get('adaptive/:id/summary') adaptiveSummary(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.adaptiveService.summary(id); }
   @Get('adaptive') adaptiveList(@CurrentUser() user: UserWithProfile) { return this.adaptiveService.list(user.id); }
+
+  // Answer Sheet Scanner endpoints (item 17)
+  @Post('answer-sheets/templates') createTemplate(@CurrentUser() user: UserWithProfile, @Body() dto: any) { return this.answerSheetService.createTemplate(user.id, dto); }
+  @Get('answer-sheets/templates') listTemplates(@CurrentUser() user: UserWithProfile) { return this.answerSheetService.listTemplates(user.id); }
+  @Get('answer-sheets/templates/:id') getTemplate(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.getTemplate(user.id, id); }
+  @Delete('answer-sheets/templates/:id') deleteTemplate(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.deleteTemplate(user.id, id); }
+
+  @Post('answer-sheets/upload-url') presignedUpload(@CurrentUser() user: UserWithProfile, @Body() dto: any) { return this.answerSheetService.createPresignedUpload(user.id, dto); }
+  @Post('answer-sheets/upload/:id/complete') completeUpload(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { fileUrl: string; width: number; height: number; sizeBytes: number }) { return this.answerSheetService.completeUpload(id, dto.fileUrl, { width: dto.width, height: dto.height, sizeBytes: dto.sizeBytes }); }
+  @Get('answer-sheets/uploads') listUploads(@CurrentUser() user: UserWithProfile, @Query('simulationId') simulationId?: string) { return this.answerSheetService.listUploads(user.id, simulationId); }
+  @Get('answer-sheets/processing/:id') getProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.getProcessing(user.id, id); }
+  @Post('answer-sheets/processing/:id/review') reviewProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { finalAnswers: Record<number, number> }) { return this.answerSheetService.reviewProcessing(user.id, id, dto.finalAnswers); }
+  @Get('answer-sheets/stats') getStats(@CurrentUser() user: UserWithProfile) { return this.answerSheetService.getStats(user.id); }
 }
 
-@Module({ imports: [QuestionsModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService] })
+@Module({ imports: [QuestionsModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService] })
 export class SimulationsModule {}
