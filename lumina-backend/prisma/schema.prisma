@@ -52,6 +52,8 @@ model User {
   questionScanUploads      QuestionScanUpload[]
   questionScanResults      QuestionScanResult[]
   essayFeedbacks           EssayFeedback[] @relation("EssayFeedbackAuthor")
+  formulas                  Formula[]
+  repertoires               Repertoire[]
 
   @@map("users")
 }
@@ -140,6 +142,89 @@ model EssayTheme {
 
   @@index([exam, year])
   @@map("essay_themes")
+}
+
+/// Redação nota 1000 oficial (ENEM ou vestibular), curada como referência de
+/// estudo — item 23. Conteúdo público já divulgado pela banca/imprensa, não
+/// a redação de nenhum aluno da plataforma: sem o problema de privacidade
+/// que teria reaproveitar Essay (redação privada de outro usuário) para
+/// compor esta biblioteca.
+model EssayModel {
+  id              String   @id @default(uuid()) @db.Uuid
+  year            Int
+  exam            String   @db.VarChar(60)
+  theme           String   @db.VarChar(300)
+  text            String
+  /** Nota por competência: { C1: 200, C2: 200, C3: 200, C4: 200, C5: 200 }. */
+  competenciesJson Json    @map("competencies_json")
+  /** Nota total (soma das competências, máx 1000). */
+  totalScore      Int      @map("total_score")
+  /** PDF oficial da redação, quando disponível para download. */
+  pdfUrl          String?  @map("pdf_url") @db.VarChar(2048)
+  /** Trechos em destaque por competência: { C1: "...", C2: "...", ... }. */
+  highlightsJson  Json?    @map("highlights_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([exam, year])
+  @@map("essay_models")
+}
+
+/// Item 21 do inventário: caderno de fórmulas. Uma fórmula por linha, do
+/// aluno, com a expressão em LaTeX, a disciplina, o assunto em que ela é
+/// usada e uma anotação pessoal ("quando usar", variações). O favoritos
+/// serve para fixar as fórmulas que o aluno ainda não memorizou.
+model Formula {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  /// Nome curto da fórmula (ex.: "Bhaskara", "Área do círculo").
+  name        String   @db.VarChar(160)
+  /// Disciplina: MATEMATICA, FISICA, QUIMICA, BIOLOGIA, OUTRA.
+  discipline  String   @default("MATEMATICA") @db.VarChar(40)
+  /// Assunto dentro da disciplina (ex.: "Funções quadráticas").
+  topic       String?  @db.VarChar(160)
+  /// A expressão em LaTeX, ex.: x = (-b ± √(b²-4ac)) / 2a.
+  latex       String
+  /// Anotações pessoais: quando usar, variações, macetes.
+  description String?
+  isFavorite  Boolean  @default(false) @map("is_favorite")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, discipline])
+  @@index([userId, isFavorite])
+  @@map("formulas")
+}
+
+/// Item 22 do inventário: caderno de repertórios socioculturais. Serve à
+/// redação do ENEM: o aluno guarda um repertório (livro, filme, lei,
+/// pesquisa) e o reutiliza como argumento. Cada registro guarda a fonte e
+/// o ano para citar com precisão na redação e o tema para filtrar na escrita.
+/// para citar com precisão na redação e o tema para filtrar na escrita.
+model Repertoire {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /// Título do repertório (ex.: "George Orwell — 1984").
+  title     String   @db.VarChar(240)
+  /// Resumo com as ideias principais, dados e argumentos.
+  summary   String
+  /// Fonte (livro, artigo, filme, série, lei, dados de pesquisa).
+  source    String?  @db.VarChar(160)
+  year      Int?
+  /// Tema para filtro: TECNOLOGIA, MEIO_AMBIENTE, SAUDE, POLITICA,
+  /// EDUCACAO, ECONOMIA, CULTURA, CIENCIA, DIREITOS_HUMANOS, OUTRO.
+  theme     String   @default("OUTRO") @db.VarChar(40)
+  /// Palavras-chave para localizar o repertório na hora da redação.
+  keywords  String[] @default([])
+  /// Marcado pelo aluno quando já domina o repertório.
+  isStudied Boolean  @default(false) @map("is_studied")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, theme])
+  @@index([userId, isStudied])
+  @@map("repertoires")
 }
 
 /// Token de redefinição de senha (fluxo "esqueci minha senha"). Guardamos
