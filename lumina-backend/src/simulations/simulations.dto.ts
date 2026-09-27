@@ -237,3 +237,120 @@ export class ReviewAnswerSheetDto {
   @IsOptional() @IsUUID()
   reviewedBy?: string;
 }
+
+// =============================================================================
+// Question Scanner (item 18 do inventário)
+// =============================================================================
+
+export class QuestionScanUploadUrlDto {
+  @IsString() @IsIn(['image/jpeg', 'image/png', 'application/pdf'])
+  contentType!: string;
+}
+
+export class QuestionScanUploadUrlResponseDto {
+  uploadUrl: string;
+  uploadId: string;
+  key: string;
+  expiresIn: number;
+}
+
+export class QuestionScanUploadResponseDto {
+  id: string;
+  userId: string;
+  fileUrl: string;
+  metaJson: any;
+  status: string;
+  createdAt: Date;
+}
+
+export class QuestionScanProcessingResponseDto {
+  id: string;
+  uploadId: string;
+  stemText: string | null;
+  alternativesJson: any;
+  subject: string | null;
+  topic: string | null;
+  difficulty: string | null;
+  explanationJson: any;
+  confidence: number | null;
+  warningsJson: any;
+  status: string;
+  errorMessage: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+}
+
+export class QuestionScanResultResponseDto {
+  id: string;
+  processingId: string;
+  userId: string;
+  questionId: string | null;
+  errorNotebookEntryId: string | null;
+  finalStem: string;
+  finalAlternatives: any;
+  finalSubject: string;
+  finalTopic: string;
+  finalDifficulty: string;
+  finalExplanation: any;
+  savedAt: Date;
+}
+
+export class SaveQuestionScanAsQuestionDto {
+  @IsString() @IsNotEmpty() @MaxLength(5000)
+  finalStem!: string;
+
+  @IsArray() @ValidateNested({ each: true }) @Type(() => AlternativeInputDto)
+  finalAlternatives!: AlternativeInputDto[];
+
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  finalSubject!: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  finalTopic!: string;
+
+  @IsString() @IsIn(['FACIL', 'MEDIA', 'DIFICIL'])
+  finalDifficulty!: 'FACIL' | 'MEDIA' | 'DIFICIL';
+
+  @IsOptional() @IsString() @MaxLength(80)
+  exam?: string;
+
+  @IsOptional() @IsObject()
+  finalExplanation?: Record<number, string>;
+}
+
+export class SaveQuestionScanToErrorNotebookDto {
+  @IsString() @IsNotEmpty() @MaxLength(5000)
+  finalStem!: string;
+
+  @IsArray() @ValidateNested({ each: true }) @Type(() => AlternativeInputDto)
+  finalAlternatives!: AlternativeInputDto[];
+
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  finalSubject!: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  finalTopic!: string;
+
+  @IsString() @IsIn(['FACIL', 'MEDIA', 'DIFICIL'])
+  finalDifficulty!: 'FACIL' | 'MEDIA' | 'DIFICIL';
+
+  @IsOptional() @IsObject()
+  finalExplanation?: Record<number, string>;
+
+  @IsOptional() @IsIn(['FALTA_CONTEUDO', 'ERRO_INTERPRETACAO', 'ERRO_CALCULO', 'FALTA_ATENCAO', 'CHUTE', 'TEMPO_INSUFICIENTE', 'CONFUSAO_CONCEITOS', 'OUTRO'])
+  reason?: 'FALTA_CONTEUDO' | 'ERRO_INTERPRETACAO' | 'ERRO_CALCULO' | 'FALTA_ATENCAO' | 'CHUTE' | 'TEMPO_INSUFICIENTE' | 'CONFUSAO_CONCEITOS' | 'OUTRO';
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  notes?: string;
+}
+
+export class AlternativeInputDto {
+  @IsInt() @Min(1) @Max(10)
+  position!: number;
+
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  text!: string;
+
+  @IsOptional() @IsBoolean()
+  isCorrect?: boolean;
+}

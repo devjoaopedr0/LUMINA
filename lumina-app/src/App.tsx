@@ -17,6 +17,7 @@ import { MentalMath } from "@/pages/MentalMath";
 import { Essays } from "@/pages/Essays";
 import { Simulations } from "@/pages/Simulations";
 import { AdaptiveSimulation } from "@/pages/AdaptiveSimulation";
+import { QuestionScanner } from "@/pages/QuestionScanner";
 import { Classes } from "@/pages/Classes";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
@@ -27,6 +28,7 @@ function App() {
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
         <Route path="/app/simulados" element={<ProtectedRoute><Simulations /></ProtectedRoute>} />
         <Route path="/app/simulados/adaptativo" element={<ProtectedRoute><AdaptiveSimulation /></ProtectedRoute>} />
+        <Route path="/app/question-scanner" element={<ProtectedRoute><QuestionScanner /></ProtectedRoute>} />
         <Route path="/app/busca-web" element={<ProtectedRoute><WebQuestionSearch /></ProtectedRoute>} />
         <Route path="/app/redacoes" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
         <Route path="/app/redacoes/:id" element={<ProtectedRoute><Essays /></ProtectedRoute>} />

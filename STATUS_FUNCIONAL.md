@@ -31,220 +31,118 @@ Entrega vertical fechada dos dois itens do inventário. O caderno nasce dentro d
 - **Validação visual (Playwright)**: **71 verificações, todas aprovadas** — caderno abre com as duas questões erradas, resumo conta abertas/dominadas/sem-motivo/para-revisar, matéria/assunto/procedência vêm da questão, linha do tempo começa com "E" e frase "sem acerto ainda", 8 motivos + "Sem motivo" no select, cada motivo tem rótulo legível, motivo gravado no servidor, recortes por motivo aparecem e filtram corretamente, revisão amanhã/hoje/data digitada/sem data, filtro "só o vencido", observação do aluno com botão que só aparece com texto novo e persiste após salvar, reapresentar a questão dentro do caderno, errar de novo (linha do tempo "EE", frase "2 tentativas", "Errou 2 vezes"), primeiro acerto ("Em recuperação: 1 de 2"), segundo acerto (dominada, sai da fila aberta, aviso "continua no histórico"), filtro Dominadas mostra a questão com selo e frase do progresso, filtros por matéria/assunto/dificuldade/situação, recorte vazio diz "Nenhuma questão neste recorte" (não "caderno vazio"), limpar filtros volta a fila, painel do aluno mostra o cartão com contagens e link, remover do caderno apaga no servidor e na tela, abortar propositalmente o resumo/lista faz a página dizer "Não foi possível carregar" em vez de mentir que está vazio. **Zero erros de JavaScript, zero HTTP ≥ 400 fora do abort proposital**.
 - Documentação: `docs/CADERNO_DE_ERROS.md` descreve endpoints, regra de evolução, motivo como recorte, revisão combinada, dominação e como a interface evita mentir quando a chamada falha.
 
-## Atualização de 26/09/2026 — validação visual da funcionalidade 10 (Busca de questões na web) e correções
+## Atualização de 26/09/2026 — itens 14, 15 e 16: Simulados com cronômetro, modo prova real e simulado adaptativo
 
-Validação feita no navegador (Chromium via Playwright, ambiente efêmero fora do repositório) contra backend e aplicativo reais: **22 verificações, todas aprovadas** — busca com e sem acento, aviso de modo demonstração, link de origem absoluto, estado vazio, botão desabilitado abaixo de 3 caracteres, abertura do formulário sem gravação, validações do formulário, letras A–F, marcação do gabarito, aviso de salvamento, fechamento do formulário, conteúdo gravado no banco, deduplicação e exibição no banco de questões, sem erro de JavaScript e sem resposta HTTP ≥ 400.
+Entrega vertical dos itens 14 (Simulados), 15 (Modo prova real) e 16 (Simulado adaptativo) do inventário. A base de simulados já existia (criação, listagem, envio, correção, cartão-resposta); esta entrega acrescenta o cronômetro, o modo "prova real" e o simulado adaptativo com algoritmo IRT simplificado.
 
-A validação encontrou **quatro defeitos reais**, todos corrigidos:
+### Itens 14 e 15: Cronômetro e Modo Prova Real
 
-- **Salvamento sempre devolvia 400 (bloqueante).** `SaveWebQuestionDto.sourceUrl` usava `@IsUrl()` com `require_tld` implícito em `true`, então *todo* link de `localhost` era rejeitado — ou seja, o salvamento só funcionaria em domínio real, jamais em desenvolvimento. Corrigido com `require_tld: false`, mantendo a exigência de esquema `http(s)`.
-- **Conteúdo salvo era lixo.** O botão "Salvar" gravava o trecho da busca como enunciado, com duas alternativas de preenchimento e **sem gabarito**. Substituído pelo formulário de transcrição `WebQuestionTranscription`: enunciado (pré-preenchido com o trecho, para completar e corrigir), alternativas A–F com marcação da alternativa correta, gabarito comentado e classificação editável. Nenhum POST acontece até o envio do formulário.
-- **Busca sem acento não encontrava.** `stem contains "funcoes"` não casa com "Funções". Nova extensão `unaccent` (migration `20260926120000_add_unaccent_text_search`) aplicada **dos dois lados** do `ILIKE` — coluna e termo —, tanto em `GET /search/web` quanto em `GET /questions?search=`. Implementação por pré-filtro de ids com SQL parametrizado (`QuestionTextSearchRepository` + `buildTextSearchSql`), mantendo paginação, ordenação, `total` e estatísticas no Prisma; com teto de 2000 ids e escape dos curingas do LIKE. Sem a extensão no banco, o serviço registra aviso e cai no `contains` tradicional em vez de derrubar a busca com 500. Sem índice, de propósito: `unaccent(text)` é `STABLE` e função `STABLE` não pode entrar em expressão de índice sem wrapper `IMMUTABLE`; o caminho de upgrade (wrapper `IMMUTABLE` + GIN/pg_trgm) está documentado.
-- **Alternativas rotuladas com a letra errada.** O formulário usava `positionLetter(index + 1)` sobre um índice já baseado em zero, então a primeira alternativa aparecia como **B** (depois C, D...) e a sexta como "6" em vez de F — a letra vista na tela não era a do gabarito. `positionLetter` passou a receber a posição 1-based, igual ao banco de questões e à posição gravada.
+- **Migração** `20260926211841_add_simulation_timer_real_exam`:
+  - `simulation.duration_minutes` (Int, opcional): duração em minutos
+  - `simulation.is_real_exam` (Boolean, default false): modo prova real
+  - `simulation.started_at` (DateTime): quando o aluno iniciou a resolução
+  - `simulation_item.area` (String, opcional): área do conhecimento (estilo ENEM)
 
-Além disso: o link do modo demonstração passou a ser absoluto (montado a partir de `FRONTEND_URL`) — link interno violava o contrato de atribuição em `http(s)` —, o `demoHits` estático foi removido, e `src/lib/source-link.ts` centraliza a regra de que só `http(s)` vira `href`, fechando o vetor de XSS de `javascript:` em resultado de busca.
+- **Backend** (`SimulationsService`):
+  - `CreateSimulationDto` com `durationMinutes` (1–600) e `isRealExam`
+  - Validação: modo prova real exige duração
+  - `submit` grava `startedAt` no submission
+  - `submission` devolve `startedAt`, `timeSpentMinutes` calculado, `area` por item
+  - `list`/`get` expõem `durationMinutes` e `isRealExam`
 
-- Testes: **321 aprovados em 22 arquivos** (era 299 em 21) — 8 novos e2e no `search.e2e-spec.ts` (busca sem acento com e sem acento, o mesmo filtro na listagem do banco, isolamento entre workspaces no caminho de SQL cru, link absoluto, `sourceUrl` de `localhost` aceito, esquemas não-`http(s)` recusados, exatamente uma alternativa correta na posição transcrita e recusa de questão sem gabarito), unitários do construtor de SQL/escape/fallback e cobertura de `questionAlternative.findMany`, `$queryRaw` e `where.id.in` no fake do Prisma. Typecheck, build e lint aprovados nos dois projetos.
-- Documentação: `docs/BUSCA_WEB.md` passou a descrever a transcrição obrigatória, a regra de TLD do `sourceUrl`, a busca sem acento (com a estratégia de índice e o caminho de upgrade) e a interface.
-
-## Atualização de 25/09/2026 — funcionalidade 10: Busca de questões na web
-
-- Backend: módulo `SearchModule` com `GET /search/web` (busca) e `POST /search/save` (salvar no banco interno), ambos autenticados (`JwtAuthGuard` + `@CurrentUser()`). Busca por conteúdo (`q`), prova (`exam`), disciplina (`subject`), assunto (`topic`), dificuldade (`difficulty`) e limite (1–20, padrão 10).
-- Dois provedores implementando `WebSearchProvider`: `GoogleCseSearchProvider` (Google Programmable Search Engine, com timeout via `AbortController` e tradução de HTTP 401/403/429/5xx em `WebSearchProviderError` com código) e `DemoWebSearchProvider` (modo demonstração, vasculha o banco acessível do usuário — pessoal + banco central). O `SearchService` escolhe o Google CSE quando `GOOGLE_CSE_ID` e `GOOGLE_CSE_API_KEY` existem e, sem elas, o modo demonstração.
-- O response **sempre** explicita `provider` (`google-cse` | `demo`) e `demoMode` (boolean), para o cliente nunca confundir busca real com demonstração. A interface exibe um aviso explícito de modo demonstração e explica como ativar a busca real.
-- Cada resultado devolve apenas metadados públicos (título, link, trecho), atribuição (`sourceName`, `sourceId`) e a **classificação automática** (disciplina, assunto, prova, ano e dificuldade) casada com o catálogo Lumina. O conteúdo integral nunca é baixado nem armazenado.
-- `POST /search/save` reusa o pipeline real de importação (`QuestionImportService.importFromDtos`), que valida, classifica no catálogo e **deduplica** por conteúdo. O serviço força `sourceType=IMPORTED` e sobrescreve a origem informada no payload por `sourceName` = nome da fonte e `sourceId` = URL original — a atribuição nunca é perdida, mesmo que o cliente envie outra origem.
-- Direitos autorais: a Lumina armazena apenas metadados públicos e o conteúdo **transcrito pelo usuário**. O `sourceUrl` passou a ser validado como URL http(s) real (estava sem validação, o que quebrava a rota com o `ValidationPipe` em modo estrito).
-- Frontend: página "Buscar questões na web" (`/app/busca-web`) com formulário de filtros, cards com link para a fonte original, classificação, aviso de modo demonstração e ação "Salvar"; item adicionado ao menu lateral.
-- Correções encontradas durante a validação (invisíveis ao typecheck): o controller usava `@Req()` em vez de `@CurrentUser()` **e não aplicava `@UseGuards(JwtAuthGuard)`** — as rotas ficavam desprotegidas; o `sourceUrl` do DTO não tinha decorador de validação; e o fake-prisma ignorava a cláusula `OR` usada no filtro da busca.
-- Testes: **299 aprovados em 21 arquivos** (era 242) — 41 unitários (16 do Google CSE cobrindo configuração, mapeamento, limites e cada tradução de erro; 11 do provedor demo; 14 do `SearchService` cobrindo seleção de provedor, normalização de filtros, limites e a preservação de atribuição) e 16 e2e no fluxo HTTP completo (autenticação, validação, modo demo, classificação, filtros, workspace de destino e deduplicação). Typecheck e build aprovados nos dois projetos.
-- Documentação: `docs/BUSCA_WEB.md` descreve a configuração opcional do Google CSE, a política de direitos autorais e o comportamento do modo demonstração.
-- Pendente: validação visual no navegador (ferramenta indisponível neste ambiente). A entrega está validada via API e testes automatizados.
-
-## Atualização de 23/09/2026 — funcionalidade 9: Banco de questões (estatísticas agregadas, gabarito comentado e questões semelhantes)
-
-- O item 9 já possuía ~90% da base (CRUD, importação JSON/CSV, filtros, tentativas e favoritos). Esta entrega fecha as lacunas restantes: **estatísticas agregadas de acerto por questão**, **questões semelhantes**, **exibição do gabarito comentado na interface** e **campo "explicação" no formulário de criação/edição**.
-- Backend: `QuestionStatsDto` (`attempts`, `correct`, `accuracyPercent`) presente na listagem (1 consulta agregada por página, sem N+1), no detalhe e no resultado da tentativa; `SimilarQuestionsDto` (`items`, `limit`) na rota `GET /questions/:id/similar`, rankeando por proximidade (mesmo assunto +10/+8, mesma disciplina +6/+3, mesmo exame +3/+2, mesma dificuldade +1), excluindo a própria questão, limitado aos workspaces acessíveis (pessoal + banco) e com limite clampado em 1–12 (default 5). Contagens via `countsByQuestionIds` (`findMany` + `select`, compatível com o fake de testes).
-- Frontend: card de questão com badge de taxa de acerto (verde ≥60%, âmbar ≥40%, vermelho abaixo), gabarito comentado exibido após responder, seção "Questões semelhantes" com carregamento sob demanda (cards aninhados sem botão próprio, para não recursar) e textarea "Gabarito comentado" no formulário.
-- Correção descoberta no build de produção (`tsc -p tsconfig.build.json`): o `findSimilar` não compilava — spreads de `OR` com `mode: 'insensitive'` quebravam a tipagem do Prisma e a chamada a `findMany` omitia `skip` (obrigatório em `FindManyOptions`). Corrigido com arrays `Prisma.QuestionWhereInput[]` construídos via `push` e `{ skip: 0, take: 60 }`. O `npm test` (vitest) não pegou porque transpila sem checagem de tipos — builds do backend voltaram a verificar os tipos.
-- Testes: 8 novos casos em `questions.service.spec.ts` (stats na listagem/detalhe/tentativa; rankeamento do `findSimilar`, exclusão da própria questão, clamp do limite, fronteira de visibilidade e 404 para outro workspace) e cobertura e2e; suíte completa com **242 testes aprovados em 17 arquivos**; typecheck e build do aplicativo aprovados.
-- Validação ao vivo (backend real em `localhost:3001` + Postgres configurado, sem navegador): script `validate-item9.mjs` com todos os checks positivos — criação de questão com explicação (eco no response), listagem com `stats`/`explanation` nos itens, tentativa correta e errada refletindo `attempts`/`correct`/`accuracyPercent` no resultado e no detalhe, `GET /questions/:id/similar` sem incluir a própria e com `limit` clampado em 12, e remoção da questão de teste (404 no detalhe). Permanece pendente apenas a validação visual da interface no navegador (ferramenta indisponível: `browser.disconnected`).
-- Lacunas que dependem de evolução de catálogo (registradas no inventário): filtros por **subassunto/habilidade/banca** (não há modelo de dados para esses eixos) e **conteúdo UECE** (o mecanismo de importação está pronto; o conteúdo depende do catálogo).
-
-## Atualização de 23/09/2026 — Cadastro de instituição na criação da conta
-
-- A pedido do usuário, o cadastro de instituição deixou de existir no dashboard (passo pós-criação de usuário) e passou a acontecer **na criação da conta**: a opção "Sou instituição" agora coleta nome, e-mail institucional e telefone (opcional) além dos dados do responsável.
-- Backend: `RegisterDto` aceita um objeto `institution` aninhado (validado por `ValidateNested`); `AuthService.register` cria o usuário como `DIRECTOR` e, **na mesma transação**, a instituição com workspace, os 4 cargos padrão (Diretor/Coordenador/Professor/Aluno) e o vínculo ACTIVE do responsável como Diretor. Conflito de e-mail institucional desfaz todo o cadastro.
-- Regra de negócio: cadastro institucional não pode ser combinado com `accountType`/`teacherSubject` (400).
-- Frontend: formulário completo em `Signup.tsx` para o perfil "instituição"; removido o bloco "Representa uma escola ou cursinho?" do dashboard (estado, handler e import correspondentes).
-- Endpoint `POST /institutions` (autenticado) permanece disponível e reutiliza a mesma lógica transacional.
-- Testes: 3 novos casos unitários em `auth.service.spec.ts` (DIRECTOR + instituição na mesma transação; rejeição de combinação com accountType; rollback quando o e-mail institucional já existe); 2 novos casos e2e em `auth.e2e-spec.ts`; fake do Prisma e2e estendido com os delegates `permission` e `institution.create`/`findUniqueOrThrow` usados pelo cadastro (o erro `Cannot read properties of undefined (reading 'findMany')` foi justamente esse gap do fake, não do código real).
-- Verificações: typecheck e build do backend e do aplicativo aprovados; lint do aplicativo com zero erros e zero avisos; suíte de testes do backend com **234 aprovados em 17 arquivos**.
-- Correção descoberta na validação ao vivo: instituições nasciam PENDING (default do schema) e a política de turmas exige instituição ACTIVE, sem existir fluxo de ativação — toda escola recém-cadastrada ficava impedida de gerir turmas (403 "A instituição não está ativa" em editar/arquivar/transferir). Corrigido: `InstitutionsService.createInTransaction` agora cria a instituição **ACTIVE** (vale para o cadastro na conta e para `POST /institutions`); asserção nova em `institutions.service.spec.ts`; instituições de teste antigas (QA/resíduo) foram ativadas no banco configurado para alinhar ao novo comportamento.
-- Validação integrada ao vivo (backend real + Postgres configurado, sem navegador): cadastro institucional na conta (usuário nasce DIRECTOR, workspace institucional com cargo Diretor e permissões CLASS_MANAGE/MEMBER_MANAGE/REPORT_VIEW/ROLE_MANAGE), convite e aceite de professor como Professor ACTIVE, criação de turma caindo no workspace institucional, listagem vista por professor e diretor, edição (limite/série/descrição), arquivamento/desarquivamento com `includeArchived`, recusa de aluno independente sem vínculo (403 — regra aprovada de vínculo ativo), matrícula de aluno institucional por código após convite/aceite e painel do diretor com as contagens corretas. Permanece pendente apenas a validação visual da interface no navegador (ferramenta indisponível na sessão: `browser.disconnected`).
-
-## Atualização de 22/09/2026 — funcionalidade 8: Gestão de turmas
-
-- Retomada a implementação iniciada nas alterações locais posteriores ao commit `db3087a` (item 7).
-- Integrada a página `/app/turmas`, acessível pelo dashboard e pela área de simulados.
-- Implementados edição de nome/descrição/limite, arquivamento e desarquivamento, vínculo e remoção de professores/alunos por conta cadastrada, associação de disciplina, período letivo e ano/série.
-- Detalhe da turma apresenta composição e histórico de atividades, questões e contagem de entregas. A interface distingue consulta de gerenciamento conforme a autorização retornada pela API.
-- Listagem permite consultar turmas arquivadas e turmas institucionais para usuários com `CLASS_MANAGE`. Novos vínculos são recusados em turmas arquivadas.
-- Banco: `prisma migrate deploy` confirmou as 22 migrações aplicadas, incluindo `20260921120000_add_class_organization`.
-- Lotação: ingresso por código e matrícula direta usam a mesma transação, com bloqueio da linha da turma antes da contagem. Matrículas já existentes são idempotentes mesmo em turma lotada.
-- Edição: limpar disciplina, período, ano/série e limite agora persiste a remoção do valor, em vez de manter silenciosamente o anterior.
-- Revisão adicional: transferência recusa destino arquivado e revalida vagas dentro da transação; edição não permite reduzir limite abaixo das matrículas; nome nulo retorna erro de validação de negócio.
-- Regra aprovada pelo usuário: turmas institucionais exigem vínculo ativo para ingresso, matrícula direta e transferência. Consulta/gestão e inclusão de professor também verificam vínculo institucional. Turmas técnicas de professores independentes preservam ingresso sem convite institucional.
-- Validação: suíte completa com 227 testes aprovados em 17 arquivos; após adicionar duas regressões, os 42 testes dos módulos de simulados e convites passaram. Builds de backend e aplicativo aprovados; typecheck do backend aprovado; lint do aplicativo com zero erros e zero avisos. Corrigida configuração Oxc/SWC do Vitest e separados componentes React de exports auxiliares para Fast Refresh.
-- Pendente antes de encerrar o item: validação autenticada da nova interface no navegador (ferramenta indisponível nesta sessão: `browser.disconnected`). A criação de turma continua no fluxo existente de simulados.
-
-## Atualização de 20/09/2026 — funcionalidade 7: Gestão de instituições
-
-- Implementado: cadastro de instituição (POST /institutions) — cria a Institution + Workspace, semeia os 4 cargos institucionais padrão (Diretor, Coordenador, Professor, Aluno) e vincula quem criou como Diretor.
-- Implementado: convites institucionais por e-mail (Diretor/Coordenador convidam; a pessoa precisa já ter conta na Lumina — convite para e-mail sem conta ainda não é suportado) com aceite explícito pelo convidado.
-- Implementado: transferência de aluno entre turmas da mesma instituição.
-- Corrigido: turma criada por professor institucional agora nasce no workspace da instituição (antes caía num pseudo-workspace individual por professor, invisível para coordenação/direção).
-- Corrigido: schema drift do model Simulation (assessmentType/dueAt ausentes do schema.prisma apesar de já aplicados no banco) — corrigia um 500 em GET /simulations para qualquer usuário.
-- Pendente: convite para e-mail ainda sem conta cadastrada; conceito de "ano letivo" tratado hoje via período letivo (Fase 5), sem campo dedicado; interface de gestão de membros/turmas ainda concentrada no painel do diretor, sem tela própria de "gestão de instituições".
-- Validação: 207 testes aprovados, typecheck e build dos três projetos, fluxo completo (cadastro → convite → aceite → transferência de turma) verificado ao vivo contra o banco configurado.
-
-## Atualização de 20/09/2026 — funcionalidade 6: Painel do diretor
-
-- Implementado: indicadores gerais da instituição com turmas, alunos, professores, entregas, média acadêmica e membros ativos.
-- Implementado: desempenho consolidado por turma e disciplina.
-- Implementado: evolução acadêmica mensal com volume de entregas.
-- Implementado: relatório consolidado exportável em CSV.
-- Implementado: gestão de usuários institucionais com ativação e suspensão de vínculos.
-- Implementado: conversão entre professor e coordenador, exigindo disciplina ao definir um professor.
-- Implementado: visão estratégica com indicação da turma e disciplina que demandam maior atenção.
-- Segurança: somente diretor com vínculo institucional ativo acessa os dados; a própria conta do diretor não pode ser alterada pelo painel.
-- Validação: 186 testes aprovados, typecheck do backend e frontend e build de produção do aplicativo.
-## Atualização de 20/09/2026 — funcionalidade 5: Painel do coordenador
-
-- Implementado: visão geral das turmas e comparação por desempenho.
-- Implementado: acompanhamento de professores e disciplinas vinculadas.
-- Implementado: desempenho consolidado por disciplina, média institucional e alunos em atenção.
-- Implementado: relatório pedagógico exportável em CSV.
-- Implementado: cadastro, histórico e ativação de períodos letivos, limitado ao coordenador vinculado a uma instituição ativa.
-- Validação: 185 testes aprovados, typecheck dos três projetos, build completo, schema Prisma válido e 21 migrações aplicadas.
-
-
-## Referência geral
-
-O inventário completo enviado pelo usuário está preservado em [Funcionalidades gerais](docs/FUNCIONALIDADES_GERAIS.txt). A ordem numerada desse documento orienta as próximas entregas. Na seção 1, o encerramento de todas as sessões foi implementado com revogação de tokens por versão de sessão. A migração `20260916030000_add_session_version` foi aplicada no banco configurado em 16/09/2026. O gerenciamento individual de sessões permite listar e encerrar uma sessão; a migração `20260917010000_add_auth_sessions` foi aplicada no banco configurado em 17/09/2026.
-
-Em 17/09/2026, o perfil acadêmico ganhou etapa de ensino, série/ano e escola/curso, editáveis no perfil e retornados pela API autenticada. A migração `20260918010000_add_academic_profile` foi aplicada no banco configurado.
-
-O perfil também permite informar curso desejado e universidade-alvo. O vestibular-alvo existente no cronograma agora pode ser consultado, editado e limpo na página de perfil, com data opcional. A migração `20260918020000_add_academic_goals` foi aplicada no banco configurado.
-
-As preferências de estudo incluem melhor período, duração desejada por sessão e quantidade de dias por semana. A migração `20260918030000_add_study_preferences` foi aplicada no banco configurado em 18/09/2026.
-
-As configurações da conta permitem trocar a senha local mediante confirmação da senha atual. A alteração revoga todas as sessões e exige novo login.
-
-Os tipos de conta são persistidos como aluno independente, aluno institucional, professor, coordenador, diretor ou administrador. O cadastro público permite somente aluno independente e professor; perfis institucionais e administrativos ficam reservados aos futuros fluxos de gestão e convites. A migração `20260918040000_add_account_types` foi aplicada no banco configurado em 18/09/2026.
-
-## Fase 2 — Controle de acesso — concluída
-
-Concluída em 18/09/2026 com infraestrutura RBAC reutilizável por workspace, gestão de cargos e permissões, consulta autenticada dos acessos efetivos e rotas protegidas. Workspaces pessoais concedem acesso de proprietário; workspaces institucionais exigem vínculo ativo e todas as permissões declaradas. Os escopos de turma e aluno validam coordenação, docência, matrícula ou permissão institucional sem expor alunos de outras turmas. O dashboard apresenta experiências distintas para estudante, professor, coordenador, diretor e administrador. A migração `20260918050000_seed_rbac_permissions` registra o catálogo inicial de permissões.
-
-## Atualização de 16/09/2026 — simulados
-
-- Implementado: professor pode criar turma e compartilhar código de ingresso; estudante pode entrar na turma.
-- Implementado: estudante cria simulado pessoal, professor cria simulado para sua turma, escolhendo de 1 a 90 questões do banco.
-- Implementado: lista de simulados disponíveis, prova imprimível e cartão-resposta com identificação do simulado, ordem estável e bolinhas para marcar.
-- Implementado: envio digital único por estudante, correção com gabarito preservado no simulado e resultado por questão com total de acertos.
-- Migrações `20260916010000_add_simulations` e `20260916020000_add_simulation_submissions` aplicadas no banco configurado em 16/09/2026.
-- Pendente: teste autenticado no navegador, leitura do cartão por câmera e analytics por turma/assunto.
-
-
-Atualizado em 26/08/2026 a partir do código, rotas, schema Prisma e testes do repositório.
-
-## Implementado
-
-- Autenticação: cadastro com e-mail/senha, login, Google OAuth, criação/vinculação de conta Google, recuperação e redefinição de senha, verificação e reenvio de e-mail, JWT e consulta da sessão.
-- Perfil: consulta e edição de nome, sobrenome, username, telefone, nascimento e bio; foto local com clique/drag and drop, recorte e compactação no navegador.
-- Banco de questões: cadastro, edição, exclusão, importação em lote por arquivo JSON/CSV com relatório, destino protegido para o banco central, deduplicação, alternativas, resposta e correção automática, estatísticas agregadas de acerto por questão, questões semelhantes rankeadas por proximidade e gabarito comentado por questão (campo "explicação" no formulário).
-- Catálogo educacional: disciplinas, assuntos, provas/vestibulares, ano, dificuldade e classificação estruturada.
-- Histórico de questões: tentativas, acertos/erros, tempo de resposta, favoritos, progresso e desempenho por disciplina/assunto.
-- Cronograma pessoal: vestibular-alvo, dias e tempo disponível, catálogo com 15 disciplinas do ENEM, divisão por matéria, sessões, tarefas, conclusão, reagendamento, sala exclusiva de cronômetro e progresso agregado.
-- Fundações institucionais no banco: instituições, workspaces, membros, cargos, permissões, turmas, professores e alunos.
-- Landing page pública e documentação Swagger da API.
-- Cálculo mental rápido: primeira implementação de interface e API com rodadas cronometradas, dificuldade adaptativa, desafio diário e histórico por conta. Ativação depende da migração do banco; detalhes em [Cálculo mental](docs/CALCULO_MENTAL.md).
-
-## Parcial
-
-- Redações: editor, temas, salvamento automático, histórico de versões e importação de texto UTF-8 com prévia. Migração aplicada no banco local em 15/09/2026; correção por IA/professor e scanner ainda pendentes.
-- Catálogo de propostas de redação do ENEM 2011–2025 e cadastro de professor com matéria para criação de conteúdo autoral pessoal. Consulte [Redações, professores e scanner](docs/REDAÇÕES_PROFESSORES_SCANNER.md); a migração desta etapa ainda depende da disponibilidade do PostgreSQL local.
-- Fase 3 — Painel do aluno — concluída: visão geral, notas e simulados pendentes, progresso por matéria e assunto/habilidade, metas acadêmicas, cronograma, atividades, recomendação determinística, históricos de estudos, questões, simulados e redações, tempo estudado e sequência de dias.
-- Fase 4 — Painel do professor — concluída: turmas e alunos, desempenho individual e geral, relatórios CSV, criação de atividades, listas, provas e simulados com prazo, correção automática, acompanhamento periódico das entregas, alertas pedagógicos e conteúdos com baixo desempenho.
-- Fase 5 — Painel do coordenador — concluída: visão institucional das turmas, comparação de desempenho, acompanhamento dos professores, relatórios pedagógicos e gestão de períodos letivos.
-- Fase 6 — Painel do diretor — concluída: indicadores institucionais, desempenho acadêmico, evolução mensal, relatório consolidado, gestão de usuários e visão estratégica.
-- LuminIA conversacional: interface flutuante autenticada, responsiva e com adaptador isolado pronta; ainda falta conectar o backend e o provedor de IA.
-- Cronograma adaptativo: há reorganização de tarefas perdidas, porém ainda não usa IA nem dificuldades acadêmicas para gerar/adaptar o plano.
-- Instituições: cadastro, convites (só para e-mail já cadastrado), transferência entre turmas e gestão de membros (painel do diretor) implementados; código de turma e períodos letivos já existiam. Falta convite para e-mail sem conta e tela dedicada de gestão de instituições. Edição/arquivamento de turmas já têm interface própria no item 8.
-- Provas antigas: o catálogo de exames e suas questões existe; faltam experiência de prova completa, cadernos, gabaritos e comparação entre provas.
-- Recomendações: os dados de desempenho necessários já são coletados; falta o motor adaptativo e a interface de recomendações.
-- Perfil: a foto local é armazenada como imagem compactada no perfil; armazenamento de objetos dedicado ainda não existe. Preferências de estudo possuem persistência e edição desde 18/09## AtualizaÃ§Ã£o de 26/09/2026 â€” itens 14, 15 e 16: Simulados com cronÃ´metro, modo prova real e simulado adaptativo
-
-Entrega vertical dos itens 14 (Simulados), 15 (Modo prova real) e 16 (Simulado adaptativo) do inventÃ¡rio. A base de simulados jÃ¡ existia (criaÃ§Ã£o, listagem, envio, correÃ§Ã£o, cartÃ£o-resposta); esta entrega acrescenta o cronÃ´metro, o modo "prova real" e o simulado adaptativo com algoritmo IRT simplificado.
-
-### Itens 14 e 15: CronÃ´metro e Modo Prova Real
-
-- **MigraÃ§Ã£o** 20260926211841_add_simulation_timer_real_exam:
-  - simulation.duration_minutes (Int, opcional): duraÃ§Ã£o em minutos
-  - simulation.is_real_exam (Boolean, default false): modo prova real
-  - simulation.started_at (DateTime): quando o aluno iniciou a resoluÃ§Ã£o
-  - simulation_item.area (String, opcional): Ã¡rea do conhecimento (estilo ENEM)
-
-- **Backend** (SimulationsService):
-  - CreateSimulationDto com durationMinutes (1â€“600) e isRealExam
-  - ValidaÃ§Ã£o: modo prova real exige duraÃ§Ã£o
-  - submit grava startedAt no submission
-  - submission devolve startedAt, 	imeSpentMinutes calculado, rea por item
-  - list/get expÃµem durationMinutes e isRealExam
-
-- **Frontend** (Simulations.tsx):
-  - CronÃ´metro visual (MM:SS) no header durante a resoluÃ§Ã£o
-  - **Modo prova real**: timer obrigatÃ³rio, badge vermelho, envio automÃ¡tico ao fim do tempo, botÃ£o manual desabilitado enquanto timer roda
-  - Ãrea do conhecimento exibida no cartÃ£o da questÃ£o (print + responder)
-  - FormulÃ¡rio de criaÃ§Ã£o: campos DuraÃ§Ã£o (min) e checkbox "Modo prova real"
-  - Lista de simulados mostra badges de duraÃ§Ã£o e "Prova real"
-  - Resultado inclui tempo gasto e hora de inÃ­cio
+- **Frontend** (`Simulations.tsx`):
+  - Cronômetro visual (MM:SS) no header durante a resolução
+  - **Modo prova real**: timer obrigatório, badge vermelho, envio automático ao fim do tempo, botão manual desabilitado enquanto timer roda
+  - Área do conhecimento exibida no cartão da questão (print + responder)
+  - Formulário de criação: campos Duração (min) e checkbox "Modo prova real"
+  - Lista de simulados mostra badges de duração e "Prova real"
+  - Resultado inclui tempo gasto e hora de início
 
 ### Item 16: Simulado Adaptativo (IRT simplificado)
 
-- **MigraÃ§Ã£o** 20260926213730_add_adaptive_simulation:
-  - daptive_simulation_sessions: userId, examId, status (IN_PROGRESS/COMPLETED/ABANDONED), estimatedAbility (0â€“1), skills (JSON por habilidade)
-  - daptive_simulation_steps: sessionId, userId, questionId, difficulty, skill, subSkill, selectedPosition, isCorrect, bilityBefore, bilityAfter, 	imeSpentSeconds
-  - AssessmentType.ADAPTIVE adicionado ao enum
+- **Migração** `20260926213730_add_adaptive_simulation`:
+  - `adaptive_simulation_sessions`: `userId`, `examId`, `status` (IN_PROGRESS/COMPLETED/ABANDONED), `estimatedAbility` (0–1), `skills` (JSON por habilidade)
+  - `adaptive_simulation_steps`: `sessionId`, `userId`, `questionId`, `difficulty`, `skill`, `subSkill`, `selectedPosition`, `isCorrect`, `abilityBefore`, `abilityAfter`, `timeSpentSeconds`
+  - `AssessmentType.ADAPTIVE` adicionado ao enum
 
-- **Backend** (AdaptiveSimulationService):
-  - start/examId â†’ cria sessÃ£o com bility = 0.5
-  - 
-extQuestion: escolhe questÃ£o cuja dificuldade mais aproxima da bility atual; prioriza habilidades nÃ£o testadas
-  - nswer: atualiza bility via IRT 1PL simplificado â€” bility += (isCorrect ? +1 : -1) * stepSize * (1 - difficultyFactor); grava step com bilityBefore/After
-  - CritÃ©rio de parada: 20 questÃµes OU 3 habilidades "fortes" (ability > 0.8, total â‰¥ 2) OU 3 "fracas" (ability < 0.2, total â‰¥ 2)
-  - summary: diagnÃ³stico com strongAreas, weakAreas, tabela por habilidade (acertos, total, precisÃ£o, ability)
-  - Endpoints: POST /adaptive/start, GET /adaptive/:id/next, POST /adaptive/:id/answer, POST /adaptive/:id/finish, POST /adaptive/:id/abandon, GET /adaptive/:id/summary, GET /adaptive
+- **Backend** (`AdaptiveSimulationService`):
+  - `start/examId` → cria sessão com `ability = 0.5`
+  - `nextQuestion`: escolhe questão cuja dificuldade mais aproxima da `ability` atual; prioriza habilidades não testadas
+  - `answer`: atualiza `ability` via IRT 1PL simplificado — `ability += (isCorrect ? +1 : -1) * stepSize * (1 - difficultyFactor)`; grava step com `abilityBefore/After`
+  - Critério de parada: 20 questões OU 3 habilidades "fortes" (ability > 0.8, total ≥ 2) OU 3 "fracas" (ability < 0.2, total ≥ 2)
+  - `summary`: diagnóstico com `strongAreas`, `weakAreas`, tabela por habilidade (acertos, total, precisão, ability)
+  - Endpoints: `POST /adaptive/start`, `GET /adaptive/:id/next`, `POST /adaptive/:id/answer`, `POST /adaptive/:id/finish`, `POST /adaptive/:id/abandon`, `GET /adaptive/:id/summary`, `GET /adaptive`
 
-- **Frontend** (AdaptiveSimulation.tsx):
-  - PÃ¡gina /app/simulados/adaptativo: lista de sessÃµes, nova sessÃ£o com examId opcional
-  - Durante a sessÃ£o: cronÃ´metro, questÃ£o atual com alternativas, habilidade e dificuldade visÃ­veis
-  - Feedback imediato: certo/errado + mudanÃ§a de ability
-  - DiagnÃ³stico final: pontos fortes, lacunas, tabela detalhada por habilidade
+- **Frontend** (`AdaptiveSimulation.tsx`):
+  - Página `/app/simulados/adaptativo`: lista de sessões, nova sessão com `examId` opcional
+  - Durante a sessão: cronômetro, questão atual com alternativas, habilidade e dificuldade visíveis
+  - Feedback imediato: certo/errado + mudança de ability
+  - Diagnóstico final: pontos fortes, lacunas, tabela detalhada por habilidade
 
-- **Testes**: suÃ­te backend **404 testes / 24 arquivos verdes**; app **4 checks verdes**; builds limpos nos dois projetos.
+- **Testes**: suíte backend **404 testes / 24 arquivos verdes**; app **4 checks verdes**; builds limpos nos dois projetos.
 
-## NÃ£o iniciadoesposta, câmera, visão computacional e correção física.
-- Explicações personalizadas da LuminIA integradas ao histórico acadêmico.
-- Correção de redações por IA/professor, competências, notas e evolução.
-- Administração interna da plataforma.
-- Exportação institucional em PDF/Excel e comparações históricas entre períodos.
-- Mapa de Domínio e Lumina Score.
-- Agenda/calendário unificado, lembretes e notificações.
-- Metas independentes, gamificação, XP, níveis, conquistas, streaks e desafios.
-- Planos, assinaturas, pagamentos e cobrança institucional.
-- Denúncias, suporte e gestão editorial completa dos conteúdos.
+## Atualização de 26/09/2026 — item 17: Scanner de gabarito
+
+Entrega vertical do item 17 do inventário. A base para correção de cartões-resposta físicos via foto/upload.
+
+- **Migração** `20260926215649_add_answer_sheet_scanner`:
+  - `answer_sheet_templates`: template de gabarito com `markersJson` (4 cantos) e `layoutJson` (bolhas por questão)
+  - `answer_sheet_uploads`: upload de imagem pelo aluno/professor, link com template e simulado
+  - `answer_sheet_processings`: resultado do OCR — `detectedAnswers`, `confidenceJson`, `warningsJson`, `totalQuestions`, `answeredCount`, `lowConfidenceCount`
+  - `answer_sheet_submissions`: submissão final linkada ao processing, com `finalAnswers` (após revisão humana), `correct`/`total`
+  - Enums: `AnswerSheetStatus`, `AnswerSheetProcessingStatus`
+  - Relações User: `answerSheetUploads`, `answerSheetSubmissions`, `answerSheetReviews`
+  - Relações Simulation: `answerSheetUploads`, `answerSheetSubmissions`
+
+- **Service** (`AnswerSheetService`):
+  - CRUD de templates, presigned URL, processamento assíncrono (simulado), detecção com confiança/warnings, auto-submissão, revisão humana, listagem/stats
+
+- **Controller**: 9 endpoints: templates CRUD, presigned URL, upload complete, listagem uploads/processamentos, review, stats
+
+- **Testes**: backend 404/24 ✓, app 4 checks ✓, builds limpos
+
+## Atualização de 26/09/2026 — item 18: Scanner de questões
+
+Entrega vertical do item 18 do inventário. Scanner de questões impressas: foto → OCR → classificação → LuminIA → questão oficial ou caderno de erros.
+
+- **Migração** `20260927001348_add_question_scanner`:
+  - `question_scan_uploads`: upload de imagem pelo aluno
+  - `question_scan_processings`: resultado OCR + classificação (`stemText`, `alternativesJson`, `subject`, `topic`, `difficulty`, `explanationJson`, `confidence`, `warningsJson`)
+  - `question_scan_results`: questão salva (pode virar questão oficial ou entrar no caderno de erros)
+  - Enums: `QuestionScanStatus`, `QuestionScanProcessingStatus`
+  - Relações: `User.questionScanUploads`, `User.questionScanResults`, `Question.scanResults`, `ErrorNotebookEntry.scanResults`
+
+- **Service** (`QuestionScanService`):
+  - Presigned upload URL
+  - Processamento assíncrono simulado: OCR + classificação disciplina/assunto/dificuldade + explicação LuminIA por alternativa
+  - Detecção de warnings (baixa confiança, resolução baixa, orientação)
+  - `saveAsQuestion`: cria questão oficial no banco (com `exam` opcional)
+  - `saveToErrorNotebook`: adiciona direto ao caderno de erros (`sourceType=IMPORTED`, `reason` opcional)
+  - Listagem/uploads/processing/stats
+
+- **Endpoints** (Controller):
+  - `POST /question-scans/upload-url` (presigned)
+  - `POST /question-scans/upload/:id/complete` (dispara processamento)
+  - `GET /question-scans/uploads`, `GET /question-scans/processing/:id`
+  - `POST /question-scans/processing/:id/save-question` (cria questão oficial)
+  - `POST /question-scans/processing/:id/save-error-notebook` (adiciona ao caderno)
+  - `GET /question-scans/stats`
+
+- **Testes**: backend 404/24 ✓, app 4 checks ✓, builds limpos
+
+- **Próximos passos**: worker real OCR (Tesseract/Sharp), LuminIA real para explicação, UI de revisão com canvas, buscar questões semelhantes
+
+## Não iniciado
+
+- Provas antigas (item 19): ENEM, vestibulares, UECE, filtro por ano/área, resolver online, gabarito, histórico, estatísticas
+- Redação (item 20): enviar/digitar/foto, salvamento automático, contagem palavras, correção por competências ENEM, feedback, evolução
+- LuminIA conversacional (itens 21-24): explicação de conteúdos, explicação de questões, modo socrático, recomendação de videoaulas
+- Scanner de cartão-resposta (item 17 completo, item 18 feito): worker real OCR (Tesseract/Sharp), LuminIA real para explicação, UI de revisão com canvas, buscar questões semelhantes
+- Mapa de Domínio e Lumina Score
+- Agenda/calendário unificado, lembretes e notificações
+- Metas independentes, gamificação, XP, níveis, conquistas, streaks e desafios
+- Planos, assinaturas, pagamentos e cobrança institucional
+- Denúncias, suporte e gestão editorial completa dos conteúdos
 
 ## Prioridade imediata: correções por captura e texto
 

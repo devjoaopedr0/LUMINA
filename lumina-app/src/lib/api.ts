@@ -486,6 +486,49 @@ export interface AdaptiveSessionSummaryDetail {
   startedAt: string;
   finishedAt: string | null;
 }
+
+// Question Scanner (item 18)
+export interface QuestionScanUploadUrlResponseDto {
+  uploadUrl: string;
+  uploadId: string;
+  key: string;
+  expiresIn: number;
+}
+export interface QuestionScanUploadResponseDto {
+  id: string;
+  userId: string;
+  fileUrl: string;
+  metaJson: any;
+  status: string;
+  createdAt: string;
+  processing?: QuestionScanProcessingResponseDto;
+}
+export interface QuestionScanProcessingResponseDto {
+  id: string;
+  uploadId: string;
+  stemText: string | null;
+  alternativesJson: any;
+  subject: string | null;
+  topic: string | null;
+  difficulty: string | null;
+  explanationJson: any;
+  confidence: number | null;
+  warningsJson: any;
+  status: string;
+  errorMessage: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+export interface QuestionScanUploadResponseDtoList {
+  id: string;
+  userId: string;
+  fileUrl: string;
+  metaJson: any;
+  status: string;
+  createdAt: string;
+  processing?: QuestionScanProcessingResponseDto;
+}
+
 export interface CoordinatorDashboard {
   workspaceId: string;
   summary: TeacherDashboard['summary'] & { teacherCount: number };
@@ -573,6 +616,15 @@ export const apiAdaptiveFinish = (token: string, id: string): Promise<void> => r
 export const apiAdaptiveAbandon = (token: string, id: string): Promise<void> => request(`/simulations/adaptive/${id}/abandon`, { method: 'POST', headers: authHeaders(token) });
 export const apiAdaptiveSummary = (token: string, id: string): Promise<AdaptiveSessionSummaryDetail> => request(`/simulations/adaptive/${id}/summary`, { headers: authHeaders(token) });
 export const apiAdaptiveList = (token: string): Promise<AdaptiveSessionSummary[]> => request('/simulations/adaptive', { headers: authHeaders(token) });
+
+// Question Scanner (item 18)
+export const apiQuestionScanPresignedUpload = (token: string, dto: { contentType: string }): Promise<QuestionScanUploadUrlResponseDto> => request('/simulations/question-scans/upload-url', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+export const apiQuestionScanCompleteUpload = (token: string, id: string, dto: { fileUrl: string; width: number; height: number; sizeBytes: number }): Promise<QuestionScanUploadResponseDto> => request(`/simulations/question-scans/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+export const apiListQuestionScanUploads = (token: string): Promise<QuestionScanUploadResponseDto[]> => request('/simulations/question-scans/uploads', { headers: authHeaders(token) });
+export const apiGetQuestionScanProcessing = (token: string, id: string): Promise<QuestionScanProcessingResponseDto> => request(`/simulations/question-scans/processing/${id}`, { headers: authHeaders(token) });
+export const apiSaveQuestionScanAsQuestion = (token: string, processingId: string, dto: any): Promise<any> => request(`/simulations/question-scans/processing/${processingId}/save-question`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+export const apiSaveQuestionScanToErrorNotebook = (token: string, processingId: string, dto: any): Promise<any> => request(`/simulations/question-scans/processing/${processingId}/save-error-notebook`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+export const apiQuestionScanStats = (token: string): Promise<any> => request('/simulations/question-scans/stats', { headers: authHeaders(token) });
 
 export function apiListQuestions(
   accessToken: string,
