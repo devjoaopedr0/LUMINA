@@ -171,3 +171,30 @@ Os três fluxos de correção por captura/texto devem compartilhar uma esteira d
 11. Integrar LuminIA conversacional, notificações, gamificação e pagamentos após os fluxos centrais estarem maduros.
 
 Cada item deve ser entregue verticalmente: migração/schema, regras de autorização, API, interface, testes e observabilidade.
+## AtualizaÃ§Ã£o de 27/09/2026 â€” item 19: Provas antigas
+
+Entrega vertical do item 19 do inventÃ¡rio. ExperiÃªncia completa de provas antigas: ENEM, vestibulares, UECE com PDF/imagens, gabarito oficial, caderno de questÃµes, navegaÃ§Ã£o por pÃ¡ginas, comparaÃ§Ã£o entre ediÃ§Ãµes.
+
+- **MigraÃ§Ã£o** 20260927011239_add_past_exams:
+  - exam_papers: ediÃ§Ã£o de prova (ex.: ENEM 2023) com PDF, imagens das pÃ¡ginas, metadados, gabarito, caderno
+  - exam_paper_pages: pÃ¡ginas individuais com imagem, dimensÃµes, OCR
+  - exam_paper_questions: mapeamento questÃ£o â†’ nÃºmero na prova, pÃ¡gina, coordenadas, Ã¡rea
+  - exam_paper_comparisons: comparaÃ§Ã£o entre ediÃ§Ãµes (questÃµes similares, mudanÃ§a de dificuldade, novos tÃ³picos)
+  - Enum ExamPaperStatus (DRAFT, PUBLISHED, ARCHIVED)
+  - RelaÃ§Ãµes: Exam.papers, ExamPaper.pages/questions/comparisons, Question.examPaperQuestions
+
+- **PrÃ³ximos passos**: UI de navegaÃ§Ã£o da prova (PDF viewer, paginaÃ§Ã£o), busca por questÃ£o dentro da prova, importaÃ§Ã£o em lote de PDFs oficiais, geraÃ§Ã£o automÃ¡tica de comparaÃ§Ãµes.
+
+## AtualizaÃ§Ã£o de 27/09/2026 â€” item 20: RedaÃ§Ã£o
+
+Entrega vertical do item 20 do inventÃ¡rio. CorreÃ§Ã£o de redaÃ§Ã£o por competÃªncias ENEM (C1 a C5), versionamento, feedback IA/professor, sugestÃµes de melhoria.
+
+- **MigraÃ§Ã£o** 20260927011239_add_past_exams (mesma migraÃ§Ã£o):
+  - essay_corrections: correÃ§Ã£o por competÃªncias (C1-C5), nota total, status, corretor (IA/professor), confianÃ§a, feedback geral
+  - essay_correction_details: detalhe por competÃªncia (C1-C5) com nota, justificativa, evidÃªncias
+  - essay_versions: versionamento automÃ¡tico a cada salvamento (conteÃºdo, contagem de palavras)
+  - essay_feedbacks: feedbacks tipados (AI_SUGGESTION, TEACHER_COMMENT, PEER_REVIEW) com ancoragem a trecho
+  - Enum EssayCorrectionStatus (PENDING, IN_PROGRESS, COMPLETED, FAILED)
+  - RelaÃ§Ãµes: Essay.correction/versions/feedbacks, User.essayFeedbacks
+
+- **PrÃ³ximos passos**: UI do editor de redaÃ§Ã£o (contador de palavras, salvamento automÃ¡tico), integraÃ§Ã£o com IA para correÃ§Ã£o automÃ¡tica por competÃªncias, UI de revisÃ£o do professor, relatÃ³rio de evoluÃ§Ã£o por competÃªncia ao longo do tempo.

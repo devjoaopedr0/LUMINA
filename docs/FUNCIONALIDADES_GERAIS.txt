@@ -203,7 +203,7 @@
     -  Explicação pela LuminIA
     -  Buscar questões semelhantes
     -  Adicionar ao caderno de estudos
-19. 19. Provas anteriores [PRÓXIMO ITEM]
+19. 19. Provas anteriores [INTEGRADA EM 27/09/2026 - MIGRAÇÃO E MODELOS; UI PENDENTE]
     -  ENEM
     -  Vestibulares
     -  UECE
@@ -213,7 +213,7 @@
     -  Gabarito
     -  Histórico
     -  Estatísticas
-20. 20. Redação [PENDENTE]
+20. 20. Redação [INTEGRADA EM 27/09/2026 - CORREÇÃO POR COMPETÊNCIAS, VERSIONAMENTO, FEEDBACK; UI PENDENTE]
     -  Enviar redação
     -  Digitar redação na plataforma
     -  Upload de foto

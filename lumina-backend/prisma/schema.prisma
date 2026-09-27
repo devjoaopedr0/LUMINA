@@ -51,6 +51,7 @@ model User {
   answerSheetReviews       AnswerSheetSubmission[] @relation("AnswerSheetReview")
   questionScanUploads      QuestionScanUpload[]
   questionScanResults      QuestionScanResult[]
+  essayFeedbacks           EssayFeedback[] @relation("EssayFeedbackAuthor")
 
   @@map("users")
 }
@@ -84,17 +85,20 @@ model MentalMathSession {
 }
 
 model Essay {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  title     String   @default("") @db.VarChar(160)
-  theme     String   @default("") @db.VarChar(300)
-  content   String   @default("")
-  version   Int      @default(0)
-  wordCount Int      @default(0) @map("word_count")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  revisions EssayRevision[]
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  title           String   @default("") @db.VarChar(160)
+  theme           String   @default("") @db.VarChar(300)
+  content         String   @default("")
+  version         Int      @default(0)
+  wordCount       Int      @default(0) @map("word_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions       EssayRevision[]
+  correction      EssayCorrection?
+  versions        EssayVersion[]
+  feedbacks       EssayFeedback[]
 
   @@index([userId, updatedAt])
   @@map("essays")
@@ -437,6 +441,7 @@ model Exam {
   questions   Question[] @relation("QuestionExam")
   userVestibulares    UserVestibular[]
   adaptiveSessions    AdaptiveSimulationSession[]
+  papers        ExamPaper[]
 
   @@index([name, year])
   @@map("exams")
@@ -485,6 +490,7 @@ model Question {
   errorNotebook    ErrorNotebookEntry[]
   adaptiveSteps    AdaptiveSimulationStep[]
   scanResults      QuestionScanResult[]
+  examPaperQuestions ExamPaperQuestion[]
 
   @@index([workspaceId])
   @@index([workspaceId, subject])
@@ -1209,6 +1215,201 @@ enum QuestionScanStatus {
 
 enum QuestionScanProcessingStatus {
   PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// =============================================================================
+// Item 19: Provas antigas — Experiência completa de prova
+// =============================================================================
+
+/// Edição de uma prova (ex.: ENEM 2023, FUVEST 2024). Uma prova pode ter
+/// várias edições (anos). Contém metadados, PDF/imagens e gabarito oficial.
+model ExamPaper {
+  id              String        @id @default(uuid()) @db.Uuid
+  examId          String        @map("exam_id") @db.Uuid
+  exam            Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  year            Int
+  /** PDF completo da prova (storage URL). */
+  pdfUrl          String?
+  /** Imagens das páginas (storage URLs). */
+  pageImagesJson  Json?
+  /** Metadados: { totalPages, hasGabarito, hasCaderno, sourceUrl }. */
+  metadataJson    Json?
+  /** Gabarito oficial: { questionNumber: correctPosition }. */
+  gabaritoJson    Json?
+  /** Caderno de questões (separado do gabarito). */
+  cadernoJson     Json?
+  status          ExamPaperStatus @default(DRAFT)
+  publishedAt     DateTime?     @map("published_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  pages           ExamPaperPage[]
+  questions       ExamPaperQuestion[]
+  baseComparisons    ExamPaperComparison[] @relation("ComparisonBase")
+  compareComparisons ExamPaperComparison[] @relation("ComparisonCompare")
+
+  @@unique([examId, year])
+  @@index([examId, year])
+  @@map("exam_papers")
+}
+
+/// Página individual de uma prova (para navegação e zoom).
+model ExamPaperPage {
+  id            String   @id @default(uuid()) @db.Uuid
+  paperId       String   @map("paper_id") @db.Uuid
+  paper         ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  pageNumber    Int
+  /** URL da imagem da página (storage). */
+  imageUrl      String
+  /** Dimensões: { width, height }. */
+  dimensionsJson Json?
+  /** OCR/text extraído da página (para busca). */
+  textContent   String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([paperId, pageNumber])
+  @@index([paperId])
+  @@map("exam_paper_pages")
+}
+
+/// Mapeamento de questões para posições nas páginas da prova.
+model ExamPaperQuestion {
+  id            String   @id @default(uuid()) @db.Uuid
+  paperId       String   @map("paper_id") @db.Uuid
+  paper         ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  questionId    String   @map("question_id") @db.Uuid
+  question      Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /** Número da questão na prova (1, 2, 3...). */
+  number        Int
+  /** Página onde a questão aparece. */
+  pageNumber    Int
+  /** Coordenadas normalizadas (0-1) da questão na página: { x, y, width, height }. */
+  boundsJson    Json?
+  /** Área do conhecimento (ex.: "Matemática e suas Tecnologias"). */
+  area          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([paperId, number])
+  @@index([paperId, pageNumber])
+  @@map("exam_paper_questions")
+}
+
+/// Comparação entre edições da mesma prova (ex.: ENEM 2022 vs 2023).
+model ExamPaperComparison {
+  id              String   @id @default(uuid()) @db.Uuid
+  basePaperId     String   @map("base_paper_id") @db.Uuid
+  basePaper       ExamPaper @relation("ComparisonBase", fields: [basePaperId], references: [id], onDelete: Cascade)
+  comparePaperId  String   @map("compare_paper_id") @db.Uuid
+  comparePaper    ExamPaper @relation("ComparisonCompare", fields: [comparePaperId], references: [id], onDelete: Cascade)
+  /** Tipo: SIMILAR_QUESTIONS, DIFFICULTY_SHIFT, TOPIC_CHANGE, NEW_TOPICS. */
+  type            String
+  /** Detalhes da comparação (JSON). */
+  detailsJson     Json
+  similarityScore Float?  @map("similarity_score")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([basePaperId, comparePaperId])
+  @@index([basePaperId])
+  @@index([comparePaperId])
+  @@map("exam_paper_comparisons")
+}
+
+enum ExamPaperStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// =============================================================================
+// Item 20: Redação — Correção por competências ENEM
+// =============================================================================
+
+/// Correção de uma redação por competências (ENEM: C1 a C5).
+model EssayCorrection {
+  id              String   @id @default(uuid()) @db.Uuid
+  essayId         String   @unique @map("essay_id") @db.Uuid
+  essay           Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  /** Correção por competência (C1 a C5): { C1: 200, C2: 180, C3: 160, C4: 140, C5: 120 }. */
+  competenciesJson Json
+  /** Nota total (soma das competências, máx 1000). */
+  totalScore      Int
+  /** Status da correção. */
+  status          EssayCorrectionStatus @default(PENDING)
+  /** Corretor (IA ou professor). */
+  correctedBy     String?  @map("corrected_by")
+  /** Correção feita por IA. */
+  isAiCorrection  Boolean  @default(false) @map("is_ai_correction")
+  /** Confiança da correção (0-1). */
+  confidence      Float?
+  /** Comentários gerais. */
+  generalFeedback String?  @map("general_feedback")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  details         EssayCorrectionDetail[]
+
+  @@map("essay_corrections")
+}
+
+/// Detalhe por competência com justificativa.
+model EssayCorrectionDetail {
+  id              String   @id @default(uuid()) @db.Uuid
+  correctionId    String   @map("correction_id") @db.Uuid
+  correction      EssayCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+  /** Competência: C1, C2, C3, C4, C5. */
+  competency      String
+  /** Nota da competência (0-200). */
+  score           Int
+  /** Justificativa da nota. */
+  justification   String?
+  /** Exemplos de trechos da redação que fundamentam a nota. */
+  evidenceJson    Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([correctionId, competency])
+  @@index([correctionId])
+  @@map("essay_correction_details")
+}
+
+/// Versão de uma redação (histórico de edições).
+model EssayVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  essayId     String   @map("essay_id") @db.Uuid
+  essay       Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  version     Int
+  content     String
+  wordCount   Int      @map("word_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   String   @map("created_by") @db.Uuid
+
+  @@unique([essayId, version])
+  @@index([essayId])
+  @@map("essay_versions")
+}
+
+/// Feedback (IA ou professor) sobre uma redação.
+model EssayFeedback {
+  id            String   @id @default(uuid()) @db.Uuid
+  essayId       String   @map("essay_id") @db.Uuid
+  essay         Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  /** Tipo: AI_SUGGESTION, TEACHER_COMMENT, PEER_REVIEW. */
+  type          String
+  /** Autor do feedback (se professor/peer). */
+  authorId      String?  @map("author_id") @db.Uuid
+  author        User?    @relation("EssayFeedbackAuthor", fields: [authorId], references: [id])
+  /** Conteúdo do feedback. */
+  content       String
+  /** Referência a trecho específico (opcional). */
+  anchorJson    Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([essayId, createdAt])
+  @@map("essay_feedbacks")
+}
+
+enum EssayCorrectionStatus {
+  PENDING
+  IN_PROGRESS
   COMPLETED
   FAILED
 }
