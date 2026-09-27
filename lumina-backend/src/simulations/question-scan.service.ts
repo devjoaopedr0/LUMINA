@@ -341,7 +341,8 @@ export class QuestionScanService {
     await this.questionAccess.getPersonalWorkspaceOrThrow(userId);
     return this.prisma.questionScanUpload.findMany({
       where: { userId },
-      include: { processing: true, result: true },
+      // `result` é relação do processing (1:1), não do upload.
+      include: { processing: { include: { result: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
