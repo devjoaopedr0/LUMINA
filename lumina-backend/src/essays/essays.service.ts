@@ -68,4 +68,56 @@ export class EssaysService {
     if (!revision) throw new NotFoundException('Versão não encontrada.');
     return revision;
   }
+
+  /** Biblioteca de redações nota 1000 oficiais (ENEM/vestibulares) — item 23.
+   * Conteúdo curado/público, sem vínculo com usuário: qualquer autenticado
+   * pode consultar, igual ao banco de temas (EssayTheme). */
+  async listEssayModels(filters: { year?: number; exam?: string; theme?: string; page: number; limit: number }) {
+    const where = {
+      ...(filters.year ? { year: filters.year } : {}),
+      ...(filters.exam ? { exam: { contains: filters.exam, mode: 'insensitive' as const } } : {}),
+      ...(filters.theme ? { theme: { contains: filters.theme, mode: 'insensitive' as const } } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.essayModel.findMany({
+        where,
+        orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+      }),
+      this.prisma.essayModel.count({ where }),
+    ]);
+    return {
+      items: items.map((item) => this.toEssayModelResponse(item)),
+      total,
+      page: filters.page,
+      limit: filters.limit,
+      totalPages: Math.max(1, Math.ceil(total / filters.limit)),
+    };
+  }
+
+  async getEssayModel(id: string) {
+    const model = await this.prisma.essayModel.findUnique({ where: { id } });
+    if (!model) throw new NotFoundException('Modelo de redação não encontrado.');
+    return this.toEssayModelResponse(model);
+  }
+
+  private toEssayModelResponse(model: {
+    id: string; year: number; exam: string; theme: string; text: string;
+    competenciesJson: unknown; totalScore: number; pdfUrl: string | null;
+    highlightsJson: unknown; createdAt: Date;
+  }) {
+    return {
+      id: model.id,
+      year: model.year,
+      exam: model.exam,
+      theme: model.theme,
+      text: model.text,
+      competencies: model.competenciesJson as { C1: number; C2: number; C3: number; C4: number; C5: number },
+      totalScore: model.totalScore,
+      pdfUrl: model.pdfUrl,
+      highlights: model.highlightsJson as { C1: string; C2: string; C3: string; C4: string; C5: string } | null,
+      createdAt: model.createdAt,
+    };
+  }
 }

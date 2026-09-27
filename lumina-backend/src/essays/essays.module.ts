@@ -39,6 +39,20 @@ export class EssaysController {
     if (version < 1 || version > 2147483647) throw new BadRequestException('Versão inválida.');
     return this.service.revision(user.id, id, version);
   }
+  @Get('models/list')
+  listEssayModels(
+    @Query('year', new ParseIntPipe({ optional: true })) year?: number,
+    @Query('exam') exam?: string,
+    @Query('theme') theme?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
+  ) {
+    return this.service.listEssayModels({ year, exam, theme, page: checkPage(page), limit: Math.min(50, Math.max(1, limit)) });
+  }
+  @Get('models/:id')
+  getEssayModel(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getEssayModel(id);
+  }
 }
 
 @Module({ controllers: [EssaysController], providers: [EssaysService] })
