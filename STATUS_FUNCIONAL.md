@@ -198,3 +198,76 @@ Entrega vertical do item 20 do inventÃ¡rio. CorreÃ§Ã£o de redaÃ§Ã£o po
   - RelaÃ§Ãµes: Essay.correction/versions/feedbacks, User.essayFeedbacks
 
 - **PrÃ³ximos passos**: UI do editor de redaÃ§Ã£o (contador de palavras, salvamento automÃ¡tico), integraÃ§Ã£o com IA para correÃ§Ã£o automÃ¡tica por competÃªncias, UI de revisÃ£o do professor, relatÃ³rio de evoluÃ§Ã£o por competÃªncia ao longo do tempo.
+
+## Atualização de 27/09/2026 — itens 21, 22 e 23 (cadernos e modelos de redação)
+
+Fechamento dos itens 21, 22 e 23 do inventário, com o app inteiro de pé
+(backend 3001 + frontend 5174) e as páginas novas validadas no navegador.
+
+### Item 21 — Caderno de fórmulas
+
+- **Migração** 20260927232158_add_formulas_repertoires:
+  - formulas: expressão em LaTeX, disciplina, assunto, anotação pessoal, favorito
+  - Relação User.formulas (onDelete: Cascade)
+  - Índices por (userId, discipline) e (userId, isFavorite)
+- **API** `GET/POST /formulas`, `GET/PATCH/DELETE /formulas/:id`
+  - Toda leitura/edição filtra por (id, userId): intruso leva 404, sem vazar existência
+  - DTOs com `whitelist`/`forbidNonWhitelisted`: disciplina fora da lista é
+    recusada e assunto em branco é normalizado para nulo
+- **Interface** `/app/caderno-formulas`: formulário, edição em linha, favoritos,
+  busca por nome/LaTeX/assunto, filtro por disciplina, item de menu na lateral
+- **Testes** 5 casos (padrão, validação, update parcial, intruso, exclusão)
+
+### Item 22 — Caderno de repertórios
+
+- **Migração** 20260927232158_add_formulas_repertoires (mesma migração):
+  - repertoires: título, resumo, fonte, ano, tema, palavras-chave, dominado
+  - Relação User.repertoires (onDelete: Cascade)
+  - Índices por (userId, theme) e (userId, isStudied)
+- **API** `GET/POST /repertoires`, `GET/PATCH/DELETE /repertoires/:id`
+  - Palavras-chave normalizadas (minúsculas, sem duplicata, teto de 20)
+- **Interface** `/app/caderno-repertorio`: chips de palavra-chave com Enter,
+  filtro por tema, marcação de dominado, item de menu na lateral
+- **Testes** 4 casos (padrão, validação, dominado, intruso)
+
+### Item 23 — Modelos de redação nota mil
+
+- **Migração** 20260927120000_add_essay_models: essay_models (exame, ano, tema,
+  texto, nota por competência, total, PDF, destaques)
+- **API** `GET /essays/models/list` (filtro por ano/exame/tema, paginado),
+  `GET /essays/models/:id`
+- **Interface** `/app/redacoes/modelos`: lista com nota por competência, detalhe
+  com o texto e as anotações por competência, comparação lado a lado com a
+  redação do aluno, link para o PDF oficial, item de menu na lateral
+- **Testes** cobertos pela suíte de essays (biblioteca pública, sem vínculo com usuário)
+
+### Item 19 (complemento) — Provas anteriores
+
+- **API** `GET /exam-papers`, `/exam-papers/:id`, `/exam-papers/:id/pages`,
+  `/exam-papers/:id/questions`, `/exam-papers/compare?baseId=&compareId=`
+  - Movidas para o QuestionCatalogService (tinham ficado com um controller
+    duplicado em /notebooks, sem a checagem de workspace)
+  - `compare` mede a repetição de questões entre duas edições do mesmo vestibular
+  - Prova não publicada responde 404, como se não existisse
+- **Interface** `/app/provas-antigas`: lista, páginas, questões mapeadas e o
+  bloco de comparação entre edições
+
+### Correções
+
+- `QuestionScanService.listUploads` pedia `result` como relação do upload, mas
+  ela é do processing: a rota devolvia 500. Agora aninha
+  `processing: { include: { result: true } }`
+- Scanner de gabarito chamava `/api/simulations` (prefixo inexistente, 404 no
+  console). Passa a usar o cliente `apiSimulations`
+- Tipos de `api.ts` alinhados ao schema real (markersJson é objeto indexado
+  por nome, e não array; detectedAnswers/confidenceJson com chave string)
+- `NEEDS_REVIEW` pertence ao status do upload, não do processing: a tela de
+  revisão do gabarito passou a ler o upload
+
+### Estado da suíte
+
+- Backend: 426 testes / 27 arquivos, typecheck limpo
+- Frontend: build (tsc -b + vite build) limpo, oxlint sem erros,
+  4 checks de node verdes
+- Validação visual (Playwright): 7 páginas carregadas sem erro de console nem
+  HTTP 4xx/5xx; CRUD completo de fórmula e de repertório exercitado no navegador

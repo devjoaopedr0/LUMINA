@@ -230,7 +230,35 @@
     -  Treino de desenvolvimento
     -  Treino de conclusão
     -  Treino de projeto de texto
-21. 21. LuminIA — explicação de conteúdos
+21. 21. Caderno de fórmulas
+    -  Fórmulas organizadas por disciplina (Matemática, Física, Química, Biologia)
+    -  Fórmulas organizadas por assunto/tópico
+    -  Busca por nome da fórmula ou palavra-chave
+    -  Visualização com LaTeX renderizado
+    -  Adicionar anotações pessoais a cada fórmula
+    -  Marcar fórmulas como favoritas/dominadas
+    -  Filtrar por disciplina/assunto
+    -  Exportar para PDF para impressão
+    -  Sincronização com caderno de erros (fórmulas relacionadas a erros)
+22. 22. Caderno de repertórios
+    -  Repertórios socioculturais organizados por tema (ex.: tecnologia, meio ambiente, saúde, política)
+    -  Cada repertório com: título, resumo, palavras-chave, fonte, ano
+    -  Busca por tema, palavra-chave ou ano
+    -  Marcar repertórios como estudados/dominados
+    -  Associação automática com temas de redação do ENEM
+    -  Sugestão de repertórios baseada no tema da redação em escrita
+    -  Contador de repertórios por tema
+    -  Exportar para PDF
+23. 23. Modelos de redação nota mil para estudo
+    -  Redações oficiais nota 1000 do ENEM (2009-presente) com tema, texto e competências
+    -  Redações nota 1000 de vestibulares (FUVEST, UNICAMP, etc.)
+    -  Análise por competência (C1 a C5) com nota individual
+    -  Destaque para elementos estruturais: tese, argumentos, conectivos, proposta de intervenção
+    -  Filtro por ano, tema, vestibular
+    -  Comparação lado a lado: redação do aluno vs modelo nota mil
+    -  Análise automática: "O que a nota mil tem que a sua não tem?" (por competência)
+    -  Download do PDF original oficial
+24. 24. LuminIA — explicação de conteúdos
     -  Explicar qualquer conteúdo escolar
     -  Explicação resumida
     -  Explicação completa
