@@ -37,6 +37,8 @@ export class AiService {
         return this.callOpenAI(message, history);
       case 'anthropic':
         return this.callAnthropic(message, history);
+      case 'groq':
+        return this.callGroq(message, history);
       case 'mock':
       default:
         return this.mockResponse(message, history);
@@ -185,5 +187,51 @@ export class AiService {
 - Não invente fatos; se não souber, diga que não sabe.
 - Não forneça respostas de questões de prova atuais (ética).
 - Para redação, use as competências do ENEM (C1 a C5).`;
+  }
+
+  /**
+   * Groq (Llama 3.1, Mixtral, Gemma — API compatível OpenAI, grátis e rápido).
+   */
+  private async callGroq(
+    message: AiChatMessageDto,
+    history: AiChatMessageDto[],
+  ): Promise<AiChatResponseDto> {
+    const apiKey = this.config.get<string>('GROQ_API_KEY');
+    const model = this.config.get<string>('GROQ_MODEL') || 'llama-3.1-70b-versatile';
+
+    if (!apiKey) {
+      throw new BadRequestException('GROQ_API_KEY não configurada no ambiente.');
+    }
+
+    const messages: ProviderMessage[] = [
+      { role: 'system', content: this.getSystemPrompt() },
+      ...history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message.content },
+    ];
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.7,
+        max_tokens: 800,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new BadRequestException(`Erro Groq: ${response.status} ${JSON.stringify(err)}`);
+    }
+
+    const data = (await response.json()) as {
+      choices: { message: { content: string } }[];
+    };
+
+    return { message: data.choices[0]?.message?.content?.trim() ?? 'Sem resposta.' };
   }
 }
