@@ -49,6 +49,8 @@ model User {
   answerSheetUploads       AnswerSheetUpload[]
   answerSheetSubmissions   AnswerSheetSubmission[]
   answerSheetReviews       AnswerSheetSubmission[] @relation("AnswerSheetReview")
+  questionScanUploads      QuestionScanUpload[]
+  questionScanResults      QuestionScanResult[]
 
   @@map("users")
 }
@@ -482,6 +484,7 @@ model Question {
   progress         UserQuestionProgress[]
   errorNotebook    ErrorNotebookEntry[]
   adaptiveSteps    AdaptiveSimulationStep[]
+  scanResults      QuestionScanResult[]
 
   @@index([workspaceId])
   @@index([workspaceId, subject])
@@ -683,6 +686,7 @@ model ErrorNotebookEntry {
   updatedAt          DateTime            @updatedAt @map("updated_at")
   question           Question            @relation(fields: [questionId], references: [id], onDelete: Cascade)
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanResults        QuestionScanResult[]
 
   @@unique([userId, questionId])
   @@index([userId, status])
@@ -1119,4 +1123,92 @@ enum AdaptiveSessionStatus {
   IN_PROGRESS
   COMPLETED
   ABANDONED
+}
+
+/// Upload de imagem de questão impressa (item 18 do inventário).
+model QuestionScanUpload {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** URL do arquivo original (storage). */
+  fileUrl      String
+  /** Metadados da imagem: { width, height, mimeType, sizeBytes }. */
+  metaJson     Json
+  status       QuestionScanStatus @default(PENDING)
+  /** Processamento associado (1:1 quando concluído). */
+  processing   QuestionScanProcessing?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("question_scan_uploads")
+}
+
+/// Resultado do processamento OCR/IA de uma questão.
+model QuestionScanProcessing {
+  id              String   @id @default(uuid()) @db.Uuid
+  uploadId        String   @unique @map("upload_id") @db.Uuid
+  upload          QuestionScanUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  /** Texto extraído do enunciado (OCR). */
+  stemText        String?
+  /** Alternativas extraídas: [{ position: 1, text: "..." }, ...]. */
+  alternativesJson Json?
+  /** Disciplina identificada (ex.: "Matemática", "Física"). */
+  subject         String?
+  /** Assunto identificado (ex.: "Funções exponenciais", "Termodinâmica"). */
+  topic           String?
+  /** Dificuldade estimada. */
+  difficulty      QuestionDifficulty?
+  /** Explicação gerada pela LuminIA (por alternativa ou geral). */
+  explanationJson Json?
+  /** Confiança global do processamento (0.0-1.0). */
+  confidence      Float?
+  /** Alertas: texto cortado, alternativas incompletas, baixa confiança OCR. */
+  warningsJson    Json?
+  status          QuestionScanProcessingStatus @default(PROCESSING)
+  errorMessage    String?
+  startedAt       DateTime  @default(now()) @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  result          QuestionScanResult?
+
+  @@map("question_scan_processings")
+}
+
+/// Questão salva a partir do scanner — pode virar questão do banco ou entrar no caderno de erros.
+model QuestionScanResult {
+  id                  String   @id @default(uuid()) @db.Uuid
+  processingId        String   @unique @map("processing_id") @db.Uuid
+  processing          QuestionScanProcessing @relation(fields: [processingId], references: [id], onDelete: Cascade)
+  userId              String   @map("user_id") @db.Uuid
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** Se virou questão oficial do banco. */
+  questionId          String?  @map("question_id") @db.Uuid
+  question            Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  /** Se entrou no caderno de erros. */
+  errorNotebookEntryId String?  @map("error_notebook_entry_id") @db.Uuid
+  errorNotebookEntry  ErrorNotebookEntry? @relation(fields: [errorNotebookEntryId], references: [id], onDelete: SetNull)
+  /** Dados finais salvos (pode ter sido editado pelo usuário). */
+  finalStem           String
+  finalAlternatives   Json
+  finalSubject        String
+  finalTopic          String
+  finalDifficulty     QuestionDifficulty
+  finalExplanation    Json?
+  savedAt             DateTime @default(now()) @map("saved_at")
+
+  @@index([userId, savedAt])
+  @@map("question_scan_results")
+}
+
+enum QuestionScanStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum QuestionScanProcessingStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
 }

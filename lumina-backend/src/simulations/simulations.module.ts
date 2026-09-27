@@ -8,6 +8,7 @@ import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateCl
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
 import { AnswerSheetService } from './answer-sheet.service';
+import { QuestionScanService } from './question-scan.service';
 
 @ApiTags('simulations')
 @ApiBearerAuth()
@@ -18,6 +19,7 @@ export class SimulationsController {
     private readonly service: SimulationsService,
     private readonly adaptiveService: AdaptiveSimulationService,
     private readonly answerSheetService: AnswerSheetService,
+    private readonly questionScanService: QuestionScanService,
   ) {}
   @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
@@ -63,7 +65,17 @@ export class SimulationsController {
   @Get('answer-sheets/processing/:id') getProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.getProcessing(user.id, id); }
   @Post('answer-sheets/processing/:id/review') reviewProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { finalAnswers: Record<number, number> }) { return this.answerSheetService.reviewProcessing(user.id, id, dto.finalAnswers); }
   @Get('answer-sheets/stats') getStats(@CurrentUser() user: UserWithProfile) { return this.answerSheetService.getStats(user.id); }
-}
 
-@Module({ imports: [QuestionsModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService] })
+  // Question Scanner endpoints (item 18)
+  @Post('question-scans/upload-url') questionScanPresignedUpload(@CurrentUser() user: UserWithProfile, @Body() dto: { contentType: string }) { return this.questionScanService.createPresignedUpload(user.id, dto); }
+  @Post('question-scans/upload/:id/complete') questionScanCompleteUpload(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { fileUrl: string; width: number; height: number; sizeBytes: number }) { return this.questionScanService.completeUpload(id, dto.fileUrl, { width: dto.width, height: dto.height, sizeBytes: dto.sizeBytes }); }
+  @Get('question-scans/uploads') listQuestionScanUploads(@CurrentUser() user: UserWithProfile) { return this.questionScanService.listUploads(user.id); }
+  @Get('question-scans/processing/:id') getQuestionScanProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.questionScanService.getProcessing(user.id, id); }
+  @Get('question-scans/stats') questionScanStats(@CurrentUser() user: UserWithProfile) { return this.questionScanService.getStats(user.id); }
+
+  // Salvar resultado do scanner
+  @Post('question-scans/processing/:id/save-question') saveQuestionScanAsQuestion(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveAsQuestion(user.id, id, dto); }
+  @Post('question-scans/processing/:id/save-error-notebook') saveQuestionScanToErrorNotebook(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveToErrorNotebook(user.id, id, dto); }
+}
+@Module({ imports: [QuestionsModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService, QuestionScanService] })
 export class SimulationsModule {}
