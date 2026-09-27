@@ -498,35 +498,36 @@ export interface QuestionScanUploadResponseDto {
   id: string;
   userId: string;
   fileUrl: string;
-  metaJson: any;
+  metaJson: { width: number; height: number; mimeType?: string; sizeBytes: number };
   status: string;
   createdAt: string;
-  processing?: QuestionScanProcessingResponseDto;
+  processing?: QuestionScanProcessingResponseDto | null;
 }
 export interface QuestionScanProcessingResponseDto {
   id: string;
   uploadId: string;
   stemText: string | null;
-  alternativesJson: any;
+  alternativesJson: { position: number; text: string }[] | null;
   subject: string | null;
   topic: string | null;
   difficulty: string | null;
-  explanationJson: any;
+  explanationJson: Record<string, string> | null;
   confidence: number | null;
-  warningsJson: any;
+  warningsJson: string[] | null;
   status: string;
   errorMessage: string | null;
   startedAt: string;
   finishedAt: string | null;
+  result?: { id: string; questionId: string | null; errorNotebookEntryId: string | null; savedAt: string } | null;
 }
 export interface QuestionScanUploadResponseDtoList {
   id: string;
   userId: string;
   fileUrl: string;
-  metaJson: any;
+  metaJson: { width: number; height: number; mimeType?: string; sizeBytes: number };
   status: string;
   createdAt: string;
-  processing?: QuestionScanProcessingResponseDto;
+  processing?: QuestionScanProcessingResponseDto | null;
 }
 
 export interface CoordinatorDashboard {
@@ -1210,6 +1211,17 @@ export function apiGetDailySession(
   return request(`/study/daily${qs}`, { headers: authHeaders(accessToken) });
 }
 
+export function apiRescheduleMissed(
+  accessToken: string,
+  date: string
+): Promise<{ rescheduled: number } | null> {
+  return request("/study/reschedule-missed", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ date }),
+  });
+}
+
 export function apiListTasks(
   accessToken: string,
   params: { status?: string; subjectId?: string; page?: number; limit?: number }
@@ -1292,21 +1304,6 @@ export function apiGetProgress(
   return request("/study/progress", { headers: authHeaders(accessToken) });
 }
 
-export function apiRescheduleMissed(
-  accessToken: string,
-  date: string
-): Promise<{ rescheduled: number } | null> {
-  return request("/study/reschedule-missed", {
-    method: "POST",
-    headers: authHeaders(accessToken),
-    body: JSON.stringify({ date }),
-  });
-}
-
-export function apiGetUserVestibular(accessToken: string): Promise<UserVestibular | null> {
-  return request("/user/vestibular", { headers: authHeaders(accessToken) });
-}
-
 export function apiSetVestibular(
   accessToken: string,
   payload: {
@@ -1320,4 +1317,313 @@ export function apiSetVestibular(
     headers: authHeaders(accessToken),
     body: JSON.stringify(payload),
   });
+}
+
+export function apiGetUserVestibular(accessToken: string): Promise<UserVestibular | null> {
+  return request("/user/vestibular", { headers: authHeaders(accessToken) });
+}
+
+// =============================================================================
+// Caderno de Fórmulas (item 21)
+// =============================================================================
+
+export interface Formula {
+  id: string;
+  name: string;
+  discipline: 'MATEMATICA' | 'FISICA' | 'QUIMICA' | 'BIOLOGIA' | 'OUTRA';
+  topic: string | null;
+  latex: string;
+  description: string | null;
+  isFavorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFormulaPayload {
+  name: string;
+  discipline: 'MATEMATICA' | 'FISICA' | 'QUIMICA' | 'BIOLOGIA' | 'OUTRA';
+  topic?: string | null;
+  latex: string;
+  description?: string | null;
+  isFavorite?: boolean;
+}
+
+export interface UpdateFormulaPayload {
+  name?: string;
+  discipline?: 'MATEMATICA' | 'FISICA' | 'QUIMICA' | 'BIOLOGIA' | 'OUTRA';
+  topic?: string | null;
+  latex?: string;
+  description?: string | null;
+  isFavorite?: boolean;
+}
+
+export function apiListFormulas(accessToken: string): Promise<Formula[]> {
+  return request("/formulas", { headers: authHeaders(accessToken) });
+}
+
+export function apiCreateFormula(accessToken: string, payload: CreateFormulaPayload): Promise<Formula> {
+  return request("/formulas", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+}
+
+export function apiUpdateFormula(accessToken: string, id: string, payload: UpdateFormulaPayload): Promise<Formula> {
+  return request(`/formulas/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+}
+
+export function apiDeleteFormula(accessToken: string, id: string): Promise<{ ok: boolean }> {
+  return request(`/formulas/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+// =============================================================================
+// Caderno de Repertórios (item 22)
+// =============================================================================
+
+export interface Repertoire {
+  id: string;
+  title: string;
+  summary: string;
+  keywords: string[];
+  source: string | null;
+  year: number | null;
+  theme: string;
+  isStudied: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateRepertoirePayload {
+  title: string;
+  summary: string;
+  keywords: string[];
+  source?: string | null;
+  year?: number | null;
+  theme: string;
+  isStudied?: boolean;
+}
+
+export interface UpdateRepertoirePayload {
+  title?: string;
+  summary?: string;
+  keywords?: string[];
+  source?: string | null;
+  year?: number | null;
+  theme?: string;
+  isStudied?: boolean;
+}
+
+export function apiListRepertoires(accessToken: string): Promise<Repertoire[]> {
+  return request("/repertoires", { headers: authHeaders(accessToken) });
+}
+
+export function apiCreateRepertoire(accessToken: string, payload: CreateRepertoirePayload): Promise<Repertoire> {
+  return request("/repertoires", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+}
+
+export function apiUpdateRepertoire(accessToken: string, id: string, payload: UpdateRepertoirePayload): Promise<Repertoire> {
+  return request(`/repertoires/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+}
+
+export function apiDeleteRepertoire(accessToken: string, id: string): Promise<{ ok: boolean }> {
+  return request(`/repertoires/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+// =============================================================================
+// Modelos de Redação Nota Mil (item 23)
+// =============================================================================
+
+export interface EssayModel {
+  id: string;
+  year: number;
+  exam: string;
+  theme: string;
+  text: string;
+  competencies: { C1: number; C2: number; C3: number; C4: number; C5: number };
+  totalScore: number;
+  pdfUrl: string | null;
+  highlights: { C1: string; C2: string; C3: string; C4: string; C5: string } | null;
+  createdAt: string;
+}
+
+export interface EssayModelFilters {
+  year?: number;
+  exam?: string;
+  theme?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedEssayModels {
+  items: EssayModel[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export function apiListEssayModels(accessToken: string, filters: EssayModelFilters = {}): Promise<PaginatedEssayModels> {
+  const params = new URLSearchParams();
+  if (filters.year) params.set("year", String(filters.year));
+  if (filters.exam) params.set("exam", filters.exam);
+  if (filters.theme) params.set("theme", filters.theme);
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return request(`/essays/models/list${qs ? `?${qs}` : ""}`, { headers: authHeaders(accessToken) });
+}
+
+export function apiGetEssayModel(accessToken: string, id: string): Promise<EssayModel> {
+  return request(`/essays/models/${id}`, { headers: authHeaders(accessToken) });
+}
+
+// =============================================================================
+// Provas antigas (item 19)
+// =============================================================================
+
+export interface ExamPaper {
+  id: string;
+  examId: string;
+  exam?: { id: string; name: string };
+  year: number;
+  pdfUrl: string | null;
+  pageImagesJson: string[] | null;
+  metadataJson: { totalPages?: number; hasGabarito?: boolean; hasCaderno?: boolean; sourceUrl?: string } | null;
+  gabaritoJson: Record<string, number> | null;
+  cadernoJson: Record<string, number> | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExamPaperPage {
+  id: string;
+  paperId: string;
+  pageNumber: number;
+  imageUrl: string;
+  dimensionsJson: { width: number; height: number } | null;
+  textContent: string | null;
+  createdAt: string;
+}
+
+export interface ExamPaperQuestion {
+  id: string;
+  number: number;
+  pageNumber: number;
+  boundsJson: { x: number; y: number; width: number; height: number } | null;
+  area: string | null;
+  subject: string;
+}
+
+// O QuestionCatalogController é `@Controller()` sem prefixo, então estas rotas
+// vivem na raiz (`/exam-papers`), ao lado de `/subjects` e `/exams`.
+export const apiExamPapers = (token: string): Promise<ExamPaper[]> =>
+  request('/exam-papers', { headers: authHeaders(token) });
+
+export const apiExamPaper = (token: string, id: string): Promise<ExamPaper> =>
+  request(`/exam-papers/${id}`, { headers: authHeaders(token) });
+
+export const apiExamPaperPages = (token: string, paperId: string): Promise<ExamPaperPage[]> =>
+  request(`/exam-papers/${paperId}/pages`, { headers: authHeaders(token) });
+
+export const apiExamPaperQuestions = (token: string, paperId: string): Promise<ExamPaperQuestion[]> =>
+  request(`/exam-papers/${paperId}/questions`, { headers: authHeaders(token) });
+
+export interface ExamPaperComparison {
+  base: { id: string; year: number };
+  compare: { id: string; year: number };
+  repeatedCount: number;
+  newCount: number;
+  similarityScore: number;
+}
+
+export const apiCompareExamPapers = (token: string, baseId: string, compareId: string): Promise<ExamPaperComparison> =>
+  request(`/exam-papers/compare?baseId=${baseId}&compareId=${compareId}`, { headers: authHeaders(token) });
+
+// =============================================================================
+// Scanner de gabarito (item 17)
+// =============================================================================
+
+export interface AnswerSheetTemplateResponseDto {
+  id: string;
+  name: string;
+  description: string | null;
+  /** Marcadores de canto indexados por nome: { topLeft: { x, y }, ... }. */
+  markersJson: Record<string, { x: number; y: number }>;
+  /** Bolhas indexadas pelo número da questão: { "1": [{ position, x, y, radius }] }. */
+  layoutJson: Record<string, { position: number; x: number; y: number; radius: number }[]>;
+  expectedWidth: number | null;
+  expectedHeight: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnswerSheetProcessingResponseDto {
+  id: string;
+  uploadId: string;
+  detectedAnswers: Record<string, number>;
+  confidenceJson: Record<string, number>;
+  warningsJson: string[];
+  totalQuestions: number;
+  answeredCount: number;
+  lowConfidenceCount: number;
+  status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  errorMessage: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface AnswerSheetUploadResponseDto {
+  id: string;
+  templateId: string;
+  simulationId: string | null;
+  studentId: string;
+  fileUrl: string;
+  metaJson: { width: number; height: number; mimeType?: string; sizeBytes: number };
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'NEEDS_REVIEW';
+  createdAt: string;
+  updatedAt: string;
+  template?: AnswerSheetTemplateResponseDto;
+  processing?: AnswerSheetProcessingResponseDto | null;
+}
+
+export function apiListAnswerSheetTemplates(token: string): Promise<AnswerSheetTemplateResponseDto[]> {
+  return request('/simulations/answer-sheets/templates', { headers: authHeaders(token) });
+}
+
+export function apiCreateAnswerSheetTemplate(
+  token: string,
+  dto: { name: string; description?: string | null; markers: { name: string; x: number; y: number }[]; layout: { questionNumber: number; bubbles: { position: number; x: number; y: number; radius: number }[] }[] }
+): Promise<AnswerSheetTemplateResponseDto> {
+  return request('/simulations/answer-sheets/templates', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+}
+
+export function apiAnswerSheetUploadUrl(
+  token: string,
+  dto: { templateId: string; simulationId?: string; contentType: string }
+): Promise<{ uploadUrl: string; uploadId: string; key: string; expiresIn: number }> {
+  return request('/simulations/answer-sheets/upload-url', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+}
+
+export function apiAnswerSheetCompleteUpload(
+  token: string,
+  id: string,
+  dto: { fileUrl: string; width: number; height: number; sizeBytes: number }
+): Promise<{ status: string }> {
+  return request(`/simulations/answer-sheets/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+}
+
+export function apiListAnswerSheetUploads(token: string, simulationId?: string): Promise<AnswerSheetUploadResponseDto[]> {
+  const qs = simulationId ? `?simulationId=${encodeURIComponent(simulationId)}` : '';
+  return request(`/simulations/answer-sheets/uploads${qs}`, { headers: authHeaders(token) });
+}
+
+export function apiGetAnswerSheetProcessing(token: string, id: string): Promise<AnswerSheetProcessingResponseDto> {
+  return request(`/simulations/answer-sheets/processing/${id}`, { headers: authHeaders(token) });
+}
+
+export function apiAnswerSheetReview(
+  token: string,
+  id: string,
+  dto: { finalAnswers: Record<number, number> }
+): Promise<{ updated: true }> {
+  return request(`/simulations/answer-sheets/processing/${id}/review`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
 }
