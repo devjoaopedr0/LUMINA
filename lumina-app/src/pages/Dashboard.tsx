@@ -23,6 +23,12 @@ const NAV_ITEMS = [
   { to: "/app/turmas", label: "Turmas", icon: School },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
+  { to: "/app/redacoes/modelos", label: "Modelos nota mil", icon: Award },
+  { to: "/app/question-scanner", label: "Scanner de questões", icon: Sparkles },
+  { to: "/app/gabarito-scanner", label: "Scanner de gabarito", icon: FileText },
+  { to: "/app/provas-antigas", label: "Provas anteriores", icon: History },
+  { to: "/app/caderno-formulas", label: "Caderno de fórmulas", icon: Lightbulb },
+  { to: "/app/caderno-repertorio", label: "Caderno de repertórios", icon: BookOpenCheck },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
 ];
 

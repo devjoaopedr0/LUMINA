@@ -18,6 +18,11 @@ import { Essays } from "@/pages/Essays";
 import { Simulations } from "@/pages/Simulations";
 import { AdaptiveSimulation } from "@/pages/AdaptiveSimulation";
 import { QuestionScanner } from "@/pages/QuestionScanner";
+import { PastExams } from "@/pages/PastExams";
+import { FormulaNotebook } from "@/pages/FormulaNotebook";
+import { RepertoireNotebook } from "@/pages/RepertoireNotebook";
+import { EssayModels } from "@/pages/EssayModels";
+import { AnswerSheetScanner } from "@/pages/AnswerSheetScanner";
 import { Classes } from "@/pages/Classes";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
@@ -32,7 +37,12 @@ function App() {
         <Route path="/app/busca-web" element={<ProtectedRoute><WebQuestionSearch /></ProtectedRoute>} />
         <Route path="/app/redacoes" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
         <Route path="/app/redacoes/:id" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
+        <Route path="/app/redacoes/modelos" element={<ProtectedRoute><EssayModels /></ProtectedRoute>} />
         <Route path="/app/calculo-mental" element={<ProtectedRoute><MentalMath /></ProtectedRoute>} />
+        <Route path="/app/provas-antigas" element={<ProtectedRoute><PastExams /></ProtectedRoute>} />
+        <Route path="/app/caderno-formulas" element={<ProtectedRoute><FormulaNotebook /></ProtectedRoute>} />
+        <Route path="/app/caderno-repertorio" element={<ProtectedRoute><RepertoireNotebook /></ProtectedRoute>} />
+        <Route path="/app/gabarito-scanner" element={<ProtectedRoute><AnswerSheetScanner /></ProtectedRoute>} />
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
