@@ -1,349 +1,523 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAccessToken } from '@/lib/auth';
-import { useAuth } from '@/contexts/AuthContext';
 import {
-  apiQuestionScanPresignedUpload,
-  apiQuestionScanCompleteUpload,
+  apiGetQuestionScanProcessing,
   apiListQuestionScanUploads,
+  apiQuestionScanCompleteUpload,
+  apiQuestionScanPresignedUpload,
   apiSaveQuestionScanAsQuestion,
   apiSaveQuestionScanToErrorNotebook,
-  type QuestionScanUploadResponseDto,
   type QuestionScanProcessingResponseDto,
+  type QuestionScanUploadResponseDto,
 } from '@/lib/api';
 
 const token = () => getAccessToken() ?? '';
 
+const STATUS_STYLE: Record<string, string> = {
+  PENDING: 'bg-graphite-100 text-graphite-700',
+  PROCESSING: 'bg-primary-100 text-primary-700',
+  COMPLETED: 'bg-success-100 text-success-700',
+  FAILED: 'bg-red-100 text-red-700',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pendente',
+  PROCESSING: 'Processando',
+  COMPLETED: 'Concluído',
+  FAILED: 'Falhou',
+};
+
+const statusStyle = (status: string) => STATUS_STYLE[status] ?? STATUS_STYLE.PENDING;
+const statusLabel = (status: string) => STATUS_LABEL[status] ?? status;
+
+const DIFFICULTIES = ['FACIL', 'MEDIA', 'DIFÍCIL'] as const;
+type Difficulty = (typeof DIFFICULTIES)[number];
+
+type Alternative = { position: number; text: string; isCorrect: boolean };
+
+type Tab = 'scan' | 'history';
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function QuestionScanner() {
-  const { user: _user } = useAuth();
+  const [tab, setTab] = useState<Tab>('scan');
   const [uploads, setUploads] = useState<QuestionScanUploadResponseDto[]>([]);
   const [processing, setProcessing] = useState<QuestionScanProcessingResponseDto | null>(null);
-  const [activeTab, setActiveTab] = useState<'scan' | 'history'>('scan');
+
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
 
-  const loadUploads = async () => {
-    try {
-      const list = await apiListQuestionScanUploads(token());
-      setUploads(list);
-    } catch { setError('Não foi possível carregar o histórico.'); }
-  };
+  const [stem, setStem] = useState('');
+  const [alternatives, setAlternatives] = useState<Alternative[]>([]);
+  const [subject, setSubject] = useState('');
+  const [topic, setTopic] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty>('MEDIA');
 
-  useEffect(() => { loadUploads(); }, []);
+  useEffect(() => {
+    apiListQuestionScanUploads(token())
+      .then((rows) => { setUploads(rows); setError(''); })
+      .catch(() => setError('Não foi possível carregar o histórico.'));
+  }, []);
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type)) {
+  function resetForm() {
+    setProcessing(null);
+    setStem('');
+    setAlternatives([]);
+    setSubject('');
+    setTopic('');
+    setDifficulty('MEDIA');
+  }
+
+  function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0];
+    if (!selected) return;
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(selected.type)) {
       setError('Formato não suportado. Use JPEG, PNG ou PDF.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('Arquivo muito grande (máx. 10 MB).');
+    if (selected.size > 10 * 1024 * 1024) {
+      setError('Arquivo muito grande (máximo 10 MB).');
       return;
     }
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    setFile(selected);
+    setPreviewUrl(URL.createObjectURL(selected));
     setError('');
     setSuccess('');
   }
 
+  function clearFile() {
+    setFile(null);
+    setPreviewUrl(null);
+    const input = document.getElementById('question-scan-file') as HTMLInputElement | null;
+    if (input) input.value = '';
+  }
+
   async function startUpload() {
-    if (!selectedFile) { setError('Selecione uma imagem primeiro.'); return; }
-    setUploading(true); setError(''); setSuccess(''); setUploadProgress(0);
+    if (!file) { setError('Selecione a foto da questão.'); return; }
+    setUploading(true);
+    setError('');
+    setSuccess('');
     try {
-      const { key } = await apiQuestionScanPresignedUpload(token(), {
-        contentType: selectedFile.type,
+      const { uploadId, key } = await apiQuestionScanPresignedUpload(token(), { contentType: file.type });
+      await apiQuestionScanCompleteUpload(token(), key, {
+        fileUrl: previewUrl ?? (await readAsDataUrl(file)),
+        width: 1920,
+        height: 1080,
+        sizeBytes: file.size,
       });
-
-      setUploadProgress(50);
-      
-      const fileUrl = previewUrl ?? `data:${selectedFile.type};base64,${await fileToBase64(selectedFile)}`;
-      const meta = { width: 1920, height: 1080, sizeBytes: selectedFile.size, mimeType: selectedFile.type };
-
-      const result = await apiQuestionScanCompleteUpload(token(), key, { fileUrl, ...meta });
-      setUploadProgress(100);
-      setSuccess('Upload enviado! Processando...');
-      setSelectedFile(null); setPreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = '';
-      
-      pollProcessing(result.id);
-      loadUploads();
+      setSuccess('Foto enviada. O processamento começou.');
+      clearFile();
+      resetForm();
+      // O processamento é assíncrono: a primeira leitura pode ainda estar em PROCESSING.
+      setProcessing(await apiGetQuestionScanProcessing(token(), uploadId));
+      setUploads(await apiListQuestionScanUploads(token()));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro no upload');
-    } finally { setUploading(false); }
-  }
-
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function pollProcessing(uploadId: string) {
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      try {
-        const list = await apiListQuestionScanUploads(token());
-        const up = list.find(u => u.id === uploadId);
-        if (up?.processing) {
-          setProcessing(up.processing);
-          if (up.processing.status === 'COMPLETED' || up.processing.status === 'FAILED') {
-            loadUploads();
-            break;
-          }
-        }
-      } catch {}
+      setError(err instanceof Error ? err.message : 'Falha no upload.');
+    } finally {
+      setUploading(false);
     }
+  }
+
+  /** Carrega um processamento do histórico no formulário de conferência. */
+  async function openProcessing(id: string) {
+    setError('');
+    setSuccess('');
+    try {
+      const result = await apiGetQuestionScanProcessing(token(), id);
+      setProcessing(result);
+      setStem(result.stemText ?? '');
+      setAlternatives(
+        (result.alternativesJson ?? []).map((alt) => ({ ...alt, isCorrect: false })),
+      );
+      setSubject(result.subject ?? '');
+      setTopic(result.topic ?? '');
+      setDifficulty((result.difficulty as Difficulty) ?? 'MEDIA');
+      setTab('scan');
+    } catch {
+      setError('Não foi possível abrir este processamento.');
+    }
+  }
+
+  function markCorrect(position: number) {
+    setAlternatives((rows) => rows.map((row) => ({ ...row, isCorrect: row.position === position })));
+  }
+
+  function updateAlternative(position: number, text: string) {
+    setAlternatives((rows) => rows.map((row) => (row.position === position ? { ...row, text } : row)));
+  }
+
+  function buildPayload() {
+    return {
+      finalStem: stem.trim(),
+      finalAlternatives: alternatives,
+      finalSubject: subject.trim() || 'Geral',
+      finalTopic: topic.trim() || 'Geral',
+      finalDifficulty: difficulty,
+      finalExplanation: processing?.explanationJson ?? undefined,
+    };
+  }
+
+  function validatePayload(): string {
+    if (stem.trim().length < 10) return 'Confira o enunciado reconhecido.';
+    if (alternatives.length < 2) return 'A questão precisa de pelo menos duas alternativas.';
+    if (alternatives.some((alt) => !alt.text.trim())) return 'Todas as alternativas precisam de texto.';
+    if (alternatives.filter((alt) => alt.isCorrect).length !== 1) return 'Marque exatamente uma alternativa como correta.';
+    return '';
   }
 
   async function handleSaveAsQuestion() {
+    const problem = validatePayload();
+    if (problem) { setError(problem); return; }
     if (!processing) return;
-    setBusy(true); setError(''); setSuccess('');
+    setBusy(true);
+    setError('');
+    setSuccess('');
     try {
-      const dto = {
-        finalStem: processing.stemText ?? '',
-        finalAlternatives: (processing.alternativesJson ?? []).map((a: any) => ({
-          position: a.position,
-          text: a.text,
-          isCorrect: a.position === 2,
-        })),
-        finalSubject: processing.subject ?? 'Matemática',
-        finalTopic: processing.topic ?? 'Funções exponenciais',
-        finalDifficulty: processing.difficulty ?? 'MEDIA',
-        exam: 'SCANNER',
-        finalExplanation: processing.explanationJson ?? {},
-      };
-      await apiSaveQuestionScanAsQuestion(token(), processing.id, dto);
-      setSuccess('Questão oficial criada com sucesso!');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Erro ao salvar'); }
-    finally { setBusy(false); }
+      await apiSaveQuestionScanAsQuestion(token(), processing.id, { ...buildPayload(), exam: 'SCANNER' });
+      setSuccess('Questão salva no banco de questões.');
+      setUploads(await apiListQuestionScanUploads(token()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar a questão.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleSaveToNotebook() {
+    const problem = validatePayload();
+    if (problem) { setError(problem); return; }
     if (!processing) return;
-    setBusy(true); setError(''); setSuccess('');
+    setBusy(true);
+    setError('');
+    setSuccess('');
     try {
-      const dto = {
-        finalStem: processing.stemText ?? '',
-        finalAlternatives: (processing.alternativesJson ?? []).map((a: any) => ({
-          position: a.position,
-          text: a.text,
-          isCorrect: a.position === 2,
-        })),
-        finalSubject: processing.subject ?? 'Matemática',
-        finalTopic: processing.topic ?? 'Funções exponenciais',
-        finalDifficulty: processing.difficulty ?? 'MEDIA',
-        finalExplanation: processing.explanationJson ?? {},
+      await apiSaveQuestionScanToErrorNotebook(token(), processing.id, {
+        ...buildPayload(),
         reason: 'FALTA_CONTEUDO',
-        notes: 'Adicionado via scanner de questões.',
-      };
-      await apiSaveQuestionScanToErrorNotebook(token(), processing.id, dto);
-      setSuccess('Adicionado ao caderno de erros!');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Erro ao salvar'); }
-    finally { setBusy(false); }
+        notes: 'Adicionado pelo scanner de questões.',
+      });
+      setSuccess('Questão adicionada ao caderno de erros.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao adicionar ao caderno de erros.');
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const statusColor = (status: string) => {
-    switch (status) {
-      case 'COMPLETED': return 'bg-success-100 text-success-700';
-      case 'FAILED': return 'bg-red-100 text-red-700';
-      case 'PROCESSING': return 'bg-primary-100 text-primary-700';
-      case 'PENDING': return 'bg-graphite-100 text-graphite-700';
-      default: return 'bg-graphite-100 text-graphite-700';
-    }
-  };
+  const warnings = processing?.warningsJson ?? [];
 
-  const statusLabel = (status: string) => {
-    switch (status) {
-      case 'COMPLETED': return 'Concluído';
-      case 'FAILED': return 'Falhou';
-      case 'PROCESSING': return 'Processando';
-      case 'PENDING': return 'Pendente';
-      default: return status;
-    }
-  };
+  return (
+    <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8">
+      <div className="mx-auto max-w-5xl">
+        <div className="print:hidden">
+          <Link to="/app" className="text-sm font-semibold">← Voltar à visão geral</Link>
+        </div>
+        <h1 className="mt-6 text-3xl font-bold">Scanner de Questões</h1>
+        <p className="mt-2 text-sm text-graphite-500">
+          Fotografe uma questão impressa: o enunciado e as alternativas são reconhecidos, você
+          confere o resultado e escolhe onde guardar — banco de questões ou caderno de erros.
+        </p>
 
-  return <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8">
-    <div className="mx-auto max-w-5xl">
-      <div className="print:hidden"><Link to="/app" className="text-sm font-semibold">← Voltar à visão geral</Link></div>
-      <h1 className="mt-6 text-3xl font-bold">Scanner de Questões</h1>
-      <p className="mt-2 text-sm text-graphite-500">Fotografe uma questão impressa → OCR + classificação → Explicação LuminIA → Questão oficial ou Caderno de erros.</p>
-      {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
-      {success && <p role="status" className="my-4 rounded-lg bg-success-50 p-3 text-success-700">{success}</p>}
+        {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
+        {success && <p role="status" className="my-4 rounded-lg bg-success-50 p-3 text-success-700">{success}</p>}
 
-      <div className="mt-6 border-b border-surface-line">
-        <nav className="flex gap-4" role="tablist">
-          <button role="tab" aria-selected={activeTab === 'scan'} onClick={() => setActiveTab('scan')} className={`pb-3 border-b-2 font-medium ${activeTab === 'scan' ? 'border-primary-500 text-primary-700' : 'border-transparent text-graphite-400'}`}>Escanear</button>
-          <button role="tab" aria-selected={activeTab === 'history'} onClick={() => setActiveTab('history')} className={`pb-3 border-b-2 font-medium ${activeTab === 'history' ? 'border-primary-500 text-primary-700' : 'border-transparent text-graphite-400'}`}>Histórico</button>
-        </nav>
-      </div>
+        <div className="mt-6 border-b border-surface-line">
+          <nav className="flex gap-4" role="tablist">
+            {(['scan', 'history'] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="tab"
+                aria-selected={tab === item}
+                onClick={() => setTab(item)}
+                className={`border-b-2 pb-3 font-medium ${tab === item ? 'border-primary-500 text-primary-700' : 'border-transparent text-graphite-400'}`}
+              >
+                {item === 'scan' ? 'Escanear' : 'Histórico'}
+              </button>
+            ))}
+          </nav>
+        </div>
 
-      {activeTab === 'scan' && (
-        <>
-          <section className="mt-6 rounded-xl border bg-white p-5">
-            <h2 className="font-bold">Nova digitalização</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,application/pdf" onChange={handleFileSelect} className="hidden" id="file-input" />
-                <label htmlFor="file-input" className={`cursor-pointer flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 ${previewUrl ? 'border-primary-300 bg-primary-50' : 'border-graphite-200'}`}>
+        {tab === 'scan' && (
+          <>
+            <section className="mt-6 rounded-xl border bg-white p-5">
+              <h2 className="font-bold">Enviar a foto da questão</h2>
+              <div className="mt-4">
+                <input
+                  id="question-scan-file"
+                  type="file"
+                  accept="image/jpeg,image/png,application/pdf"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="question-scan-file"
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 ${previewUrl ? 'border-primary-300 bg-primary-50' : 'border-graphite-200'}`}
+                >
                   {previewUrl ? (
                     <>
-                      <img src={previewUrl} alt="Pré-visualização" className="max-h-64 rounded-lg border" />
-                      <p className="text-sm text-graphite-500">Clique para trocar</p>
+                      <img src={previewUrl} alt="Pré-visualização da questão" className="max-h-64 rounded-lg border" />
+                      <p className="text-sm text-graphite-500">Clique para trocar a foto</p>
                     </>
                   ) : (
                     <>
-                      <svg className="h-12 w-12 text-graphite-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      <p className="font-medium">Arraste ou clique para selecionar</p>
-                      <p className="text-sm text-graphite-400">JPEG, PNG ou PDF · máx. 10 MB</p>
+                      <span className="font-medium">Clique para selecionar a foto da questão</span>
+                      <p className="text-sm text-graphite-400">JPEG, PNG ou PDF · máximo 10 MB</p>
                     </>
                   )}
                 </label>
               </div>
-              <div className="sm:col-span-2 flex gap-3">
-                <button onClick={startUpload} disabled={uploading || busy || !selectedFile} className="flex-1 rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">
-                  {uploading ? `Enviando... ${uploadProgress}%` : 'Enviar e processar'}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={startUpload}
+                  disabled={uploading || !file}
+                  className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50"
+                >
+                  {uploading ? 'Enviando...' : 'Enviar e processar'}
                 </button>
-                <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="rounded-lg border px-5 py-3 font-semibold text-graphite">Cancelar</button>
+                <button type="button" onClick={clearFile} className="rounded-lg border px-5 py-3 font-semibold text-graphite">
+                  Limpar seleção
+                </button>
               </div>
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <div className="mt-3 h-2 bg-graphite-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }}></div>
+            </section>
+
+            {processing && (
+              <section className="mt-6 rounded-xl border bg-white p-5" role="status" aria-live="polite">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-xl font-bold">Resultado do reconhecimento</h2>
+                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusStyle(processing.status)}`}>
+                    {statusLabel(processing.status)}
+                  </span>
                 </div>
-              )}
-            </div>
-          </section>
 
-          {processing && (
-            <section className="mt-6 rounded-xl border bg-white p-5" role="status" aria-live="polite">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Resultado do processamento</h2>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor(processing.status)}`}>{statusLabel(processing.status)}</span>
-              </div>
+                {processing.status === 'PROCESSING' && (
+                  <p className="text-graphite-500">
+                    O reconhecimento ainda está rodando. Abra o item no histórico em alguns segundos
+                    para conferir o resultado.
+                  </p>
+                )}
 
-              {processing.status === 'PROCESSING' && (
-                <div className="flex items-center gap-3 text-graphite-500">
-                  <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  <span>Processando... Aguarde a conclusão.</span>
-                </div>
-              )}
-
-              {processing.status === 'FAILED' && (
-                <div className="p-3 rounded-lg bg-red-50 text-red-700">
-                  <p className="font-semibold">Processamento falhou</p>
-                  <p className="text-sm mt-1">{processing.errorMessage ?? 'Erro desconhecido'}</p>
-                </div>
-              )}
-
-              {(processing.status === 'COMPLETED' || processing.status === 'NEEDS_REVIEW') && (
-                <>
-                  <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                    <div className="p-3 rounded-lg bg-surface-card">
-                      <p className="text-xs text-graphite-400">Disciplina</p>
-                      <p className="font-medium">{processing.subject ?? '—'}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-surface-card">
-                      <p className="text-xs text-graphite-400">Assunto</p>
-                      <p className="font-medium">{processing.topic ?? '—'}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-surface-card">
-                      <p className="text-xs text-graphite-400">Dificuldade</p>
-                      <p className="font-medium">{processing.difficulty ?? '—'}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-surface-card">
-                      <p className="text-xs text-graphite-400">Confiança</p>
-                      <p className="font-medium">{processing.confidence ? `${Math.round((processing.confidence as number) * 100)}%` : '—'}</p>
-                    </div>
+                {processing.status === 'FAILED' && (
+                  <div className="rounded-lg bg-red-50 p-3 text-red-700">
+                    <p className="font-semibold">Não foi possível ler a questão</p>
+                    <p className="mt-1 text-sm">{processing.errorMessage ?? 'Erro não informado.'}</p>
                   </div>
+                )}
 
-                  {processing.warningsJson && (processing.warningsJson as any[]).length > 0 && (
-                    <div className="mb-4 p-3 rounded-lg bg-amber-50">
-                      <p className="font-semibold text-amber-700">Atenção</p>
-                      <ul className="mt-1 space-y-1 text-sm text-amber-800">
-                        {(processing.warningsJson as any[]).map((w: string, i: number) => <li key={i} className="flex gap-2">⚠ {w}</li>)}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="mb-4">
-                    <h3 className="font-semibold mb-2">Enunciado detectado</h3>
-                    <p className="p-3 rounded-lg bg-surface-card">{processing.stemText ?? '—'}</p>
-                  </div>
-
-                  <div className="mb-4">
-                    <h3 className="font-semibold mb-2">Alternativas detectadas</h3>
-                    <div className="space-y-2">
-                      {(processing.alternativesJson as any[])?.map((a: any) => (
-                        <div key={a.position} className="flex items-center gap-3 p-3 rounded-lg bg-surface-card">
-                          <span className="w-8 font-mono text-graphite-500">{a.position}</span>
-                          <span className="flex-1">{a.text}</span>
-                          <span className="px-2 py-0.5 rounded text-xs bg-primary-100 text-primary-700">{a.position === 2 ? 'Correta (simulada)' : 'Detectada'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {processing.explanationJson && (
-                    <div className="mb-4">
-                      <h3 className="font-semibold mb-2">Explicação LuminIA (por alternativa)</h3>
-                      <div className="space-y-2">
-                        {Object.entries(processing.explanationJson as Record<number, string>).map(([pos, exp]) => (
-                          <div key={pos} className="p-3 rounded-lg bg-surface-card">
-                            <p className="font-medium">{String.fromCharCode(64 + Number(pos))})</p>
-                            <p className="text-sm text-graphite-600">{exp}</p>
-                          </div>
-                        ))}
+                {processing.status === 'COMPLETED' && (
+                  <>
+                    <div className="mb-4 grid gap-3 sm:grid-cols-4">
+                      <div className="rounded-lg bg-surface-card p-3">
+                        <p className="text-xs text-graphite-400">Disciplina</p>
+                        <p className="font-medium">{processing.subject ?? '—'}</p>
+                      </div>
+                      <div className="rounded-lg bg-surface-card p-3">
+                        <p className="text-xs text-graphite-400">Assunto</p>
+                        <p className="font-medium">{processing.topic ?? '—'}</p>
+                      </div>
+                      <div className="rounded-lg bg-surface-card p-3">
+                        <p className="text-xs text-graphite-400">Dificuldade</p>
+                        <p className="font-medium">{processing.difficulty ?? '—'}</p>
+                      </div>
+                      <div className="rounded-lg bg-surface-card p-3">
+                        <p className="text-xs text-graphite-400">Confiança</p>
+                        <p className="font-medium">
+                          {typeof processing.confidence === 'number'
+                            ? `${Math.round(processing.confidence * 100)}%`
+                            : '—'}
+                        </p>
                       </div>
                     </div>
-                  )}
 
-                  <div className="flex flex-wrap gap-3">
-                    <button onClick={handleSaveAsQuestion} disabled={busy} className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">Criar questão oficial</button>
-                    <button onClick={handleSaveToNotebook} disabled={busy} className="rounded-lg border px-5 py-3 font-semibold text-graphite disabled:opacity-50">Adicionar ao caderno de erros</button>
-                  </div>
-                </>
-              )}
-            </section>
-          )}
-        </>
-      )}
+                    {warnings.length > 0 && (
+                      <div className="mb-4 rounded-lg bg-amber-50 p-3">
+                        <p className="font-semibold text-amber-700">Confira os pontos abaixo antes de salvar</p>
+                        <ul className="mt-1 space-y-1 text-sm text-amber-800">
+                          {warnings.map((warning, index) => <li key={index}>• {warning}</li>)}
+                        </ul>
+                      </div>
+                    )}
 
-      {activeTab === 'history' && (
-        <section className="mt-6 rounded-xl border bg-white p-5">
-          <h2 className="font-bold">Histórico de digitalizações</h2>
-          {uploads.length ? (
-            <div className="mt-4 space-y-3">
-              {uploads.map(u => (
-                <Link key={u.id} to={`/app/question-scanner?processing=${u.processing?.id}`} className="block border-b pb-3 hover:underline last:border-0">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{u.processing?.stemText ? u.processing.stemText.slice(0, 60) + '…' : 'Digitalização sem texto'}</p>
-                      <p className="text-sm text-graphite-400">{new Date(u.createdAt).toLocaleString('pt-BR')} · {u.metaJson ? `${(u.metaJson as any).width}×${(u.metaJson as any).height}` : '—'}</p>
+                    <label className="block">
+                      <span className="text-sm font-medium">Enunciado</span>
+                      <textarea
+                        value={stem}
+                        onChange={(event) => setStem(event.target.value)}
+                        className="mt-1 min-h-[110px] w-full rounded-lg border p-3"
+                      />
+                    </label>
+
+                    <fieldset className="mt-4">
+                      <legend className="text-sm font-medium">
+                        Alternativas — marque a correta
+                      </legend>
+                      {alternatives.length === 0 ? (
+                        <p className="mt-2 text-sm text-graphite-400">
+                          Nenhuma alternativa foi reconhecida. Abra esta digitalização novamente pelo
+                          histórico depois que o processamento concluir.
+                        </p>
+                      ) : (
+                        <ul className="mt-2 space-y-2">
+                          {alternatives.map((alternative) => (
+                            <li key={alternative.position} className="flex items-center gap-3">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  name="correct-alternative"
+                                  checked={alternative.isCorrect}
+                                  onChange={() => markCorrect(alternative.position)}
+                                  aria-label={`Alternativa ${String.fromCharCode(64 + alternative.position)} como correta`}
+                                />
+                                <span className="font-mono text-graphite-500">
+                                  {String.fromCharCode(64 + alternative.position)}
+                                </span>
+                              </label>
+                              <input
+                                value={alternative.text}
+                                onChange={(event) => updateAlternative(alternative.position, event.target.value)}
+                                aria-label={`Texto da alternativa ${String.fromCharCode(64 + alternative.position)}`}
+                                className="flex-1 rounded-lg border p-2 text-sm"
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </fieldset>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <label className="block">
+                        <span className="text-sm font-medium">Disciplina</span>
+                        <input
+                          value={subject}
+                          onChange={(event) => setSubject(event.target.value)}
+                          className="mt-1 w-full rounded-lg border p-2"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium">Assunto</span>
+                        <input
+                          value={topic}
+                          onChange={(event) => setTopic(event.target.value)}
+                          className="mt-1 w-full rounded-lg border p-2"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium">Dificuldade</span>
+                        <select
+                          value={difficulty}
+                          onChange={(event) => setDifficulty(event.target.value as Difficulty)}
+                          className="mt-1 w-full rounded-lg border p-2"
+                        >
+                          {DIFFICULTIES.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor(u.processing?.status ?? u.status)}`}>
-                      {statusLabel(u.processing?.status ?? u.status)}
-                    </span>
-                  </div>
-                  {u.processing && u.processing.status === 'COMPLETED' && (
-                    <p className="mt-1 text-sm text-graphite-500">{u.processing.subject ?? '—'} · {u.processing.topic ?? '—'} · Confiança: {u.processing.confidence ? `${Math.round((u.processing.confidence as number) * 100)}%` : '—'}</p>
-                  )}
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-graphite-400">Nenhuma digitalização ainda.</p>
-          )}
-        </section>
-      )}
-    </div>
-  </main>;
+
+                    {processing.explanationJson && Object.keys(processing.explanationJson as object).length > 0 && (
+                      <details className="mt-4">
+                        <summary className="cursor-pointer font-medium text-primary-700">
+                          Explicação sugerida por alternativa
+                        </summary>
+                        <ul className="mt-2 space-y-1 text-sm text-graphite-600">
+                          {Object.entries(processing.explanationJson ?? {}).map(([position, text]) => (
+                            <li key={position}>
+                              <span className="font-mono">{String.fromCharCode(64 + Number(position))})</span> {text}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={handleSaveAsQuestion}
+                        disabled={busy}
+                        className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50"
+                      >
+                        Salvar no banco de questões
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveToNotebook}
+                        disabled={busy}
+                        className="rounded-lg border px-5 py-3 font-semibold text-graphite disabled:opacity-50"
+                      >
+                        Adicionar ao caderno de erros
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+          </>
+        )}
+
+        {tab === 'history' && (
+          <section className="mt-6 rounded-xl border bg-white p-5">
+            <h2 className="font-bold">Histórico de digitalizações</h2>
+            {uploads.length === 0 ? (
+              <p className="mt-3 text-sm text-graphite-400">Nenhuma digitalização ainda.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {uploads.map((upload) => {
+                  const status = upload.processing?.status ?? upload.status;
+                  return (
+                    <li key={upload.id} className="border-b pb-3 last:border-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium">
+                            {upload.processing?.stemText
+                              ? `${upload.processing.stemText.slice(0, 70)}${upload.processing.stemText.length > 70 ? '...' : ''}`
+                              : 'Digitalização sem enunciado reconhecido'}
+                          </p>
+                          <p className="text-sm text-graphite-400">
+                            {new Date(upload.createdAt).toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusStyle(status)}`}>
+                            {statusLabel(status)}
+                          </span>
+                          {upload.processing && (
+                            <button
+                              type="button"
+                              onClick={() => openProcessing(upload.processing!.id)}
+                              className="text-sm text-primary-700 hover:underline"
+                            >
+                              Abrir
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {upload.processing?.status === 'COMPLETED' && (
+                        <p className="mt-1 text-sm text-graphite-500">
+                          {upload.processing.subject ?? '—'} · {upload.processing.topic ?? '—'}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+      </div>
+    </main>
+  );
 }
