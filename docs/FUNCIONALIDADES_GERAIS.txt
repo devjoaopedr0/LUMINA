@@ -203,7 +203,7 @@
     -  Explicação pela LuminIA
     -  Buscar questões semelhantes
     -  Adicionar ao caderno de estudos
-19. 19. Provas anteriores
+19. 19. Provas anteriores [PRÓXIMO ITEM]
     -  ENEM
     -  Vestibulares
     -  UECE
@@ -213,7 +213,7 @@
     -  Gabarito
     -  Histórico
     -  Estatísticas
-20. 20. Redação
+20. 20. Redação [PENDENTE]
     -  Enviar redação
     -  Digitar redação na plataforma
     -  Upload de foto

@@ -101,7 +101,7 @@ Entrega vertical do item 17 do inventário. A base para correção de cartões-r
 
 - **Testes**: backend 404/24 ✓, app 4 checks ✓, builds limpos
 
-## Atualização de 26/09/2026 — item 18: Scanner de questões
+## Atualização de 26/09/2026 — ## Atualização de 26/09/2026 — item 18: Scanner de questões
 
 Entrega vertical do item 18 do inventário. Scanner de questões impressas: foto → OCR → classificação → LuminIA → questão oficial ou caderno de erros.
 
@@ -127,6 +127,13 @@ Entrega vertical do item 18 do inventário. Scanner de questões impressas: foto
   - `POST /question-scans/processing/:id/save-question` (cria questão oficial)
   - `POST /question-scans/processing/:id/save-error-notebook` (adiciona ao caderno)
   - `GET /question-scans/stats`
+
+- **Frontend** (`QuestionScanner.tsx`):
+  - Página `/app/question-scanner`: upload com pré-visualização, polling de processamento
+  - Resultado: enunciado, alternativas, disciplina/assunto/dificuldade, confiança, warnings
+  - Explicação LuminIA por alternativa
+  - Botões: "Criar questão oficial" (salva no banco) e "Adicionar ao caderno de erros" (com motivo)
+  - Aba "Histórico" com lista de digitalizações e status
 
 - **Testes**: backend 404/24 ✓, app 4 checks ✓, builds limpos
 
