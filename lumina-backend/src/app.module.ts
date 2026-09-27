@@ -17,6 +17,7 @@ import { InstitutionsModule } from './institutions/institutions.module';
 import { SearchModule } from './search/search.module';
 import { validateEnv } from './config/env.validation';
 import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
     EssaysModule,
     SimulationsModule,
     SearchModule,
+    AiModule,
   ],
   providers: [
     RateLimitMiddleware,
