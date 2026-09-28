@@ -140,6 +140,10 @@ function CreateScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }:
   const [dailyMinutes, setDailyMinutes] = useState(existingSchedule?.dailyMinutes ?? 120);
   const [studyDays, setStudyDays] = useState<number[]>(existingSchedule?.studyDays ?? [1, 2, 3, 4, 5]);
   const [objective, setObjective] = useState(existingSchedule?.objective ?? "");
+  // Língua estrangeira: o ENEM cobra só uma (Inglês OU Espanhol), então as
+  // duas nunca aparecem juntas na lista geral — o aluno escolhe uma das duas.
+  const languageSubjects = subjects.filter((s) => s.code === "ENGLISH" || s.code === "SPANISH");
+  const regularSubjects = subjects.filter((s) => s.code !== "ENGLISH" && s.code !== "SPANISH");
   const [selectedSubjects, setSelectedSubjects] = useState<Record<string, number>>(
     existingSchedule?.scheduleSubjects
       ? Object.fromEntries(
@@ -147,10 +151,24 @@ function CreateScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }:
         )
       : Object.fromEntries(
           subjects
-            .filter((s) => s.name !== "Redação")
+            .filter((s) => s.name !== "Redação" && s.code !== "SPANISH")
             .map((s) => [s.id, STUDY_SUBJECTS_DEFAULT_HOURS[s.name] ?? 60]),
         ),
   );
+  const selectedLanguageId = languageSubjects.find((s) => selectedSubjects[s.id] !== undefined)?.id ?? null;
+
+  function selectLanguage(subjectId: string | null) {
+    setSelectedSubjects((current) => {
+      const next = { ...current };
+      for (const lang of languageSubjects) delete next[lang.id];
+      if (subjectId) {
+        const entry = subjects.find((s) => s.id === subjectId);
+        const defaultHours = entry ? STUDY_SUBJECTS_DEFAULT_HOURS[entry.name] ?? 60 : 60;
+        next[subjectId] = current[subjectId] ?? defaultHours;
+      }
+      return next;
+    });
+  }
 
   function toggleDay(day: number) {
     setStudyDays((current) =>
@@ -313,12 +331,49 @@ function CreateScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }:
         />
       </div>
 
+      {languageSubjects.length > 0 && (
+        <div>
+          <label className="mb-2 block text-sm font-medium text-graphite">
+            Língua estrangeira
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {languageSubjects.map((lang) => (
+              <button
+                key={lang.id}
+                type="button"
+                onClick={() => selectLanguage(selectedLanguageId === lang.id ? null : lang.id)}
+                className={`h-10 px-4 rounded-xl border text-sm font-medium transition-all ${
+                  selectedLanguageId === lang.id
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-surface-line bg-white text-graphite hover:border-graphite/30"
+                }`}
+              >
+                {lang.name}
+              </button>
+            ))}
+          </div>
+          {selectedLanguageId && (
+            <div className="mt-2 flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                max={500}
+                value={selectedSubjects[selectedLanguageId]}
+                onChange={(e) => updateHours(selectedLanguageId, parseInt(e.target.value) || 0)}
+                className="w-24"
+              />
+              <span className="text-xs text-graphite-400">horas</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <label className="mb-2 block text-sm font-medium text-graphite">
           Disciplinas — marque e ajuste as horas alvo
         </label>
         <div className="flex flex-col gap-3">
-          {subjects.map((subj) => {
+          {regularSubjects.map((subj) => {
             const isSelected = selectedSubjects[subj.id] !== undefined;
             return (
               <div
@@ -459,6 +514,11 @@ interface TaskItemProps {
    * título. Sem isso, cada linha repetiria a mesma matéria logo abaixo.
    */
   hideSubject?: boolean;
+  /**
+   * Usado na aba "Diária": ali o cronograma mostra só a matéria do dia,
+   * sem o título/observação livre que o aluno escreveu na tarefa.
+   */
+  hideDetails?: boolean;
 }
 
 /**
@@ -478,7 +538,7 @@ function taskCustomNote(task: StudyTask): string | null {
   return task.title === generated ? null : task.title;
 }
 
-function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false }: TaskItemProps) {
+function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDetails = false }: TaskItemProps) {
   const [error, setError] = useState<string | null>(null);
 
   const status = task.status;
@@ -515,10 +575,10 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false }: TaskI
           <h3 className="mt-1 text-sm font-semibold text-graphite">
             {hideSubject ? "Estudo" : taskSubjectLabel(task)}
           </h3>
-          {note && (
+          {!hideDetails && note && (
             <p className="mt-1 text-xs text-graphite-400">{note}</p>
           )}
-          {task.description && (
+          {!hideDetails && task.description && (
             <p className="mt-1 text-xs text-graphite-400">{task.description}</p>
           )}
         </div>
@@ -1011,6 +1071,7 @@ function DailyView({ date, data, onTaskUpdate, canCreateTasks }: DailyViewProps)
                 task={t}
                 onUpdate={onTaskUpdate}
                 canCreateTasks={canCreateTasks}
+                hideDetails
               />
             ))}
           </div>
@@ -1027,6 +1088,7 @@ function DailyView({ date, data, onTaskUpdate, canCreateTasks }: DailyViewProps)
                 task={t}
                 onUpdate={onTaskUpdate}
                 canCreateTasks={canCreateTasks}
+                hideDetails
               />
             ))}
           </div>
@@ -1043,6 +1105,7 @@ function DailyView({ date, data, onTaskUpdate, canCreateTasks }: DailyViewProps)
                 task={t}
                 onUpdate={onTaskUpdate}
                 canCreateTasks={canCreateTasks}
+                hideDetails
               />
             ))}
           </div>
