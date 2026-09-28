@@ -183,7 +183,8 @@ export class SchedulesRepository {
   async createTimeLog(
     tx: Db,
     data: {
-      taskId: string;
+      taskId?: string | null;
+      subjectId?: string | null;
       userId: string;
       startTime: Date;
     endTime: Date;
@@ -192,7 +193,8 @@ export class SchedulesRepository {
   ) {
     return tx.studyTimeLog.create({
       data: {
-        taskId: data.taskId,
+        taskId: data.taskId ?? null,
+        subjectId: data.subjectId ?? null,
         userId: data.userId,
         startTime: data.startTime,
         endTime: data.endTime,
@@ -203,6 +205,40 @@ export class SchedulesRepository {
 
   async findProgressByScheduleId(scheduleId: string) {
     return this.prisma.studyProgress.findUnique({ where: { scheduleId } });
+  }
+
+  /**
+   * Tempo registrado que pertence a um cronograma. Um registro pertence ao
+   * cronograma quando aponta para uma tarefa dele OU para uma disciplina que
+   * ele planeja — o segundo caso é o do cronômetro, que trabalha por matéria e
+   * pode rodar num dia sem sessão programada.
+   *
+   * `client` precisa ser informado quando a leitura acontece dentro de uma
+   * transação: pelo cliente raiz, o log recém-gravado ainda não aparece e o
+   * progresso voltaria zerado logo no primeiro registro do dia.
+   */
+  timeLogsForSchedule(
+    scheduleId: string,
+    period?: { from: Date; to: Date },
+    client: Db = this.prisma,
+  ) {
+    return client.studyTimeLog.findMany({
+      where: {
+        OR: [
+          { task: { scheduleId } },
+          { subject: { scheduleSubjects: { some: { scheduleId } } } },
+        ],
+        ...(period ? { endTime: { gte: period.from, lte: period.to } } : {}),
+      },
+    });
+  }
+
+  /** A disciplina pertence a este cronograma? Usado para validar o cronômetro. */
+  async findScheduleSubjectById(scheduleId: string, subjectId: string) {
+    return this.prisma.studyScheduleSubject.findFirst({
+      where: { scheduleId, subjectId },
+      include: { subject: true },
+    });
   }
 
   async upsertProgress(

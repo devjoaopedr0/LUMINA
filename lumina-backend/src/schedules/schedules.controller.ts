@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -11,7 +12,7 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { SchedulesService } from "./schedules.service";
@@ -20,6 +21,7 @@ import {
   CreateStudyTaskDto,
   RescheduleTaskDto,
   SetVestibularDto,
+  SubjectTimeLogDto,
   TimeLogDto,
   UpdateStudyScheduleDto,
   UpdateStudyTaskDto,
@@ -154,6 +156,30 @@ export class SchedulesController {
   @Post("study/tasks/:id/timer")
   async logTime(@CurrentUser() user: UserWithProfile, @Param("id") id: string, @Body() dto: TimeLogDto) {
     return this.service.stopTimer(user.id, id, dto.durationMinutes);
+  }
+
+  @Post("study/timer")
+  @ApiOperation({
+    summary: "Registra tempo de estudo por matéria",
+    description:
+      "Usado pelo cronômetro: o aluno informa a disciplina e os minutos, sem " +
+      "depender de subtópico ou de tarefa do dia.",
+  })
+  async logSubjectTime(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: SubjectTimeLogDto,
+  ) {
+    const result = await this.service.logSubjectTime(
+      user.id,
+      dto.subjectId,
+      dto.durationMinutes,
+    );
+    if (!result) {
+      throw new NotFoundException(
+        "Matéria fora do seu cronograma. Escolha uma disciplina planejada.",
+      );
+    }
+    return result;
   }
 
   @Get("study/progress")

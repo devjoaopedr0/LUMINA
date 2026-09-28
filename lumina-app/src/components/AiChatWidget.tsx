@@ -7,7 +7,8 @@ import { AiChatNotConfiguredError, sendAiChatMessage, type AiChatMessage } from 
 const INITIAL_MESSAGE: AiChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: "Olá! Eu sou a LuminIA. Em breve poderei ajudar com seus estudos, questões e cronograma.",
+  content:
+    "Olá! Eu sou a LuminIA. Pergunte sobre suas dúvidas de matéria, sobre redação, sobre o cronograma ou sobre qualquer questão que você errou.",
 };
 
 export function AiChatWidget() {
@@ -62,12 +63,12 @@ export function AiChatWidget() {
         <section aria-label="Conversa com a LuminIA" className="flex h-[min(620px,calc(100vh-48px))] w-[min(390px,calc(100vw-32px))] flex-col overflow-hidden rounded-[24px] border border-surface-line bg-white shadow-2xl shadow-graphite/20">
           <header className="flex items-center gap-3 bg-graphite px-4 py-4 text-white">
             <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-graphite"><Bot className="h-5 w-5" /><span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-graphite bg-success" /></span>
-            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><h2 className="font-semibold">LuminIA</h2><Sparkles className="h-3.5 w-3.5 text-primary" /></div><p className="text-xs text-white/45">Assistente de estudos · integração pendente</p></div>
+            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><h2 className="font-semibold">LuminIA</h2><Sparkles className="h-3.5 w-3.5 text-primary" /></div><p className="text-xs text-white/45">Assistente de estudos · online</p></div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Minimizar conversa" className="rounded-lg p-2 text-white/55 transition hover:bg-white/10 hover:text-white"><ChevronDown className="h-5 w-5" /></button>
           </header>
 
           <div ref={scrollRef} aria-live="polite" className="flex-1 space-y-4 overflow-y-auto bg-surface-card p-4">
-            <div className="mx-auto flex w-fit items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold text-primary-700"><Sparkles className="h-3 w-3" />Protótipo pronto para integração</div>
+            <div className="mx-auto flex w-fit items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold text-primary-700"><Sparkles className="h-3 w-3" />Conectada</div>
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[84%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "rounded-br-md bg-graphite text-white" : "rounded-bl-md border border-surface-line bg-white text-graphite"}`}>{message.content}</div>

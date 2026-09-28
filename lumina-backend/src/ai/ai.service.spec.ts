@@ -1,7 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiService } from './ai.service';
 
 describe('AiService', () => {
+  // Um spy de fetch que vaza para o teste seguinte faz o teste "openai usa
+  // AI_MODEL" herdar a URL do openrouter e falhar por motivo errado.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   let service: AiService;
   let configService: any;
 
@@ -77,6 +83,139 @@ describe('AiService', () => {
         history,
       });
       expect(typeof res.message).toBe('string');
+    });
+  });
+
+  describe('provedores reais', () => {
+    function withConfig(values: Record<string, string | undefined>) {
+      const configService = { get: vi.fn((key: string) => values[key]) };
+      return new AiService(configService as never);
+    }
+
+    const prompt = { message: { role: 'user' as const, content: 'explique Hardy-Weinberg' }, history: [] };
+
+    it('recusa provider desconhecido com mensagem de erro, não mock silencioso', async () => {
+      const service = withConfig({ AI_PROVIDER: 'openrouter' });
+      await expect(service.sendMessage(prompt)).rejects.toThrow('OPENAI_API_KEY');
+    });
+
+    it('openrouter chama a base URL configurada e devolve o texto do modelo', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: 'Lei de Hardy-Weinberg.' } }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+
+      const service = withConfig({
+        AI_PROVIDER: 'openrouter',
+        OPENAI_API_KEY: 'sk-or-test',
+        OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
+        AI_MODEL: 'nvidia/nemotron-3-super-120b-a12b:free',
+      });
+
+      await expect(service.sendMessage(prompt)).resolves.toEqual({
+        message: 'Lei de Hardy-Weinberg.',
+      });
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-or-test');
+      expect((init.headers as Record<string, string>)['X-Title']).toBe('Lumina');
+      expect(JSON.parse(String(init.body)).model).toBe('nvidia/nemotron-3-super-120b-a12b:free');
+      fetchSpy.mockRestore();
+    });
+
+    it('cai no próximo modelo quando o primeiro dá 429, e o usuário não vê erro', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response('{"error":{"message":"Provider returned error"}}', { status: 429 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: 'Resposta do segundo modelo.' } }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+
+      const service = withConfig({
+        AI_PROVIDER: 'openrouter',
+        OPENAI_API_KEY: 'sk-or-test',
+        AI_MODEL: 'modelo-que-cai',
+        AI_FALLBACK_MODELS: 'modelo-que-da-certo',
+      });
+
+      await expect(service.sendMessage(prompt)).resolves.toEqual({
+        message: 'Resposta do segundo modelo.',
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      const [, secondInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+      expect(JSON.parse(String(secondInit.body)).model).toBe('modelo-que-da-certo');
+    });
+
+    it('trata resposta 200 sem texto como falha e tenta o próximo modelo', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: null }, finish_reason: 'length' }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: 'Texto util.' } }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+
+      const service = withConfig({
+        AI_PROVIDER: 'openrouter',
+        OPENAI_API_KEY: 'sk-or-test',
+        AI_MODEL: 'que-gasta-token',
+        AI_FALLBACK_MODELS: 'que-responde',
+      });
+
+      await expect(service.sendMessage(prompt)).resolves.toEqual({ message: 'Texto util.' });
+      fetchSpy.mockRestore();
+    });
+
+    it('quando todos os modelos falham, o erro diz qual foi a última falha', async () => {
+      // Response nova a cada chamada: o body de uma Response só pode ser lido
+      // uma vez, e o serviço lê para montar a mensagem de erro.
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async () => new Response('sem credito', { status: 402 }));
+
+      const service = withConfig({
+        AI_PROVIDER: 'openrouter',
+        OPENAI_API_KEY: 'sk-or-test',
+        AI_MODEL: 'modelo-a',
+        AI_FALLBACK_MODELS: 'modelo-b',
+      });
+
+      await expect(service.sendMessage(prompt)).rejects.toThrow(/402/);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('openai usa AI_MODEL quando ele existe, para não divergir do openrouter', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+
+      const service = withConfig({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test', AI_MODEL: 'gpt-4o-mini' });
+      await service.sendMessage(prompt);
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(JSON.parse(String(init.body)).model).toBe('gpt-4o-mini');
+      fetchSpy.mockRestore();
     });
   });
 });

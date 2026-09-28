@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiChatMessageDto, AiChatRequestDto, AiChatResponseDto } from './ai.dto';
 
@@ -7,17 +7,15 @@ interface ProviderMessage {
   content: string;
 }
 
-interface ProviderResponse {
-  content: string;
-}
-
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   /**
    * Envia mensagem para o provedor de IA configurado.
-   * Suporta: OpenAI (gpt-4o-mini), Anthropic (claude-3-haiku), ou mock para desenvolvimento.
+   * Suporta: OpenAI, OpenRouter, Anthropic, Groq, ou mock para desenvolvimento.
    */
   async sendMessage(dto: AiChatRequestDto): Promise<AiChatResponseDto> {
     const { message, history } = dto;
@@ -35,6 +33,8 @@ export class AiService {
     switch (provider) {
       case 'openai':
         return this.callOpenAI(message, history);
+      case 'openrouter':
+        return this.callOpenRouter(message, history);
       case 'anthropic':
         return this.callAnthropic(message, history);
       case 'groq':
@@ -77,7 +77,7 @@ export class AiService {
     // Resposta genérica útil
     return {
       message:
-        'Essa é uma resposta simulada da LuminIA. Para respostas reais, configure `AI_PROVIDER=openai` ou `AI_PROVIDER=anthropic` no `.env` com sua chave de API.\n\n' +
+        'Essa é uma resposta simulada da LuminIA. Para respostas reais, configure `AI_PROVIDER` no `.env` do backend com `openrouter` (grátis), `openai`, `anthropic` ou `groq`.\n\n' +
         'Enquanto isso, posso:\n' +
         '• Explicar conceitos (ex.: "Como funciona a derivada?")\n' +
         '• Ajudar com redação (estrutura, competências ENEM)\n' +
@@ -94,42 +94,129 @@ export class AiService {
     history: AiChatMessageDto[],
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
-    const model = this.config.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
-
     if (!apiKey) {
       throw new BadRequestException('OPENAI_API_KEY não configurada no ambiente.');
     }
+    const model = this.config.get<string>('AI_MODEL') || this.config.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
+    return this.chatCompletion({
+      url: 'https://api.openai.com/v1/chat/completions',
+      apiKey,
+      models: [model],
+      providerName: 'OpenAI',
+      message,
+      history,
+      headers: {},
+    });
+  }
 
+  /**
+   * OpenRouter — agregador com rota compatível com a da OpenAI e um
+   * catálogo de modelos gratuitos (`:free`). Como os gratuitos respondem mal
+   * sob carga (429 com frequência) e alguns gastam o orçamento de tokens
+   * raciocinando, a chamada tenta os modelos de `AI_FALLBACK_MODELS` em
+   * sequência até um responder de verdade.
+   */
+  private async callOpenRouter(
+    message: AiChatMessageDto,
+    history: AiChatMessageDto[],
+  ): Promise<AiChatResponseDto> {
+    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new BadRequestException('OPENAI_API_KEY não configurada no ambiente.');
+    }
+    const baseUrl =
+      this.config.get<string>('OPENAI_BASE_URL')?.replace(/\/+$/, '') ??
+      'https://openrouter.ai/api/v1';
+    const primary = this.config.get<string>('AI_MODEL') || 'openrouter/free';
+    const fallbacks = (this.config.get<string>('AI_FALLBACK_MODELS') ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
+
+    return this.chatCompletion({
+      url: `${baseUrl}/chat/completions`,
+      apiKey,
+      models: [primary, ...fallbacks],
+      providerName: 'OpenRouter',
+      message,
+      history,
+      headers: {
+        'HTTP-Referer': this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5174',
+        'X-Title': 'Lumina',
+      },
+    });
+  }
+
+  /**
+   * Uma única chamada a uma API compatível com a da OpenAI, com tentativa
+   * nos modelos em sequência. Só desiste quando todos falham, e aí reporta
+   * o último erro: assim o aluno não vê "Sem resposta." sem saber por quê.
+   */
+  private async chatCompletion(params: {
+    url: string;
+    apiKey: string;
+    models: string[];
+    providerName: string;
+    message: AiChatMessageDto;
+    history: AiChatMessageDto[];
+    headers: Record<string, string>;
+  }): Promise<AiChatResponseDto> {
     const messages: ProviderMessage[] = [
       { role: 'system', content: this.getSystemPrompt() },
-      ...history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message.content },
+      ...params.history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: params.message.content },
     ];
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.7,
-        max_tokens: 800,
-      }),
-    });
+    let lastError = 'nenhuma tentativa executada';
+    for (const model of params.models) {
+      try {
+        const response = await fetch(params.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${params.apiKey}`,
+            ...params.headers,
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: 0.7,
+            max_tokens: 800,
+          }),
+        });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new BadRequestException(`Erro OpenAI: ${response.status} ${JSON.stringify(err)}`);
+        if (!response.ok) {
+          const raw = await response.text();
+          lastError = `${response.status} ${raw.slice(0, 200)}`;
+          this.logger.warn(
+            `${params.providerName} ${model} respondeu ${response.status}; tentando o proximo modelo.`,
+          );
+          continue;
+        }
+
+        const data = (await response.json()) as {
+          choices?: { message?: { content?: string | null }; finish_reason?: string }[];
+        };
+        const content = data.choices?.[0]?.message?.content?.trim();
+        if (content) {
+          return { message: content };
+        }
+
+        // Resposta 200 sem texto: o modelo gastou o orçamento com raciocínio
+        // (finish_reason "length") ou devolveu null. Conta como falha.
+        lastError = `resposta vazia (finish_reason=${data.choices?.[0]?.finish_reason ?? 'desconhecido'})`;
+        this.logger.warn(`${params.providerName} ${model} devolveu vazio; tentando o proximo modelo.`);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `${params.providerName} ${model} lancou ${lastError}; tentando o proximo modelo.`,
+        );
+      }
     }
 
-    const data = (await response.json()) as {
-      choices: { message: { content: string } }[];
-    };
-
-    return { message: data.choices[0]?.message?.content?.trim() ?? 'Sem resposta.' };
+    throw new BadRequestException(
+      `Erro ${params.providerName}: todos os modelos falharam. Ultimo erro: ${lastError}`,
+    );
   }
 
   /**
@@ -197,41 +284,18 @@ export class AiService {
     history: AiChatMessageDto[],
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('GROQ_API_KEY');
-    const model = this.config.get<string>('GROQ_MODEL') || 'llama-3.1-70b-versatile';
-
     if (!apiKey) {
       throw new BadRequestException('GROQ_API_KEY não configurada no ambiente.');
     }
-
-    const messages: ProviderMessage[] = [
-      { role: 'system', content: this.getSystemPrompt() },
-      ...history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message.content },
-    ];
-
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.7,
-        max_tokens: 800,
-      }),
+    const model = this.config.get<string>('GROQ_MODEL') || 'llama-3.1-70b-versatile';
+    return this.chatCompletion({
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey,
+      models: [model],
+      providerName: 'Groq',
+      message,
+      history,
+      headers: {},
     });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new BadRequestException(`Erro Groq: ${response.status} ${JSON.stringify(err)}`);
-    }
-
-    const data = (await response.json()) as {
-      choices: { message: { content: string } }[];
-    };
-
-    return { message: data.choices[0]?.message?.content?.trim() ?? 'Sem resposta.' };
   }
 }

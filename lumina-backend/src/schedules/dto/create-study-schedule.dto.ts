@@ -187,6 +187,22 @@ export class TimeLogDto {
   durationMinutes: number;
 }
 
+/// Registro de tempo do cronômetro, que é por MATÉRIA e não por subtópico.
+export class SubjectTimeLogDto {
+  @ApiProperty({
+    example: "a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01",
+    description: "Disciplina (matéria) que está sendo estudada",
+  })
+  @IsUUID()
+  subjectId: string;
+
+  @ApiProperty({ example: 45 })
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  durationMinutes: number;
+}
+
 export class SetVestibularDto {
   @ApiProperty({ example: "c0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e00", nullable: true })
   @IsOptional()

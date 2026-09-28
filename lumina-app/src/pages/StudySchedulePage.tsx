@@ -37,6 +37,7 @@ import {
   type StudyProgressSummary,
   type ProgressEvolutionPoint,
   type PaginatedTasks,
+  type DailySession,
   ApiError,
   apiCreateStudySchedule,
   apiGetDailySession,
@@ -44,7 +45,7 @@ import {
   apiGetStudySchedule,
   apiListStudySubjects,
   apiListTasks,
-  apiLogTime,
+  apiLogSubjectTime,
   apiRescheduleMissed,
   apiUpdateStudySchedule,
   apiUpdateTask,
@@ -452,25 +453,36 @@ interface TaskItemProps {
   task: StudyTask;
   onUpdate: (task: StudyTask | null) => void;
   canCreateTasks: boolean;
+  /**
+   * Usado dentro da aba "Por matéria", em que o card já mostra a disciplina no
+   * título. Sem isso, cada linha repetiria a mesma matéria logo abaixo.
+   */
+  hideSubject?: boolean;
 }
 
-function isGeneratedSubjectTask(task: StudyTask): boolean {
-  return Boolean(
-    task.subjectName &&
-    task.title.toLocaleLowerCase("pt-BR").startsWith(`${task.subjectName.toLocaleLowerCase("pt-BR")}: estudo programado`),
-  );
+/**
+ * A identidade de uma tarefa é a MATÉRIA, nunca o subtítulo. O título livre
+ * que o aluno mesmo escreveu vira apenas uma observação em corpo menor —
+ * aparecer como cabeçalho fazia o cronograma parecer organizado por
+ * subtópico, que não é como o estudo é distribuído.
+ */
+function taskSubjectLabel(task: StudyTask): string {
+  return task.subjectName ?? "Sem matéria";
 }
 
-function taskDisplayName(task: StudyTask): string {
-  return isGeneratedSubjectTask(task) ? task.subjectName! : task.title;
+/** Título que o aluno escreveu por conta própria (tarefa não gerada). */
+function taskCustomNote(task: StudyTask): string | null {
+  if (!task.subjectName) return task.title;
+  const generated = `${task.subjectName}: estudo programado`;
+  return task.title === generated ? null : task.title;
 }
 
-function TaskItem({ task, onUpdate, canCreateTasks }: TaskItemProps) {
+function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false }: TaskItemProps) {
   const [error, setError] = useState<string | null>(null);
 
   const status = task.status;
   const badgeClass = TASK_STATUS_BADGE[status];
-  const generatedSubjectTask = isGeneratedSubjectTask(task);
+  const note = taskCustomNote(task);
 
   function toggleStatus() {
     setError(null);
@@ -490,13 +502,21 @@ function TaskItem({ task, onUpdate, canCreateTasks }: TaskItemProps) {
             <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}>
               {TASK_STATUS_LABEL[status]}
             </span>
-            {task.subjectName && !generatedSubjectTask && (
-              <span className="rounded-full bg-graphite/5 px-2 py-0.5 text-xs text-graphite-500">
-                {task.subjectName}
+            <span className="rounded-full bg-graphite/5 px-2 py-0.5 text-xs text-graphite-500">
+              {minutesToHours(task.scheduledMinutes)} planejados
+            </span>
+            {Boolean(task.loggedMinutes) && (
+              <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
+                {minutesToHours(task.loggedMinutes!)} estudados
               </span>
             )}
           </div>
-          <h3 className="mt-1 text-sm font-medium text-graphite">{taskDisplayName(task)}</h3>
+          <h3 className="mt-1 text-sm font-semibold text-graphite">
+            {hideSubject ? "Estudo" : taskSubjectLabel(task)}
+          </h3>
+          {note && (
+            <p className="mt-1 text-xs text-graphite-400">{note}</p>
+          )}
           {task.description && (
             <p className="mt-1 text-xs text-graphite-400">{task.description}</p>
           )}
@@ -525,7 +545,7 @@ export function StudySchedulePage() {
   const { user, logout } = useAuth();
   const [subjects, setSubjects] = useState<StudySubject[]>([]);
   const [schedule, setSchedule] = useState<StudySchedule | null>(null);
-  const [dailyData, setDailyData] = useState<{ schedule: StudySchedule; session: StudySession | null } | null>(null);
+  const [dailyData, setDailyData] = useState<DailySession | null>(null);
   const [tasks, setTasks] = useState<PaginatedTasks | null>(null);
   const [catalogTasks, setCatalogTasks] = useState<StudyTask[]>([]);
   const [progress, setProgress] = useState<{ summary: StudyProgressSummary | null; evolution: ProgressEvolutionPoint[] | null } | null>(null);
@@ -539,9 +559,14 @@ export function StudySchedulePage() {
 
   const token = getAccessToken() ?? "";
 
-  const loadAll = useCallback(() => {
+  /**
+   * `silent` recarrega os dados sem acionar o estado de carregamento. O
+   * carregamento é o que desmonta a página inteira, e a Sala de Foco vive aqui:
+   * recarregá-la a cada registro derrubaria o cronômetro no meio do estudo.
+   */
+  const loadAll = useCallback((options?: { silent?: boolean }) => {
     if (!token) return;
-    setLoading(true);
+    if (!options?.silent) setLoading(true);
     setError(null);
 
     Promise.all([
@@ -559,7 +584,9 @@ export function StudySchedulePage() {
           err instanceof ApiError ? err.message : "Erro ao carregar dados.",
         ),
       )
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!options?.silent) setLoading(false);
+      });
   }, [token]);
 
   useEffect(() => {
@@ -610,20 +637,17 @@ export function StudySchedulePage() {
       };
     });
     setCatalogTasks((current) => current.map((task) => task.id === updatedTask.id ? updatedTask : task));
-    if (dailyData?.session) {
-      setDailyData((current) => {
-        if (!current || !current.session) return current;
-        return {
-          schedule: current.schedule,
-          session: {
-            ...current.session,
-            tasks: current.session.tasks.map((t) =>
-              t.id === updatedTask.id ? updatedTask : t,
-            ),
-          },
-        };
-      });
-    }
+    setDailyData((current) => {
+      if (!current || !current.session) return current;
+      const applyUpdate = (task: StudyTask) =>
+        task.id === updatedTask.id ? { ...updatedTask, loggedMinutes: task.loggedMinutes } : task;
+      const nextTasks = current.session.tasks.map(applyUpdate);
+      return {
+        ...current,
+        session: { ...current.session, tasks: nextTasks },
+        tasks: nextTasks,
+      };
+    });
   }
 
   const studyDaysLabel = schedule
@@ -817,9 +841,6 @@ export function StudySchedulePage() {
               {activeTab === "subjects" && (
                 <SubjectsView subjects={subjects} tasks={catalogTasks} onTaskUpdate={handleTaskUpdate} canCreateTasks={schedule.status === "ACTIVE"} />
               )}
-              {activeTab === "timer" && (
-                <FocusTimer tasks={catalogTasks} onSaved={() => loadAll()} />
-              )}
                {activeTab === "weekly" && (
                 <WeeklyView
                   weekDays={weekDays}
@@ -932,7 +953,7 @@ function CreateScheduleOverlay({
 
 interface DailyViewProps {
   date: Date;
-  data: { schedule: StudySchedule; session: StudySession | null } | null;
+  data: DailySession | null;
   onTaskUpdate: (task: StudyTask | null) => void;
   canCreateTasks: boolean;
 }
@@ -954,10 +975,14 @@ function DailyView({ date, data, onTaskUpdate, canCreateTasks }: DailyViewProps)
   const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS");
   const pending = tasks.filter((t) => t.status === "PENDING");
   const done = tasks.filter((t) => t.status === "DONE");
-  const loggedMinutes = tasks.reduce(
-    (sum: number, t: StudyTask) => sum + (t.loggedMinutes ?? 0),
+  // O tempo vem por tarefa (registro antigo) e por matéria (cronômetro).
+  // Somar os dois é o que faz a linha "Estudado" refletir o cronômetro.
+  const taskMinutes = tasks.reduce((sum: number, t: StudyTask) => sum + (t.loggedMinutes ?? 0), 0);
+  const subjectMinutes = Object.values(data.loggedMinutesBySubject ?? {}).reduce(
+    (sum, value) => sum + value,
     0,
   );
+  const loggedMinutes = taskMinutes + subjectMinutes;
 
   return (
     <div className="flex flex-col gap-6">
@@ -1061,7 +1086,7 @@ function SubjectsView({
               <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-line"><div className="h-full rounded-full bg-primary" style={{ width: `${subjectTasks.length ? (completed / subjectTasks.length) * 100 : 0}%` }} /></div>
               <p className="mt-2 text-xs text-graphite-400">{completed} de {subjectTasks.length} atividades concluídas</p>
               {subjectTasks.length > 0 ? (
-                <div className="mt-4 space-y-2">{subjectTasks.slice(0, 3).map((task) => <TaskItem key={task.id} task={task} onUpdate={onTaskUpdate} canCreateTasks={canCreateTasks} />)}</div>
+                <div className="mt-4 space-y-2">{subjectTasks.slice(0, 3).map((task) => <TaskItem key={task.id} task={task} onUpdate={onTaskUpdate} canCreateTasks={canCreateTasks} hideSubject />)}</div>
               ) : <p className="mt-5 rounded-xl bg-surface-card p-3 text-xs text-graphite-400">Sem atividades programadas nesta matéria.</p>}
             </Card>
           );
@@ -1071,56 +1096,79 @@ function SubjectsView({
   );
 }
 
-function FocusTimer({ tasks, onSaved }: { tasks: StudyTask[]; onSaved: () => void }) {
-  const availableTasks = tasks.filter((task) => task.status !== "DONE");
-  const firstAvailableTaskId = availableTasks[0]?.id ?? "";
-  const [taskId, setTaskId] = useState(availableTasks[0]?.id ?? "");
-  const [seconds, setSeconds] = useState(0);
-  const [running, setRunning] = useState(false);
+/**
+ * Cronômetro por MATÉRIA. O seletor lista só as disciplinas planejadas no
+ * cronograma — nada de subtópico nem de tarefa do dia — porque é assim que o
+ * tempo é distribuído e contabilizado.
+ *
+ * O componente fica MONTADO o tempo todo (a aba só oculta o container): se
+ * ele fosse desmontado ao trocar de aba, o estado e o intervalo morreriam e a
+ * sala de foco se perderia no meio do estudo.
+ */
+function FocusTimer({
+  subjects,
+  onSaved,
+}: {
+  subjects: StudySubject[];
+  onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const focus = useFocusSession(subjects[0]?.id ?? "");
+  const { subjectId, running, elapsedSeconds, hasProgress } = focus;
 
-  useEffect(() => {
-    if (!taskId && firstAvailableTaskId) setTaskId(firstAvailableTaskId);
-  }, [firstAvailableTaskId, taskId]);
-
-  useEffect(() => {
-    if (!running) return;
-    const interval = setInterval(() => setSeconds((current) => current + 1), 1000);
-    return () => clearInterval(interval);
-  }, [running]);
+  // A matéria escolhida pode sair do plano (o aluno editou o cronograma).
+  const subject = subjects.find((s) => s.id === subjectId) ?? subjects[0];
+  const effectiveSubjectId = subject?.id ?? "";
 
   async function finishSession() {
-    setRunning(false);
-    const minutes = Math.ceil(seconds / 60);
-    if (!taskId || minutes < 1) return;
+    if (!effectiveSubjectId) return;
+    setSaving(true);
     try {
-      await apiLogTime(getAccessToken() ?? "", taskId, minutes);
-      setMessage(`${minutesToHours(minutes)} registrados com sucesso.`);
-      setSeconds(0);
+      const minutes = Math.floor(elapsedSeconds / 60);
+      if (minutes < 1) {
+        setMessage("Estude por pelo menos 1 minuto para registrar.");
+        return;
+      }
+      await apiLogSubjectTime(getAccessToken() ?? "", effectiveSubjectId, minutes);
+      setMessage(`${minutesToHours(minutes)} registrados em ${subject?.name ?? "matéria"}.`);
+      focus.clearElapsed();
       onSaved();
     } catch (error) {
       setMessage(error instanceof ApiError ? error.message : "Não foi possível registrar o tempo.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  const display = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const display = `${String(Math.floor(elapsedSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, "0")}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
+
   return (
     <div className="mx-auto max-w-3xl">
       <Card className="overflow-hidden bg-graphite p-0 text-white">
         <div className="border-b border-white/10 px-6 py-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Sala de foco</p><h2 className="mt-2 text-xl font-semibold">Cronômetro de estudos</h2><p className="mt-1 text-sm text-white/45">Uma matéria por vez. Concentração total.</p></div>
         <div className="px-6 py-10 text-center sm:py-14">
-          <label className="mx-auto block max-w-md text-left text-xs font-semibold text-white/55">Atividade</label>
-          <select value={taskId} onChange={(event) => { setTaskId(event.target.value); setMessage(""); }} disabled={running} className="mx-auto mt-2 block w-full max-w-md rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary">
-            <option value="" className="text-graphite">Selecione uma atividade</option>
-            {availableTasks.map((task) => <option key={task.id} value={task.id} className="text-graphite">{isGeneratedSubjectTask(task) ? task.subjectName : `${task.subjectName ? `${task.subjectName} — ` : ""}${task.title}`}</option>)}
+          <label htmlFor="focusSubject" className="mx-auto block max-w-md text-left text-xs font-semibold text-white/55">Matéria</label>
+          <select
+            id="focusSubject"
+            value={effectiveSubjectId}
+            onChange={(event) => { focus.selectSubject(event.target.value); setMessage(""); }}
+            disabled={running || subjects.length === 0}
+            className="mx-auto mt-2 block w-full max-w-md rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary disabled:opacity-50"
+          >
+            {subjects.length === 0 && <option value="" className="text-graphite">Nenhuma matéria no cronograma</option>}
+            {subjects.map((item) => <option key={item.id} value={item.id} className="text-graphite">{item.name}</option>)}
           </select>
-          <div className="my-10 font-mono text-5xl font-semibold tracking-tight sm:text-7xl">{display}</div>
+          <div className="my-10 font-mono text-5xl font-semibold tracking-tight sm:text-7xl" aria-live="off">{display}</div>
           <div className="flex flex-wrap justify-center gap-3">
-            {!running ? <Button disabled={!taskId} onClick={() => { setRunning(true); setMessage(""); }}><Play className="h-4 w-4" />Iniciar foco</Button> : <Button variant="outline" onClick={() => setRunning(false)}><CirclePause className="h-4 w-4" />Pausar</Button>}
-            <Button variant="ghost" disabled={seconds === 0} onClick={() => { setRunning(false); setSeconds(0); setMessage(""); }}><RotateCcw className="h-4 w-4" />Reiniciar</Button>
-            <Button variant="ghost" disabled={seconds === 0 || !taskId} onClick={() => void finishSession()}><CheckCircle2 className="h-4 w-4" />Finalizar e salvar</Button>
+            {!running ? <Button disabled={!effectiveSubjectId} onClick={() => { focus.start(); setMessage(""); }}><Play className="h-4 w-4" />Iniciar foco</Button> : <Button variant="outline" onClick={focus.pause}><CirclePause className="h-4 w-4" />Pausar</Button>}
+            <Button variant="ghost" disabled={!hasProgress} onClick={() => { focus.reset(); setMessage(""); }}><RotateCcw className="h-4 w-4" />Reiniciar</Button>
+            <Button variant="ghost" disabled={!hasProgress || saving || running} onClick={() => void finishSession()}><CheckCircle2 className="h-4 w-4" />{saving ? "Salvando..." : "Finalizar e salvar"}</Button>
           </div>
           {message && <p className="mt-6 text-sm text-primary">{message}</p>}
+          <p className="mt-4 text-xs text-white/35">
+            O cronômetro continua valendo enquanto o app estiver aberto, mesmo se você trocar de aba ou sair desta tela.
+          </p>
         </div>
       </Card>
     </div>

@@ -1203,10 +1203,18 @@ export function apiDeleteStudySchedule(accessToken: string, id: string): Promise
   });
 }
 
+export interface DailySession {
+  schedule: StudySchedule;
+  session: StudySession | null;
+  tasks: StudyTask[];
+  /** Minutos registrados hoje por matéria (o cronômetro trabalha por matéria). */
+  loggedMinutesBySubject: Record<string, number>;
+}
+
 export function apiGetDailySession(
   accessToken: string,
   date?: string
-): Promise<{ schedule: StudySchedule; session: StudySession | null } | null> {
+): Promise<DailySession | null> {
   const qs = date ? `?date=${encodeURIComponent(date)}` : "";
   return request(`/study/daily${qs}`, { headers: authHeaders(accessToken) });
 }
@@ -1295,6 +1303,23 @@ export function apiLogTime(
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ durationMinutes }),
+  });
+}
+
+/**
+ * Registra tempo de estudo por MATÉRIA. É o que o cronômetro usa: o aluno
+ * escolhe a disciplina, nunca o subtópico, e o tempo entra no progresso do
+ * cronograma mesmo em dia sem sessão programada.
+ */
+export function apiLogSubjectTime(
+  accessToken: string,
+  subjectId: string,
+  durationMinutes: number
+): Promise<StudyProgressSummary> {
+  return request(`/study/timer`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ subjectId, durationMinutes }),
   });
 }
 

@@ -909,6 +909,7 @@ model StudySubject {
   scheduleSubjects StudyScheduleSubject[]
   sessionSubjects  StudySessionSubject[]
   tasks            StudyTask[]
+  timeLogs         StudyTimeLog[]
 
   @@map("study_subjects")
 }
@@ -990,19 +991,27 @@ model StudyTask {
   @@map("study_tasks")
 }
 
-/// Registro de tempo de estudo real — o aluno bate o cronômetro na tarefa.
+/// Registro de tempo de estudo real. O cronômetro trabalha por MATÉRIA, e
+/// não por subtópico: o tempo é sempre atribuído a uma disciplina
+/// (`subjectId`). `taskId` continua disponível para o registro antigo, ligado
+/// à tarefa e — quando existir — à disciplina dela, mas passou a ser opcional:
+/// um aluno pode estudar uma matéria do cronograma num dia sem sessão
+/// (domingo, feriado, revisão avulsa) e ainda assim querer registrar o tempo.
 model StudyTimeLog {
-  id             String    @id @default(uuid()) @db.Uuid
-  taskId         String    @map("task_id") @db.Uuid
-  userId         String    @map("user_id") @db.Uuid
-  startTime      DateTime  @map("start_time")
-  endTime        DateTime  @map("end_time")
-  durationMinutes Int      @map("duration_minutes")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  task           StudyTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String       @id @default(uuid()) @db.Uuid
+  taskId         String?      @map("task_id") @db.Uuid
+  subjectId      String?      @map("subject_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  startTime      DateTime     @map("start_time")
+  endTime        DateTime     @map("end_time")
+  durationMinutes Int         @map("duration_minutes")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  task           StudyTask?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  subject        StudySubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
+  @@index([subjectId])
   @@index([userId])
   @@map("study_time_logs")
 }

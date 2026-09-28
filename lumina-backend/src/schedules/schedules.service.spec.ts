@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CreateStudyScheduleDto, UpdateStudyTaskDto } from './dto/create-study-schedule.dto';
+import { CreateStudyScheduleDto, SubjectTimeLogDto, UpdateStudyTaskDto } from './dto/create-study-schedule.dto';
 import { SchedulesService } from './schedules.service';
 import { SchedulesRepository } from './schedules.repository';
 
@@ -16,7 +16,7 @@ describe('Cronograma: regressões funcionais', () => {
     db = {
       studyTask: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
       studySession: { findMany: vi.fn().mockResolvedValue([]) },
-      studyTimeLog: { findMany: vi.fn().mockResolvedValue([]) },
+      studyTimeLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
     };
     db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
     repo = {
@@ -24,11 +24,17 @@ describe('Cronograma: regressões funcionais', () => {
       findScheduleByUserId: vi.fn().mockResolvedValue({ id: 'schedule' }),
       findTaskById: vi.fn(),
       findSessionById: vi.fn(),
+      findSessionByDate: vi.fn(),
+      findScheduleSubjectById: vi.fn(),
       createTask: vi.fn(),
+      createTimeLog: vi.fn(),
       deleteTask: vi.fn(),
       updateTask: vi.fn(),
       upsertProgress: vi.fn((_tx, _id, data) => data),
     };
+    // O serviço deixa de filtrar logs direto no Prisma e passa a delegar ao
+    // repositório, que também considera os registros ligados só à matéria.
+    repo.timeLogsForSchedule = vi.fn((_id, _period, _client) => db.studyTimeLog.findMany());
     service = new SchedulesService(repo as SchedulesRepository);
   });
 
@@ -91,6 +97,8 @@ describe('Cronograma: regressões funcionais', () => {
 
   it('criar e excluir tarefas atualiza os totais dentro da transação', async () => {
     repo.findSessionById.mockResolvedValue({ scheduleId: 'schedule', schedule: { userId: 'user' } });
+    repo.createTask.mockResolvedValue({ id: 'task' });
+    repo.findTaskById.mockResolvedValue({ id: 'task', subject: { name: 'Matemática' } });
     await service.createTask('user', { sessionId: 'session', title: 'Revisão', scheduledMinutes: 20 });
     expect(repo.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Revisão' }), db);
     expect(repo.upsertProgress).toHaveBeenCalledTimes(1);
@@ -98,6 +106,29 @@ describe('Cronograma: regressões funcionais', () => {
     await service.deleteTask('user', 'task');
     expect(repo.deleteTask).toHaveBeenCalledWith('task', db);
     expect(repo.upsertProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it('devolve a matéria junto da tarefa em toda resposta de escrita', async () => {
+    // Sem o `subjectName` o front identificava a tarefa pelo título, que é o
+    // subtópico — foi assim que o cronograma passou a parecer por subtópico.
+    repo.findSessionById.mockResolvedValue({ scheduleId: 'schedule', schedule: { userId: 'user' } });
+    repo.createTask.mockResolvedValue({ id: 'task' });
+    repo.findTaskById.mockResolvedValue({ id: 'task', subject: { name: 'Matemática' } });
+    expect(await service.createTask('user', { sessionId: 'session', title: 'Revisão', scheduledMinutes: 20 }))
+      .toMatchObject({ subjectName: 'Matemática' });
+
+    repo.findTaskById.mockResolvedValue({ id: 'task', subject: { name: 'Física' }, scheduleId: 'schedule', schedule: { userId: 'user' } });
+    expect(await service.completeTask('user', 'task')).toMatchObject({ subjectName: 'Física' });
+    expect(await service.updateTask('user', 'task', { status: 'PENDING' })).toMatchObject({ subjectName: 'Física' });
+  });
+
+  it('a listagem de tarefas também traz a matéria', async () => {
+    repo.findTasks = vi.fn().mockResolvedValue({
+      items: [{ id: 'a', subject: { name: 'História' } }, { id: 'b', subject: null }],
+      total: 2, page: 1, limit: 20, totalPages: 1,
+    });
+    const page = await service.getTasks('user', { page: 1, limit: 20 });
+    expect(page?.items.map((t) => t.subjectName)).toEqual(['História', null]);
   });
 
   it('evolução inclui exatamente 30 dias e usa tempo registrado e data de conclusão', async () => {
@@ -150,5 +181,112 @@ describe('Cronograma: regressões funcionais', () => {
   it('aceita um cronograma válido e rejeita status desconhecido', async () => {
     expect(await validate(plainToInstance(CreateStudyScheduleDto, validSchedule))).toHaveLength(0);
     expect(await validate(plainToInstance(UpdateStudyTaskDto, { status: 'INVALID' }))).not.toHaveLength(0);
+  });
+});
+
+describe('Cronograma: o cronômetro é por matéria, não por subtópico', () => {
+  let service: SchedulesService;
+  let repo: any;
+  let db: any;
+
+  const MATEMATICA = 'a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01';
+
+  beforeEach(() => {
+    db = {
+      studyTask: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+      studySession: { findMany: vi.fn().mockResolvedValue([]) },
+      studyTimeLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
+    };
+    db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
+    repo = {
+      prisma: db,
+      findScheduleByUserId: vi.fn().mockResolvedValue({ id: 'schedule' }),
+      findTaskById: vi.fn(),
+      findSessionByDate: vi.fn().mockResolvedValue(null),
+      findScheduleSubjectById: vi.fn().mockResolvedValue({ subjectId: MATEMATICA }),
+      createTimeLog: vi.fn(),
+      updateTask: vi.fn(),
+      upsertProgress: vi.fn((_tx, _id, data) => data),
+    };
+    repo.timeLogsForSchedule = vi.fn((_id, _period, _client) => db.studyTimeLog.findMany());
+    service = new SchedulesService(repo as SchedulesRepository);
+  });
+
+  it('registra o tempo pela matéria, sem amarrar a uma tarefa', async () => {
+    await service.logSubjectTime('user', MATEMATICA, 45);
+    expect(repo.createTimeLog).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ subjectId: MATEMATICA, userId: 'user', durationMinutes: 45 }),
+    );
+    const payload = repo.createTimeLog.mock.calls[0][1];
+    expect(payload.taskId).toBeUndefined();
+  });
+
+  it('leva a tarefa da matéria do dia de pendente para em andamento', async () => {
+    db.studyTask.findMany.mockResolvedValue([{ id: 'task-mat' }]);
+    await service.logSubjectTime('user', MATEMATICA, 30);
+    expect(db.studyTask.update).toHaveBeenCalledWith({
+      where: { id: 'task-mat' },
+      data: { status: 'IN_PROGRESS' },
+    });
+  });
+
+  it('recusa matéria que não faz parte do cronograma', async () => {
+    repo.findScheduleSubjectById.mockResolvedValue(null);
+    expect(await service.logSubjectTime('user', MATEMATICA, 30)).toBeNull();
+    expect(repo.createTimeLog).not.toHaveBeenCalled();
+  });
+
+  it('recusa registro quando o aluno não tem cronograma', async () => {
+    repo.findScheduleByUserId.mockResolvedValue(null);
+    expect(await service.logSubjectTime('user', MATEMATICA, 30)).toBeNull();
+    expect(repo.createTimeLog).not.toHaveBeenCalled();
+  });
+
+  it('o registro antigo por tarefa também guarda a matéria da tarefa', async () => {
+    repo.findTaskById.mockResolvedValue({
+      status: 'DONE', scheduleId: 'schedule', subjectId: MATEMATICA, schedule: { userId: 'user' },
+    });
+    await service.stopTimer('user', 'task', 20);
+    expect(repo.createTimeLog).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ taskId: 'task', subjectId: MATEMATICA }),
+    );
+  });
+
+  it('soma no progresso o tempo registrado só pela matéria', async () => {
+    db.studyTimeLog.findMany.mockResolvedValue([{ durationMinutes: 25 }]);
+    expect(await service.recalculateProgress('user')).toMatchObject({ completedMinutes: 25 });
+    expect(repo.timeLogsForSchedule).toHaveBeenCalledWith('schedule', undefined, db);
+  });
+
+  it('lê os logs pelo mesmo cliente da transação, para o registro recém-gravado entrar na soma', async () => {
+    await service.logSubjectTime('user', MATEMATICA, 45);
+    const [, , client] = repo.timeLogsForSchedule.mock.calls.at(-1);
+    expect(client).toBe(db);
+  });
+
+  it('a visão diária junta o tempo por tarefa e o tempo só por matéria', async () => {
+    repo.findSessionByDate.mockResolvedValue({
+      id: 'session',
+      tasks: [{ id: 'task-mat', subjectId: MATEMATICA }],
+    });
+    db.studyTimeLog.findMany.mockResolvedValue([
+      { taskId: 'task-mat', subjectId: MATEMATICA, durationMinutes: 20 },
+      { taskId: null, subjectId: MATEMATICA, durationMinutes: 15 },
+    ]);
+    const daily = await service.getDailySession('user', new Date('2026-09-13T12:00:00Z'));
+    expect(daily?.session?.tasks[0].loggedMinutes).toBe(20);
+    expect(daily?.loggedMinutesBySubject).toEqual({ [MATEMATICA]: 35 });
+  });
+
+  it('valida a matéria e os minutos do registro do cronômetro', async () => {
+    expect(await validate(plainToInstance(SubjectTimeLogDto, { subjectId: MATEMATICA, durationMinutes: 45 })))
+      .toHaveLength(0);
+    expect(await validate(plainToInstance(SubjectTimeLogDto, { subjectId: 'nao-e-uuid', durationMinutes: 45 })))
+      .not.toHaveLength(0);
+    // Zero minuto não é estudo: deixaria um registro vazio na evolução.
+    expect(await validate(plainToInstance(SubjectTimeLogDto, { subjectId: MATEMATICA, durationMinutes: 0 })))
+      .not.toHaveLength(0);
   });
 });

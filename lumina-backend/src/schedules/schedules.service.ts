@@ -40,6 +40,17 @@ function eachDayOfInterval(start: Date, end: Date): Date[] {
   return days;
 }
 
+/**
+ * O app identifica a tarefa pela MATÉRIA (`subjectName`). O Prisma devolve a
+ * disciplina aninhada em `subject`, então sem este achatamento o front recebia
+ * `subjectName` indefinido e caía no título da tarefa — que é o subtópico.
+ * É a razão de o cronograma parecer organizado por subtópico.
+ */
+function withSubjectName<T extends object>(task: T): T & { subjectName: string | null } {
+  const subject = (task as { subject?: { name: string } | null }).subject;
+  return { ...task, subjectName: subject?.name ?? null };
+}
+
 @Injectable()
 export class SchedulesService {
   constructor(private readonly repo: SchedulesRepository) {}
@@ -96,13 +107,14 @@ export class SchedulesService {
   ) {
     const schedule = await this.repo.findScheduleByUserId(userId);
     if (!schedule) return null;
-    return this.repo.findTasks({
+    const result = await this.repo.findTasks({
       scheduleId: schedule.id,
       status: params.status,
       subjectId: params.subjectId,
       page: params.page,
       limit: params.limit,
     });
+    return { ...result, items: result.items.map(withSubjectName) };
   }
 
   async getTasks(
@@ -243,11 +255,48 @@ export class SchedulesService {
   async getDailySession(userId: string, date: Date) {
     const schedule = await this.repo.findScheduleByUserId(userId);
     if (!schedule) return null;
-    const session = await this.repo.findSessionByDate(
-      schedule.id,
-      startOfDay(date),
+    const day = startOfDay(date);
+    const session = await this.repo.findSessionByDate(schedule.id, day);
+    const tasks = session?.tasks ?? [];
+
+    // O cronômetro registra por matéria, então o tempo do dia vive em dois
+    // lugares: nas tarefas (registro antigo) e por disciplina (registro novo).
+    // Sem somar os dois, a linha "Estudado" da visão diária ficaria zerada
+    // justamente depois de o aluno usar o cronômetro.
+    const logs = await this.repo.timeLogsForSchedule(schedule.id, {
+      from: day,
+      to: endOfDay(date),
+    });
+
+    const minutesByTask = new Map<string, number>();
+    const minutesBySubject = new Map<string, number>();
+    for (const log of logs) {
+      if (log.taskId) {
+        minutesByTask.set(
+          log.taskId,
+          (minutesByTask.get(log.taskId) ?? 0) + log.durationMinutes,
+        );
+      }
+      if (log.subjectId) {
+        minutesBySubject.set(
+          log.subjectId,
+          (minutesBySubject.get(log.subjectId) ?? 0) + log.durationMinutes,
+        );
+      }
+    }
+
+    const tasksWithMinutes = (session?.tasks ?? []).map((task: { id: string }) =>
+      withSubjectName({ ...task, loggedMinutes: minutesByTask.get(task.id) ?? 0 }),
     );
-    return { schedule, session, tasks: session?.tasks ?? [] };
+
+    return {
+      schedule,
+      // A visão diária do app lê `session.tasks`, então o tempo por tarefa
+      // precisa vir nos dois lugares — `tasks` continua sendo o atalho.
+      session: session ? { ...session, tasks: tasksWithMinutes } : null,
+      tasks: tasksWithMinutes,
+      loggedMinutesBySubject: Object.fromEntries(minutesBySubject),
+    };
   }
 
   async createTask(
@@ -264,7 +313,7 @@ export class SchedulesService {
     if (!session || session.schedule.userId !== userId) return null;
 
     return this.repo.prisma.$transaction(async (tx: Db) => {
-      const task = await this.repo.createTask({
+      const created = await this.repo.createTask({
         scheduleId: session.scheduleId,
         sessionId: data.sessionId,
         subjectId: data.subjectId ?? null,
@@ -273,7 +322,8 @@ export class SchedulesService {
         scheduledMinutes: data.scheduledMinutes,
       }, tx);
       await this.updateProgress(tx, session.scheduleId);
-      return task;
+      const withSubject = await this.repo.findTaskById(created.id);
+      return withSubject ? withSubjectName(withSubject) : null;
     });
   }
 
@@ -296,9 +346,10 @@ export class SchedulesService {
     }
 
     return this.repo.prisma.$transaction(async (tx: Db) => {
-      const updated = await this.repo.updateTask(taskId, update, tx);
+      await this.repo.updateTask(taskId, update, tx);
       await this.updateProgress(tx, task.scheduleId);
-      return updated;
+      const refreshed = await this.repo.findTaskById(taskId);
+      return refreshed ? withSubjectName(refreshed) : null;
     });
   }
 
@@ -326,12 +377,13 @@ export class SchedulesService {
     if (!task || task.schedule.userId !== userId) return null;
 
     return this.repo.prisma.$transaction(async (tx: Db) => {
-      const updated = await this.repo.updateTask(taskId, {
+      await this.repo.updateTask(taskId, {
         status: StudyTaskStatus.DONE,
         completedAt: task.completedAt ?? new Date(),
       }, tx);
       await this.updateProgress(tx, task.scheduleId);
-      return updated;
+      const refreshed = await this.repo.findTaskById(taskId);
+      return refreshed ? withSubjectName(refreshed) : null;
     });
   }
 
@@ -348,6 +400,9 @@ export class SchedulesService {
     return this.repo.prisma.$transaction(async (tx: Db) => {
       await this.repo.createTimeLog(tx, {
         taskId,
+        // A disciplina da tarefa vai junto: assim o registro entra no
+        // histórico por matéria mesmo depois de a tarefa ser excluída.
+        subjectId: task.subjectId,
         userId,
         startTime: new Date(Date.now() - durationMinutes * 60_000),
         endTime: new Date(),
@@ -361,6 +416,54 @@ export class SchedulesService {
       }
 
       return this.updateProgress(tx, task.scheduleId);
+    });
+  }
+
+  /**
+   * Registra tempo de estudo por MATÉRIA. É o endpoint que o cronômetro usa:
+   * o aluno escolhe a disciplina, não o subtópico, e o tempo entra no
+   * progresso do cronograma. A tarefa daquela matéria no dia de hoje, se
+   * existir e estiver pendente, também passa para "em andamento" — é o que o
+   * aluno esperaria ver na visão diária depois de estudar.
+   */
+  async logSubjectTime(
+    userId: string,
+    subjectId: string,
+    durationMinutes: number,
+  ) {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+
+    const plan = await this.repo.findScheduleSubjectById(schedule.id, subjectId);
+    if (!plan) return null;
+
+    const endTime = new Date();
+
+    return this.repo.prisma.$transaction(async (tx: Db) => {
+      await this.repo.createTimeLog(tx, {
+        subjectId,
+        userId,
+        startTime: new Date(endTime.getTime() - durationMinutes * 60_000),
+        endTime,
+        durationMinutes,
+      });
+
+      const todayTasks = await tx.studyTask.findMany({
+        where: {
+          scheduleId: schedule.id,
+          subjectId,
+          status: StudyTaskStatus.PENDING,
+          session: { date: startOfDay(endTime) },
+        },
+      });
+      for (const task of todayTasks) {
+        await tx.studyTask.update({
+          where: { id: task.id },
+          data: { status: StudyTaskStatus.IN_PROGRESS },
+        });
+      }
+
+      return this.updateProgress(tx, schedule.id);
     });
   }
 
@@ -419,9 +522,7 @@ export class SchedulesService {
     const startDate = addDays(startOfDay(new Date()), -(days - 1));
 
     const [logs, tasksByDate] = await Promise.all([
-      this.repo.prisma.studyTimeLog.findMany({
-        where: { task: { scheduleId: schedule.id }, endTime: { gte: startDate, lte: endDate } },
-      }),
+      this.repo.timeLogsForSchedule(schedule.id, { from: startDate, to: endDate }),
       this.repo.prisma.studyTask.findMany({
         where: { scheduleId: schedule.id, status: StudyTaskStatus.DONE, completedAt: { gte: startDate, lte: endDate } },
       }),
@@ -454,7 +555,9 @@ export class SchedulesService {
   private async updateProgress(tx: Db, scheduleId: string) {
     const [tasks, logs, sessions] = await Promise.all([
       tx.studyTask.findMany({ where: { scheduleId } }),
-      tx.studyTimeLog.findMany({ where: { task: { scheduleId } } }),
+      // Pelo mesmo `tx`: a soma tem de enxergar o log que acabou de ser
+      // gravado, senão o primeiro registro do dia não entra no progresso.
+      this.repo.timeLogsForSchedule(scheduleId, undefined, tx),
       tx.studySession.findMany({ where: { scheduleId } }),
     ]);
 
