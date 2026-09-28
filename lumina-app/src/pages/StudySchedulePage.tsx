@@ -51,6 +51,7 @@ import {
   apiUpdateTask,
 } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import { useFocusSession } from "@/hooks/useFocusSession";
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTH_LABELS = [
@@ -840,6 +841,9 @@ export function StudySchedulePage() {
               )}
               {activeTab === "subjects" && (
                 <SubjectsView subjects={subjects} tasks={catalogTasks} onTaskUpdate={handleTaskUpdate} canCreateTasks={schedule.status === "ACTIVE"} />
+              )}
+              {activeTab === "timer" && (
+                <FocusTimer subjects={subjects} onSaved={() => loadAll({ silent: true })} />
               )}
                {activeTab === "weekly" && (
                 <WeeklyView
