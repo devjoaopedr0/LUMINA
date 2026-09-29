@@ -81,6 +81,20 @@ export function Simulations() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [topicId, setTopicId] = useState('');
   const canGenerateAnswerSheet = !!user?.accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(user.accountType);
+
+  // Quantidade desejada: em vez de marcar questão por questão, pede N e o
+  // sistema seleciona automaticamente respeitando os filtros atuais.
+  const [desiredCount, setDesiredCount] = useState(10);
+
+  // Simulado multidisciplinar: em vez de um tema só, o simulado é composto
+  // por blocos — cada um com sua matéria e sua quantidade de questões, que
+  // define o intervalo (ex.: 1–10 Português, 11–20 Matemática). A ordem dos
+  // blocos é a ordem da prova.
+  const [multidisciplinar, setMultidisciplinar] = useState(false);
+  const [blocks, setBlocks] = useState<{ subjectId: string; topicId: string; count: number }[]>([
+    { subjectId: '', topicId: '', count: 10 },
+  ]);
+  const [blockTopics, setBlockTopics] = useState<Record<string, Topic[]>>({});
   // O backend só deixa o professor criar questão da própria matéria
   // cadastrada — mostrar o atalho só quando o tema escolhido bate evita um
   // clique que sempre terminaria em erro.
@@ -233,6 +247,77 @@ export function Simulations() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Pede N questões ao backend (respeitando os filtros atuais) em vez de
+   *  marcar uma por uma — substitui a seleção manual. */
+  async function selectAutomatically() {
+    if (!subjectId || desiredCount < 1) return;
+    setBusy(true); setError('');
+    try {
+      const result = await apiListQuestions(token(), {
+        subjectId, topicId: topicId || undefined, exam: examFilter || undefined, year: yearFilter,
+        difficulty: difficultyFilter || undefined, sort: sortFilter, page: 1, limit: desiredCount,
+      });
+      setSelected(result.items.map(q => q.id));
+      if (result.items.length < desiredCount) {
+        setError(`Só há ${result.items.length} questões disponíveis para esse filtro (pediu ${desiredCount}).`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Não foi possível selecionar as questões automaticamente.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function loadBlockTopics(id: string) {
+    if (!id || blockTopics[id]) return;
+    apiGetSubjectTopics(token(), id)
+      .then(row => setBlockTopics(current => ({ ...current, [id]: row.topics })))
+      .catch(() => undefined);
+  }
+
+  function updateBlock(index: number, patch: Partial<{ subjectId: string; topicId: string; count: number }>) {
+    setBlocks(current => current.map((b, i) => (i === index ? { ...b, ...patch } : b)));
+    if (patch.subjectId) loadBlockTopics(patch.subjectId);
+  }
+
+  function addBlock() {
+    setBlocks(current => [...current, { subjectId: '', topicId: '', count: 10 }]);
+  }
+
+  function removeBlock(index: number) {
+    setBlocks(current => current.filter((_, i) => i !== index));
+  }
+
+  // Intervalo de posições de cada bloco (1–10 Português, 11–20 Matemática...).
+  const blockRanges = (() => {
+    let start = 1;
+    return blocks.map(b => {
+      if (b.count <= 0) return null;
+      const range = { start, end: start + b.count - 1 };
+      start = range.end + 1;
+      return range;
+    });
+  })();
+  const totalMultiCount = blocks.reduce((sum, b) => sum + Math.max(0, b.count), 0);
+
+  /** Busca, bloco a bloco e na ordem definida, as questões de cada matéria —
+   *  o resultado concatenado vira a prova (posição = ordem dos blocos). */
+  async function buildMultidisciplinaryQuestionIds(): Promise<string[]> {
+    const ids: string[] = [];
+    for (const block of blocks) {
+      if (!block.subjectId || block.count <= 0) continue;
+      const result = await apiListQuestions(token(), {
+        subjectId: block.subjectId, topicId: block.topicId || undefined, page: 1, limit: block.count,
+      });
+      if (result.items.length < block.count) {
+        const name = subjects.find(s => s.id === block.subjectId)?.name ?? 'matéria';
+        throw new Error(`Só há ${result.items.length} questões disponíveis de ${name} (pediu ${block.count}).`);
+      }
+      ids.push(...result.items.map(q => q.id));
+    }
+    return ids;
   }
 
   const canSubmit = simulation && !result && Object.keys(answers).length === simulation.items.length;
@@ -421,6 +506,10 @@ export function Simulations() {
                 <input type="checkbox" checked={isRealExam} onChange={e => setIsRealExam(e.target.checked)} />
                 Modo prova real (exige duração)
               </label>
+              <label className="flex items-center gap-2 text-sm text-graphite-500">
+                <input type="checkbox" checked={multidisciplinar} onChange={e => setMultidisciplinar(e.target.checked)} />
+                Simulado multidisciplinar (várias matérias por intervalo de questões)
+              </label>
               {canGenerateAnswerSheet && (
                 <label className="flex items-center gap-2 text-sm text-graphite-500 sm:col-span-2 lg:col-span-4">
                   <input type="checkbox" checked={generateAnswerSheet} onChange={e => setGenerateAnswerSheet(e.target.checked)} />
@@ -429,87 +518,141 @@ export function Simulations() {
               )}
             </div>
 
-            {/* Escolha por tema e subtema, como no QConcursos: só depois de
-                escolher a disciplina (e opcionalmente o assunto) as questões
-                disponíveis aparecem. Os demais campos (banca/prova, ano,
-                dificuldade, ordenação) usam os mesmos filtros que já existem
-                no banco de questões — não incluí campos do qconcursos sem
-                dado equivalente no Lumina (cargo, nível, área de formação/
-                atuação, modalidade, cadernos, anotações etc.).*/}
-            <div className="my-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <select value={subjectId} onChange={e => { setSubjectId(e.target.value); setPage(1); }} className="rounded-lg border p-2">
-                <option value="">Escolha um tema (disciplina)</option>
-                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <select value={topicId} onChange={e => { setTopicId(e.target.value); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
-                <option value="">Todos os subtemas</option>
-                {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <input value={examFilter} onChange={e => { setExamFilter(e.target.value); setPage(1); }} disabled={!subjectId} placeholder="Banca/vestibular (ex: ENEM)" className="rounded-lg border p-2 disabled:opacity-50" />
-              <input type="number" min={1970} max={2100} value={yearFilter ?? ''} onChange={e => { setYearFilter(e.target.value ? parseInt(e.target.value, 10) : undefined); setPage(1); }} disabled={!subjectId} placeholder="Ano" className="rounded-lg border p-2 disabled:opacity-50" />
-              <select value={difficultyFilter} onChange={e => { setDifficultyFilter(e.target.value as QuestionDifficulty | ''); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
-                <option value="">Qualquer dificuldade</option>
-                {(Object.keys(DIFFICULTY_LABEL) as QuestionDifficulty[]).map(d => <option key={d} value={d}>{DIFFICULTY_LABEL[d]}</option>)}
-              </select>
-              <select value={sortFilter} onChange={e => { setSortFilter(e.target.value as QuestionSort); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
-                {(Object.keys(SORT_LABEL) as QuestionSort[]).map(s => <option key={s} value={s}>Ordenar por: {SORT_LABEL[s]}</option>)}
-              </select>
-            </div>
-
-            {subjectId ? (
-              <>
-                <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar palavra no enunciado" className="mb-4 w-full rounded-lg border p-2" />
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-graphite-500">
-                  <span>Foram encontradas {totalQuestions} questões</span>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => { setTopicId(''); setExamFilter(''); setYearFilter(undefined); setDifficultyFilter(''); setSortFilter('newest'); setSearch(''); setPage(1); }} className="underline">Limpar filtros</button>
-                    <label className="flex items-center gap-1">Por página
-                      <select value={limit} onChange={e => { setLimit(parseInt(e.target.value, 10)); setPage(1); }} className="ml-1 rounded border p-1">
-                        {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+            {multidisciplinar ? (
+              /* Multidisciplinar: cada bloco define uma matéria e a quantidade
+                 de questões dela — o intervalo (1–10, 11–20...) é calculado
+                 pela ordem dos blocos, igual a uma prova real por área. */
+              <div className="my-4 space-y-3">
+                <p className="text-sm text-graphite-400">A ordem dos blocos abaixo é a ordem da prova.</p>
+                {blocks.map((block, i) => {
+                  const range = blockRanges[i];
+                  const options = blockTopics[block.subjectId] ?? [];
+                  return (
+                    <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+                      <span className="w-16 shrink-0 text-sm font-semibold text-graphite-500">{range ? `${range.start}–${range.end}` : '—'}</span>
+                      <select value={block.subjectId} onChange={e => updateBlock(i, { subjectId: e.target.value, topicId: '' })} className="rounded-lg border p-2">
+                        <option value="">Escolha a matéria</option>
+                        {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
-                    </label>
-                  </div>
+                      <select value={block.topicId} onChange={e => updateBlock(i, { topicId: e.target.value })} disabled={!block.subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                        <option value="">Todos os subtemas</option>
+                        {options.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      <input type="number" min={1} max={90} value={block.count} onChange={e => updateBlock(i, { count: parseInt(e.target.value, 10) || 0 })} className="w-20 rounded-lg border p-2" />
+                      <span className="text-sm text-graphite-400">questões</span>
+                      {blocks.length > 1 && (
+                        <button type="button" onClick={() => removeBlock(i)} className="ml-auto text-sm text-red-600 underline">Remover</button>
+                      )}
+                    </div>
+                  );
+                })}
+                <button type="button" onClick={addBlock} className="text-sm font-semibold underline">+ Adicionar matéria</button>
+                <p className={`text-sm ${totalMultiCount > 90 ? 'text-red-700' : 'text-graphite-500'}`}>
+                  Total: {totalMultiCount} questões{totalMultiCount > 90 ? ' — máximo de 90' : ''}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Escolha por tema e subtema, como no QConcursos: só depois de
+                    escolher a disciplina (e opcionalmente o assunto) as questões
+                    disponíveis aparecem. Os demais campos (banca/prova, ano,
+                    dificuldade, ordenação) usam os mesmos filtros que já existem
+                    no banco de questões — não incluí campos do qconcursos sem
+                    dado equivalente no Lumina (cargo, nível, área de formação/
+                    atuação, modalidade, cadernos, anotações etc.).*/}
+                <div className="my-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <select value={subjectId} onChange={e => { setSubjectId(e.target.value); setPage(1); }} className="rounded-lg border p-2">
+                    <option value="">Escolha um tema (disciplina)</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <select value={topicId} onChange={e => { setTopicId(e.target.value); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                    <option value="">Todos os subtemas</option>
+                    {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  <input value={examFilter} onChange={e => { setExamFilter(e.target.value); setPage(1); }} disabled={!subjectId} placeholder="Banca/vestibular (ex: ENEM)" className="rounded-lg border p-2 disabled:opacity-50" />
+                  <input type="number" min={1970} max={2100} value={yearFilter ?? ''} onChange={e => { setYearFilter(e.target.value ? parseInt(e.target.value, 10) : undefined); setPage(1); }} disabled={!subjectId} placeholder="Ano" className="rounded-lg border p-2 disabled:opacity-50" />
+                  <select value={difficultyFilter} onChange={e => { setDifficultyFilter(e.target.value as QuestionDifficulty | ''); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                    <option value="">Qualquer dificuldade</option>
+                    {(Object.keys(DIFFICULTY_LABEL) as QuestionDifficulty[]).map(d => <option key={d} value={d}>{DIFFICULTY_LABEL[d]}</option>)}
+                  </select>
+                  <select value={sortFilter} onChange={e => { setSortFilter(e.target.value as QuestionSort); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                    {(Object.keys(SORT_LABEL) as QuestionSort[]).map(s => <option key={s} value={s}>Ordenar por: {SORT_LABEL[s]}</option>)}
+                  </select>
                 </div>
-                <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong>{q.topic ? ` · ${q.topic}` : ''}{q.exam ? ` · ${q.exam}` : ''}{q.year ? ` (${q.year})` : ''} · {q.stem.slice(0, 240)}</span></label>)}</div>
-                {questions.length === 0 && <p className="my-3 text-sm text-graphite-400">Nenhuma questão disponível para esse filtro ainda.</p>}
-                <div className="my-4 flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1">Anterior</button><span>Página {page} de {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-1">Próxima</button></div>
 
-                {canCreateQuestionHere && (
-                  <div className="mb-5 rounded-lg border border-dashed p-4">
-                    {!showCreateQuestion ? (
-                      <button type="button" onClick={() => setShowCreateQuestion(true)} className="text-sm font-semibold underline">
-                        + Nenhuma questão serve? Criar uma nova para este tema/subtema
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <h3 className="font-semibold">Nova questão — {subjects.find(s => s.id === subjectId)?.name}{topicId ? ` · ${topics.find(t => t.id === topicId)?.name}` : ''}</h3>
-                        {createQuestionError && <p role="alert" className="text-sm text-red-700">{createQuestionError}</p>}
-                        <textarea value={newStem} onChange={e => setNewStem(e.target.value)} maxLength={4000} placeholder="Enunciado da questão" className="w-full rounded-lg border p-2" rows={3} />
-                        <select value={newDifficulty} onChange={e => setNewDifficulty(e.target.value as QuestionDifficulty)} className="rounded-lg border p-2">
-                          {(Object.keys(DIFFICULTY_LABEL) as QuestionDifficulty[]).map(d => <option key={d} value={d}>{DIFFICULTY_LABEL[d]}</option>)}
-                        </select>
-                        <div className="space-y-2">
-                          {newAlternatives.map((alt, i) => (
-                            <label key={i} className="flex items-center gap-2">
-                              <input type="radio" name="correctAlternative" checked={newCorrectIndex === i} onChange={() => setNewCorrectIndex(i)} />
-                              <input value={alt} onChange={e => setNewAlternatives(current => current.map((a, idx) => idx === i ? e.target.value : a))} maxLength={1000} placeholder={`Alternativa ${String.fromCharCode(65 + i)}`} className="flex-1 rounded-lg border p-2" />
-                            </label>
-                          ))}
-                        </div>
-                        <div className="flex gap-3">
-                          <button type="button" disabled={busy} onClick={() => void createQuestionInline()} className="rounded-lg bg-graphite px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Criar e adicionar ao simulado</button>
-                          <button type="button" onClick={() => setShowCreateQuestion(false)} className="rounded-lg border px-4 py-2 text-sm">Cancelar</button>
-                        </div>
+                {subjectId ? (
+                  <>
+                    <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar palavra no enunciado" className="mb-4 w-full rounded-lg border p-2" />
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-graphite-500">
+                      <span>Foram encontradas {totalQuestions} questões</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => { setTopicId(''); setExamFilter(''); setYearFilter(undefined); setDifficultyFilter(''); setSortFilter('newest'); setSearch(''); setPage(1); }} className="underline">Limpar filtros</button>
+                        <label className="flex items-center gap-1">Por página
+                          <select value={limit} onChange={e => { setLimit(parseInt(e.target.value, 10)); setPage(1); }} className="ml-1 rounded border p-1">
+                            {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-3">
+                      <label className="flex items-center gap-2 text-sm">Quantidade de questões
+                        <input type="number" min={1} max={90} value={desiredCount} onChange={e => setDesiredCount(parseInt(e.target.value, 10) || 1)} className="w-20 rounded-lg border p-2" />
+                      </label>
+                      <button type="button" disabled={busy} onClick={() => void selectAutomatically()} className="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">Selecionar automaticamente</button>
+                      <span className="text-xs text-graphite-400">Escolhe as {desiredCount} primeiras questões do filtro atual — dá pra ajustar marcando/desmarcando abaixo.</span>
+                    </div>
+                    <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong>{q.topic ? ` · ${q.topic}` : ''}{q.exam ? ` · ${q.exam}` : ''}{q.year ? ` (${q.year})` : ''} · {q.stem.slice(0, 240)}</span></label>)}</div>
+                    {questions.length === 0 && <p className="my-3 text-sm text-graphite-400">Nenhuma questão disponível para esse filtro ainda.</p>}
+                    <div className="my-4 flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1">Anterior</button><span>Página {page} de {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-1">Próxima</button></div>
+
+                    {canCreateQuestionHere && (
+                      <div className="mb-5 rounded-lg border border-dashed p-4">
+                        {!showCreateQuestion ? (
+                          <button type="button" onClick={() => setShowCreateQuestion(true)} className="text-sm font-semibold underline">
+                            + Nenhuma questão serve? Criar uma nova para este tema/subtema
+                          </button>
+                        ) : (
+                          <div className="space-y-3">
+                            <h3 className="font-semibold">Nova questão — {subjects.find(s => s.id === subjectId)?.name}{topicId ? ` · ${topics.find(t => t.id === topicId)?.name}` : ''}</h3>
+                            {createQuestionError && <p role="alert" className="text-sm text-red-700">{createQuestionError}</p>}
+                            <textarea value={newStem} onChange={e => setNewStem(e.target.value)} maxLength={4000} placeholder="Enunciado da questão" className="w-full rounded-lg border p-2" rows={3} />
+                            <select value={newDifficulty} onChange={e => setNewDifficulty(e.target.value as QuestionDifficulty)} className="rounded-lg border p-2">
+                              {(Object.keys(DIFFICULTY_LABEL) as QuestionDifficulty[]).map(d => <option key={d} value={d}>{DIFFICULTY_LABEL[d]}</option>)}
+                            </select>
+                            <div className="space-y-2">
+                              {newAlternatives.map((alt, i) => (
+                                <label key={i} className="flex items-center gap-2">
+                                  <input type="radio" name="correctAlternative" checked={newCorrectIndex === i} onChange={() => setNewCorrectIndex(i)} />
+                                  <input value={alt} onChange={e => setNewAlternatives(current => current.map((a, idx) => idx === i ? e.target.value : a))} maxLength={1000} placeholder={`Alternativa ${String.fromCharCode(65 + i)}`} className="flex-1 rounded-lg border p-2" />
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex gap-3">
+                              <button type="button" disabled={busy} onClick={() => void createQuestionInline()} className="rounded-lg bg-graphite px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Criar e adicionar ao simulado</button>
+                              <button type="button" onClick={() => setShowCreateQuestion(false)} className="rounded-lg border px-4 py-2 text-sm">Cancelar</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
+                  </>
+                ) : (
+                  <p className="my-4 text-sm text-graphite-400">Escolha um tema para ver as questões disponíveis.</p>
                 )}
               </>
-            ) : (
-              <p className="my-4 text-sm text-graphite-400">Escolha um tema para ver as questões disponíveis.</p>
             )}
 
-            <button disabled={busy || !title.trim() || !selected.length} onClick={() => void run(async () => { const row = await apiCreateSimulation(token(), title, selected, classId || undefined, assessmentType, dueAt ? new Date(dueAt).toISOString() : undefined, durationMinutes, isRealExam, canGenerateAnswerSheet ? generateAnswerSheet : undefined); setSelected([]); setTitle(''); setDueAt(''); setDurationMinutes(undefined); setIsRealExam(false); setGenerateAnswerSheet(false); setParams({ id: row.id }); })} className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">Criar {ASSESSMENT_LABEL[assessmentType].toLowerCase()} com {selected.length} questões</button>
+            <button
+              disabled={busy || !title.trim() || (multidisciplinar ? totalMultiCount === 0 || totalMultiCount > 90 : !selected.length)}
+              onClick={() => void run(async () => {
+                const questionIds = multidisciplinar ? await buildMultidisciplinaryQuestionIds() : selected;
+                const row = await apiCreateSimulation(token(), title, questionIds, classId || undefined, assessmentType, dueAt ? new Date(dueAt).toISOString() : undefined, durationMinutes, isRealExam, canGenerateAnswerSheet ? generateAnswerSheet : undefined);
+                setSelected([]); setBlocks([{ subjectId: '', topicId: '', count: 10 }]); setTitle(''); setDueAt(''); setDurationMinutes(undefined); setIsRealExam(false); setGenerateAnswerSheet(false); setParams({ id: row.id });
+              })}
+              className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50"
+            >
+              Criar {ASSESSMENT_LABEL[assessmentType].toLowerCase()} com {multidisciplinar ? totalMultiCount : selected.length} questões
+            </button>
           </section>
         </>
       )}
