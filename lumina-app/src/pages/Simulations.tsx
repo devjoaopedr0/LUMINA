@@ -3,10 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getAccessToken } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import {
+  apiCreateQuestion,
   apiCreateSimulation,
   apiCreateSimulationClass,
+  apiGetSubjectTopics,
   apiJoinSimulationClass,
   apiListQuestions,
+  apiListSubjects,
   apiSimulation,
   apiSimulationClasses,
   apiSimulationResult,
@@ -14,11 +17,17 @@ import {
   apiSubmitSimulation,
   type AssessmentType,
   type Question,
+  type QuestionDifficulty,
   type Simulation,
   type SimulationClass,
   type SimulationResult,
   type SimulationSummary,
+  type Subject,
+  type Topic,
 } from '@/lib/api';
+
+const INSTITUTION_STAFF_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR'];
+const DIFFICULTY_LABEL: Record<QuestionDifficulty, string> = { FACIL: 'Fácil', MEDIA: 'Média', DIFICIL: 'Difícil' };
 
 const token = () => getAccessToken() ?? '';
 const ASSESSMENT_LABEL: Record<AssessmentType, string> = { ACTIVITY: 'Atividade', LIST: 'Lista', TEST: 'Prova', SIMULATION: 'Simulado', ADAPTIVE: 'Simulado Adaptativo' };
@@ -54,6 +63,30 @@ export function Simulations() {
   const [error, setError] = useState('');
   const [durationMinutes, setDurationMinutes] = useState<number | undefined>(undefined);
   const [isRealExam, setIsRealExam] = useState(false);
+  const [generateAnswerSheet, setGenerateAnswerSheet] = useState(false);
+
+  // Escolha por tema/subtema (disciplina/assunto), como no QConcursos: primeiro
+  // a disciplina, depois o assunto dentro dela — só então as questões
+  // disponíveis aparecem para seleção.
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjectId, setSubjectId] = useState('');
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicId, setTopicId] = useState('');
+  const canGenerateAnswerSheet = !!user?.accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(user.accountType);
+  // O backend só deixa o professor criar questão da própria matéria
+  // cadastrada — mostrar o atalho só quando o tema escolhido bate evita um
+  // clique que sempre terminaria em erro.
+  const selectedSubjectName = subjects.find(s => s.id === subjectId)?.name;
+  const canCreateQuestionHere = user?.accountType === 'TEACHER' && !!user.teacherSubject && user.teacherSubject === selectedSubjectName;
+
+  // Criação de questão inline pelo professor, quando o banco não tem nada
+  // que sirva para o tema/subtema escolhido.
+  const [showCreateQuestion, setShowCreateQuestion] = useState(false);
+  const [newStem, setNewStem] = useState('');
+  const [newDifficulty, setNewDifficulty] = useState<QuestionDifficulty>('MEDIA');
+  const [newAlternatives, setNewAlternatives] = useState(['', '', '', '']);
+  const [newCorrectIndex, setNewCorrectIndex] = useState(0);
+  const [createQuestionError, setCreateQuestionError] = useState('');
 
   // Timer state
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -86,15 +119,33 @@ export function Simulations() {
     return () => { active = false; };
   }, [id]);
 
-  // Load questions for the question bank (when not viewing a simulation)
+  // Disciplinas para a escolha por tema (carrega uma vez).
   useEffect(() => {
-    if (id) return;
+    apiListSubjects(token()).then(setSubjects).catch(() => undefined);
+  }, []);
+
+  // Assuntos da disciplina escolhida — o subtema só existe dentro de um tema.
+  useEffect(() => {
+    setTopicId(''); setPage(1);
+    if (!subjectId) { setTopics([]); return; }
     let active = true;
-    apiListQuestions(token(), { search, page, limit: 20 })
+    apiGetSubjectTopics(token(), subjectId)
+      .then(row => { if (active) setTopics(row.topics); })
+      .catch(() => { if (active) setTopics([]); });
+    return () => { active = false; };
+  }, [subjectId]);
+
+  // Load questions for the question bank (when not viewing a simulation).
+  // Tema e subtema vêm primeiro (como no QConcursos): sem disciplina
+  // escolhida, nenhuma questão é listada ainda.
+  useEffect(() => {
+    if (id || !subjectId) { setQuestions([]); return; }
+    let active = true;
+    apiListQuestions(token(), { subjectId, topicId: topicId || undefined, search, page, limit: 20 })
       .then(result => { if (active) { setQuestions(result.items); setTotalPages(result.totalPages); } })
       .catch(() => { if (active) setError('Não foi possível carregar as questões.'); });
     return () => { active = false; };
-  }, [id, search, page]);
+  }, [id, subjectId, topicId, search, page]);
 
   // Timer logic
   function startTimer(initialSeconds: number, isRealExamMode: boolean) {
@@ -143,6 +194,35 @@ export function Simulations() {
     setSelected(current => current.includes(questionId) ? current.filter(x => x !== questionId) : current.length < 90 ? [...current, questionId] : current);
   }
 
+  /** Professor cria uma questão nova para o tema/subtema escolhido, quando o
+   *  banco não tem nada que sirva — ela já entra selecionada no simulado. */
+  async function createQuestionInline() {
+    setCreateQuestionError('');
+    const filledAlternatives = newAlternatives.map(a => a.trim()).filter(Boolean);
+    if (filledAlternatives.length < 2) { setCreateQuestionError('Preencha pelo menos 2 alternativas.'); return; }
+    if (newStem.trim().length < 5) { setCreateQuestionError('O enunciado precisa de pelo menos 5 caracteres.'); return; }
+    setBusy(true);
+    try {
+      const created = await apiCreateQuestion(token(), {
+        subject: subjects.find(s => s.id === subjectId)?.name ?? '',
+        topic: topics.find(t => t.id === topicId)?.name ?? 'Geral',
+        subjectId: subjectId || undefined,
+        topicId: topicId || undefined,
+        difficulty: newDifficulty,
+        stem: newStem.trim(),
+        alternatives: filledAlternatives.map((text, i) => ({ text, isCorrect: i === newCorrectIndex })),
+      });
+      setQuestions(current => [created, ...current]);
+      setSelected(current => current.includes(created.id) ? current : [...current, created.id]);
+      setShowCreateQuestion(false);
+      setNewStem(''); setNewAlternatives(['', '', '', '']); setNewCorrectIndex(0); setNewDifficulty('MEDIA');
+    } catch (e) {
+      setCreateQuestionError(e instanceof Error ? e.message : 'Não foi possível criar a questão.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const canSubmit = simulation && !result && Object.keys(answers).length === simulation.items.length;
   const isRealExamMode = simulation?.isRealExam ?? false;
   const showTimer = simulation?.durationMinutes !== null && simulation?.durationMinutes !== undefined && !result;
@@ -159,6 +239,11 @@ export function Simulations() {
         <div className="my-5 flex flex-wrap items-center gap-3 print:hidden">
           <button onClick={() => { stopTimer(); setParams({}); }} className="rounded-lg border px-4 py-2">Voltar aos simulados</button>
           <button onClick={() => window.print()} className="rounded-lg bg-graphite px-4 py-2 text-white">Imprimir prova e cartão</button>
+          {simulation.answerSheetTemplateId && (
+            <Link to="/app/gabarito-scanner" className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary">
+              Cartão-resposta pronto para leitura →
+            </Link>
+          )}
           {showTimer && (
             <div className={`ml-auto flex items-center gap-2 px-3 py-1 rounded-lg font-mono text-lg ${isRealExamMode ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-primary-50 text-primary-700 border border-primary-200'}`}>
               <span className="sr-only">Tempo restante</span>
@@ -324,11 +409,71 @@ export function Simulations() {
                 <input type="checkbox" checked={isRealExam} onChange={e => setIsRealExam(e.target.checked)} />
                 Modo prova real (exige duração)
               </label>
+              {canGenerateAnswerSheet && (
+                <label className="flex items-center gap-2 text-sm text-graphite-500 sm:col-span-2 lg:col-span-4">
+                  <input type="checkbox" checked={generateAnswerSheet} onChange={e => setGenerateAnswerSheet(e.target.checked)} />
+                  Gerar cartão-resposta para impressão (opcional — para aplicar em papel e ler depois no scanner)
+                </label>
+              )}
             </div>
-            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar questões" className="mb-4 w-full rounded-lg border p-2" />
-            <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong> · {q.stem.slice(0, 240)}</span></label>)}</div>
-            <div className="my-4 flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1">Anterior</button><span>Página {page} de {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-1">Próxima</button></div>
-            <button disabled={busy || !title.trim() || !selected.length} onClick={() => void run(async () => { const row = await apiCreateSimulation(token(), title, selected, classId || undefined, assessmentType, dueAt ? new Date(dueAt).toISOString() : undefined, durationMinutes, isRealExam); setSelected([]); setTitle(''); setDueAt(''); setDurationMinutes(undefined); setIsRealExam(false); setParams({ id: row.id }); })} className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">Criar {ASSESSMENT_LABEL[assessmentType].toLowerCase()} com {selected.length} questões</button>
+
+            {/* Escolha por tema e subtema, como no QConcursos: só depois de
+                escolher a disciplina (e opcionalmente o assunto) as questões
+                disponíveis aparecem. */}
+            <div className="my-4 grid gap-3 sm:grid-cols-2">
+              <select value={subjectId} onChange={e => setSubjectId(e.target.value)} className="rounded-lg border p-2">
+                <option value="">Escolha um tema (disciplina)</option>
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select value={topicId} onChange={e => setTopicId(e.target.value)} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                <option value="">Todos os subtemas</option>
+                {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+
+            {subjectId ? (
+              <>
+                <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar dentro do tema escolhido" className="mb-4 w-full rounded-lg border p-2" />
+                <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong>{q.topic ? ` · ${q.topic}` : ''} · {q.stem.slice(0, 240)}</span></label>)}</div>
+                {questions.length === 0 && <p className="my-3 text-sm text-graphite-400">Nenhuma questão disponível para esse tema/subtema ainda.</p>}
+                <div className="my-4 flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1">Anterior</button><span>Página {page} de {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-1">Próxima</button></div>
+
+                {canCreateQuestionHere && (
+                  <div className="mb-5 rounded-lg border border-dashed p-4">
+                    {!showCreateQuestion ? (
+                      <button type="button" onClick={() => setShowCreateQuestion(true)} className="text-sm font-semibold underline">
+                        + Nenhuma questão serve? Criar uma nova para este tema/subtema
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <h3 className="font-semibold">Nova questão — {subjects.find(s => s.id === subjectId)?.name}{topicId ? ` · ${topics.find(t => t.id === topicId)?.name}` : ''}</h3>
+                        {createQuestionError && <p role="alert" className="text-sm text-red-700">{createQuestionError}</p>}
+                        <textarea value={newStem} onChange={e => setNewStem(e.target.value)} maxLength={4000} placeholder="Enunciado da questão" className="w-full rounded-lg border p-2" rows={3} />
+                        <select value={newDifficulty} onChange={e => setNewDifficulty(e.target.value as QuestionDifficulty)} className="rounded-lg border p-2">
+                          {(Object.keys(DIFFICULTY_LABEL) as QuestionDifficulty[]).map(d => <option key={d} value={d}>{DIFFICULTY_LABEL[d]}</option>)}
+                        </select>
+                        <div className="space-y-2">
+                          {newAlternatives.map((alt, i) => (
+                            <label key={i} className="flex items-center gap-2">
+                              <input type="radio" name="correctAlternative" checked={newCorrectIndex === i} onChange={() => setNewCorrectIndex(i)} />
+                              <input value={alt} onChange={e => setNewAlternatives(current => current.map((a, idx) => idx === i ? e.target.value : a))} maxLength={1000} placeholder={`Alternativa ${String.fromCharCode(65 + i)}`} className="flex-1 rounded-lg border p-2" />
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex gap-3">
+                          <button type="button" disabled={busy} onClick={() => void createQuestionInline()} className="rounded-lg bg-graphite px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Criar e adicionar ao simulado</button>
+                          <button type="button" onClick={() => setShowCreateQuestion(false)} className="rounded-lg border px-4 py-2 text-sm">Cancelar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="my-4 text-sm text-graphite-400">Escolha um tema para ver as questões disponíveis.</p>
+            )}
+
+            <button disabled={busy || !title.trim() || !selected.length} onClick={() => void run(async () => { const row = await apiCreateSimulation(token(), title, selected, classId || undefined, assessmentType, dueAt ? new Date(dueAt).toISOString() : undefined, durationMinutes, isRealExam, canGenerateAnswerSheet ? generateAnswerSheet : undefined); setSelected([]); setTitle(''); setDueAt(''); setDurationMinutes(undefined); setIsRealExam(false); setGenerateAnswerSheet(false); setParams({ id: row.id }); })} className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50">Criar {ASSESSMENT_LABEL[assessmentType].toLowerCase()} com {selected.length} questões</button>
           </section>
         </>
       )}

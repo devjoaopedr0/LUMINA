@@ -39,7 +39,7 @@ export class SimulationsController {
   @Post('coordinator/periods') createCoordinatorPeriod(@CurrentUser() user: UserWithProfile, @Body() dto: CreateAcademicPeriodDto) { return this.service.createCoordinatorPeriod(user.id, dto); }
   @Patch('coordinator/periods/:periodId') updateCoordinatorPeriod(@CurrentUser() user: UserWithProfile, @Param('periodId', ParseUUIDPipe) periodId: string, @Body() dto: UpdateAcademicPeriodDto) { return this.service.updateCoordinatorPeriod(user.id, periodId, dto); }
   @Get() list(@CurrentUser() user: UserWithProfile) { return this.service.list(user.id); }
-  @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateSimulationDto) { return this.service.create(user.id, dto.title, dto.questionIds, dto.classId, dto.assessmentType, dto.dueAt, dto.durationMinutes, dto.isRealExam); }
+  @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateSimulationDto) { return this.service.create(user.id, dto.title, dto.questionIds, dto.classId, dto.assessmentType, dto.dueAt, dto.durationMinutes, dto.isRealExam, user.accountType, dto.generateAnswerSheet); }
   @Get(':id') get(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query('answers') answers?: string) { return this.service.get(user.id, id, answers === 'true'); }
   @Post(':id/submission') submit(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitSimulationDto) { return this.service.submit(user.id, id, dto.answers); }
   @Get(':id/submission') submission(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.submission(user.id, id); }

@@ -27,7 +27,7 @@ export class AnswerSheetService {
 
   // ---------- Templates ----------
 
-  async createTemplate(userId: string, dto: { name: string; description?: string; markers: Marker[]; layout: LayoutItem[]; expectedWidth?: number; expectedHeight?: number }) {
+  async createTemplate(userId: string, dto: { name: string; description?: string; markers: Marker[]; layout: LayoutItem[]; expectedWidth?: number; expectedHeight?: number; simulationId?: string }) {
     await this.questionAccess.getPersonalWorkspaceOrThrow(userId);
 
     const markersJson = dto.markers.reduce((acc, m) => ({ ...acc, [m.name]: { x: m.x, y: m.y } }), {});
@@ -41,6 +41,7 @@ export class AnswerSheetService {
         layoutJson,
         expectedWidth: dto.expectedWidth ?? null,
         expectedHeight: dto.expectedHeight ?? null,
+        simulationId: dto.simulationId ?? null,
       },
     });
   }

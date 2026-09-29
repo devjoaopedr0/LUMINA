@@ -35,6 +35,13 @@ export class CreateSimulationDto {
 
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(90) @IsUUID('4', { each: true })
   questionIds!: string[];
+
+  /** Gera automaticamente um cartão-resposta (AnswerSheetTemplate) para
+   *  impressão e leitura posterior. Opcional e restrito a quem tem vínculo
+   *  de instituição além de aluno (professor, coordenador, diretor) — o
+   *  service ignora silenciosamente se quem pediu não tem esse papel. */
+  @IsOptional() @IsBoolean()
+  generateAnswerSheet?: boolean;
 }
 
 export class SimulationAnswerDto {

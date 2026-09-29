@@ -22,14 +22,14 @@ function setup(row: typeof sample | null = sample) {
       findUnique: vi.fn().mockResolvedValue({ id: 'result-1', correct: 1, total: 2, submittedAt: new Date(), answers: [{ position: 1, selectedPosition: 2 }, { position: 2, selectedPosition: 2 }], simulation: { items: sample.items } }),
     },
   };
-  const service = new SimulationsService(prisma as never, {} as never);
+  const service = new SimulationsService(prisma as never, {} as never, {} as never);
   return { service, prisma };
 }
 
 describe('SimulationsService.createClass', () => {
   it('recusa quando o usuário não tem perfil de professor', async () => {
     const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ teacherProfile: null }) } };
-    const service = new SimulationsService(prisma as never, {} as never);
+    const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
     await expect(service.createClass(userId, 'Turma A')).rejects.toBeInstanceOf(ForbiddenException);
   });
@@ -44,7 +44,7 @@ describe('SimulationsService.createClass', () => {
       institution: { findUnique: vi.fn(), create: vi.fn() },
       $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
     };
-    const service = new SimulationsService(prisma as never, {} as never);
+    const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
     await service.createClass(userId, 'Turma A');
 
@@ -68,7 +68,7 @@ describe('SimulationsService.createClass', () => {
       workspaceMember: { findFirst: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
     };
-    const service = new SimulationsService(prisma as never, {} as never);
+    const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
     await service.createClass(userId, 'Turma A');
 
@@ -82,7 +82,7 @@ describe('SimulationsService.createClass', () => {
 describe('SimulationsService.list', () => {
   it('inclui somente a nota do usuário autenticado na listagem', async () => {
     const findMany = vi.fn().mockResolvedValue([{ id: simulationId, title: 'ENEM', createdAt: new Date(), class: null, submissions: [{ correct: 8, total: 10, submittedAt: new Date() }], _count: { items: 10 } }]);
-    const service = new SimulationsService({ simulation: { findMany } } as never, {} as never);
+    const service = new SimulationsService({ simulation: { findMany } } as never, {} as never, {} as never);
     const result = await service.list(userId);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ submissions: expect.objectContaining({ where: { userId } }) }) }));
     expect(result[0]).toEqual(expect.objectContaining({ questionCount: 10, result: expect.objectContaining({ correct: 8, total: 10 }) }));
@@ -154,7 +154,7 @@ describe('buildCoordinatorDashboard', () => {
 describe('gestão de períodos letivos da coordenação', () => {
   it('recusa acesso de usuário que não é coordenador', async () => {
     const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ accountType: 'TEACHER' }) }, academicPeriod: { findMany: vi.fn() } };
-    const service = new SimulationsService(prisma as never, {} as never);
+    const service = new SimulationsService(prisma as never, {} as never, {} as never);
     await expect(service.coordinatorPeriods(userId)).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.academicPeriod.findMany).not.toHaveBeenCalled();
   });
@@ -164,7 +164,7 @@ describe('gestão de períodos letivos da coordenação', () => {
       user: { findUnique: vi.fn().mockResolvedValue({ accountType: 'COORDINATOR' }) },
       workspaceMember: { findFirst: vi.fn().mockResolvedValue({ workspace: { id: 'workspace-1', name: 'Escola' } }) },
     };
-    const service = new SimulationsService(prisma as never, {} as never);
+    const service = new SimulationsService(prisma as never, {} as never, {} as never);
     await expect(service.createCoordinatorPeriod(userId, { name: '2026.2', startsAt: '2026-12-01', endsAt: '2026-08-01' })).rejects.toBeInstanceOf(BadRequestException);
   });
 });
@@ -200,7 +200,7 @@ const classRow = { id: 'class-1', workspaceId: 'workspace-1', createdBy: 'creato
 describe('SimulationsService — gestão de turma', () => {
   it('recusa novos vínculos em turma arquivada', async () => {
     const prisma = { class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, archived: true, teachers: [] }) } };
-    const service = new SimulationsService(prisma as never, {} as never);
+    const service = new SimulationsService(prisma as never, {} as never, {} as never);
     await expect(service.addClassMember('creator-1', 'class-1', 'aluno@exemplo.com')).rejects.toBeInstanceOf(BadRequestException);
     await expect(service.addClassTeacher('creator-1', 'class-1', 'professor@exemplo.com')).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -212,7 +212,7 @@ describe('SimulationsService — gestão de turma', () => {
         classMember: { count: vi.fn().mockResolvedValue(3) },
         $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
       await expect(service.updateClass('creator-1', 'class-1', { maxStudents: 2 })).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.class.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ maxStudents: 2 }) }));
     });
@@ -222,7 +222,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [] }) },
         workspaceMember: { findFirst: vi.fn().mockResolvedValue(null) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.updateClass('outsider', 'class-1', { name: 'Nova' })).rejects.toBeInstanceOf(ForbiddenException);
     });
@@ -235,7 +235,7 @@ describe('SimulationsService — gestão de turma', () => {
         },
         $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await service.updateClass('creator-1', 'class-1', { name: 'Nova' });
 
@@ -253,7 +253,7 @@ describe('SimulationsService — gestão de turma', () => {
           findFirst: vi.fn().mockResolvedValue({ role: { rolePermissions: [{ permission: { code: 'CLASS_MANAGE' } }] } }),
         },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.updateClass('coordinator-x', 'class-1', { description: 'Turma da tarde' })).resolves.toBeDefined();
     });
@@ -263,7 +263,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [] }) },
         subject: { findUnique: vi.fn().mockResolvedValue(null) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.updateClass('creator-1', 'class-1', { subjectId: 'subject-x' })).rejects.toBeInstanceOf(NotFoundException);
     });
@@ -273,7 +273,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [] }) },
         academicPeriod: { findFirst: vi.fn().mockResolvedValue(null) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.updateClass('creator-1', 'class-1', { academicPeriodId: 'period-de-outra-instituicao' })).rejects.toBeInstanceOf(NotFoundException);
     });
@@ -287,7 +287,7 @@ describe('SimulationsService — gestão de turma', () => {
           update: vi.fn().mockResolvedValue({ id: 'class-1', archived: true }),
         },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await service.setClassArchived('creator-1', 'class-1', true);
 
@@ -301,7 +301,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [] }) },
         user: { findUnique: vi.fn().mockResolvedValue(null) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.addClassTeacher('creator-1', 'class-1', 'ninguem@exemplo.com')).rejects.toBeInstanceOf(NotFoundException);
     });
@@ -311,7 +311,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [] }) },
         user: { findUnique: vi.fn().mockResolvedValue({ id: 'user-2', teacherProfile: null }) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.addClassTeacher('creator-1', 'class-1', 'aluno@exemplo.com')).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -322,7 +322,7 @@ describe('SimulationsService — gestão de turma', () => {
         user: { findUnique: vi.fn().mockResolvedValue({ id: 'teacher-2', teacherProfile: { subject: 'Física' } }) },
         classTeacher: { upsert: vi.fn().mockResolvedValue({}) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await service.addClassTeacher('creator-1', 'class-1', 'Professor2@Exemplo.com');
 
@@ -338,7 +338,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [] }) },
         classTeacher: { deleteMany: vi.fn() },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.removeClassTeacher('creator-1', 'class-1', 'creator-1')).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.classTeacher.deleteMany).not.toHaveBeenCalled();
@@ -353,7 +353,7 @@ describe('SimulationsService — gestão de turma', () => {
         classMember: { findUnique: vi.fn().mockResolvedValue(existing), count: vi.fn(), upsert: vi.fn() },
         $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
       await expect(service.joinClass('student-2', 'ABC123')).resolves.toMatchObject({ id: 'class-1' });
       expect(prisma.classMember.count).not.toHaveBeenCalled();
       expect(prisma.classMember.upsert).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe('SimulationsService — gestão de turma', () => {
         classMember: { findUnique: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(1), upsert: vi.fn() },
         $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
       await expect(service.joinClass('student-2', 'ABC123')).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.classMember.upsert).not.toHaveBeenCalled();
     });
@@ -377,7 +377,7 @@ describe('SimulationsService — gestão de turma', () => {
         classMember: { findUnique: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(1), upsert: vi.fn() },
         $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.addClassMember('creator-1', 'class-1', 'aluno@exemplo.com')).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.classMember.upsert).not.toHaveBeenCalled();
@@ -390,7 +390,7 @@ describe('SimulationsService — gestão de turma', () => {
         classMember: { findUnique: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(1), upsert: vi.fn().mockResolvedValue({}) },
         $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await service.addClassMember('creator-1', 'class-1', 'aluno@exemplo.com');
 
@@ -406,7 +406,7 @@ describe('SimulationsService — gestão de turma', () => {
         class: { findUnique: vi.fn().mockResolvedValue({ ...classRow, teachers: [], members: [] }) },
         workspaceMember: { findFirst: vi.fn().mockResolvedValue(null) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       await expect(service.classDetail('outsider', 'class-1')).rejects.toBeInstanceOf(ForbiddenException);
     });
@@ -429,7 +429,7 @@ describe('SimulationsService — gestão de turma', () => {
         },
         workspaceMember: { findFirst: vi.fn().mockResolvedValue(null) },
       };
-      const service = new SimulationsService(prisma as never, {} as never);
+      const service = new SimulationsService(prisma as never, {} as never, {} as never);
 
       const result = await service.classDetail('student-1', 'class-1');
       expect(result.canManage).toBe(false);
@@ -440,5 +440,57 @@ describe('SimulationsService — gestão de turma', () => {
       expect(result.members[0]).toEqual(expect.objectContaining({ email: 'aluno@exemplo.com' }));
       expect(result.timeline[0]).toEqual(expect.objectContaining({ title: 'Prova 1', submissionCount: 3, questionCount: 10 }));
     });
+  });
+});
+
+describe('SimulationsService.create — cartão-resposta automático', () => {
+  const questionIds = ['q1', 'q2'];
+  const questions = [
+    { id: 'q1', workspaceId: 'ws-1', stem: 'Questão 1', subject: 'Matemática', alternatives: [{ position: 1, text: 'A', isCorrect: false }, { position: 2, text: 'B', isCorrect: true }] },
+    { id: 'q2', workspaceId: 'ws-1', stem: 'Questão 2', subject: 'Física', alternatives: [{ position: 1, text: 'A', isCorrect: true }, { position: 2, text: 'B', isCorrect: false }] },
+  ];
+  const createdRow = {
+    id: 'sim-1', title: 'Simulado teste', createdAt: new Date(), class: null,
+    items: questionIds.map((id, i) => ({
+      id: `item-${i}`, questionId: id, position: i + 1, stem: questions[i].stem, subject: questions[i].subject, area: null,
+      alternatives: questions[i].alternatives.map(a => ({ position: a.position, text: a.text })),
+      correctPosition: questions[i].alternatives.find(a => a.isCorrect)!.position,
+    })),
+  };
+
+  function setupCreate() {
+    const access = {
+      getPersonalWorkspaceOrThrow: vi.fn().mockResolvedValue({ id: 'ws-1' }),
+      assertCanUse: vi.fn().mockResolvedValue(undefined),
+    };
+    const prisma = {
+      question: { findMany: vi.fn().mockResolvedValue(questions) },
+      simulation: { create: vi.fn().mockResolvedValue(createdRow) },
+    };
+    const answerSheetService = { createTemplate: vi.fn().mockResolvedValue({ id: 'template-1' }) };
+    const service = new SimulationsService(prisma as never, access as never, answerSheetService as never);
+    return { service, answerSheetService };
+  }
+
+  it('gera o cartão-resposta quando quem cria é professor e pede explicitamente', async () => {
+    const { service, answerSheetService } = setupCreate();
+    const result = await service.create(userId, 'Simulado teste', questionIds, undefined, 'SIMULATION', undefined, undefined, undefined, 'TEACHER', true);
+    expect(answerSheetService.createTemplate).toHaveBeenCalledTimes(1);
+    expect(answerSheetService.createTemplate).toHaveBeenCalledWith(userId, expect.objectContaining({ simulationId: 'sim-1' }));
+    expect(result.answerSheetTemplateId).toBe('template-1');
+  });
+
+  it('não gera cartão-resposta para aluno, mesmo pedindo explicitamente', async () => {
+    const { service, answerSheetService } = setupCreate();
+    const result = await service.create(userId, 'Simulado teste', questionIds, undefined, 'SIMULATION', undefined, undefined, undefined, 'STUDENT_INDEPENDENT', true);
+    expect(answerSheetService.createTemplate).not.toHaveBeenCalled();
+    expect(result.answerSheetTemplateId).toBeNull();
+  });
+
+  it('não gera cartão-resposta quando não foi pedido, mesmo para professor', async () => {
+    const { service, answerSheetService } = setupCreate();
+    const result = await service.create(userId, 'Simulado teste', questionIds, undefined, 'SIMULATION', undefined, undefined, undefined, 'TEACHER', false);
+    expect(answerSheetService.createTemplate).not.toHaveBeenCalled();
+    expect(result.answerSheetTemplateId).toBeNull();
   });
 });

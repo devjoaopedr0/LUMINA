@@ -630,6 +630,9 @@ model Simulation {
   submissions           SimulationSubmission[]
   answerSheetUploads    AnswerSheetUpload[]
   answerSheetSubmissions AnswerSheetSubmission[]
+  /** Cartão-resposta gerado automaticamente na criação (opcional, só para
+   *  professor/coordenador/diretor) — ver AnswerSheetTemplate.simulationId. */
+  answerSheetTemplate   AnswerSheetTemplate?
 
   @@index([createdBy, createdAt])
   @@index([classId])
@@ -1125,6 +1128,11 @@ model AnswerSheetTemplate {
   /** Dimensões esperadas da imagem (px) para validação rápida. */
   expectedWidth  Int?
   expectedHeight Int?
+  /** Preenchido só quando o template foi gerado automaticamente na criação de
+   *  um simulado (item professor/coordenador/diretor) — nulo nos templates
+   *  reutilizáveis criados manualmente pelo scanner de cartão-resposta. */
+  simulationId   String?     @unique @map("simulation_id") @db.Uuid
+  simulation     Simulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
   uploads        AnswerSheetUpload[]
