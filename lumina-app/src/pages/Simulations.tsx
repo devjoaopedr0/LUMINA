@@ -18,6 +18,7 @@ import {
   type AssessmentType,
   type Question,
   type QuestionDifficulty,
+  type QuestionSort,
   type Simulation,
   type SimulationClass,
   type SimulationResult,
@@ -28,6 +29,7 @@ import {
 
 const INSTITUTION_STAFF_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR'];
 const DIFFICULTY_LABEL: Record<QuestionDifficulty, string> = { FACIL: 'Fácil', MEDIA: 'Média', DIFICIL: 'Difícil' };
+const SORT_LABEL: Record<QuestionSort, string> = { newest: 'Mais recentes', oldest: 'Mais antigas', year_desc: 'Ano (mais novo)', year_asc: 'Ano (mais antigo)' };
 
 const token = () => getAccessToken() ?? '';
 const ASSESSMENT_LABEL: Record<AssessmentType, string> = { ACTIVITY: 'Atividade', LIST: 'Lista', TEST: 'Prova', SIMULATION: 'Simulado', ADAPTIVE: 'Simulado Adaptativo' };
@@ -59,6 +61,12 @@ export function Simulations() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [examFilter, setExamFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState<number | undefined>(undefined);
+  const [difficultyFilter, setDifficultyFilter] = useState<QuestionDifficulty | ''>('');
+  const [sortFilter, setSortFilter] = useState<QuestionSort>('newest');
+  const [limit, setLimit] = useState(20);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [durationMinutes, setDurationMinutes] = useState<number | undefined>(undefined);
@@ -141,11 +149,15 @@ export function Simulations() {
   useEffect(() => {
     if (id || !subjectId) { setQuestions([]); return; }
     let active = true;
-    apiListQuestions(token(), { subjectId, topicId: topicId || undefined, search, page, limit: 20 })
-      .then(result => { if (active) { setQuestions(result.items); setTotalPages(result.totalPages); } })
+    apiListQuestions(token(), {
+      subjectId, topicId: topicId || undefined, search,
+      exam: examFilter || undefined, year: yearFilter, difficulty: difficultyFilter || undefined,
+      sort: sortFilter, page, limit,
+    })
+      .then(result => { if (active) { setQuestions(result.items); setTotalPages(result.totalPages); setTotalQuestions(result.total); } })
       .catch(() => { if (active) setError('Não foi possível carregar as questões.'); });
     return () => { active = false; };
-  }, [id, subjectId, topicId, search, page]);
+  }, [id, subjectId, topicId, search, examFilter, yearFilter, difficultyFilter, sortFilter, page, limit]);
 
   // Timer logic
   function startTimer(initialSeconds: number, isRealExamMode: boolean) {
@@ -419,23 +431,47 @@ export function Simulations() {
 
             {/* Escolha por tema e subtema, como no QConcursos: só depois de
                 escolher a disciplina (e opcionalmente o assunto) as questões
-                disponíveis aparecem. */}
-            <div className="my-4 grid gap-3 sm:grid-cols-2">
-              <select value={subjectId} onChange={e => setSubjectId(e.target.value)} className="rounded-lg border p-2">
+                disponíveis aparecem. Os demais campos (banca/prova, ano,
+                dificuldade, ordenação) usam os mesmos filtros que já existem
+                no banco de questões — não incluí campos do qconcursos sem
+                dado equivalente no Lumina (cargo, nível, área de formação/
+                atuação, modalidade, cadernos, anotações etc.).*/}
+            <div className="my-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <select value={subjectId} onChange={e => { setSubjectId(e.target.value); setPage(1); }} className="rounded-lg border p-2">
                 <option value="">Escolha um tema (disciplina)</option>
                 {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
-              <select value={topicId} onChange={e => setTopicId(e.target.value)} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+              <select value={topicId} onChange={e => { setTopicId(e.target.value); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
                 <option value="">Todos os subtemas</option>
                 {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <input value={examFilter} onChange={e => { setExamFilter(e.target.value); setPage(1); }} disabled={!subjectId} placeholder="Banca/vestibular (ex: ENEM)" className="rounded-lg border p-2 disabled:opacity-50" />
+              <input type="number" min={1970} max={2100} value={yearFilter ?? ''} onChange={e => { setYearFilter(e.target.value ? parseInt(e.target.value, 10) : undefined); setPage(1); }} disabled={!subjectId} placeholder="Ano" className="rounded-lg border p-2 disabled:opacity-50" />
+              <select value={difficultyFilter} onChange={e => { setDifficultyFilter(e.target.value as QuestionDifficulty | ''); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                <option value="">Qualquer dificuldade</option>
+                {(Object.keys(DIFFICULTY_LABEL) as QuestionDifficulty[]).map(d => <option key={d} value={d}>{DIFFICULTY_LABEL[d]}</option>)}
+              </select>
+              <select value={sortFilter} onChange={e => { setSortFilter(e.target.value as QuestionSort); setPage(1); }} disabled={!subjectId} className="rounded-lg border p-2 disabled:opacity-50">
+                {(Object.keys(SORT_LABEL) as QuestionSort[]).map(s => <option key={s} value={s}>Ordenar por: {SORT_LABEL[s]}</option>)}
               </select>
             </div>
 
             {subjectId ? (
               <>
-                <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar dentro do tema escolhido" className="mb-4 w-full rounded-lg border p-2" />
-                <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong>{q.topic ? ` · ${q.topic}` : ''} · {q.stem.slice(0, 240)}</span></label>)}</div>
-                {questions.length === 0 && <p className="my-3 text-sm text-graphite-400">Nenhuma questão disponível para esse tema/subtema ainda.</p>}
+                <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar palavra no enunciado" className="mb-4 w-full rounded-lg border p-2" />
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-graphite-500">
+                  <span>Foram encontradas {totalQuestions} questões</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => { setTopicId(''); setExamFilter(''); setYearFilter(undefined); setDifficultyFilter(''); setSortFilter('newest'); setSearch(''); setPage(1); }} className="underline">Limpar filtros</button>
+                    <label className="flex items-center gap-1">Por página
+                      <select value={limit} onChange={e => { setLimit(parseInt(e.target.value, 10)); setPage(1); }} className="ml-1 rounded border p-1">
+                        {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div className="space-y-2">{questions.map(q => <label key={q.id} className="flex cursor-pointer gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggle(q.id)} /><span><strong>{q.subject}</strong>{q.topic ? ` · ${q.topic}` : ''}{q.exam ? ` · ${q.exam}` : ''}{q.year ? ` (${q.year})` : ''} · {q.stem.slice(0, 240)}</span></label>)}</div>
+                {questions.length === 0 && <p className="my-3 text-sm text-graphite-400">Nenhuma questão disponível para esse filtro ainda.</p>}
                 <div className="my-4 flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-1">Anterior</button><span>Página {page} de {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-1">Próxima</button></div>
 
                 {canCreateQuestionHere && (

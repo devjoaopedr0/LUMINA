@@ -287,6 +287,8 @@ export interface QuestionImportReport {
   }>;
 }
 
+export type QuestionSort = 'newest' | 'oldest' | 'year_desc' | 'year_asc';
+
 export interface QuestionFilters {
   search?: string;
   examNumber?: number;
@@ -298,6 +300,7 @@ export interface QuestionFilters {
   exam?: string;
   examId?: string;
   year?: number;
+  sort?: QuestionSort;
   page?: number;
   limit?: number;
 }
@@ -642,6 +645,7 @@ export function apiListQuestions(
   if (filters.examId) params.set("examId", filters.examId);
   else if (filters.exam) params.set("exam", filters.exam);
   if (filters.year) params.set("year", String(filters.year));
+  if (filters.sort) params.set("sort", filters.sort);
   if (filters.page) params.set("page", String(filters.page));
   if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
