@@ -17,6 +17,7 @@ describe('QuestionsService', () => {
   let textSearchRepository: any;
   let hintProvider: StudyGuideHintProvider;
   let errorNotebookService: any;
+  let topicMasteryService: any;
 
   const baseWorkspace = { id: 'ws-1', name: 'Workspace de Maria', type: 'PERSONAL' };
   const baseQuestion = {
@@ -99,6 +100,10 @@ describe('QuestionsService', () => {
       registerAttempt: vi.fn().mockResolvedValue(null),
       toEntryDto: vi.fn(),
     };
+    topicMasteryService = {
+      registerAttempt: vi.fn().mockResolvedValue(undefined),
+      listForUser: vi.fn().mockResolvedValue([]),
+    };
 
     service = new QuestionsService(
       prisma,
@@ -112,6 +117,7 @@ describe('QuestionsService', () => {
       hintProvider,
       new QuestionHintsService(hintProvider),
       errorNotebookService,
+      topicMasteryService,
     );
   });
 

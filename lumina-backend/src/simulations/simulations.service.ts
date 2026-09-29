@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { assertInstitutionClassMember } from '../workspaces/class-membership-policy';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
+import { TopicMasteryService } from '../questions/topic-mastery.service';
 import { AnswerSheetService } from './answer-sheet.service';
 import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 
@@ -51,6 +52,7 @@ export class SimulationsService {
     private readonly prisma: PrismaService,
     private readonly access: QuestionAccessService,
     private readonly answerSheetService: AnswerSheetService,
+    private readonly topicMasteryService: TopicMasteryService,
   ) {}
 
   async classes(userId: string, includeArchived = false) {
@@ -503,8 +505,27 @@ export class SimulationsService {
       if (!choice || !alternatives.some(a => a.position === choice)) throw new BadRequestException(`Resposta inválida para a questão ${item.position}.`);
     }
     const correct = simulation.items.filter(item => byPosition.get(item.position) === item.correctPosition).length;
+
+    // Domínio por tópico (cronograma adaptativo, fase 1): SimulationItem não
+    // guarda subjectId/topicId (só o texto denormalizado da matéria), então
+    // busca-se a classificação estruturada nas questões de origem.
+    const questionIds = simulation.items.map(item => item.questionId).filter((qid): qid is string => !!qid);
+    const questions = questionIds.length
+      ? await this.prisma.question.findMany({ where: { id: { in: questionIds } }, select: { id: true, subjectId: true, topicId: true } })
+      : [];
+    const questionById = new Map(questions.map(q => [q.id, q]));
+
     try {
-      await this.prisma.simulationSubmission.create({ data: { id: randomUUID(), simulationId: id, userId, answers: answers.map(a => ({ position: a.position, selectedPosition: a.selectedPosition })), correct, total: simulation.items.length, startedAt: new Date() } });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.simulationSubmission.create({ data: { id: randomUUID(), simulationId: id, userId, answers: answers.map(a => ({ position: a.position, selectedPosition: a.selectedPosition })), correct, total: simulation.items.length, startedAt: new Date() } });
+        for (const item of simulation.items) {
+          if (!item.questionId) continue;
+          const question = questionById.get(item.questionId);
+          if (!question) continue;
+          const isCorrect = byPosition.get(item.position) === item.correctPosition;
+          await this.topicMasteryService.registerAttempt(userId, question.subjectId, question.topicId, isCorrect, tx);
+        }
+      });
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') throw new ConflictException('Este simulado já foi enviado.');
       throw error;

@@ -26,6 +26,7 @@ import {
 import { QuestionHintDto } from './dto/question-resolution.dto';
 import { ErrorNotebookEntryDto } from './dto/error-notebook.dto';
 import { ErrorNotebookService } from './error-notebook.service';
+import { TopicMasteryService } from './topic-mastery.service';
 import { QueryQuestionsDto, QuestionSort } from './dto/query-questions.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QUESTION_HINTS_PROVIDER, QuestionHintsService } from './hints/question-hints.service';
@@ -62,6 +63,7 @@ export class QuestionsService {
     @Inject(QUESTION_HINTS_PROVIDER) private readonly hintProvider: HintProvider,
     private readonly hintsService: QuestionHintsService,
     private readonly errorNotebookService: ErrorNotebookService,
+    private readonly topicMasteryService: TopicMasteryService,
   ) {}
 
   async create(userId: string, dto: CreateQuestionDto): Promise<QuestionResponseDto> {
@@ -322,6 +324,13 @@ export class QuestionsService {
         tx,
       );
       if (entry) notebook = this.errorNotebookService.toEntryDto(entry);
+      await this.topicMasteryService.registerAttempt(
+        userId,
+        question.subjectId,
+        question.topicId,
+        isCorrect,
+        tx,
+      );
     });
 
     // Estatísticas agregadas já contando a tentativa recém-registrada.

@@ -26,6 +26,7 @@ export function createFakePrisma() {
   const exams: any[] = [];
   const progress: any[] = [];
   const notebookEntries: any[] = [];
+  const topicMasteries: any[] = [];
   let counter = 0;
   // IDs de verdade (UUID v4), como o Postgres gera — necessário porque o
   // ParseUUIDPipe valida o formato dos params de rota. O prefixo é ignorado.
@@ -802,6 +803,48 @@ export function createFakePrisma() {
       count: vi.fn(async ({ where }: any) =>
         notebookEntries.filter((e) => matchesNotebookWhere(where, e)).length,
       ),
+    },
+    topicMastery: {
+      findUnique: vi.fn(async ({ where }: any) => {
+        const { userId, topicId } = where.userId_topicId ?? {};
+        return topicMasteries.find((m) => m.userId === userId && m.topicId === topicId) ?? null;
+      }),
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const { userId, topicId } = where.userId_topicId ?? {};
+        let entry = topicMasteries.find((m) => m.userId === userId && m.topicId === topicId);
+        if (entry) {
+          Object.assign(entry, update);
+          entry.updatedAt = new Date();
+          return entry;
+        }
+        entry = {
+          id: nextId('topic-mastery'),
+          userId: create.userId,
+          subjectId: create.subjectId,
+          topicId: create.topicId,
+          masteryScore: create.masteryScore ?? 0,
+          attempts: create.attempts ?? 0,
+          correctAttempts: create.correctAttempts ?? 0,
+          correctStreak: create.correctStreak ?? 0,
+          status: create.status ?? 'NAO_ESTUDADO',
+          lastStudiedAt: create.lastStudiedAt ?? null,
+          nextReviewAt: create.nextReviewAt ?? null,
+          reviewIntervalDays: create.reviewIntervalDays ?? 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        topicMasteries.push(entry);
+        return entry;
+      }),
+      findMany: vi.fn(async ({ where, include }: any) => {
+        const list = topicMasteries.filter((m) => !where?.userId || m.userId === where.userId);
+        if (!include) return list;
+        return list.map((m) => ({
+          ...m,
+          subject: include.subject ? (subjects.find((s) => s.id === m.subjectId) ?? null) : undefined,
+          topic: include.topic ? (topics.find((t) => t.id === m.topicId) ?? null) : undefined,
+        }));
+      }),
     },
     $transaction: vi.fn(async (cb: any) => Array.isArray(cb) ? Promise.all(cb) : cb(fake)),
     onModuleInit: vi.fn(),

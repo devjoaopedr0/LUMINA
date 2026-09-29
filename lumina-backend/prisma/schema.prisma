@@ -37,6 +37,7 @@ model User {
    workspaceMembers       WorkspaceMember[]
    studySchedule          StudySchedule?
    studyTimeLogs          StudyTimeLog[]
+   topicMasteries         TopicMastery[]
    selectedVestibular     UserVestibular?
    mentalMathSessions     MentalMathSession[]
    essays                 Essay[]
@@ -493,6 +494,7 @@ model Subject {
   questions Question[] @relation("QuestionSubject")
   topics    Topic[]    @relation("TopicSubject")
   classes   Class[]
+  topicMasteries TopicMastery[]
 
   @@map("subjects")
 }
@@ -507,10 +509,56 @@ model Topic {
   updatedAt DateTime   @updatedAt @map("updated_at")
   questions Question[] @relation("QuestionTopic")
   subject   Subject    @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  topicMasteries TopicMastery[]
 
   @@unique([subjectId, name])
   @@index([subjectId])
   @@map("topics")
+}
+
+/// Estado de domínio do aluno num tópico — cronograma adaptativo, fase 1
+/// (docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §2). Alimentado a cada tentativa de
+/// questão (Question.subjectId/topicId) e a cada simulado respondido. É a
+/// peça que falta hoje para o cronograma priorizar por desempenho real em
+/// vez de só distribuir horas-alvo proporcionalmente.
+model TopicMastery {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
+  topicId   String   @map("topic_id") @db.Uuid
+  /// 0-100, ver fórmula no design doc §3 (peso maior para tentativas
+  /// recentes — desempenho antigo não deve segurar a nota para sempre).
+  masteryScore    Int                @default(0) @map("mastery_score")
+  attempts        Int                @default(0)
+  correctAttempts Int                @default(0) @map("correct_attempts")
+  /// Acertos seguidos — mesma lógica do caderno de erros
+  /// (ERROR_NOTEBOOK_MASTERED_STREAK), aqui aplicada ao domínio do tópico.
+  correctStreak Int @default(0) @map("correct_streak")
+  status        TopicMasteryStatus @default(NAO_ESTUDADO)
+  lastStudiedAt DateTime? @map("last_studied_at")
+  /// Próxima revisão espaçada — mesma semântica de
+  /// ErrorNotebookEntry.reviewScheduledAt (comparação por dia, meia-noite UTC).
+  nextReviewAt       DateTime? @map("next_review_at")
+  reviewIntervalDays Int       @default(1) @map("review_interval_days")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic   Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([userId, status])
+  @@index([userId, nextReviewAt])
+  @@map("topic_masteries")
+}
+
+enum TopicMasteryStatus {
+  NAO_ESTUDADO
+  APRENDENDO
+  PRATICANDO
+  DOMINADO
+  PRECISA_REFORCO
 }
 
 /// Prova/concurso estruturado (ex: ENEM 2023). Questões podem ou não vir de

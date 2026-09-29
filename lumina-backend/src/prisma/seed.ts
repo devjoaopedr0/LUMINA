@@ -15,7 +15,26 @@ import { AMPLIACAO_QUESTIONS } from '../../prisma/seed-data/ampliacao';
 import { ESSAY_MODELS } from '../../prisma/seed-data/essay-models';
 import { EXAM_PAPERS } from '../../prisma/seed-data/exam-papers';
 import { FORMULAS, REPERTORIOS } from '../../prisma/seed-data/notebooks';
+import { STUDY_SUBJECT_TOPICS } from '../../prisma/seed-data/study-subject-topics';
 import type { SeedQuestion } from '../../prisma/seed-data/types';
+
+/** STUDY_SUBJECT_TOPICS usa o código do catálogo de matérias do cronograma
+ *  (StudySubject.code); aqui mapeamos para o nome da disciplina do banco de
+ *  questões (Subject.name) — são catálogos diferentes (ver TopicMastery em
+ *  docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §2). */
+const STUDY_SUBJECT_CODE_TO_SUBJECT_NAME: Record<string, string> = {
+  PORTUGUESE: 'Língua Portuguesa',
+  LITERATURE: 'Literatura',
+  ARTS: 'Artes',
+  PHYSICS: 'Física',
+  CHEMISTRY: 'Química',
+  BIOLOGY: 'Biologia',
+  MATH: 'Matemática',
+  HISTORY: 'História',
+  GEOGRAPHY: 'Geografia',
+  PHILOSOPHY: 'Filosofia',
+  SOCILOGY: 'Sociologia',
+};
 
 /**
  * Seed do banco de questões da Lumina. Cria:
@@ -217,6 +236,30 @@ async function ensureTopic(prisma: PrismaClient, subjectId: string, name: string
     update: {},
     create: { subjectId, name },
   });
+}
+
+/** Garante os tópicos do currículo (item 2 do design do cronograma adaptativo)
+ *  como linhas reais de Topic, mesmo para tópicos que nenhuma questão ainda
+ *  cobre — TopicMastery precisa de um topicId para existir, não só de
+ *  questões respondidas. Idempotente (mesmo upsert de ensureTopic). */
+async function seedCurriculumTopics(prisma: PrismaClient): Promise<number> {
+  let created = 0;
+  for (const entry of STUDY_SUBJECT_TOPICS) {
+    const subjectName = STUDY_SUBJECT_CODE_TO_SUBJECT_NAME[entry.subjectCode];
+    if (!subjectName) continue;
+    const subject = await ensureSubject(prisma, subjectName);
+    for (const group of entry.groups) {
+      for (const topicName of group.topics) {
+        const existing = await prisma.topic.findUnique({
+          where: { subjectId_name: { subjectId: subject.id, name: topicName } },
+        });
+        if (existing) continue;
+        await ensureTopic(prisma, subject.id, topicName);
+        created += 1;
+      }
+    }
+  }
+  return created;
 }
 
 async function ensureExam(prisma: PrismaClient, name: string, year: number) {
@@ -506,6 +549,11 @@ async function main(): Promise<void> {
 
     console.log(
       `✓ Questões do banco prontas: ${imported} criadas, ${skipped} já existiam (${ALL_QUESTIONS.length} no total).`,
+    );
+
+    const curriculumTopicsCreated = await seedCurriculumTopics(prisma);
+    console.log(
+      `✓ Tópicos do currículo do ENEM prontos: ${curriculumTopicsCreated} criados (cronograma adaptativo, fase 1).`,
     );
 
     // ----------------------------------------------------------------------

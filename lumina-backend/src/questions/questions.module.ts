@@ -21,6 +21,8 @@ import { ErrorNotebookController } from './error-notebook.controller';
 import { ErrorNotebookRepository } from './error-notebook.repository';
 import { ErrorNotebookService } from './error-notebook.service';
 import { SubjectsRepository } from './subjects.repository';
+import { TopicMasteryController } from './topic-mastery.controller';
+import { TopicMasteryService } from './topic-mastery.service';
 import { UserQuestionProgressRepository } from './user-question-progress.repository';
 import {
   createDefaultHintProvider,
@@ -35,6 +37,7 @@ import {
     QuestionCatalogController,
     QuestionPerformanceController,
     ErrorNotebookController,
+    TopicMasteryController,
   ],
   exports: [
     QuestionAccessService,
@@ -43,6 +46,7 @@ import {
     QuestionImportService,
     QuestionTextSearchRepository,
     ErrorNotebookService,
+    TopicMasteryService,
   ],
   providers: [
     QuestionsService,
@@ -51,6 +55,7 @@ import {
     UserQuestionProgressRepository,
     ErrorNotebookRepository,
     ErrorNotebookService,
+    TopicMasteryService,
     QuestionTextSearchRepository,
     SubjectsRepository,
     ExamsRepository,
