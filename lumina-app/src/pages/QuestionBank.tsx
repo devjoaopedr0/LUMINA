@@ -45,6 +45,7 @@ import {
   type QuestionFilters,
   type QuestionPayload,
   type QuestionImportReport,
+  type QuestionSort,
   type Subject,
   type Topic,
 } from "@/lib/api";
@@ -54,6 +55,9 @@ import { CLASSE_DIFICULDADE, origemDaQuestao, positionLetter, ROTULO_DIFICULDADE
 function filterSelectClass() {
   return "h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30";
 }
+
+const SORT_LABEL: Record<QuestionSort, string> = { newest: "Mais recentes", oldest: "Mais antigas", year_desc: "Ano (mais novo)", year_asc: "Ano (mais antigo)" };
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 function uniqueNames(items: { name: string }[]): string[] {
   return [...new Set(items.map((item) => item.name))].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -715,7 +719,7 @@ export function QuestionBank() {
   const navigate = useNavigate();
   const catalog = useQuestionCatalog();
 
-  const [filters, setFilters] = useState<QuestionFilters>({ page: 1, limit: 10 });
+  const [filters, setFilters] = useState<QuestionFilters>({ page: 1, limit: 10, sort: "newest" });
   const [draft, setDraft] = useState({
     search: "",
     examNumber: "",
@@ -725,6 +729,8 @@ export function QuestionBank() {
     examName: "",
     year: "",
   });
+  const [sort, setSort] = useState<QuestionSort>("newest");
+  const [limit, setLimit] = useState(10);
   const [data, setData] = useState<PaginatedQuestions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -767,7 +773,8 @@ export function QuestionBank() {
     const year = draft.year ? Number(draft.year) : undefined;
     setFilters({
       page: 1,
-      limit: filters.limit,
+      limit,
+      sort,
       subjectId: draft.subjectId || undefined,
       topicId: draft.topicId || undefined,
       difficulty: (draft.difficulty || undefined) as QuestionDifficulty | undefined,
@@ -781,7 +788,19 @@ export function QuestionBank() {
 
   function clearFilters() {
     setDraft({ search: "", examNumber: "", subjectId: "", topicId: "", difficulty: "", examName: "", year: "" });
-    setFilters({ page: 1, limit: filters.limit });
+    setSort("newest");
+    setLimit(10);
+    setFilters({ page: 1, limit: 10, sort: "newest" });
+  }
+
+  function changeSort(value: QuestionSort) {
+    setSort(value);
+    setFilters((f) => ({ ...f, sort: value, page: 1 }));
+  }
+
+  function changeLimit(value: number) {
+    setLimit(value);
+    setFilters((f) => ({ ...f, limit: value, page: 1 }));
   }
 
   function startCreate() {
@@ -1058,10 +1077,28 @@ export function QuestionBank() {
               </form>
             </Card>
 
-            <div className="mt-6 flex items-center justify-between">
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-graphite-500">
                 {data ? `${data.total} ${data.total === 1 ? "questão encontrada" : "questões encontradas"}` : ""}
               </p>
+              <div className="flex items-center gap-3 text-sm text-graphite-500">
+                <label className="flex items-center gap-2">
+                  Ordenar por
+                  <select value={sort} onChange={(e) => changeSort(e.target.value as QuestionSort)} className="rounded-lg border border-surface-line p-2">
+                    {(Object.keys(SORT_LABEL) as QuestionSort[]).map((s) => (
+                      <option key={s} value={s}>{SORT_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2">
+                  Por página
+                  <select value={limit} onChange={(e) => changeLimit(parseInt(e.target.value, 10))} className="rounded-lg border border-surface-line p-2">
+                    {PAGE_SIZE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
 
             {loading ? (
