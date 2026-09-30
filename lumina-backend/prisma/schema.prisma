@@ -510,6 +510,7 @@ model Topic {
   questions Question[] @relation("QuestionTopic")
   subject   Subject    @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
   topicMasteries TopicMastery[]
+  studyTasks     StudyTask[]
 
   @@unique([subjectId, name])
   @@index([subjectId])
@@ -1023,6 +1024,14 @@ model StudyTask {
   scheduleId      String          @map("schedule_id") @db.Uuid
   sessionId       String          @map("session_id") @db.Uuid
   subjectId       String?         @map("subject_id") @db.Uuid
+  /// Aponta para o catálogo de questões (Topic), não para StudySubject — é
+  /// de lá que vem TopicMastery (cronograma adaptativo, fase 2, ver
+  /// docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §2). Nulo em tarefas sem tópico
+  /// específico (redação, revisão geral, tarefa manual do aluno).
+  topicId         String?           @map("topic_id") @db.Uuid
+  /// Tipo da atividade (fase 2, §5-6) — antes disso só existia "estudar a
+  /// matéria"; agora cada bloco tem um verbo (teoria, questões, revisão...).
+  activityType    StudyActivityType @default(QUESTOES) @map("activity_type")
   title           String
   description     String?
   status          StudyTaskStatus @default(PENDING)
@@ -1034,12 +1043,22 @@ model StudyTask {
   schedule        StudySchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   session         StudySession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   subject         StudySubject?   @relation(fields: [subjectId], references: [id])
+  topic           Topic?          @relation(fields: [topicId], references: [id], onDelete: SetNull)
   timeLogs        StudyTimeLog[]
 
   @@index([scheduleId])
   @@index([sessionId])
   @@index([subjectId])
+  @@index([topicId])
   @@map("study_tasks")
+}
+
+enum StudyActivityType {
+  TEORIA
+  QUESTOES
+  REVISAO
+  SIMULADO
+  REDACAO
 }
 
 /// Registro de tempo de estudo real. O cronômetro trabalha por MATÉRIA, e

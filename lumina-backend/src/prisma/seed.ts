@@ -17,24 +17,7 @@ import { EXAM_PAPERS } from '../../prisma/seed-data/exam-papers';
 import { FORMULAS, REPERTORIOS } from '../../prisma/seed-data/notebooks';
 import { STUDY_SUBJECT_TOPICS } from '../../prisma/seed-data/study-subject-topics';
 import type { SeedQuestion } from '../../prisma/seed-data/types';
-
-/** STUDY_SUBJECT_TOPICS usa o código do catálogo de matérias do cronograma
- *  (StudySubject.code); aqui mapeamos para o nome da disciplina do banco de
- *  questões (Subject.name) — são catálogos diferentes (ver TopicMastery em
- *  docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §2). */
-const STUDY_SUBJECT_CODE_TO_SUBJECT_NAME: Record<string, string> = {
-  PORTUGUESE: 'Língua Portuguesa',
-  LITERATURE: 'Literatura',
-  ARTS: 'Artes',
-  PHYSICS: 'Física',
-  CHEMISTRY: 'Química',
-  BIOLOGY: 'Biologia',
-  MATH: 'Matemática',
-  HISTORY: 'História',
-  GEOGRAPHY: 'Geografia',
-  PHILOSOPHY: 'Filosofia',
-  SOCILOGY: 'Sociologia',
-};
+import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from '../schedules/study-subject-question-bank-map';
 
 /**
  * Seed do banco de questões da Lumina. Cria:

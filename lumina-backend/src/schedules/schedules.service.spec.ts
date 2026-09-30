@@ -35,7 +35,7 @@ describe('Cronograma: regressões funcionais', () => {
     // O serviço deixa de filtrar logs direto no Prisma e passa a delegar ao
     // repositório, que também considera os registros ligados só à matéria.
     repo.timeLogsForSchedule = vi.fn((_id, _period, _client) => db.studyTimeLog.findMany());
-    service = new SchedulesService(repo as SchedulesRepository);
+    service = new SchedulesService(repo as SchedulesRepository, {} as never);
   });
 
   afterEach(() => vi.useRealTimers());
@@ -145,15 +145,6 @@ describe('Cronograma: regressões funcionais', () => {
     expect(evolution?.[29]).toEqual({ date: '2026-09-13', studyMinutes: 35, completedTasks: 1 });
   });
 
-  it.each([1, 2, 10, 100])('conserva o orçamento de %i minutos por dia', (minutes) => {
-    const allocations = service['buildSessions'](
-      new Date('2026-09-13'), new Date('2026-09-13'), minutes, [0],
-      [{ subjectId: 'a', targetHours: 1 }, { subjectId: 'b', targetHours: 1 }, { subjectId: 'c', targetHours: 1 }],
-    );
-    expect(allocations[0].subjectAllocations.reduce((sum, item) => sum + item.estimatedMinutes, 0)).toBe(minutes);
-    expect(allocations[0].subjectAllocations.every(item => item.estimatedMinutes >= 0)).toBe(true);
-  });
-
   const validSchedule = {
     startDate: '2026-09-13', endDate: '2026-09-20', studyDays: [0], dailyMinutes: 60,
     subjects: [{ subjectId: 'a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01', targetHours: 1 }],
@@ -166,6 +157,31 @@ describe('Cronograma: regressões funcionais', () => {
   ])('rejeita cronograma impossível antes de gravar: %j', async (override) => {
     await expect(service.createSchedule('user', { ...validSchedule, ...override })).rejects.toBeInstanceOf(BadRequestException);
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('cria só as sessões do dia (sem tarefa nenhuma) — a fase 2 gera sob demanda', async () => {
+    // 13/09/2026 a 20/09/2026 com studyDays=[0] (domingo) cobre exatamente
+    // dois domingos: 13/09 e 20/09.
+    repo.createSchedule = vi.fn().mockResolvedValue({ id: 'schedule-1' });
+    repo.createScheduleSubjects = vi.fn().mockResolvedValue(undefined);
+    repo.createSessions = vi.fn().mockResolvedValue(undefined);
+
+    await service.createSchedule('user', validSchedule);
+
+    expect(repo.createSessions).toHaveBeenCalledWith(
+      db,
+      'schedule-1',
+      [
+        { date: new Date('2026-09-13'), scheduledMinutes: 60 },
+        { date: new Date('2026-09-20'), scheduledMinutes: 60 },
+      ],
+    );
+    expect(repo.upsertProgress).toHaveBeenCalledWith(db, 'schedule-1', expect.objectContaining({
+      totalScheduledMinutes: 120,
+      totalTasks: 0,
+      completedTasks: 0,
+      completedMinutes: 0,
+    }));
   });
 
   it.each([
@@ -209,7 +225,7 @@ describe('Cronograma: o cronômetro é por matéria, não por subtópico', () =>
       upsertProgress: vi.fn((_tx, _id, data) => data),
     };
     repo.timeLogsForSchedule = vi.fn((_id, _period, _client) => db.studyTimeLog.findMany());
-    service = new SchedulesService(repo as SchedulesRepository);
+    service = new SchedulesService(repo as SchedulesRepository, {} as never);
   });
 
   it('registra o tempo pela matéria, sem amarrar a uma tarefa', async () => {

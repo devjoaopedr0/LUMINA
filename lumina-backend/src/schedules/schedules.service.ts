@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { StudyTaskStatus, type Prisma } from "@prisma/client";
 import { SchedulesRepository } from "./schedules.repository";
-import { Db, SessionAllocation } from "./domain/types";
+import { ScheduleGeneratorService } from "./schedule-generator.service";
+import { Db } from "./domain/types";
 import type { CreateStudyScheduleDto } from "./dto/create-study-schedule.dto";
 
 function startOfDay(date: Date): Date {
@@ -53,7 +54,10 @@ function withSubjectName<T extends object>(task: T): T & { subjectName: string |
 
 @Injectable()
 export class SchedulesService {
-  constructor(private readonly repo: SchedulesRepository) {}
+  constructor(
+    private readonly repo: SchedulesRepository,
+    private readonly generator: ScheduleGeneratorService,
+  ) {}
 
   async findStudySubjects() {
     return this.repo.findStudySubjects();
@@ -140,7 +144,18 @@ export class SchedulesService {
       throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
     }
 
-    const schedule = await this.repo.prisma.$transaction(async (tx: Db) => {
+    // As tarefas de cada dia não são mais geradas aqui: ficam pra quando o
+    // dia for de fato consultado (getDailySession), com a prioridade calculada
+    // na hora — é o que torna o cronograma adaptativo (fase 2, ver
+    // docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §5). Gerar tudo de uma vez na
+    // criação, pra meses no futuro, é exatamente o comportamento estático que
+    // essa fase substitui.
+    const studyDays = new Set(dto.studyDays);
+    const sessionDates = eachDayOfInterval(startDate, endDate).filter((d) =>
+      studyDays.has(d.getUTCDay()),
+    );
+
+    await this.repo.prisma.$transaction(async (tx: Db) => {
       const scheduleRecord = await this.repo.createSchedule(tx, {
         userId,
         startDate,
@@ -151,89 +166,19 @@ export class SchedulesService {
       });
 
       await this.repo.createScheduleSubjects(tx, scheduleRecord.id, dto.subjects);
-      return scheduleRecord;
-    });
-
-    const scheduleWithSubjects = await this.repo.findScheduleById(schedule.id);
-    const studyDays = scheduleWithSubjects!.studyDays as number[];
-    const allocations = this.buildSessions(
-      new Date(schedule.startDate),
-      new Date(schedule.endDate),
-      schedule.dailyMinutes,
-      studyDays,
-      dto.subjects,
-    );
-
-    await this.repo.prisma.$transaction(async (tx: Db) => {
       await this.repo.createSessions(
         tx,
-        schedule.id,
-        allocations.map((a) => ({ date: a.date, scheduledMinutes: a.scheduledMinutes })),
+        scheduleRecord.id,
+        sessionDates.map((date) => ({ date, scheduledMinutes: dto.dailyMinutes })),
       );
 
-      const sessions = await tx.studySession.findMany({
-        where: { scheduleId: schedule.id },
-        orderBy: { date: "asc" },
-      });
-
-      const sessionSubjectAllocations: {
-        sessionId: string;
-        subjectId: string;
-        estimatedMinutes: number;
-      }[] = [];
-      const tasks: Prisma.StudyTaskUncheckedCreateInput[] = [];
-
-      for (const alloc of allocations) {
-        const session = sessions.find(
-          (s: { date: Date }) => s.date.getTime() === alloc.date.getTime(),
-        );
-        if (!session) continue;
-
-        for (const subjAlloc of alloc.subjectAllocations) {
-          sessionSubjectAllocations.push({
-            sessionId: session.id,
-            subjectId: subjAlloc.subjectId,
-            estimatedMinutes: subjAlloc.estimatedMinutes,
-          });
-
-          if (subjAlloc.estimatedMinutes > 0) {
-            const subject = scheduleWithSubjects!.scheduleSubjects.find(
-              (ss: { subjectId: string }) => ss.subjectId === subjAlloc.subjectId,
-            )?.subject;
-            if (subject) {
-              tasks.push({
-                scheduleId: schedule.id,
-                sessionId: session.id,
-                subjectId: subjAlloc.subjectId,
-                title: `${subject.name}: estudo programado`,
-                description:
-                  subject.name === "Redação"
-                    ? "Revisão de redação e argumentos"
-                    : `Conteúdo de ${subject.name}`,
-                status: StudyTaskStatus.PENDING,
-                scheduledMinutes: subjAlloc.estimatedMinutes,
-              });
-            }
-          }
-        }
-      }
-
-      await this.repo.createSessionSubjects(tx, sessionSubjectAllocations);
-      await this.repo.createTasks(tx, tasks);
-
-      const totalTasks = tasks.length;
-      const totalScheduledMinutes = allocations.reduce(
-        (sum: number, a: SessionAllocation) => sum + a.scheduledMinutes,
-        0,
-      );
-
-      await this.repo.upsertProgress(tx, schedule.id, {
+      await this.repo.upsertProgress(tx, scheduleRecord.id, {
         completedMinutes: 0,
-        totalScheduledMinutes,
+        totalScheduledMinutes: sessionDates.length * dto.dailyMinutes,
         streakDays: 0,
         lastStudyDate: null,
         completedTasks: 0,
-        totalTasks,
+        totalTasks: 0,
       });
     });
   }
@@ -256,8 +201,16 @@ export class SchedulesService {
     const schedule = await this.repo.findScheduleByUserId(userId);
     if (!schedule) return null;
     const day = startOfDay(date);
-    const session = await this.repo.findSessionByDate(schedule.id, day);
-    const tasks = session?.tasks ?? [];
+    let session = await this.repo.findSessionByDate(schedule.id, day);
+
+    // Gera as tarefas na hora, só quando faltam e o dia é hoje ou no futuro —
+    // dia passado nunca visitado fica mesmo vazio (não tem o que "planejar"
+    // retroativamente). É isso que torna o cronograma adaptativo: a
+    // prioridade usada é a de agora, não a de quando o cronograma foi criado.
+    if (session && session.tasks.length === 0 && day.getTime() >= startOfDay(new Date()).getTime()) {
+      await this.generateTasksForSession(schedule, session);
+      session = await this.repo.findSessionByDate(schedule.id, day);
+    }
 
     // O cronômetro registra por matéria, então o tempo do dia vive em dois
     // lugares: nas tarefas (registro antigo) e por disciplina (registro novo).
@@ -297,6 +250,27 @@ export class SchedulesService {
       tasks: tasksWithMinutes,
       loggedMinutesBySubject: Object.fromEntries(minutesBySubject),
     };
+  }
+
+  private async generateTasksForSession(
+    schedule: NonNullable<Awaited<ReturnType<SchedulesRepository["findScheduleByUserId"]>>>,
+    session: { id: string; date: Date; scheduledMinutes: number },
+  ): Promise<void> {
+    await this.repo.prisma.$transaction(async (tx: Db) => {
+      const tasks = await this.generator.buildTasksForSession(
+        { id: session.id, scheduleId: schedule.id, date: session.date, scheduledMinutes: session.scheduledMinutes },
+        schedule.userId,
+        schedule.scheduleSubjects.map((ss) => ({
+          subjectId: ss.subjectId,
+          targetHours: ss.targetHours,
+          subject: { name: ss.subject.name, code: ss.subject.code },
+        })),
+        tx,
+      );
+      if (tasks.length === 0) return;
+      await this.repo.createTasks(tx, tasks);
+      await this.updateProgress(tx, schedule.id);
+    });
   }
 
   async createTask(
@@ -625,64 +599,5 @@ export class SchedulesService {
       current.setUTCDate(current.getUTCDate() + 1);
     }
     return count;
-  }
-
-  private buildSessions(
-    startDate: Date,
-    endDate: Date,
-    dailyMinutes: number,
-    studyDays: number[],
-    dtoSubjects: { subjectId: string; targetHours: number }[],
-  ): SessionAllocation[] {
-    const result: SessionAllocation[] = [];
-
-    const allDays = eachDayOfInterval(startDate, endDate);
-
-    if (allDays.length === 0) return result;
-
-    const studyDaySet = new Set(studyDays);
-    const studyDaysFiltered = allDays.filter((d) =>
-      studyDaySet.has(d.getUTCDay()),
-    );
-
-    if (studyDaysFiltered.length === 0) return result;
-
-    const totalTargetHours = dtoSubjects.reduce(
-      (sum, s) => sum + s.targetHours,
-      0,
-    );
-    if (totalTargetHours === 0) return result;
-
-    for (const day of studyDaysFiltered) {
-      const allocations: { subjectId: string; estimatedMinutes: number }[] = [];
-
-      for (const subj of dtoSubjects) {
-        const proportion = subj.targetHours / totalTargetHours;
-        const minutes = Math.floor(dailyMinutes * proportion);
-        allocations.push({
-          subjectId: subj.subjectId,
-          estimatedMinutes: minutes,
-        });
-      }
-
-      // Distribua os minutos restantes pelas maiores partes fracionárias.
-      // Arredondar cada matéria separadamente pode ultrapassar o tempo diário.
-      const remainderOrder = dtoSubjects.map((subj, index) => ({
-        index,
-        fraction: (dailyMinutes * subj.targetHours / totalTargetHours) - allocations[index].estimatedMinutes,
-      })).sort((a, b) => b.fraction - a.fraction);
-      const remaining = dailyMinutes - allocations.reduce((sum, item) => sum + item.estimatedMinutes, 0);
-      for (let index = 0; index < remaining; index++) {
-        allocations[remainderOrder[index].index].estimatedMinutes++;
-      }
-
-      result.push({
-        date: startOfDay(day),
-        scheduledMinutes: dailyMinutes,
-        subjectAllocations: allocations,
-      });
-    }
-
-    return result;
   }
 }
