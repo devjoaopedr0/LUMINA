@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -719,12 +719,23 @@ export function QuestionBank() {
   const navigate = useNavigate();
   const catalog = useQuestionCatalog();
 
-  const [filters, setFilters] = useState<QuestionFilters>({ page: 1, limit: 10, sort: "newest" });
+  // O cronograma abre esta tela já num tópico (?subjectId=…&topicId=…):
+  // os filtros nascem com ele, em vez de o aluno ter de procurar de novo.
+  const [searchParams] = useSearchParams();
+  const linkedSubjectId = searchParams.get("subjectId") ?? "";
+  const linkedTopicId = searchParams.get("topicId") ?? "";
+  const [filters, setFilters] = useState<QuestionFilters>({
+    page: 1,
+    limit: 10,
+    sort: "newest",
+    subjectId: linkedSubjectId || undefined,
+    topicId: linkedTopicId || undefined,
+  });
   const [draft, setDraft] = useState({
     search: "",
     examNumber: "",
-    subjectId: "",
-    topicId: "",
+    subjectId: linkedSubjectId,
+    topicId: linkedTopicId,
     difficulty: "",
     examName: "",
     year: "",
@@ -741,6 +752,15 @@ export function QuestionBank() {
   const [importing, setImporting] = useState(false);
   const [importReport, setImportReport] = useState<QuestionImportReport | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Vindo do cronograma já num tópico: a lista de tópicos da matéria precisa
+  // estar carregada para o filtro aparecer preenchido, não em branco.
+  const { loadTopics } = catalog;
+  useEffect(() => {
+    if (linkedSubjectId) loadTopics(linkedSubjectId);
+    // `loadTopics` muda a cada render; só a matéria do link importa aqui.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedSubjectId]);
 
   useEffect(() => {
     const token = getAccessToken();

@@ -25,6 +25,8 @@ export interface ApiUser {
   schoolName: string | null;
   desiredCourse: string | null;
   targetUniversity: string | null;
+  /** Modalidade de concorrência no Sisu; null = ampla concorrência. */
+  sisuModality?: SisuModality | null;
   preferredStudyPeriod: string | null;
   studySessionMinutes: number | null;
   weeklyStudyDays: number | null;
@@ -167,6 +169,7 @@ export interface UpdateProfilePayload {
   schoolName?: string | null;
   desiredCourse?: string | null;
   targetUniversity?: string | null;
+  sisuModality?: SisuModality | null;
   preferredStudyPeriod?: string | null;
   studySessionMinutes?: number | null;
   weeklyStudyDays?: number | null;
@@ -1043,6 +1046,66 @@ export function apiRemoveErrorNotebookEntry(
 }
 
 // =============================================================================
+// Nota de corte do Sisu (meta de nota do aluno)
+// =============================================================================
+
+export type SisuModality =
+  | "AC" | "LB_PPI" | "LB_Q" | "LB_PCD" | "LB_EP" | "LI_PPI" | "LI_Q" | "LI_PCD" | "LI_EP";
+
+/** LB = renda familiar até o limite da Lei de Cotas; LI = qualquer renda. */
+export const SISU_MODALITY_OPTIONS: { value: SisuModality; label: string }[] = [
+  { value: "AC", label: "Ampla concorrência" },
+  { value: "LB_EP", label: "Escola pública, baixa renda" },
+  { value: "LB_PPI", label: "Escola pública, baixa renda — pretos, pardos e indígenas" },
+  { value: "LB_Q", label: "Escola pública, baixa renda — quilombolas" },
+  { value: "LB_PCD", label: "Escola pública, baixa renda — pessoas com deficiência" },
+  { value: "LI_EP", label: "Escola pública, qualquer renda" },
+  { value: "LI_PPI", label: "Escola pública, qualquer renda — pretos, pardos e indígenas" },
+  { value: "LI_Q", label: "Escola pública, qualquer renda — quilombolas" },
+  { value: "LI_PCD", label: "Escola pública, qualquer renda — pessoas com deficiência" },
+];
+
+export interface CutoffOffer {
+  courseCode: number;
+  courseName: string;
+  institutionAcronym: string;
+  institutionName: string;
+  campus: string;
+  city: string;
+  state: string;
+  degree: string;
+  shift: string;
+  scores: { year: number; score: number }[];
+  average: number;
+  /** Pontos que a nota vem subindo (+) ou caindo (−) por edição. */
+  trendPerYear: number;
+  /** Nota esperada na próxima edição. */
+  projected: number;
+}
+
+export interface CutoffTarget {
+  status: "OK" | "MISSING_PROFILE" | "COURSE_NOT_FOUND" | "INSTITUTION_NOT_FOUND" | "NO_SCORE_FOR_MODALITY";
+  course: string | null;
+  university: string | null;
+  modality: SisuModality;
+  modalityLabel: string;
+  /** Projeção da nota de corte para a próxima edição; a maior entre os campi. */
+  targetScore: number | null;
+  averageScore: number | null;
+  trendPerYear: number | null;
+  projectedYear: number | null;
+  years: number[];
+  offers: CutoffOffer[];
+  suggestions: string[];
+  message: string;
+}
+
+/** Meta de nota do aluno, pelo curso, universidade e modalidade do perfil. */
+export function apiGetCutoffTarget(accessToken: string): Promise<CutoffTarget> {
+  return request("/cutoffs/target", { headers: authHeaders(accessToken) });
+}
+
+// =============================================================================
 // Cronograma de Estudos
 // =============================================================================
 
@@ -1081,7 +1144,8 @@ export interface StudySchedule {
   dailyMinutes: number;
   objective: string | null;
   targetCourse?: string | null;
-  priorityArea?: StudyArea | null;
+  /** Até três áreas prioritárias. */
+  priorityAreas?: StudyArea[];
   essayFrequency?: StudyEssayFrequency | null;
   /** Vazio = `dailyMinutes` vale para todo dia de estudo. */
   dayMinutes?: StudyDayMinutes[];
@@ -1103,6 +1167,8 @@ export interface StudyTask {
   /** Tópico do banco de questões, quando a tarefa veio do gerador adaptativo. */
   topicId?: string | null;
   activityType?: "TEORIA" | "QUESTOES" | "REVISAO" | "SIMULADO" | "REDACAO";
+  /** O tópico da tarefa; `subjectId` é a matéria dele no banco de questões. */
+  topic?: { id: string; name: string; subjectId: string } | null;
   title: string;
   description: string | null;
   status: StudyTaskStatus;
@@ -1169,7 +1235,7 @@ export interface CreateStudySchedulePayload {
   objective?: string;
   dayMinutes?: StudyDayMinutes[];
   targetCourse?: string;
-  priorityArea?: StudyArea;
+  priorityAreas?: StudyArea[];
   essayFrequency?: StudyEssayFrequency;
   subjects: StudyScheduleSubjectTarget[];
 }
@@ -1213,8 +1279,7 @@ export function apiCreateStudySchedule(
 export function apiUpdateStudySchedule(
   accessToken: string,
   id: string,
-  // `priorityArea: null` limpa a área; campo omitido não é alterado.
-  payload: Partial<Omit<CreateStudySchedulePayload, "priorityArea">> & { priorityArea?: StudyArea | null }
+  payload: Partial<CreateStudySchedulePayload>
 ): Promise<StudySchedule | null> {
   return request(`/study/schedule/${id}`, {
     method: "PATCH",
@@ -1395,6 +1460,47 @@ export function apiRefreshDay(accessToken: string, date: string): Promise<DailyS
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ date }),
+  });
+}
+
+export type TopicMasteryStatus = "NAO_ESTUDADO" | "APRENDENDO" | "PRATICANDO" | "DOMINADO" | "PRECISA_REFORCO";
+
+/** Tópicos de uma matéria do cronograma, com a situação do aluno em cada um. */
+export interface StudySubjectTopics {
+  /** Matéria do cronograma (StudySubject). */
+  subjectId: string;
+  subjectName: string;
+  /** A mesma matéria no banco de questões — filtro de lá. */
+  questionBankSubjectId: string | null;
+  topics: {
+    id: string;
+    name: string;
+    status: TopicMasteryStatus;
+    masteryScore: number;
+    attempts: number;
+    correctAttempts: number;
+    /** Revisão espaçada vencida. */
+    due: boolean;
+    questionCount: number;
+    /** false = o aluno tirou este tópico do cronograma. */
+    included: boolean;
+  }[];
+}
+
+export function apiGetStudyTopics(accessToken: string): Promise<StudySubjectTopics[] | null> {
+  return request("/study/topics", { headers: authHeaders(accessToken) });
+}
+
+/** Inclui (true) ou tira (false) um tópico do cronograma. */
+export function apiSetTopicIncluded(
+  accessToken: string,
+  topicId: string,
+  included: boolean
+): Promise<{ topicId: string; included: boolean }> {
+  return request(`/study/topics/${topicId}`, {
+    method: "PUT",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ included }),
   });
 }
 

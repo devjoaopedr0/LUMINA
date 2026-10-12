@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { CheckCircle2, X } from "lucide-react";
+import { CutoffTargetCard } from "@/components/CutoffTargetCard";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
@@ -16,6 +17,7 @@ import {
   apiSetVestibular,
   apiUpdateStudySchedule,
 } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { getAccessToken } from "@/lib/auth";
 import {
   STUDY_AREA_LABEL,
@@ -35,8 +37,8 @@ interface ScheduleFormProps {
 /** Etapas do onboarding (criação). Na edição tudo aparece numa tela só. */
 const STEPS = ["Disponibilidade", "Objetivo", "Matérias"] as const;
 
-const SELECT_CLASS =
-  "h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm text-graphite outline-none transition-colors focus:border-primary-600 focus:ring-2 focus:ring-primary/30";
+/** Das quatro áreas do ENEM; com todas marcadas nenhuma seria prioridade. */
+const MAX_PRIORITY_AREAS = 3;
 
 function clampMinutes(value: string, fallback: number): number {
   const parsed = parseInt(value, 10);
@@ -52,6 +54,7 @@ function clampMinutes(value: string, fallback: number): number {
  */
 export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }: ScheduleFormProps) {
   const token = getAccessToken() ?? "";
+  const { user } = useAuth();
   const editing = existingSchedule !== null;
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -73,8 +76,12 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
   );
 
   const [objective, setObjective] = useState(existingSchedule?.objective ?? "");
-  const [targetCourse, setTargetCourse] = useState(existingSchedule?.targetCourse ?? "");
-  const [priorityArea, setPriorityArea] = useState<StudyArea | "">(existingSchedule?.priorityArea ?? "");
+  // No cronograma novo o curso já vem do cadastro: é com ele (e com a
+  // universidade do perfil) que a meta de nota pelo Sisu é calculada.
+  const [targetCourse, setTargetCourse] = useState(
+    existingSchedule ? existingSchedule.targetCourse ?? "" : user?.desiredCourse ?? "",
+  );
+  const [priorityAreas, setPriorityAreas] = useState<StudyArea[]>(existingSchedule?.priorityAreas ?? []);
   // A data da prova é do aluno (vestibular), não do cronograma: é ela que
   // define as fases (base, consolidação, preparação).
   const [vestibular, setVestibular] = useState<UserVestibular | null>(null);
@@ -128,6 +135,14 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
         next[subjectId] = current[subjectId] ?? defaultHours;
       }
       return next;
+    });
+  }
+
+  function togglePriorityArea(area: StudyArea) {
+    setPriorityAreas((current) => {
+      if (current.includes(area)) return current.filter((item) => item !== area);
+      // Com as quatro marcadas ninguém seria prioridade: o limite é três.
+      return current.length >= MAX_PRIORITY_AREAS ? current : [...current, area];
     });
   }
 
@@ -215,7 +230,7 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
       dailyMinutes: sameEveryDay ? dailyMinutes : Math.max(...perDay.map((day) => day.minutes)),
       objective: objective || undefined,
       targetCourse: targetCourse || undefined,
-      priorityArea: priorityArea || undefined,
+      priorityAreas,
       essayFrequency: essaySelected ? essayFrequency : undefined,
       subjects: Object.entries(selectedSubjects).map(
         ([subjectId, targetHours]) => ({ subjectId, targetHours }),
@@ -241,7 +256,6 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
           ...payload,
           objective,
           targetCourse,
-          priorityArea: priorityArea || null,
           dayMinutes: perDay,
         });
       } else {
@@ -390,9 +404,13 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
           <div>
             <h3 className="text-sm font-semibold text-graphite">O que você quer alcançar</h3>
             <p className="mt-1 text-xs text-graphite-400">
-              Tudo opcional. A data da prova define as fases do cronograma; a área prioritária ganha mais tempo.
+              Tudo opcional. A data da prova define as fases do cronograma; as áreas prioritárias ganham mais tempo.
             </p>
           </div>
+
+          {/* A média que o curso e a universidade do cadastro pedem — para o
+              objetivo ser escrito na escala certa (o ENEM vai até 1000). */}
+          <CutoffTargetCard compact />
 
           <div>
             <label htmlFor="objective" className="mb-1.5 block text-sm font-medium text-graphite">
@@ -402,7 +420,7 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
               id="objective"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              placeholder="Ex: Passar no ENEM com 1400+ pontos"
+              placeholder="Ex: Média 750 no ENEM para Medicina"
               maxLength={500}
             />
           </div>
@@ -429,20 +447,39 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
           </div>
 
           <div>
-            <label htmlFor="priorityArea" className="mb-1.5 block text-sm font-medium text-graphite">
-              Área prioritária
-            </label>
-            <select
-              id="priorityArea"
-              value={priorityArea}
-              onChange={(e) => setPriorityArea(e.target.value as StudyArea | "")}
-              className={SELECT_CLASS}
-            >
-              <option value="">Nenhuma — dividir só pelas horas de cada matéria</option>
-              {(Object.keys(STUDY_AREA_LABEL) as StudyArea[]).map((area) => (
-                <option key={area} value={area}>{STUDY_AREA_LABEL[area]}</option>
-              ))}
-            </select>
+            <p id="priorityAreasLabel" className="mb-1.5 block text-sm font-medium text-graphite">
+              Áreas prioritárias
+              <span className="ml-2 text-xs font-normal text-graphite-400">
+                até {MAX_PRIORITY_AREAS} · {priorityAreas.length} escolhida{priorityAreas.length === 1 ? "" : "s"}
+              </span>
+            </p>
+            <div role="group" aria-labelledby="priorityAreasLabel" className="flex flex-wrap gap-2">
+              {(Object.keys(STUDY_AREA_LABEL) as StudyArea[]).map((area) => {
+                const selected = priorityAreas.includes(area);
+                const blocked = !selected && priorityAreas.length >= MAX_PRIORITY_AREAS;
+                return (
+                  <button
+                    key={area}
+                    type="button"
+                    onClick={() => togglePriorityArea(area)}
+                    aria-pressed={selected}
+                    disabled={blocked}
+                    className={`h-10 px-4 rounded-xl border text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                      selected
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-surface-line bg-white text-graphite hover:border-graphite/30"
+                    }`}
+                  >
+                    {STUDY_AREA_LABEL[area]}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-graphite-400">
+              {priorityAreas.length === 0
+                ? "Nenhuma marcada: o dia é dividido só pelas horas de cada matéria."
+                : "As matérias dessas áreas recebem 25% a mais de tempo no dia."}
+            </p>
           </div>
         </section>
       )}

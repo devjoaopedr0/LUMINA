@@ -13,6 +13,7 @@ import {
   Clock,
   CirclePause,
   Edit,
+  FileQuestion,
   ListChecks,
   Loader2,
   LogOut,
@@ -24,13 +25,16 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
+import { CutoffTargetCard } from "@/components/CutoffTargetCard";
+import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { DiagnosticQuiz } from "@/components/schedule/DiagnosticQuiz";
 import { ReplanMenu } from "@/components/schedule/ReplanMenu";
 import { ScheduleForm } from "@/components/schedule/ScheduleForm";
-import { STUDY_AREA_LABEL, WEEKDAY_LABELS, minutesToHours } from "@/components/schedule/shared";
+import { SubjectTopicsView } from "@/components/schedule/SubjectTopicsView";
+import { STUDY_AREA_LABEL, WEEKDAY_LABELS, minutesToHours, topicQuestionsPath } from "@/components/schedule/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { askAi } from "@/lib/ai-chat";
 import { formatCalendarDate as formatDateDisplay } from "@/lib/utils";
@@ -354,6 +358,16 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDet
             <Sparkles className="h-4 w-4" />
             Por quê?
           </Button>
+          {/* Direto para praticar: as questões do tópico no banco de questões. */}
+          {task.topic && (
+            <Link
+              to={topicQuestionsPath(task.topic.subjectId, task.topic.id)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-graphite transition-colors hover:bg-graphite/5"
+            >
+              <FileQuestion className="h-4 w-4" />
+              Questões
+            </Link>
+          )}
           {canCreateTasks && open && onReplanned && <ReplanMenu task={task} onDone={onReplanned} />}
           {canCreateTasks && (
             <Button size="sm" variant="ghost" onClick={toggleStatus}>
@@ -664,11 +678,13 @@ export function StudySchedulePage() {
                   {formatDateDisplay(schedule.startDate)} → {formatDateDisplay(schedule.endDate)} ·{" "}
                   Estudo em: {studyDaysLabel} · {dailyTimeLabel}
                 </p>
-                {(schedule.targetCourse || schedule.priorityArea) && (
+                {(schedule.targetCourse || Boolean(schedule.priorityAreas?.length)) && (
                   <p className="mt-1 text-xs text-graphite-400">
                     {[
                       schedule.targetCourse ? `Curso: ${schedule.targetCourse}` : null,
-                      schedule.priorityArea ? `Área prioritária: ${STUDY_AREA_LABEL[schedule.priorityArea]}` : null,
+                      schedule.priorityAreas?.length
+                        ? `${schedule.priorityAreas.length > 1 ? "Áreas prioritárias" : "Área prioritária"}: ${schedule.priorityAreas.map((area) => STUDY_AREA_LABEL[area]).join(", ")}`
+                        : null,
                     ].filter(Boolean).join(" · ")}
                   </p>
                 )}
@@ -680,6 +696,8 @@ export function StudySchedulePage() {
                 </Button>
               )}
             </div>
+
+            <CutoffTargetCard className="mt-6" />
 
             <ProgressPanel progress={progress?.summary ?? null} />
             {progress?.mastery && <MasteryPanel mastery={progress.mastery} />}
@@ -782,7 +800,7 @@ export function StudySchedulePage() {
                 />
               )}
               {activeTab === "subjects" && (
-                <SubjectsView subjects={subjects} tasks={catalogTasks} onTaskUpdate={handleTaskUpdate} canCreateTasks={schedule.status === "ACTIVE"} />
+                <SubjectTopicsView tasks={catalogTasks} canEdit={schedule.status === "ACTIVE"} onPlanChanged={handleReplanned} />
               )}
               {activeTab === "timer" && (
                 <FocusTimer subjects={subjects} onSaved={() => loadAll({ silent: true })} />
@@ -997,47 +1015,6 @@ function DailyView({ date, data, onTaskUpdate, onReplanned, canCreateTasks }: Da
           <p className="text-sm text-graphite-500">Nenhuma tarefa programada para este dia.</p>
         </div>
       )}
-    </div>
-  );
-}
-
-function SubjectsView({
-  subjects,
-  tasks,
-  onTaskUpdate,
-  canCreateTasks,
-}: {
-  subjects: StudySubject[];
-  tasks: StudyTask[];
-  onTaskUpdate: (task: StudyTask | null) => void;
-  canCreateTasks: boolean;
-}) {
-  return (
-    <div>
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-graphite">Plano dividido por matéria</h2>
-        <p className="mt-1 text-sm text-graphite-500">Visualize a carga e as atividades de cada disciplina do ENEM.</p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {subjects.map((subject) => {
-          const subjectTasks = tasks.filter((task) => task.subjectId === subject.id || task.subjectName === subject.name);
-          const completed = subjectTasks.filter((task) => task.status === "DONE").length;
-          const minutes = subjectTasks.reduce((sum, task) => sum + task.scheduledMinutes, 0);
-          return (
-            <Card key={subject.id} className="bg-white p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary-700">Disciplina</p><h3 className="mt-1 font-semibold text-graphite">{subject.name}</h3></div>
-                <span className="rounded-full bg-graphite/5 px-2.5 py-1 text-xs text-graphite-500">{minutesToHours(minutes)}</span>
-              </div>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-line"><div className="h-full rounded-full bg-primary" style={{ width: `${subjectTasks.length ? (completed / subjectTasks.length) * 100 : 0}%` }} /></div>
-              <p className="mt-2 text-xs text-graphite-400">{completed} de {subjectTasks.length} atividades concluídas</p>
-              {subjectTasks.length > 0 ? (
-                <div className="mt-4 space-y-2">{subjectTasks.slice(0, 3).map((task) => <TaskItem key={task.id} task={task} onUpdate={onTaskUpdate} canCreateTasks={canCreateTasks} hideSubject />)}</div>
-              ) : <p className="mt-5 rounded-xl bg-surface-card p-3 text-xs text-graphite-400">Sem atividades programadas nesta matéria.</p>}
-            </Card>
-          );
-        })}
-      </div>
     </div>
   );
 }

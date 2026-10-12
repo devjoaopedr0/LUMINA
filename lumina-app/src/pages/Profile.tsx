@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { ArrowLeft, CheckCircle2, LoaderCircle, Save, UploadCloud, UserRound, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CutoffTargetCard } from '@/components/CutoffTargetCard';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/contexts/AuthContext';
-import { ApiError, apiChangePassword, apiGetUserVestibular, apiListAuthSessions, apiRevokeAuthSession, apiSetVestibular, type AuthSession } from '@/lib/api';
+import { ApiError, apiChangePassword, apiGetUserVestibular, apiListAuthSessions, apiRevokeAuthSession, apiSetVestibular, SISU_MODALITY_OPTIONS, type AuthSession, type SisuModality } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 
 export function Profile() {
   const { user, updateProfile, logout, logoutAll } = useAuth();
   const [form, setForm] = useState({
-    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '', desiredCourse: '', targetUniversity: '', preferredStudyPeriod: '', studySessionMinutes: '', weeklyStudyDays: '',
+    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '', desiredCourse: '', targetUniversity: '', sisuModality: '', preferredStudyPeriod: '', studySessionMinutes: '', weeklyStudyDays: '',
   });
   const [targetExam, setTargetExam] = useState('');
   const [targetExamDate, setTargetExamDate] = useState('');
@@ -48,6 +49,7 @@ export function Profile() {
       schoolName: user.schoolName ?? '',
       desiredCourse: user.desiredCourse ?? '',
       targetUniversity: user.targetUniversity ?? '',
+      sisuModality: user.sisuModality ?? '',
       preferredStudyPeriod: user.preferredStudyPeriod ?? '',
       studySessionMinutes: user.studySessionMinutes?.toString() ?? '',
       weeklyStudyDays: user.weeklyStudyDays?.toString() ?? '',
@@ -187,6 +189,7 @@ export function Profile() {
         schoolName: form.schoolName.trim() || null,
         desiredCourse: form.desiredCourse.trim() || null,
         targetUniversity: form.targetUniversity.trim() || null,
+        sisuModality: (form.sisuModality || null) as SisuModality | null,
         preferredStudyPeriod: form.preferredStudyPeriod || null,
         studySessionMinutes: form.studySessionMinutes ? Number(form.studySessionMinutes) : null,
         weeklyStudyDays: form.weeklyStudyDays ? Number(form.weeklyStudyDays) : null,
@@ -294,7 +297,10 @@ export function Profile() {
                 <div className="sm:col-span-2"><Field label="Escola ou cursinho atual"><Input value={form.schoolName} onChange={(e) => update('schoolName', e.target.value)} maxLength={120} placeholder="Opcional" /></Field></div>
                 <Field label="Curso desejado"><Input value={form.desiredCourse} onChange={(e) => update('desiredCourse', e.target.value)} maxLength={120} placeholder="Ex.: Medicina" /></Field>
                 <Field label="Universidade-alvo"><Input value={form.targetUniversity} onChange={(e) => update('targetUniversity', e.target.value)} maxLength={120} placeholder="Ex.: UFC" /></Field>
+                <div className="sm:col-span-2"><Field label="Modalidade de concorrência no Sisu"><select value={form.sisuModality} onChange={(e) => update('sisuModality', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Ampla concorrência (padrão)</option>{SISU_MODALITY_OPTIONS.filter((option) => option.value !== 'AC').map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div>
               </div>
+              {/* A meta usa o que está SALVO: muda depois de salvar o perfil. */}
+              <CutoffTargetCard className="mt-5" linkToProfile={false} refreshKey={`${user?.desiredCourse}|${user?.targetUniversity}|${user?.sisuModality}`} />
               <div className="mt-6 border-t border-surface-line pt-5">
                 <h4 className="mb-3 font-semibold text-graphite">Vestibular-alvo</h4>
                 <div className="grid gap-4 sm:grid-cols-2">

@@ -28,6 +28,11 @@ export const STUDY_SUBJECTS_DEFAULT_HOURS: Record<string, number> = {
   Redação: 80,
 };
 
+/** Link para as questões de um tópico no banco de questões, já filtrado. */
+export function topicQuestionsPath(questionBankSubjectId: string, topicId: string): string {
+  return `/app/questoes?subjectId=${questionBankSubjectId}&topicId=${topicId}`;
+}
+
 export function minutesToHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
