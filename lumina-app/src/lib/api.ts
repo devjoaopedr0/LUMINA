@@ -1465,6 +1465,8 @@ export function apiRefreshDay(accessToken: string, date: string): Promise<DailyS
 
 export type TopicMasteryStatus = "NAO_ESTUDADO" | "APRENDENDO" | "PRATICANDO" | "DOMINADO" | "PRECISA_REFORCO";
 
+export type TopicLevel = "BASE" | "INTERMEDIARIO" | "AVANCADO";
+
 /** Tópicos de uma matéria do cronograma, com a situação do aluno em cada um. */
 export interface StudySubjectTopics {
   /** Matéria do cronograma (StudySubject). */
@@ -1475,6 +1477,9 @@ export interface StudySubjectTopics {
   topics: {
     id: string;
     name: string;
+    /** Nível na trilha da matéria (a lista já vem na ordem de estudo);
+     *  null = ainda não colocado na trilha. */
+    level: TopicLevel | null;
     status: TopicMasteryStatus;
     masteryScore: number;
     attempts: number;

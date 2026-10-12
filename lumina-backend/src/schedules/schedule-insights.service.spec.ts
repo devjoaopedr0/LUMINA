@@ -104,8 +104,31 @@ describe('ScheduleInsightsService.topicsBySubject', () => {
       ['Inglês', null, 0],
     ]);
     expect(result?.[0].topics).toEqual([
-      { id: 'm-funcoes', name: 'Funções', status: 'PRATICANDO', masteryScore: 60, attempts: 5, correctAttempts: 3, due: true, questionCount: 2, included: true },
-      { id: 'm-juros', name: 'Juros', status: 'NAO_ESTUDADO', masteryScore: 0, attempts: 0, correctAttempts: 0, due: false, questionCount: 0, included: false },
+      { id: 'm-funcoes', name: 'Funções', level: null, status: 'PRATICANDO', masteryScore: 60, attempts: 5, correctAttempts: 3, due: true, questionCount: 2, included: true },
+      { id: 'm-juros', name: 'Juros', level: null, status: 'NAO_ESTUDADO', masteryScore: 0, attempts: 0, correctAttempts: 0, due: false, questionCount: 0, included: false },
+    ]);
+  });
+});
+
+describe('ScheduleInsightsService.topicsBySubject — trilha', () => {
+  it('devolve os tópicos na ordem da trilha, com o nível de cada um', async () => {
+    const { service, prisma, repo } = setup();
+    repo.findScheduleByUserId.mockResolvedValue({ ...schedule, excludedTopicIds: [] });
+    prisma.topic.findMany.mockResolvedValue([
+      { id: 'analise', subjectId: 'qb-math', name: 'Análise combinatória' },
+      { id: 'afim', subjectId: 'qb-math', name: 'Função afim' },
+      { id: 'importado', subjectId: 'qb-math', name: 'Assunto importado' },
+      { id: 'fracoes', subjectId: 'qb-math', name: 'Frações' },
+    ]);
+    prisma.topicMastery.findMany.mockResolvedValue([]);
+    prisma.question.findMany.mockResolvedValue([]);
+
+    const result = await service.topicsBySubject(userId);
+    expect(result?.[0].topics.map((t) => [t.name, t.level])).toEqual([
+      ['Frações', 'BASE'],
+      ['Função afim', 'INTERMEDIARIO'],
+      ['Análise combinatória', 'AVANCADO'],
+      ['Assunto importado', null],
     ]);
   });
 });
@@ -164,6 +187,14 @@ describe('ScheduleInsightsService.explainTask (§10)', () => {
     prisma.studyTask.findUnique.mockResolvedValue({ ...baseTask, activityType: 'TEORIA', title: 'Teoria — Ondas' });
     expect((await service.explainTask(userId, 'task'))?.reasons[0])
       .toBe('Você ainda não estudou esse tópico, e conteúdo nunca visto sobe na fila.');
+    // Ondas é de nível intermediário na trilha de Física.
+    expect((await service.explainTask(userId, 'task'))?.reasons[1])
+      .toBe('Na trilha de Física ele é de nível intermediário: entra depois dos conteúdos de que depende, que já estão no seu cronograma.');
+    prisma.studyTask.findUnique.mockResolvedValue({
+      ...baseTask, activityType: 'TEORIA', title: 'Teoria — Cinemática', topic: { ...baseTask.topic, name: 'Cinemática' },
+    });
+    expect((await service.explainTask(userId, 'task'))?.reasons[1])
+      .toBe('Ele é da base de Física: vem primeiro porque outros conteúdos da matéria dependem dele.');
 
     prisma.studyTask.findUnique.mockResolvedValue({ ...baseTask, activityType: 'REVISAO', title: 'Revisão — Ondas' });
     prisma.topicMastery.findUnique.mockResolvedValue({

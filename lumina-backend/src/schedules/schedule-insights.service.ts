@@ -10,6 +10,7 @@ import { PHASE_LABEL, type SchedulePhase } from './schedule-phase';
 import { topicPriorityTerms } from './schedule-priority';
 import { ESSAY_SUBJECT_CODE, STUDY_AREA_LABEL, STUDY_SUBJECT_CODE_TO_AREA } from './study-areas';
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from './study-subject-question-bank-map';
+import { compareByTrack, topicLevel, type TopicLevel } from './topic-sequence';
 
 const MASTERY_STATUS_LABEL: Record<TopicMasteryStatus, string> = {
   NAO_ESTUDADO: 'não estudado',
@@ -52,6 +53,12 @@ export interface MasterySummary {
   paraRevisar: number;
 }
 
+const TOPIC_LEVEL_LABEL: Record<TopicLevel, string> = {
+  BASE: 'base',
+  INTERMEDIARIO: 'intermediário',
+  AVANCADO: 'avançado',
+};
+
 export interface SubjectTopics {
   /** StudySubject.id (a matéria do cronograma). */
   subjectId: string;
@@ -61,6 +68,9 @@ export interface SubjectTopics {
   topics: {
     id: string;
     name: string;
+    /** Onde o tópico fica na trilha da matéria (a lista já vem nessa ordem);
+     *  null quando ele ainda não foi colocado na trilha. */
+    level: TopicLevel | null;
     status: TopicMasteryStatus;
     masteryScore: number;
     attempts: number;
@@ -182,12 +192,15 @@ export class ScheduleInsightsService {
           questionBankSubjectId: bankSubject?.id ?? null,
           topics: topics
             .filter((t) => t.subjectId === bankSubject?.id && t.name !== CATCH_ALL_TOPIC_NAME)
+            // Na ordem em que o cronograma apresenta: base primeiro.
+            .sort((a, b) => compareByTrack(bankSubject?.name ?? '', a.name, b.name))
             .map((t) => {
               const mastery = masteryByTopic.get(t.id);
               const status = mastery?.status ?? TopicMasteryStatus.NAO_ESTUDADO;
               return {
                 id: t.id,
                 name: t.name,
+                level: topicLevel(bankSubject?.name ?? '', t.name),
                 status,
                 masteryScore: mastery?.masteryScore ?? 0,
                 attempts: mastery?.attempts ?? 0,
@@ -271,6 +284,16 @@ export class ScheduleInsightsService {
       }
       if (terms.naoEstudado) {
         reasons.push('Você ainda não estudou esse tópico, e conteúdo nunca visto sobe na fila.');
+        const level = task.subject
+          ? topicLevel(STUDY_SUBJECT_CODE_TO_SUBJECT_NAME[task.subject.code] ?? '', task.topic.name)
+          : null;
+        if (level === 'BASE') {
+          reasons.push(`Ele é da base de ${task.subject!.name}: vem primeiro porque outros conteúdos da matéria dependem dele.`);
+        } else if (level) {
+          reasons.push(
+            `Na trilha de ${task.subject!.name} ele é de nível ${TOPIC_LEVEL_LABEL[level]}: entra depois dos conteúdos de que depende, que já estão no seu cronograma.`,
+          );
+        }
       } else if (mastery) {
         const attempts =
           mastery.attempts > 0

@@ -7,6 +7,7 @@ import { PHASE_MIX, type SchedulePhase } from './schedule-phase';
 import { ACTIVITY_DURATION_MINUTES, ACTIVITY_LABEL, computeTopicPriority, pickActivityType } from './schedule-priority';
 import { ESSAY_SUBJECT_CODE, STUDY_SUBJECT_CODE_TO_AREA } from './study-areas';
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from './study-subject-question-bank-map';
+import { orderNewTopicsBySequence } from './topic-sequence';
 
 export interface ScheduleSubjectForGeneration {
   subjectId: string; // StudySubject.id
@@ -304,13 +305,16 @@ export class ScheduleGeneratorService {
       );
     }
 
-    const candidates = topics
+    // Tópico tirado do plano não entra, mas também não segura a vez dos
+    // seguintes da trilha: sai antes da ordenação.
+    const rankedCandidates = topics
       .filter((topic) => !usedTopicIds.has(topic.id))
       .map((topic) => {
         const mastery = masteryByTopic.get(topic.id) ?? null;
         if (mastery?.status === TopicMasteryStatus.DOMINADO) return null;
         const studySubject = studySubjectByQbId.get(topic.subjectId);
         if (!studySubject) return null;
+        const isNew = !mastery || mastery.status === TopicMasteryStatus.NAO_ESTUDADO;
         const priority = computeTopicPriority({
           masteryScore: mastery?.masteryScore ?? null,
           status: mastery?.status ?? null,
@@ -326,12 +330,23 @@ export class ScheduleGeneratorService {
           topic,
           studySubject,
           priority,
+          isNew,
           activityType: pickActivityType(mastery?.status ?? null, phase),
           nearby: nearbyTopicIds.has(topic.id),
         };
       })
-      .filter((c): c is NonNullable<typeof c> => c !== null)
-      .sort((a, b) => Number(a.nearby) - Number(b.nearby) || b.priority - a.priority);
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+    // Conteúdo novo entra na ordem da trilha da matéria: primeiro a base,
+    // depois o que depende dela. Na reta final não há tempo para percorrer a
+    // trilha — ali vale o que mais cai, que é a prioridade pura.
+    const sequenced = phase === 'PREPARACAO'
+      ? rankedCandidates
+      : orderNewTopicsBySequence(rankedCandidates, (c) => ({
+          subjectName: STUDY_SUBJECT_CODE_TO_SUBJECT_NAME[c.studySubject.subject.code] ?? c.studySubject.subject.name,
+          topicName: c.topic.name,
+          isNew: c.isNew,
+        }));
+    const candidates = sequenced.sort((a, b) => Number(a.nearby) - Number(b.nearby) || b.priority - a.priority);
 
     const pushTopicTask = (candidate: (typeof candidates)[number], limit: number) => {
       const { activityType } = candidate;

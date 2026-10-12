@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, ChevronUp, FileQuestion, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import {
   type StudySubjectTopics,
   type StudyTask,
+  type TopicLevel,
   type TopicMasteryStatus,
   ApiError,
   apiGetStudyTopics,
@@ -12,6 +13,12 @@ import {
 } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { minutesToHours, topicQuestionsPath } from "./shared";
+
+const LEVEL_LABEL: Record<TopicLevel, string> = {
+  BASE: "Base",
+  INTERMEDIARIO: "Intermediário",
+  AVANCADO: "Avançado",
+};
 
 const STATUS_LABEL: Record<TopicMasteryStatus, string> = {
   NAO_ESTUDADO: "Não visto",
@@ -85,7 +92,7 @@ export function SubjectTopicsView({ tasks, canEdit, onPlanChanged }: SubjectTopi
       <div className="mb-5">
         <h2 className="text-lg font-semibold text-graphite">Tópicos por matéria</h2>
         <p className="mt-1 text-sm text-graphite-500">
-          Veja onde você está em cada conteúdo e escolha o que entra no cronograma. Redação tem rotina própria e não é dividida em tópicos.
+          Os tópicos aparecem na ordem em que o cronograma apresenta: primeiro a base, depois o que depende dela. Veja onde você está em cada um e escolha o que entra no plano. Redação tem rotina própria e não é dividida em tópicos.
         </p>
       </div>
 
@@ -147,8 +154,14 @@ export function SubjectTopicsView({ tasks, canEdit, onPlanChanged }: SubjectTopi
 
               {expanded && (
                 <ul className="mt-3 divide-y divide-surface-line">
-                  {subject.topics.map((topic) => (
-                    <li key={topic.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 ${topic.included ? "" : "opacity-60"}`}>
+                  {subject.topics.map((topic, index) => (
+                    <Fragment key={topic.id}>
+                    {topic.level !== subject.topics[index - 1]?.level && (
+                      <li className="pb-1.5 pt-4 text-xs font-semibold uppercase tracking-wide text-graphite-400 first:pt-1">
+                        {topic.level ? LEVEL_LABEL[topic.level] : "Outros tópicos"}
+                      </li>
+                    )}
+                    <li className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 ${topic.included ? "" : "opacity-60"}`}>
                       <label className="flex min-w-0 flex-1 items-center gap-3 text-sm text-graphite">
                         <input
                           type="checkbox"
@@ -187,6 +200,7 @@ export function SubjectTopicsView({ tasks, canEdit, onPlanChanged }: SubjectTopi
                         <span className="text-xs text-graphite-400">Sem questões ainda</span>
                       )}
                     </li>
+                    </Fragment>
                   ))}
                 </ul>
               )}

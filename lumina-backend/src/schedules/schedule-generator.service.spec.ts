@@ -370,6 +370,40 @@ describe('ScheduleGeneratorService.buildTasksForSession', () => {
       expect(tasks.reduce((s, t) => s + (t.scheduledMinutes as number), 0)).toBe(120);
     });
 
+    it('conteúdo novo entra na ordem da trilha: a base antes do que depende dela', async () => {
+      // No banco, Probabilidade é a mais cobrada — e mesmo assim espera a base.
+      const question = { findMany: vi.fn().mockResolvedValue(
+        Array.from({ length: 5 }, () => ({ subjectId: 'qb-math', topicId: 'Probabilidade' })),
+      ) };
+      const names = ['Probabilidade', 'Função afim', 'Frações'];
+      const tasks = await service().buildTasksForSession(
+        { ...session, scheduledMinutes: 120 }, userId, [mathStudySubject()], mathDb(names, { question }),
+      );
+      expect(tasks.map((t) => t.topicId)).toEqual(['Frações', 'Função afim', 'Probabilidade']);
+    });
+
+    it('a base já agendada por perto dá a vez ao próximo da trilha', async () => {
+      const studyTask = { findMany: vi.fn().mockResolvedValue([
+        { topicId: 'Frações', activityType: 'TEORIA', status: 'PENDING', session: { date: session.date } },
+      ]) };
+      const tasks = await service().buildTasksForSession(
+        { ...session, scheduledMinutes: 40 }, userId, [mathStudySubject()],
+        mathDb(['Probabilidade', 'Função afim', 'Frações'], { studyTask }),
+      );
+      expect(tasks.map((t) => t.topicId)).toEqual(['Função afim']);
+    });
+
+    it('na reta final a trilha não vale: vai o que mais cai', async () => {
+      const question = { findMany: vi.fn().mockResolvedValue(
+        Array.from({ length: 5 }, () => ({ subjectId: 'qb-math', topicId: 'Probabilidade' })),
+      ) };
+      const tasks = await service().buildTasksForSession(
+        { ...session, scheduledMinutes: 40, phase: 'PREPARACAO' }, userId, [mathStudySubject()],
+        mathDb(['Probabilidade', 'Função afim', 'Frações'], { question }),
+      );
+      expect(tasks.map((t) => t.topicId)).toEqual(['Probabilidade']);
+    });
+
     it('o tópico-coringa "Geral" nunca vira tarefa', async () => {
       const tasks = await service().buildTasksForSession(session, userId, [mathStudySubject()], mathDb(['Geral', 'Porcentagem']));
       expect(tasks.map((t) => t.topicId)).toEqual(['Porcentagem']);

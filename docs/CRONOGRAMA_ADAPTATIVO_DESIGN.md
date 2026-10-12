@@ -155,6 +155,30 @@ banco — o segundo é mais barato e já temos os dados).
 
 ---
 
+### Trilha: a base antes do que depende dela
+
+A prioridade acima decide QUANTO um tópico importa; a trilha decide em que
+ORDEM o conteúdo novo de cada matéria é apresentado. `topic-sequence.ts` traz,
+por matéria, os tópicos em ordem didática e em três níveis (base,
+intermediário, avançado) — Frações antes de Razão e proporção, Função
+exponencial antes de Função logarítmica, as escolas literárias na linha do
+tempo.
+
+- Vale só para tópico ainda não estudado. As prioridades que os tópicos novos
+  da matéria já tinham são redistribuídas entre eles na ordem da trilha: a
+  matéria disputa o dia com as outras como antes, só muda qual tópico novo vem
+  primeiro. Tópico já começado segue pela prioridade (domínio, recência).
+- A ordem é suave, não um bloqueio: a base já agendada por perto dá a vez ao
+  próximo da trilha, então o aluno não fica parado esperando concluir uma
+  tarefa.
+- Na fase de preparação (reta final) a trilha não vale: vai o que mais cai.
+- Tópico tirado do plano pelo aluno não segura os seguintes.
+- Tópico fora da trilha (criado por questão importada) vai para o fim, em
+  ordem alfabética, até alguém colocá-lo na posição certa do arquivo.
+
+A aba "Por matéria" lista os tópicos nessa ordem, separados por nível, e a
+LuminIA cita o nível ao explicar por que um tópico novo entrou no dia.
+
 ## 5. Gerador diário (substitui `buildSessions`)
 
 Roda toda vez que o cronograma precisa de novas tarefas (criação, virada de
