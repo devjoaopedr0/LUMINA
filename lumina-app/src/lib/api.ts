@@ -1174,11 +1174,40 @@ export interface StudyTask {
   status: StudyTaskStatus;
   scheduledMinutes: number;
   completedAt: string | null;
+  /** Resultado do bloco de questões, quando a tarefa foi concluída pela prática. */
+  practiceAnswered?: number | null;
+  practiceCorrect?: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
   subjectName?: string;
   loggedMinutes?: number;
+}
+
+/** Bloco de questões do tópico da tarefa (vazio se o tópico não tem questões). */
+export interface StudyTaskPractice {
+  taskId: string;
+  title: string;
+  subject: string | null;
+  topic: string | null;
+  questions: Question[];
+}
+
+export function apiGetTaskPractice(accessToken: string, taskId: string): Promise<StudyTaskPractice> {
+  return request(`/study/tasks/${taskId}/practice`, { headers: authHeaders(accessToken) });
+}
+
+/** Conclui a tarefa com o resultado das questões do bloco que o aluno respondeu. */
+export function apiCompleteTaskPractice(
+  accessToken: string,
+  taskId: string,
+  questionIds: string[]
+): Promise<StudyTask> {
+  return request(`/study/tasks/${taskId}/practice/complete`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ questionIds }),
+  });
 }
 
 export interface StudySession {

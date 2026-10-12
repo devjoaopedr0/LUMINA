@@ -247,6 +247,23 @@ enum StudyActivityType {
 
 ---
 
+### Prática: a tarefa se conclui pelo resultado
+
+Toda tarefa com tópico tem o botão "Praticar": abre um bloco de até 10
+questões do tópico (as nunca respondidas primeiro, depois as que o aluno mais
+erra). Cada resposta é uma tentativa normal de questão — atualiza o domínio do
+tópico e o caderno de erros — e, ao fim do bloco, a tarefa é concluída com o
+placar (`practice_answered` / `practice_correct`), que aparece na tarefa.
+
+- O placar é contado no servidor, pelas tentativas registradas nas últimas 12
+  horas nas questões do bloco e do tópico da tarefa; o cliente só informa quais
+  questões eram do bloco.
+- Quem para no meio escolhe entre concluir com o que respondeu ou continuar
+  depois (a tarefa fica em aberto).
+- "Concluir" manual continua existindo, para quem estudou por fora ou para
+  tópico sem questões no banco; nesse caso não há placar.
+- Reabrir a tarefa apaga o placar.
+
 ## 7. Fases pela proximidade da prova (seção 15)
 
 ```

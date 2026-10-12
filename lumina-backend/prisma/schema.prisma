@@ -1126,6 +1126,10 @@ model StudyTask {
   status          StudyTaskStatus @default(PENDING)
   scheduledMinutes Int            @default(0) @map("scheduled_minutes")
   completedAt     DateTime?       @map("completed_at")
+  /// Resultado do bloco de questões quando a tarefa foi concluída pela
+  /// prática: respondidas e acertos. Nulo = concluída à mão.
+  practiceAnswered Int?           @map("practice_answered")
+  practiceCorrect  Int?           @map("practice_correct")
   notes           String?
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")

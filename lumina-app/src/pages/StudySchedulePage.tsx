@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useState,
 } from "react";
@@ -34,6 +36,7 @@ import { DiagnosticQuiz } from "@/components/schedule/DiagnosticQuiz";
 import { ReplanMenu } from "@/components/schedule/ReplanMenu";
 import { ScheduleForm } from "@/components/schedule/ScheduleForm";
 import { SubjectTopicsView } from "@/components/schedule/SubjectTopicsView";
+import { TaskPractice } from "@/components/schedule/TaskPractice";
 import { STUDY_AREA_LABEL, WEEKDAY_LABELS, minutesToHours, topicQuestionsPath } from "@/components/schedule/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { askAi } from "@/lib/ai-chat";
@@ -258,6 +261,13 @@ function ProgressPanel({ progress }: {
   );
 }
 
+/**
+ * Abre a prática de uma tarefa. O modal mora na página, não no item: a lista
+ * se atualiza sozinha e a tarefa concluída muda de grupo — se o modal fosse do
+ * item, ele sumia junto, antes de o aluno ver o resultado.
+ */
+const PracticeContext = createContext<((task: StudyTask) => void) | null>(null);
+
 interface TaskItemProps {
   task: StudyTask;
   onUpdate: (task: StudyTask | null) => void;
@@ -295,6 +305,7 @@ function taskCustomNote(task: StudyTask): string | null {
 
 function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDetails = false, onReplanned }: TaskItemProps) {
   const [error, setError] = useState<string | null>(null);
+  const startPractice = useContext(PracticeContext);
 
   const status = task.status;
   const badgeClass = TASK_STATUS_BADGE[status];
@@ -325,6 +336,11 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDet
             <span className="rounded-full bg-graphite/5 px-2 py-0.5 text-xs text-graphite-500">
               {minutesToHours(task.scheduledMinutes)} planejados
             </span>
+            {status === "DONE" && task.practiceAnswered != null && task.practiceAnswered > 0 && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-graphite">
+                {task.practiceCorrect ?? 0}/{task.practiceAnswered} acertos
+              </span>
+            )}
             {Boolean(task.loggedMinutes) && (
               <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
                 {minutesToHours(task.loggedMinutes!)} estudados
@@ -374,6 +390,14 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDet
               {open ? "Concluir" : "Reabrir"}
             </Button>
           )}
+          {/* Praticar conclui a tarefa com o resultado das questões — é o
+              caminho principal; "Concluir" fica para quem estudou por fora. */}
+          {canCreateTasks && open && task.topic && startPractice && (
+            <Button size="sm" onClick={() => startPractice(task)}>
+              <Play className="h-4 w-4" />
+              Praticar
+            </Button>
+          )}
         </div>
       </div>
 
@@ -400,6 +424,7 @@ export function StudySchedulePage() {
   // registrado (o backend decide), e o aluno pode dispensar.
   const [diagnosticAreas, setDiagnosticAreas] = useState<StudyDiagnosticArea[] | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [practiceTask, setPracticeTask] = useState<StudyTask | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -613,6 +638,7 @@ export function StudySchedulePage() {
   }
 
   return (
+    <PracticeContext.Provider value={setPracticeTask}>
     <div className="min-h-screen bg-surface-card">
       <header className="border-b border-surface-line bg-white">
         <div className="container-lumina flex h-[72px] items-center justify-between">
@@ -885,6 +911,16 @@ export function StudySchedulePage() {
           />
         )}
 
+        {practiceTask && (
+          <TaskPractice
+            task={practiceTask}
+            onClose={() => setPracticeTask(null)}
+            onCompleted={(done) => {
+              setPracticeTask(null);
+              handleTaskUpdate(done);
+            }}
+          />
+        )}
         {showDiagnostic && diagnosticAreas && (
           <DiagnosticQuiz
             areas={diagnosticAreas}
@@ -894,6 +930,7 @@ export function StudySchedulePage() {
         )}
       </main>
     </div>
+    </PracticeContext.Provider>
   );
 }
 

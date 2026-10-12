@@ -133,6 +133,39 @@ describe('ScheduleInsightsService.topicsBySubject — trilha', () => {
   });
 });
 
+describe('ScheduleInsightsService.taskPractice', () => {
+  const task = {
+    id: 'task', title: 'Questões — Ondas',
+    subject: { name: 'Física' },
+    topic: { id: 'topic-ondas', name: 'Ondas', subjectId: 'qb-physics' },
+    schedule: { userId },
+  };
+  const question = (id: string, attempts = 0, correctAttempts = 0) => ({
+    id, progress: attempts ? { attempts, correctAttempts, incorrectAttempts: attempts - correctAttempts } : null,
+  });
+
+  it('monta o bloco com as questões do tópico da tarefa, as nunca respondidas na frente', async () => {
+    const { service, prisma, questions } = setup();
+    prisma.studyTask.findUnique.mockResolvedValue(task);
+    questions.findAll.mockResolvedValue({ items: [question('acerta', 3, 3), question('nova'), question('erra', 2, 0)] });
+
+    const practice = await service.taskPractice(userId, 'task');
+    expect(questions.findAll).toHaveBeenCalledWith(userId, { subjectId: 'qb-physics', topicId: 'topic-ondas', page: 1, limit: 50 });
+    expect(practice).toMatchObject({ taskId: 'task', title: 'Questões — Ondas', subject: 'Física', topic: 'Ondas' });
+    expect(practice?.questions.map((q) => q.id)).toEqual(['nova', 'erra', 'acerta']);
+  });
+
+  it('tarefa sem tópico devolve bloco vazio; de outro aluno, nada', async () => {
+    const { service, prisma, questions } = setup();
+    prisma.studyTask.findUnique.mockResolvedValue({ ...task, topic: null });
+    expect((await service.taskPractice(userId, 'task'))?.questions).toEqual([]);
+    expect(questions.findAll).not.toHaveBeenCalled();
+
+    prisma.studyTask.findUnique.mockResolvedValue({ ...task, schedule: { userId: 'outro' } });
+    expect(await service.taskPractice(userId, 'task')).toBeNull();
+  });
+});
+
 describe('ScheduleInsightsService.explainTask (§10)', () => {
   const baseTask = {
     id: 'task', scheduleId: 'schedule', subjectId: 'ss-physics', scheduledMinutes: 40,

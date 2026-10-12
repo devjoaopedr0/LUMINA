@@ -25,6 +25,7 @@ import {
   ReplanTaskDto,
   RescheduleTaskDto,
   SetTopicIncludedDto,
+  CompletePracticeDto,
   SetVestibularDto,
   SubjectTimeLogDto,
   TimeLogDto,
@@ -229,6 +230,26 @@ export class SchedulesController {
     // `context` é o texto que vai para a LuminIA; a tela usa só os motivos.
     const { context: _context, ...rest } = explanation;
     return rest;
+  }
+
+  @Get("study/tasks/:id/practice")
+  @ApiOperation({ summary: "Bloco de questões do tópico da tarefa, para praticar" })
+  async taskPractice(@CurrentUser() user: UserWithProfile, @Param("id") id: string) {
+    const practice = await this.insights.taskPractice(user.id, id);
+    if (!practice) throw new NotFoundException("Tarefa não encontrada.");
+    return practice;
+  }
+
+  @Post("study/tasks/:id/practice/complete")
+  @ApiOperation({ summary: "Conclui a tarefa com o resultado do bloco de questões respondido" })
+  async completePractice(
+    @CurrentUser() user: UserWithProfile,
+    @Param("id") id: string,
+    @Body() dto: CompletePracticeDto,
+  ) {
+    const task = await this.service.completeTaskWithPractice(user.id, id, dto.questionIds);
+    if (!task) throw new NotFoundException("Tarefa não encontrada.");
+    return task;
   }
 
   @Patch("study/tasks/:id/complete")

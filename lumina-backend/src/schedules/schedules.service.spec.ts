@@ -85,7 +85,7 @@ describe('Cronograma: regressões funcionais', () => {
   it('reabrir tarefa limpa a conclusão e recalcula o progresso', async () => {
     repo.findTaskById.mockResolvedValue({ status: 'DONE', scheduleId: 'schedule', schedule: { userId: 'user' } });
     await service.updateTask('user', 'task', { status: 'PENDING' });
-    expect(repo.updateTask).toHaveBeenCalledWith('task', { status: 'PENDING', completedAt: null }, db);
+    expect(repo.updateTask).toHaveBeenCalledWith('task', { status: 'PENDING', completedAt: null, practiceAnswered: null, practiceCorrect: null }, db);
     expect(repo.upsertProgress).toHaveBeenCalled();
   });
 
@@ -103,6 +103,64 @@ describe('Cronograma: regressões funcionais', () => {
     await service.completeTask('user', 'task');
     await service.updateTask('user', 'task', { status: 'DONE' });
     expect(topicMastery.registerStudy).toHaveBeenCalledTimes(2);
+  });
+
+  describe('concluir a tarefa pela prática', () => {
+    const at = (minute: number) => new Date(Date.now() - minute * 60_000);
+    const topicMastery = { registerStudy: vi.fn() };
+    beforeEach(() => {
+      db.questionAttempt = { findMany: vi.fn().mockResolvedValue([]) };
+      service = new SchedulesService(repo as SchedulesRepository, {} as never, topicMastery as never);
+      repo.findTaskById.mockResolvedValue({
+        status: 'PENDING', topicId: 'topic', scheduleId: 'schedule', completedAt: null, schedule: { userId: 'user' },
+      });
+    });
+
+    it('conta o resultado pelas tentativas registradas e conclui a tarefa com ele', async () => {
+      db.questionAttempt.findMany.mockResolvedValue([
+        { questionId: 'q1', isCorrect: false, createdAt: at(9) },
+        { questionId: 'q1', isCorrect: true, createdAt: at(4) },
+        { questionId: 'q2', isCorrect: false, createdAt: at(3) },
+        { questionId: 'q3', isCorrect: true, createdAt: at(2) },
+      ]);
+      await service.completeTaskWithPractice('user', 'task', ['q1', 'q2', 'q3', 'q4']);
+
+      // Só tentativa do aluno, das questões do bloco, do tópico da tarefa e recente.
+      expect(db.questionAttempt.findMany.mock.calls[0][0].where).toMatchObject({
+        userId: 'user', questionId: { in: ['q1', 'q2', 'q3', 'q4'] }, question: { topicId: 'topic' },
+      });
+      expect(repo.updateTask).toHaveBeenCalledWith(
+        'task',
+        expect.objectContaining({ status: 'DONE', practiceAnswered: 3, practiceCorrect: 2 }),
+        db,
+      );
+      expect(repo.upsertProgress).toHaveBeenCalledTimes(1);
+      // O domínio já foi atualizado a cada resposta: não registra estudo de novo.
+      expect(topicMastery.registerStudy).not.toHaveBeenCalled();
+    });
+
+    it('sem nenhuma resposta não conclui', async () => {
+      await expect(service.completeTaskWithPractice('user', 'task', ['q1']))
+        .rejects.toThrow('Responda pelo menos uma questão');
+      expect(repo.updateTask).not.toHaveBeenCalled();
+    });
+
+    it('tarefa sem tópico ou de outro aluno não entra', async () => {
+      repo.findTaskById.mockResolvedValue({ status: 'PENDING', topicId: null, scheduleId: 'schedule', schedule: { userId: 'user' } });
+      await expect(service.completeTaskWithPractice('user', 'task', ['q1'])).rejects.toThrow('não tem um tópico');
+      repo.findTaskById.mockResolvedValue({ status: 'PENDING', topicId: 'topic', scheduleId: 'schedule', schedule: { userId: 'outro' } });
+      expect(await service.completeTaskWithPractice('user', 'task', ['q1'])).toBeNull();
+    });
+
+    it('reabrir a tarefa apaga o resultado da prática', async () => {
+      repo.findTaskById.mockResolvedValue({ status: 'DONE', topicId: 'topic', scheduleId: 'schedule', schedule: { userId: 'user' } });
+      await service.updateTask('user', 'task', { status: 'PENDING' });
+      expect(repo.updateTask).toHaveBeenCalledWith(
+        'task',
+        expect.objectContaining({ status: 'PENDING', completedAt: null, practiceAnswered: null, practiceCorrect: null }),
+        db,
+      );
+    });
   });
 
   it('a resposta de escrita relê a tarefa dentro da transação', async () => {

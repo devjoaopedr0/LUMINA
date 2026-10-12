@@ -16,6 +16,7 @@ import {
   ArrayNotEmpty,
   ArrayUnique,
   ArrayMaxSize,
+  ArrayMinSize,
   ValidateNested,
   IsEnum,
   IsBoolean,
@@ -336,6 +337,16 @@ export class ReplanTaskDto {
   @IsOptional()
   @IsBoolean()
   confirm?: boolean;
+}
+
+/// Conclui a tarefa pelo bloco de questões que o aluno acabou de fazer.
+export class CompletePracticeDto {
+  @ApiProperty({ type: [String], description: "Questões do bloco de prática (as respostas já foram registradas)." })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @IsUUID("4", { each: true })
+  questionIds: string[];
 }
 
 /// O aluno inclui ou tira um tópico do próprio cronograma.

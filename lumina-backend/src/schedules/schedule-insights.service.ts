@@ -12,6 +12,7 @@ import { topicPriorityTerms } from './schedule-priority';
 import { ESSAY_SUBJECT_CODE, STUDY_AREA_LABEL, STUDY_SUBJECT_CODE_TO_AREA } from './study-areas';
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from './study-subject-question-bank-map';
 import { compareByTrack, topicLevel, type TopicLevel } from './topic-sequence';
+import { pickPracticeQuestions } from './schedule-practice';
 
 const MASTERY_STATUS_LABEL: Record<TopicMasteryStatus, string> = {
   NAO_ESTUDADO: 'não estudado',
@@ -93,6 +94,15 @@ export interface TaskExplanation {
   reasons: string[];
   /** Texto pronto para entrar como contexto da LuminIA. */
   context: string;
+}
+
+export interface TaskPractice {
+  taskId: string;
+  title: string;
+  subject: string | null;
+  topic: string | null;
+  /** Vazio quando a tarefa não tem tópico ou o tópico ainda não tem questões. */
+  questions: QuestionResponseDto[];
 }
 
 export interface DiagnosticArea {
@@ -215,6 +225,34 @@ export class ScheduleInsightsService {
             }),
         };
       });
+  }
+
+  /**
+   * Bloco de questões para praticar a tarefa: questões do tópico dela, as
+   * que o aluno nunca respondeu na frente.
+   */
+  async taskPractice(userId: string, taskId: string): Promise<TaskPractice | null> {
+    const task = await this.prisma.studyTask.findUnique({
+      where: { id: taskId },
+      include: { subject: true, topic: true, schedule: true },
+    });
+    if (!task || task.schedule.userId !== userId) return null;
+
+    const page = task.topic
+      ? await this.questions.findAll(userId, {
+          subjectId: task.topic.subjectId,
+          topicId: task.topic.id,
+          page: 1,
+          limit: 50,
+        })
+      : null;
+    return {
+      taskId: task.id,
+      title: task.title,
+      subject: task.subject?.name ?? null,
+      topic: task.topic?.name ?? null,
+      questions: page ? pickPracticeQuestions(page.items) : [],
+    };
   }
 
   /**

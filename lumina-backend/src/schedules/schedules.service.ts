@@ -8,6 +8,7 @@ import { computeSchedulePhase, type SchedulePhase } from "./schedule-phase";
 import { ESSAY_SUBJECT_CODE } from "./study-areas";
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from "./study-subject-question-bank-map";
 import { Db } from "./domain/types";
+import { PRACTICE_WINDOW_HOURS, summarizePractice } from "./schedule-practice";
 import type {
   CreateStudyScheduleDto,
   ReplanTaskDto,
@@ -630,6 +631,9 @@ export class SchedulesService {
       update.completedAt = new Date();
     } else if (data.status && data.status !== StudyTaskStatus.DONE) {
       update.completedAt = null;
+      // Reaberta: o resultado da prática era da conclusão que foi desfeita.
+      update.practiceAnswered = null;
+      update.practiceCorrect = null;
     }
 
     const justCompleted =
@@ -813,6 +817,48 @@ export class SchedulesService {
       if (task.status !== StudyTaskStatus.DONE && task.topicId) {
         await this.topicMastery.registerStudy(userId, task.topicId, tx);
       }
+      await this.updateProgress(tx, task.scheduleId);
+      const refreshed = await this.repo.findTaskById(taskId, tx);
+      return refreshed ? withSubjectName(refreshed) : null;
+    });
+  }
+
+  /**
+   * Conclui a tarefa pelo bloco de questões que o aluno respondeu. O
+   * resultado é contado aqui, pelas tentativas registradas — o cliente só
+   * diz quais questões eram do bloco, não quantas acertou. O domínio do
+   * tópico já foi atualizado a cada resposta.
+   */
+  async completeTaskWithPractice(userId: string, taskId: string, questionIds: string[]) {
+    const task = await this.repo.findTaskById(taskId);
+    if (!task || task.schedule.userId !== userId) return null;
+    if (!task.topicId) {
+      throw new BadRequestException("Esta tarefa não tem um tópico para praticar.");
+    }
+
+    const since = new Date(Date.now() - PRACTICE_WINDOW_HOURS * 3_600_000);
+    const attempts = await this.repo.prisma.questionAttempt.findMany({
+      where: {
+        userId,
+        questionId: { in: questionIds },
+        createdAt: { gte: since },
+        // Só conta questão do tópico da tarefa.
+        question: { topicId: task.topicId },
+      },
+      select: { questionId: true, isCorrect: true, createdAt: true },
+    });
+    const result = summarizePractice(attempts);
+    if (result.answered === 0) {
+      throw new BadRequestException("Responda pelo menos uma questão para concluir a tarefa pela prática.");
+    }
+
+    return this.repo.prisma.$transaction(async (tx: Db) => {
+      await this.repo.updateTask(taskId, {
+        status: StudyTaskStatus.DONE,
+        completedAt: task.completedAt ?? new Date(),
+        practiceAnswered: result.answered,
+        practiceCorrect: result.correct,
+      }, tx);
       await this.updateProgress(tx, task.scheduleId);
       const refreshed = await this.repo.findTaskById(taskId, tx);
       return refreshed ? withSubjectName(refreshed) : null;
