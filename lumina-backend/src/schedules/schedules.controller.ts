@@ -33,6 +33,7 @@ import {
   UpdateStudyTaskDto,
 } from "./dto/create-study-schedule.dto";
 import type { UserWithProfile } from "../users/users.repository";
+import { ScoreEstimateService } from "./score-estimate.service";
 
 function userDate(date?: string): Date {
   return date ? new Date(date) : new Date();
@@ -46,6 +47,7 @@ export class SchedulesController {
   constructor(
     private readonly service: SchedulesService,
     private readonly insights: ScheduleInsightsService,
+    private readonly scoreEstimates: ScoreEstimateService,
   ) {}
 
   @Get("study/subjects")
@@ -160,6 +162,15 @@ export class SchedulesController {
   })
   async weeklySummary(@CurrentUser() user: UserWithProfile, @Query("date") date?: string) {
     return this.insights.weeklySummary(user.id, userDate(date));
+  }
+
+  @Get("study/score-estimate")
+  @ApiOperation({
+    summary: "Estimativa da nota do ENEM pelo desempenho nas questões",
+    description: "Aproximação com faixa de incerteza, por área e na média; compara com a meta do Sisu quando há.",
+  })
+  async scoreEstimate(@CurrentUser() user: UserWithProfile) {
+    return this.scoreEstimates.forUser(user.id);
   }
 
   @Get("study/diagnostic")

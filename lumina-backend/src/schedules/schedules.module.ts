@@ -7,10 +7,12 @@ import { SchedulesRepository } from "./schedules.repository";
 import { ScheduleGeneratorService } from "./schedule-generator.service";
 import { ScheduleInsightsService } from "./schedule-insights.service";
 
+import { ScoreEstimateService } from './score-estimate.service';
+
 @Module({
   imports: [QuestionsModule, CutoffsModule],
   controllers: [SchedulesController],
-  providers: [SchedulesService, SchedulesRepository, ScheduleGeneratorService, ScheduleInsightsService],
-  exports: [SchedulesService, SchedulesRepository, ScheduleInsightsService],
+  providers: [SchedulesService, SchedulesRepository, ScheduleGeneratorService, ScheduleInsightsService, ScoreEstimateService],
+  exports: [SchedulesService, SchedulesRepository, ScheduleInsightsService, ScoreEstimateService],
 })
 export class SchedulesModule {}

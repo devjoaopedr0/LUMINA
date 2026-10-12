@@ -1195,6 +1195,32 @@ export interface StudyTaskPractice {
   questions: Question[];
 }
 
+/** Estimativa (aproximada, em faixa) da nota do ENEM pelo desempenho nas questões. */
+export interface ScoreEstimate {
+  areas: {
+    area: StudyArea;
+    label: string;
+    answered: number;
+    correct: number;
+    accuracy: number | null;
+    /** null enquanto faltam questões na área (`missing` diz quantas). */
+    estimate: number | null;
+    low: number | null;
+    high: number | null;
+    missing: number;
+  }[];
+  essay: { score: number | null; corrections: number };
+  average: { estimate: number; low: number; high: number; parts: number; complete: boolean } | null;
+  target: { score: number; course: string | null; university: string | null; year: number | null } | null;
+  /** Meta menos a média estimada: positivo = falta. */
+  gap: number | null;
+  message: string;
+}
+
+export function apiGetScoreEstimate(accessToken: string): Promise<ScoreEstimate> {
+  return request("/study/score-estimate", { headers: authHeaders(accessToken) });
+}
+
 /** Resumo da semana do cronograma — só dados registrados, nada estimado. */
 export interface WeeklySummary {
   weekStart: string;

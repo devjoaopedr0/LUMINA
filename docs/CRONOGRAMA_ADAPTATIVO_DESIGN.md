@@ -432,12 +432,34 @@ cima dos mesmos fatos; sem provedor de IA sai um comentário fixo.
 
 - Só entra dado registrado. O sistema não guarda histórico de domínio, então os
   tópicos aparecem com a situação ATUAL, não com "quanto subiu na semana".
-- A meta do Sisu é mostrada, mas não há "quanto falta": o app não estima a nota
-  do ENEM do aluno. A LuminIA é instruída a não fazer essa conta.
+- A meta do Sisu é mostrada; a distância até ela vem da estimativa de nota
+  (abaixo). Sem estimativa, a LuminIA é instruída a não fazer essa conta.
 - Semana em andamento é marcada como tal: o planejado inclui dias que ainda não
   chegaram, então não vira porcentagem de cumprimento nem atraso.
 - A semana vira à meia-noite de Brasília (respostas e cronômetro têm hora; as
   sessões, só data).
+
+### Estimativa de nota
+
+`GET study/score-estimate` devolve uma estimativa da nota do ENEM do aluno, por
+área e na média, sempre como faixa, e a distância até a meta do Sisu. Aparece no
+cartão "Sua nota estimada hoje" do cronograma e entra no comentário semanal da
+LuminIA, marcada como estimativa.
+
+É uma aproximação declarada — a nota real usa TRI, que o app não reproduz:
+
+- Por área, o acerto ponderado pela dificuldade da questão (fácil 1, média 1,5,
+  difícil 2) posiciona o aluno entre a menor e a maior nota que a área costuma
+  ter no ENEM (`AREA_SCALE` em `score-estimate.ts`, valores arredondados das
+  edições recentes — conferir e ajustar a cada edição).
+- Cada questão conta uma vez, pela primeira resposta dos últimos 120 dias
+  (avulsas e de simulados enviados).
+- Área com menos de 10 questões não tem estimativa: mostra quantas faltam. A
+  média só existe com pelo menos duas áreas, e diz quantas das 5 notas entraram.
+- A faixa é mais larga com poucas questões (cerca de ±90 com 10, ±35 com 60+).
+- Redação entra pela média das últimas 3 correções concluídas, quando há.
+- Nada disso foi validado contra notas reais de alunos: os pesos e a régua são
+  chutes iniciais, na mesma categoria dos pesos da prioridade.
 
 ## 14. Design visual (seção 19)
 

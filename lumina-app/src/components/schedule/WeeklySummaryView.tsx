@@ -192,8 +192,8 @@ export function WeeklySummaryView({ date }: { date: string }) {
               Sua meta pelo Sisu{summary.target.year ? ` ${summary.target.year}` : ""} é média{" "}
               <strong className="text-graphite">{summary.target.score.toLocaleString("pt-BR")}</strong>
               {summary.target.course ? ` para ${summary.target.course}` : ""}
-              {summary.target.university ? ` na ${summary.target.university}` : ""}. O app ainda não estima a sua nota
-              do ENEM, então o percentual de acerto acima é o melhor termômetro da semana.
+              {summary.target.university ? ` na ${summary.target.university}` : ""}. A sua nota estimada e quanto
+              falta para a meta estão no cartão "Sua nota estimada hoje", no alto desta página.
             </p>
           )}
         </>

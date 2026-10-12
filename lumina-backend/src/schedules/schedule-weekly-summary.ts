@@ -159,14 +159,20 @@ export function buildWeeklySummary(input: WeeklySummaryInput): WeeklySummary {
   };
 }
 
-/** Texto que vai para a LuminIA comentar a semana. */
-export function weeklySummaryContext(summary: WeeklySummary): string {
+/** Texto que vai para a LuminIA comentar a semana. `scoreEstimate` é a
+ *  frase da estimativa de nota (score-estimate.ts), quando ela existe. */
+export function weeklySummaryContext(summary: WeeklySummary, scoreEstimate?: string | null): string {
   return [
     `Resumo da semana de estudos do aluno, de ${summary.weekStart} a ${summary.weekEnd} (dados reais do sistema; use só estes números):`,
     ...summary.highlights.map((line) => `- ${line}`),
     summary.target
-      ? `- Meta de nota pelo Sisu ${summary.target.year ?? ''}: média ${summary.target.score} para ${summary.target.course ?? 'o curso'} na ${summary.target.university ?? 'universidade'}. O app não estima a nota do ENEM do aluno, então não diga quanto falta para a meta.`
+      ? `- Meta de nota pelo Sisu ${summary.target.year ?? ''}: média ${summary.target.score} para ${summary.target.course ?? 'o curso'} na ${summary.target.university ?? 'universidade'}.`
       : null,
+    scoreEstimate
+      ? `- Estimativa de nota (aproximada, pelo desempenho nas questões do app — não é previsão do ENEM): ${scoreEstimate} Se citar, deixe claro que é uma estimativa.`
+      : summary.target
+        ? '- Ainda não há estimativa da nota do aluno: não diga quanto falta para a meta.'
+        : null,
     summary.inProgress
       ? '- A semana ainda não terminou: não trate as tarefas que faltam como atraso.'
       : null,

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ScheduleInsightsService } from '../schedules/schedule-insights.service';
+import { ScoreEstimateService } from '../schedules/score-estimate.service';
 import { UserWithProfile } from '../users/users.repository';
 import { AiChatRequestDto, AiChatResponseDto } from './ai.dto';
 import { AiService } from './ai.service';
@@ -19,6 +20,7 @@ export class AiController {
     private readonly aiService: AiService,
     private readonly scheduleInsights: ScheduleInsightsService,
     private readonly lessons: TopicLessonsService,
+    private readonly scoreEstimates: ScoreEstimateService,
   ) {}
 
   @Post('chat')
@@ -56,9 +58,10 @@ export class AiController {
   ): Promise<{ comment: string; source: 'AI' | 'FALLBACK' }> {
     const summary = await this.scheduleInsights.weeklySummary(user.id, date ? new Date(date) : new Date());
     if (!summary) throw new NotFoundException('Você ainda não tem um cronograma.');
+    const estimate = await this.scoreEstimates.forUser(user.id);
     try {
       const comment = await this.aiService.generateText({
-        system: `${luminiaSystemPrompt(user.profile?.firstName)}\n\n${weeklySummaryContext(summary)}`,
+        system: `${luminiaSystemPrompt(user.profile?.firstName)}\n\n${weeklySummaryContext(summary, estimate.average ? estimate.message : null)}`,
         prompt: 'Como foi a minha semana de estudos?',
       });
       if (comment) return { comment, source: 'AI' };

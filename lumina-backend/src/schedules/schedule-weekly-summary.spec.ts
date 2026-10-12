@@ -80,6 +80,11 @@ describe('resumo semanal', () => {
     expect(context).toContain('- Você concluiu 3 de 4 tarefas planejadas (75%).');
     expect(context).toContain('média 731.3 para MEDICINA na UFC');
     expect(context).toContain('não diga quanto falta para a meta');
+    // Com estimativa, ela entra no lugar da proibição — marcada como aproximada.
+    const withEstimate = weeklySummaryContext(buildWeeklySummary(base), 'Sua média ficaria em torno de 640.');
+    expect(withEstimate).toContain('Estimativa de nota (aproximada');
+    expect(withEstimate).toContain('Sua média ficaria em torno de 640.');
+    expect(withEstimate).not.toContain('não diga quanto falta');
     expect(weeklySummaryContext(buildWeeklySummary({ ...base, target: null }))).not.toContain('Meta de nota');
   });
 

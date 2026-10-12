@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { CutoffTargetCard } from "@/components/CutoffTargetCard";
+import { ScoreEstimateCard } from "@/components/ScoreEstimateCard";
 import { Link, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/Card";
@@ -778,6 +779,7 @@ export function StudySchedulePage() {
             </div>
 
             <CutoffTargetCard className="mt-6" />
+            <ScoreEstimateCard className="mt-4" />
 
             <ProgressPanel progress={progress?.summary ?? null} />
             {progress?.mastery && <MasteryPanel mastery={progress.mastery} />}
