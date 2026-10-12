@@ -1,14 +1,16 @@
-import { Body, Controller, Delete, Get, Module, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
 import { QuestionsModule } from '../questions/questions.module';
+import { SchedulesModule } from '../schedules/schedules.module';
 import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
 import { AnswerSheetService } from './answer-sheet.service';
 import { QuestionScanService } from './question-scan.service';
+import { TaskSimulationService } from './task-simulation.service';
 
 @ApiTags('simulations')
 @ApiBearerAuth()
@@ -20,6 +22,7 @@ export class SimulationsController {
     private readonly adaptiveService: AdaptiveSimulationService,
     private readonly answerSheetService: AnswerSheetService,
     private readonly questionScanService: QuestionScanService,
+    private readonly taskSimulation: TaskSimulationService,
   ) {}
   @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
@@ -41,7 +44,18 @@ export class SimulationsController {
   @Get() list(@CurrentUser() user: UserWithProfile) { return this.service.list(user.id); }
   @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateSimulationDto) { return this.service.create(user.id, dto.title, dto.questionIds, dto.classId, dto.assessmentType, dto.dueAt, dto.durationMinutes, dto.isRealExam, user.accountType, dto.generateAnswerSheet); }
   @Get(':id') get(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query('answers') answers?: string) { return this.service.get(user.id, id, answers === 'true'); }
-  @Post(':id/submission') submit(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitSimulationDto) { return this.service.submit(user.id, id, dto.answers); }
+  @Post(':id/submission') async submit(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitSimulationDto) {
+    const result = await this.service.submit(user.id, id, dto.answers);
+    // Simulado que nasceu de uma tarefa do cronograma conclui a tarefa com a nota.
+    await this.taskSimulation.completeFromSubmission(user.id, id, result.correct, result.total);
+    return result;
+  }
+  /** Simulado da tarefa de "Simulado" do cronograma: cria na primeira vez, depois devolve o mesmo. */
+  @Post('from-task/:taskId') async fromTask(@CurrentUser() user: UserWithProfile, @Param('taskId', ParseUUIDPipe) taskId: string) {
+    const started = await this.taskSimulation.startForTask(user.id, taskId);
+    if (!started) throw new NotFoundException('Tarefa não encontrada.');
+    return started;
+  }
   @Get(':id/submission') submission(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.submission(user.id, id); }
 
   // Adaptive simulation endpoints
@@ -77,5 +91,5 @@ export class SimulationsController {
   @Post('question-scans/processing/:id/save-question') saveQuestionScanAsQuestion(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveAsQuestion(user.id, id, dto); }
   @Post('question-scans/processing/:id/save-error-notebook') saveQuestionScanToErrorNotebook(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveToErrorNotebook(user.id, id, dto); }
 }
-@Module({ imports: [QuestionsModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService, QuestionScanService] })
+@Module({ imports: [QuestionsModule, SchedulesModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService, QuestionScanService, TaskSimulationService] })
 export class SimulationsModule {}

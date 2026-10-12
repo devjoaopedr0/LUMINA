@@ -1177,6 +1177,8 @@ export interface StudyTask {
   /** Resultado do bloco de questões, quando a tarefa foi concluída pela prática. */
   practiceAnswered?: number | null;
   practiceCorrect?: number | null;
+  /** Simulado montado para a tarefa de simulado (enviá-lo conclui a tarefa). */
+  simulationId?: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1209,6 +1211,14 @@ export interface StudyTaskLesson {
 /** Na primeira abertura de um tópico o resumo é gerado na hora (pode levar ~15 s). */
 export function apiGetTaskLesson(accessToken: string, taskId: string): Promise<StudyTaskLesson> {
   return request(`/ai/lessons/task/${taskId}`, { headers: authHeaders(accessToken) });
+}
+
+/** Simulado da tarefa de "Simulado": cria na primeira vez, depois devolve o mesmo. */
+export function apiStartTaskSimulation(
+  accessToken: string,
+  taskId: string
+): Promise<{ simulationId: string; created: boolean }> {
+  return request(`/simulations/from-task/${taskId}`, { method: "POST", headers: authHeaders(accessToken) });
 }
 
 export function apiGetTaskPractice(accessToken: string, taskId: string): Promise<StudyTaskPractice> {

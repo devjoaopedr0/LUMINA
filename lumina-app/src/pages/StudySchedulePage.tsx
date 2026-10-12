@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { CutoffTargetCard } from "@/components/CutoffTargetCard";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -56,6 +56,7 @@ import {
   type PaginatedTasks,
   type DailySession,
   ApiError,
+  apiStartTaskSimulation,
   apiGetDailySession,
   apiGetDiagnostic,
   apiGetProgress,
@@ -312,6 +313,20 @@ function taskCustomNote(task: StudyTask): string | null {
 function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDetails = false, onReplanned }: TaskItemProps) {
   const [error, setError] = useState<string | null>(null);
   const studyActions = useContext(PracticeContext);
+  const navigate = useNavigate();
+  const [startingSimulation, setStartingSimulation] = useState(false);
+  const isSimulation = task.activityType === "SIMULADO";
+
+  // A tarefa de simulado abre um simulado de verdade, cronometrado; ao
+  // enviá-lo, a tarefa se conclui com a nota.
+  function openSimulation() {
+    setError(null);
+    setStartingSimulation(true);
+    apiStartTaskSimulation(getAccessToken() ?? "", task.id)
+      .then(({ simulationId }) => navigate(`/app/simulados?id=${simulationId}`))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Não foi possível abrir o simulado."))
+      .finally(() => setStartingSimulation(false));
+  }
 
   const status = task.status;
   const badgeClass = TASK_STATUS_BADGE[status];
@@ -411,13 +426,28 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDet
               </Button>
               <Button
                 size="sm"
-                variant={task.activityType === "TEORIA" ? "outline" : "primary"}
+                variant={task.activityType === "TEORIA" || isSimulation ? "outline" : "primary"}
                 onClick={() => studyActions.practice(task)}
               >
                 <Play className="h-4 w-4" />
                 Praticar
               </Button>
+              {isSimulation && (
+                <Button size="sm" onClick={openSimulation} disabled={startingSimulation}>
+                  <TimerReset className="h-4 w-4" />
+                  {startingSimulation ? "Montando..." : task.simulationId ? "Continuar simulado" : "Fazer simulado"}
+                </Button>
+              )}
             </>
+          )}
+          {!open && task.simulationId && (
+            <Link
+              to={`/app/simulados?id=${task.simulationId}`}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-graphite transition-colors hover:bg-graphite/5"
+            >
+              <TimerReset className="h-4 w-4" />
+              Ver simulado
+            </Link>
           )}
         </div>
       </div>

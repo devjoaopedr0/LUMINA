@@ -85,7 +85,7 @@ describe('Cronograma: regressões funcionais', () => {
   it('reabrir tarefa limpa a conclusão e recalcula o progresso', async () => {
     repo.findTaskById.mockResolvedValue({ status: 'DONE', scheduleId: 'schedule', schedule: { userId: 'user' } });
     await service.updateTask('user', 'task', { status: 'PENDING' });
-    expect(repo.updateTask).toHaveBeenCalledWith('task', { status: 'PENDING', completedAt: null, practiceAnswered: null, practiceCorrect: null }, db);
+    expect(repo.updateTask).toHaveBeenCalledWith('task', { status: 'PENDING', completedAt: null, practiceAnswered: null, practiceCorrect: null, simulationId: null }, db);
     expect(repo.upsertProgress).toHaveBeenCalled();
   });
 
@@ -152,12 +152,31 @@ describe('Cronograma: regressões funcionais', () => {
       expect(await service.completeTaskWithPractice('user', 'task', ['q1'])).toBeNull();
     });
 
+    it('simulado enviado conclui as tarefas ligadas a ele com a nota', async () => {
+      db.studyTask.findMany.mockResolvedValue([{ id: 'task', scheduleId: 'schedule' }]);
+      expect(await service.completeTasksFromSimulation('user', 'simulation', 11, 15)).toBe(1);
+      expect(db.studyTask.findMany.mock.calls[0][0].where).toMatchObject({
+        simulationId: 'simulation', schedule: { userId: 'user' }, status: { in: ['PENDING', 'IN_PROGRESS'] },
+      });
+      expect(repo.updateTask).toHaveBeenCalledWith(
+        'task',
+        expect.objectContaining({ status: 'DONE', practiceAnswered: 15, practiceCorrect: 11 }),
+        db,
+      );
+      expect(repo.upsertProgress).toHaveBeenCalledTimes(1);
+
+      // Simulado comum, sem tarefa do cronograma: nada a fazer.
+      db.studyTask.findMany.mockResolvedValue([]);
+      expect(await service.completeTasksFromSimulation('user', 'outro', 3, 5)).toBe(0);
+      expect(repo.updateTask).toHaveBeenCalledTimes(1);
+    });
+
     it('reabrir a tarefa apaga o resultado da prática', async () => {
       repo.findTaskById.mockResolvedValue({ status: 'DONE', topicId: 'topic', scheduleId: 'schedule', schedule: { userId: 'user' } });
       await service.updateTask('user', 'task', { status: 'PENDING' });
       expect(repo.updateTask).toHaveBeenCalledWith(
         'task',
-        expect.objectContaining({ status: 'PENDING', completedAt: null, practiceAnswered: null, practiceCorrect: null }),
+        expect.objectContaining({ status: 'PENDING', completedAt: null, practiceAnswered: null, practiceCorrect: null, simulationId: null }),
         db,
       );
     });

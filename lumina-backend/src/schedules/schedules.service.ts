@@ -634,6 +634,9 @@ export class SchedulesService {
       // Reaberta: o resultado da prática era da conclusão que foi desfeita.
       update.practiceAnswered = null;
       update.practiceCorrect = null;
+      // E o simulado dela já foi enviado (só aceita um envio): solta o
+      // vínculo para a tarefa ganhar um simulado novo.
+      if (task.status === StudyTaskStatus.DONE) update.simulationId = null;
     }
 
     const justCompleted =
@@ -863,6 +866,38 @@ export class SchedulesService {
       const refreshed = await this.repo.findTaskById(taskId, tx);
       return refreshed ? withSubjectName(refreshed) : null;
     });
+  }
+
+  /**
+   * O aluno enviou um simulado: as tarefas do cronograma ligadas a ele (em
+   * geral uma) se concluem com a nota. O domínio dos tópicos já foi
+   * atualizado na correção do simulado.
+   */
+  async completeTasksFromSimulation(userId: string, simulationId: string, correct: number, total: number) {
+    const tasks = await this.repo.prisma.studyTask.findMany({
+      where: {
+        simulationId,
+        schedule: { userId },
+        status: { in: [StudyTaskStatus.PENDING, StudyTaskStatus.IN_PROGRESS] },
+      },
+      select: { id: true, scheduleId: true },
+    });
+    if (tasks.length === 0) return 0;
+
+    await this.repo.prisma.$transaction(async (tx: Db) => {
+      for (const task of tasks) {
+        await this.repo.updateTask(task.id, {
+          status: StudyTaskStatus.DONE,
+          completedAt: new Date(),
+          practiceAnswered: total,
+          practiceCorrect: correct,
+        }, tx);
+      }
+      for (const scheduleId of new Set(tasks.map((task) => task.scheduleId))) {
+        await this.updateProgress(tx, scheduleId);
+      }
+    }, PLAN_TX_OPTIONS);
+    return tasks.length;
   }
 
   async startTimer(userId: string, taskId: string) {

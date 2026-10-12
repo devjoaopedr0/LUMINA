@@ -736,6 +736,8 @@ model Simulation {
   class          Class?         @relation(fields: [classId], references: [id], onDelete: SetNull)
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   items          SimulationItem[]
+  /// Tarefas do cronograma que este simulado conclui ao ser enviado.
+  studyTasks     StudyTask[]
   submissions           SimulationSubmission[]
   answerSheetUploads    AnswerSheetUpload[]
   answerSheetSubmissions AnswerSheetSubmission[]
@@ -1148,6 +1150,8 @@ model StudyTask {
   /// prática: respondidas e acertos. Nulo = concluída à mão.
   practiceAnswered Int?           @map("practice_answered")
   practiceCorrect  Int?           @map("practice_correct")
+  /// Simulado montado para a tarefa de "Simulado"; enviá-lo conclui a tarefa.
+  simulationId    String?         @map("simulation_id") @db.Uuid
   notes           String?
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
@@ -1155,12 +1159,14 @@ model StudyTask {
   session         StudySession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   subject         StudySubject?   @relation(fields: [subjectId], references: [id])
   topic           Topic?          @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  simulation      Simulation?     @relation(fields: [simulationId], references: [id], onDelete: SetNull)
   timeLogs        StudyTimeLog[]
 
   @@index([scheduleId])
   @@index([sessionId])
   @@index([subjectId])
   @@index([topicId])
+  @@index([simulationId])
   @@map("study_tasks")
 }
 

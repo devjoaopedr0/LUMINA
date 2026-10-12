@@ -280,6 +280,22 @@ termina em "Praticar agora", que leva para o bloco de questões.
   para um resumo escrito ou revisado por professor substituir o gerado (ainda
   não há tela para isso; hoje é direto no banco).
 
+### Simulado: a tarefa abre um simulado de verdade
+
+A tarefa de tipo Simulado (reta final, tópico em prática) tem "Fazer
+simulado": monta um simulado real do app (`simulations`), cronometrado com os
+minutos da tarefa, e leva o aluno para a tela de simulados.
+
+- Até 15 questões: 8 do tópico da tarefa e o resto de outros tópicos da mesma
+  matéria que o aluno já começou a estudar (assunto nunca visto não entra). Sem
+  outros tópicos estudados, completa com o próprio tópico; com menos de 5
+  questões no total não há simulado e a tarefa segue pela prática.
+- A tarefa guarda o simulado (`study_tasks.simulation_id`): abrir de novo leva
+  ao mesmo. Ao enviar as respostas, a tarefa se conclui com a nota — a correção
+  do simulado já atualiza o domínio de cada tópico.
+- Reabrir a tarefa solta o vínculo (o simulado só aceita um envio) e a próxima
+  abertura monta um simulado novo.
+
 ## 7. Fases pela proximidade da prova (seção 15)
 
 ```
