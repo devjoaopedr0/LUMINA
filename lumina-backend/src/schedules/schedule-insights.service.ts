@@ -251,7 +251,7 @@ export class ScheduleInsightsService {
     const period = { from: shift(weekStart, 0, BRAZIL_UTC_OFFSET_HOURS), to: shift(weekStart, 7, BRAZIL_UTC_OFFSET_HOURS) };
     const previousPeriod = { from: shift(period.from, -7), to: period.from };
 
-    const [sessions, previousSessions, logs, previousLogs, attempts, previousAttempts, simulations, masteries, cutoff] =
+    const [sessions, previousSessions, logs, previousLogs, attempts, previousAttempts, simulations, historyRows, cutoff] =
       await Promise.all([
         this.repo.findSessionsWithTasks(schedule.id, weekStart, weekEnd),
         this.repo.findSessionsWithTasks(schedule.id, shift(weekStart, -7), shift(weekStart, -1)),
@@ -268,22 +268,31 @@ export class ScheduleInsightsService {
           where: { userId, submittedAt: { gte: period.from, lt: period.to } },
           select: { correct: true, total: true },
         }),
-        this.prisma.topicMastery.findMany({
-          where: {
-            userId,
-            lastStudiedAt: { gte: period.from, lt: period.to },
-            status: { not: TopicMasteryStatus.NAO_ESTUDADO },
-          },
+        // Histórico do domínio: as linhas da semana dizem em que tópicos o
+        // aluno mexeu e como cada um terminou (a coluna é DATE, já no dia de
+        // Brasília — mesma data pura das sessões).
+        this.prisma.topicMasteryHistory.findMany({
+          where: { userId, day: { gte: weekStart, lte: weekEnd }, status: { not: TopicMasteryStatus.NAO_ESTUDADO } },
+          orderBy: { day: 'asc' },
         }),
         this.cutoffs.targetForUser(userId),
       ]);
 
-    const topics = masteries.length
-      ? await this.prisma.topic.findMany({
-          where: { id: { in: masteries.map((m) => m.topicId) } },
-          include: { subject: true },
-        })
-      : [];
+    // Última linha de cada tópico na semana = como ele terminou a semana.
+    const endOfWeek = new Map(historyRows.map((row) => [row.topicId, row]));
+    const masteries = [...endOfWeek.values()];
+    const topicIds = masteries.map((m) => m.topicId);
+    const [topics, earlierRows] = topicIds.length
+      ? await Promise.all([
+          this.prisma.topic.findMany({ where: { id: { in: topicIds } }, include: { subject: true } }),
+          this.prisma.topicMasteryHistory.findMany({
+            where: { userId, topicId: { in: topicIds }, day: { lt: weekStart } },
+            orderBy: { day: 'asc' },
+          }),
+        ])
+      : [[], []];
+    // Última linha de cada tópico ANTES da semana = de onde ele partiu.
+    const beforeWeek = new Map(earlierRows.map((row) => [row.topicId, row]));
     const topicById = new Map(topics.map((topic) => [topic.id, topic]));
     const minutes = (rows: { durationMinutes: number }[]) => rows.reduce((sum, row) => sum + row.durationMinutes, 0);
     const fmt = (value: Date) => value.toISOString().slice(0, 10);
@@ -314,6 +323,7 @@ export class ScheduleInsightsService {
             status: mastery.status,
             masteryScore: mastery.masteryScore,
             attempts: mastery.attempts,
+            before: beforeWeek.get(topic.id) ?? null,
           };
         }),
       previous: {

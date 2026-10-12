@@ -38,6 +38,7 @@ model User {
    studySchedule          StudySchedule?
    studyTimeLogs          StudyTimeLog[]
    topicMasteries         TopicMastery[]
+   topicMasteryHistory    TopicMasteryHistory[]
    selectedVestibular     UserVestibular?
    mentalMathSessions     MentalMathSession[]
    essays                 Essay[]
@@ -552,6 +553,7 @@ model Topic {
   questions Question[] @relation("QuestionTopic")
   subject   Subject    @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
   topicMasteries TopicMastery[]
+  masteryHistory TopicMasteryHistory[]
   studyTasks     StudyTask[]
   lesson         TopicLesson?
 
@@ -612,6 +614,30 @@ model TopicMastery {
   @@index([userId, status])
   @@index([userId, nextReviewAt])
   @@map("topic_masteries")
+}
+
+/// Histórico do domínio por tópico: uma linha por aluno, tópico e DIA (em
+/// horário de Brasília) em que o domínio mudou, com o valor ao fim do dia.
+/// TopicMastery guarda só o estado atual; é daqui que sai "quanto subiu na
+/// semana" no resumo semanal.
+model TopicMasteryHistory {
+  id             String             @id @default(uuid()) @db.Uuid
+  userId         String             @map("user_id") @db.Uuid
+  topicId        String             @map("topic_id") @db.Uuid
+  day            DateTime           @db.Date
+  masteryScore   Int                @map("mastery_score")
+  status         TopicMasteryStatus
+  attempts       Int                @default(0)
+  correctAttempts Int               @default(0) @map("correct_attempts")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId, day])
+  @@index([userId, day])
+  @@map("topic_mastery_history")
 }
 
 enum TopicMasteryStatus {

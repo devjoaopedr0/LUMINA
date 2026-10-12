@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TopicMasteryStatus } from '@prisma/client';
+import { Prisma, TopicMasteryStatus, type TopicMastery } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 type Db = PrismaService | Prisma.TransactionClient;
@@ -29,6 +29,16 @@ const REVIEW_RESET_INTERVAL_DAYS = 1;
  * tocado) fica de fora do score em si — ela importa para PRIORIZAR o que
  * revisar (fase 2, no gerador), não para medir o domínio atual.
  */
+/** Brasília está 3 horas atrás do UTC (sem horário de verão). */
+const BRAZIL_UTC_OFFSET_MS = 3 * 3_600_000;
+
+/** Dia do histórico para um instante: a data em Brasília, como meia-noite UTC
+ *  (é assim que o Prisma lê e grava uma coluna DATE). */
+export function masteryHistoryDay(instant: Date): Date {
+  const local = new Date(instant.getTime() - BRAZIL_UTC_OFFSET_MS);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+}
+
 @Injectable()
 export class TopicMasteryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -84,7 +94,7 @@ export class TopicMasteryService {
     nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays);
     nextReviewAt.setUTCHours(0, 0, 0, 0);
 
-    await db.topicMastery.upsert({
+    const saved = await db.topicMastery.upsert({
       where: { userId_topicId: { userId, topicId } },
       create: {
         userId,
@@ -110,6 +120,30 @@ export class TopicMasteryService {
         reviewIntervalDays,
       },
     });
+    await this.recordHistory(saved, now, db);
+  }
+
+  /**
+   * Guarda o domínio do tópico no histórico do dia (em horário de Brasília):
+   * várias mudanças no mesmo dia viram uma linha só, com o valor mais recente.
+   */
+  private async recordHistory(
+    mastery: Pick<TopicMastery, 'userId' | 'topicId' | 'masteryScore' | 'status' | 'attempts' | 'correctAttempts'>,
+    now: Date,
+    db: Db,
+  ): Promise<void> {
+    const day = masteryHistoryDay(now);
+    const values = {
+      masteryScore: mastery.masteryScore,
+      status: mastery.status,
+      attempts: mastery.attempts,
+      correctAttempts: mastery.correctAttempts,
+    };
+    await db.topicMasteryHistory.upsert({
+      where: { userId_topicId_day: { userId: mastery.userId, topicId: mastery.topicId, day } },
+      create: { userId: mastery.userId, topicId: mastery.topicId, day, ...values },
+      update: values,
+    });
   }
 
   /** Registra que o aluno estudou o tópico sem responder questão (tarefa do
@@ -130,7 +164,7 @@ export class TopicMasteryService {
     nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays);
     nextReviewAt.setUTCHours(0, 0, 0, 0);
 
-    await db.topicMastery.upsert({
+    const saved = await db.topicMastery.upsert({
       where: { userId_topicId: { userId, topicId } },
       create: {
         userId,
@@ -147,6 +181,7 @@ export class TopicMasteryService {
         ...(reviewIsDue ? { nextReviewAt } : {}),
       },
     });
+    await this.recordHistory(saved, now, db);
   }
 
   /** Domínio por tópico do aluno — base do futuro painel "o que você já sabe"

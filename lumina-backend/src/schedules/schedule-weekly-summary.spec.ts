@@ -8,8 +8,8 @@ import {
 
 const task = (status: string, subjectId = 'math', scheduledMinutes = 30) =>
   ({ status, scheduledMinutes, subjectId, subjectName: subjectId === 'math' ? 'Matemática' : 'Física' }) as never;
-const topic = (name: string, status: string, masteryScore: number, attempts = 5) =>
-  ({ id: name, name, subject: 'Matemática', status, masteryScore, attempts }) as never;
+const topic = (name: string, status: string, masteryScore: number, attempts = 5, before: unknown = null) =>
+  ({ id: name, name, subject: 'Matemática', status, masteryScore, attempts, before }) as never;
 
 const base: WeeklySummaryInput = {
   weekStart: '2026-10-11',
@@ -43,6 +43,36 @@ describe('resumo semanal', () => {
     expect(summary.topics.items.map((item) => item.name)).toEqual(['Porcentagem', 'Regra de três', 'Frações']);
   });
 
+  it('com o histórico, diz o que subiu, o que caiu, o que foi dominado e o que é novo', () => {
+    const summary = buildWeeklySummary({
+      ...base,
+      topics: [
+        topic('Frações', 'DOMINADO', 92, 8, { masteryScore: 60, status: 'PRATICANDO' }),
+        topic('Porcentagem', 'APRENDENDO', 30, 6, { masteryScore: 55, status: 'PRATICANDO' }),
+        topic('Regra de três', 'PRATICANDO', 65, 5, { masteryScore: 63, status: 'PRATICANDO' }),
+        topic('Juros simples', 'APRENDENDO', 40, 2),
+      ],
+    });
+    expect(summary.topics).toMatchObject({ studied: 4, newlyMastered: 1, started: 1 });
+    expect(Object.fromEntries(summary.topics.items.map((item) => [item.name, item.delta]))).toEqual({
+      'Frações': 32, 'Porcentagem': -25, 'Regra de três': 2, 'Juros simples': null,
+    });
+    expect(summary.highlights).toContain('Dominou nesta semana: Frações.');
+    expect(summary.highlights).toContain('Subiu em: Frações (+32).');
+    expect(summary.highlights).toContain('Caiu em: Porcentagem (-25).');
+    expect(summary.highlights).toContain('Começou 1 tópico novo.');
+    // Variação pequena (Regra de três, +2) não vira destaque.
+    expect(summary.highlights.join(' ')).not.toContain('Regra de três (+2)');
+  });
+
+  it('tópico que já estava dominado antes não conta como dominado na semana', () => {
+    const summary = buildWeeklySummary({
+      ...base, topics: [topic('Frações', 'DOMINADO', 95, 9, { masteryScore: 92, status: 'DOMINADO' })],
+    });
+    expect(summary.topics.newlyMastered).toBe(0);
+    expect(summary.highlights.join(' ')).not.toContain('Dominou nesta semana');
+  });
+
   it('escreve os fatos da semana em frases, comparando com a anterior', () => {
     expect(buildWeeklySummary(base).highlights).toEqual([
       'Você concluiu 3 de 4 tarefas planejadas (75%).',
@@ -50,6 +80,7 @@ describe('resumo semanal', () => {
       'Respondeu 12 questões e acertou 8 (67%).',
       'Fez 1 simulado: 6 de 9 acertos.',
       'Mexeu em 3 tópicos, 1 já dominado.',
+      'Dominou nesta semana: Frações.',
       'Pedem atenção: Porcentagem.',
       'Marcou 1 tarefa como "não vou fazer".',
       'Em relação à semana anterior, concluiu 2 tarefas a mais.',

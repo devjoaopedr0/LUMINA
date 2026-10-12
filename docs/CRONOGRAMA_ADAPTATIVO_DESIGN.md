@@ -430,8 +430,8 @@ cumprimento por matéria e os tópicos em que o aluno mexeu, sempre comparando
 com a semana anterior. A LuminIA comenta a semana (`GET ai/weekly-comment`) em
 cima dos mesmos fatos; sem provedor de IA sai um comentário fixo.
 
-- Só entra dado registrado. O sistema não guarda histórico de domínio, então os
-  tópicos aparecem com a situação ATUAL, não com "quanto subiu na semana".
+- Só entra dado registrado. Os tópicos vêm do histórico de domínio (abaixo):
+  aparecem como terminaram a semana, com quanto subiram ou caíram desde antes dela.
 - A meta do Sisu é mostrada; a distância até ela vem da estimativa de nota
   (abaixo). Sem estimativa, a LuminIA é instruída a não fazer essa conta.
 - Semana em andamento é marcada como tal: o planejado inclui dias que ainda não
@@ -460,6 +460,23 @@ LuminIA, marcada como estimativa.
 - Redação entra pela média das últimas 3 correções concluídas, quando há.
 - Nada disso foi validado contra notas reais de alunos: os pesos e a régua são
   chutes iniciais, na mesma categoria dos pesos da prioridade.
+
+### Histórico de domínio e evolução
+
+`topic_mastery_history` guarda uma linha por aluno, tópico e dia (de Brasília)
+em que o domínio mudou, com o valor ao fim do dia. É gravada junto com cada
+atualização de `TopicMastery` (resposta de questão, simulado, tarefa concluída).
+
+- O resumo semanal usa o histórico para dizer o que subiu, o que caiu, o que
+  passou a dominado e o que é novo na semana; semanas passadas mostram o
+  domínio como estava ao fim delas, não o de hoje.
+- A migration cria a primeira linha de cada tópico já estudado, no dia do
+  último estudo. Por isso, na primeira semana, todo tópico antigo aparece como
+  "novo" — a variação só existe a partir da segunda linha.
+- Fundir tópicos duplicados apaga o histórico do tópico que some.
+- A evolução da nota estimada (`GET study/score-estimate/history`, 8 semanas)
+  não depende dessa tabela: é recalculada pelas respostas, que têm data, então
+  vale também para as semanas anteriores ao recurso.
 
 ## 14. Design visual (seção 19)
 

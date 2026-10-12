@@ -173,6 +173,12 @@ export class SchedulesController {
     return this.scoreEstimates.forUser(user.id);
   }
 
+  @Get("study/score-estimate/history")
+  @ApiOperation({ summary: "A estimativa de nota ao fim de cada uma das últimas semanas" })
+  async scoreEstimateHistory(@CurrentUser() user: UserWithProfile) {
+    return this.scoreEstimates.history(user.id);
+  }
+
   @Get("study/diagnostic")
   @ApiOperation({
     summary: "Diagnóstico inicial do onboarding",

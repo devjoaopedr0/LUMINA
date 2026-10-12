@@ -127,7 +127,7 @@ export function WeeklySummaryView({ date }: { date: string }) {
               hint={
                 summary.topics.studied === 0
                   ? "nenhum nesta semana"
-                  : `${summary.topics.mastered} dominado${summary.topics.mastered === 1 ? "" : "s"} · ${summary.topics.needAttention} pedindo atenção`
+                  : `${summary.topics.newlyMastered} dominado${summary.topics.newlyMastered === 1 ? "" : "s"} na semana · ${summary.topics.started} novo${summary.topics.started === 1 ? "" : "s"} · ${summary.topics.needAttention} pedindo atenção`
               }
             />
           </div>
@@ -171,10 +171,20 @@ export function WeeklySummaryView({ date }: { date: string }) {
                         <p className="truncate text-sm font-medium text-graphite">{topic.name}</p>
                         {topic.subject && <p className="text-xs text-graphite-400">{topic.subject}</p>}
                       </div>
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[topic.status]}`}>
-                        {STATUS_LABEL[topic.status]}
-                        {topic.attempts > 0 ? ` · ${topic.masteryScore}%` : ""}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {/* Quanto o domínio mudou na semana; tópico novo não tem "antes". */}
+                        {topic.delta === null ? (
+                          <span className="text-xs text-graphite-400">novo</span>
+                        ) : topic.delta !== 0 ? (
+                          <span className={`text-xs font-semibold ${topic.delta > 0 ? "text-success" : "text-alert"}`}>
+                            {topic.delta > 0 ? "▲" : "▼"} {Math.abs(topic.delta)}
+                          </span>
+                        ) : null}
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[topic.status]}`}>
+                          {STATUS_LABEL[topic.status]}
+                          {topic.attempts > 0 ? ` · ${topic.masteryScore}%` : ""}
+                        </span>
+                      </div>
                     </li>
                   ))}
                 </ul>

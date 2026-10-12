@@ -5,10 +5,8 @@ import { StudyTaskStatus, TopicMasteryStatus } from '@prisma/client';
  * praticou e em que tópicos mexeu na semana. Só leitura — tudo aqui sai de
  * dados que o sistema já grava; nada é estimado.
  *
- * O que NÃO entra, de propósito: "quanto falta para a meta de nota". O app
- * não tem uma estimativa da nota do ENEM do aluno (a prova usa TRI), então a
- * meta do Sisu aparece ao lado do percentual de acertos, sem conta de
- * distância inventada.
+ * A distância até a meta de nota não é calculada aqui: vem da estimativa de
+ * nota (score-estimate.ts), que é uma aproximação declarada.
  */
 export interface WeeklySummary {
   /** Domingo e sábado da semana, AAAA-MM-DD. */
@@ -22,13 +20,26 @@ export interface WeeklySummary {
   questions: { answered: number; correct: number; accuracy: number | null };
   simulations: { count: number; correct: number; total: number };
   subjects: { subjectId: string; name: string; plannedTasks: number; doneTasks: number; plannedMinutes: number }[];
-  /** Tópicos em que o aluno mexeu na semana, com a situação ATUAL de cada um
-   *  (o sistema não guarda histórico de domínio para dizer quanto subiu). */
+  /** Tópicos em que o aluno mexeu na semana, com a situação ao FIM dela e
+   *  quanto o domínio mudou desde antes da semana (histórico de domínio). */
   topics: {
     studied: number;
     mastered: number;
+    /** Passaram a "dominado" nesta semana. */
+    newlyMastered: number;
+    /** Vistos pela primeira vez nesta semana. */
+    started: number;
     needAttention: number;
-    items: { id: string; name: string; subject: string | null; status: TopicMasteryStatus; masteryScore: number; attempts: number }[];
+    items: {
+      id: string;
+      name: string;
+      subject: string | null;
+      status: TopicMasteryStatus;
+      masteryScore: number;
+      attempts: number;
+      /** Pontos de domínio ganhos (ou perdidos) na semana; null em tópico novo. */
+      delta: number | null;
+    }[];
   };
   /** A semana anterior, para comparar. */
   previous: { tasksDone: number; questionsAnswered: number; studiedMinutes: number };
@@ -46,7 +57,16 @@ export interface WeeklySummaryInput {
   studiedMinutes: number;
   attempts: { isCorrect: boolean }[];
   simulations: { correct: number; total: number }[];
-  topics: { id: string; name: string; subject: string | null; status: TopicMasteryStatus; masteryScore: number; attempts: number }[];
+  topics: {
+    id: string;
+    name: string;
+    subject: string | null;
+    status: TopicMasteryStatus;
+    masteryScore: number;
+    attempts: number;
+    /** Como o tópico estava antes da semana; null/ausente = não tinha sido estudado. */
+    before?: { masteryScore: number; status: TopicMasteryStatus } | null;
+  }[];
   previous: { tasksDone: number; questionsAnswered: number; studiedMinutes: number };
   target: WeeklySummary['target'];
 }
@@ -54,6 +74,8 @@ export interface WeeklySummaryInput {
 /** Abaixo disso, com questões respondidas, o tópico pede atenção. */
 const ATTENTION_SCORE = 50;
 const MAX_TOPIC_ITEMS = 8;
+/** Variação de domínio menor que isso não vira destaque. */
+const MIN_DELTA_TO_MENTION = 5;
 
 function plural(count: number, singular: string, pluralForm: string): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
@@ -98,9 +120,25 @@ export function buildWeeklySummary(input: WeeklySummaryInput): WeeklySummary {
     topic.status === TopicMasteryStatus.PRECISA_REFORCO || (topic.attempts > 0 && topic.masteryScore < ATTENTION_SCORE);
   const attentionTopics = input.topics.filter(needsAttention);
   // Na lista, quem pede atenção vem primeiro; depois, do menor domínio para o maior.
-  const topicItems = [...input.topics]
+  const withDelta = input.topics.map((topic) => ({
+    ...topic,
+    delta: topic.before ? topic.masteryScore - topic.before.masteryScore : null,
+  }));
+  const topicItems = [...withDelta]
     .sort((a, b) => Number(needsAttention(b)) - Number(needsAttention(a)) || a.masteryScore - b.masteryScore)
-    .slice(0, MAX_TOPIC_ITEMS);
+    .slice(0, MAX_TOPIC_ITEMS)
+    .map(({ before: _before, ...item }) => item);
+  const started = input.topics.filter((topic) => !topic.before).length;
+  const newlyMastered = input.topics.filter(
+    (topic) => topic.status === TopicMasteryStatus.DOMINADO && topic.before?.status !== TopicMasteryStatus.DOMINADO,
+  );
+  const byDelta = (direction: 1 | -1) =>
+    withDelta
+      .filter((topic) => topic.delta !== null && topic.delta * direction >= MIN_DELTA_TO_MENTION)
+      .sort((a, b) => (b.delta! - a.delta!) * direction)
+      .slice(0, 3);
+  const rose = byDelta(1);
+  const fell = byDelta(-1);
 
   const highlights: string[] = [];
   if (active.length === 0) {
@@ -132,6 +170,18 @@ export function buildWeeklySummary(input: WeeklySummaryInput): WeeklySummary {
         '.',
     );
   }
+  if (newlyMastered.length > 0) {
+    highlights.push(`Dominou nesta semana: ${newlyMastered.slice(0, 3).map((topic) => topic.name).join(', ')}.`);
+  }
+  if (rose.length > 0) {
+    highlights.push(`Subiu em: ${rose.map((topic) => `${topic.name} (+${topic.delta})`).join(', ')}.`);
+  }
+  if (fell.length > 0) {
+    highlights.push(`Caiu em: ${fell.map((topic) => `${topic.name} (${topic.delta})`).join(', ')}.`);
+  }
+  if (started > 0 && started < input.topics.length) {
+    highlights.push(`Começou ${plural(started, 'tópico novo', 'tópicos novos')}.`);
+  }
   if (attentionTopics.length > 0) {
     highlights.push(`Pedem atenção: ${attentionTopics.slice(0, 3).map((topic) => topic.name).join(', ')}.`);
   }
@@ -152,7 +202,14 @@ export function buildWeeklySummary(input: WeeklySummaryInput): WeeklySummary {
     questions: { answered, correct, accuracy },
     simulations: { count: input.simulations.length, ...simulationTotals },
     subjects: [...subjects.values()].sort((a, b) => b.plannedMinutes - a.plannedMinutes),
-    topics: { studied: input.topics.length, mastered, needAttention: attentionTopics.length, items: topicItems },
+    topics: {
+      studied: input.topics.length,
+      mastered,
+      newlyMastered: newlyMastered.length,
+      started,
+      needAttention: attentionTopics.length,
+      items: topicItems,
+    },
     previous: input.previous,
     target: input.target,
     highlights,

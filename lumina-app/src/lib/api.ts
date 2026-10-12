@@ -1217,6 +1217,21 @@ export interface ScoreEstimate {
   message: string;
 }
 
+/** A média estimada ao fim de uma semana (null = ainda sem dados suficientes). */
+export interface ScoreHistoryPoint {
+  weekStart: string;
+  weekEnd: string;
+  estimate: number | null;
+  low: number | null;
+  high: number | null;
+  parts: number;
+}
+
+/** As últimas 8 semanas, da mais antiga para a atual. */
+export function apiGetScoreEstimateHistory(accessToken: string): Promise<ScoreHistoryPoint[]> {
+  return request("/study/score-estimate/history", { headers: authHeaders(accessToken) });
+}
+
 export function apiGetScoreEstimate(accessToken: string): Promise<ScoreEstimate> {
   return request("/study/score-estimate", { headers: authHeaders(accessToken) });
 }
@@ -1235,8 +1250,21 @@ export interface WeeklySummary {
   topics: {
     studied: number;
     mastered: number;
+    /** Passaram a "dominado" nesta semana. */
+    newlyMastered: number;
+    /** Vistos pela primeira vez nesta semana. */
+    started: number;
     needAttention: number;
-    items: { id: string; name: string; subject: string | null; status: TopicMasteryStatus; masteryScore: number; attempts: number }[];
+    items: {
+      id: string;
+      name: string;
+      subject: string | null;
+      status: TopicMasteryStatus;
+      masteryScore: number;
+      attempts: number;
+      /** Pontos de domínio ganhos (ou perdidos) na semana; null em tópico novo. */
+      delta: number | null;
+    }[];
   };
   previous: { tasksDone: number; questionsAnswered: number; studiedMinutes: number };
   target: { score: number; course: string | null; university: string | null; year: number | null } | null;

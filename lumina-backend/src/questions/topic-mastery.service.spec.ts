@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TopicMasteryService } from './topic-mastery.service';
+import { TopicMasteryService, masteryHistoryDay } from './topic-mastery.service';
 
 const userId = 'user-1';
 const subjectId = 'subject-1';
@@ -25,6 +25,7 @@ function setup(initial: any = null) {
       }),
       findMany: vi.fn(async () => [...store.values()]),
     },
+    topicMasteryHistory: { upsert: vi.fn() },
   };
   const service = new TopicMasteryService(prisma as never);
   return { service, prisma, store };
@@ -153,5 +154,34 @@ describe('TopicMasteryService.registerStudy', () => {
     });
     await service.registerStudy(userId, topicId);
     expect(store.get(`${userId}:${topicId}`).nextReviewAt).toBe(future);
+  });
+});
+
+describe('histórico do domínio', () => {
+  it('o dia do histórico é a data em Brasília', () => {
+    // 01:30 UTC do dia 13 ainda é dia 12 em Brasília (22:30).
+    expect(masteryHistoryDay(new Date('2026-10-13T01:30:00Z'))).toEqual(new Date('2026-10-12T00:00:00Z'));
+    expect(masteryHistoryDay(new Date('2026-10-13T03:00:00Z'))).toEqual(new Date('2026-10-13T00:00:00Z'));
+  });
+
+  it('cada resposta grava o domínio do dia; no mesmo dia, a linha é atualizada', async () => {
+    const { service, prisma } = setup();
+    await service.registerAttempt(userId, subjectId, topicId, true);
+    await service.registerAttempt(userId, subjectId, topicId, false);
+
+    expect(prisma.topicMasteryHistory.upsert).toHaveBeenCalledTimes(2);
+    const [first, second] = prisma.topicMasteryHistory.upsert.mock.calls.map((call: any[]) => call[0]);
+    expect(first.where.userId_topicId_day).toMatchObject({ userId, topicId, day: masteryHistoryDay(new Date()) });
+    expect(first.create).toMatchObject({ attempts: 1, correctAttempts: 1 });
+    // A segunda resposta do dia cai na mesma chave e leva o valor mais recente.
+    expect(second.where).toEqual(first.where);
+    expect(second.update).toMatchObject({ attempts: 2, correctAttempts: 1 });
+    expect(second.update.masteryScore).toBeLessThan(first.create.masteryScore);
+  });
+
+  it('questão sem tópico não grava histórico', async () => {
+    const { service, prisma } = setup();
+    await service.registerAttempt(userId, subjectId, null, true);
+    expect(prisma.topicMasteryHistory.upsert).not.toHaveBeenCalled();
   });
 });

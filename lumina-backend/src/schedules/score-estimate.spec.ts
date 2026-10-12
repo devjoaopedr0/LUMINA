@@ -106,7 +106,7 @@ describe('ScoreEstimateService', () => {
           { position: 9, correctPosition: 1, questionId: 'm1' },
         ] },
       }]) },
-      essayCorrection: { findMany: vi.fn().mockResolvedValue([{ totalScore: 760 }]) },
+      essayCorrection: { findMany: vi.fn().mockResolvedValue([{ totalScore: 760, updatedAt: at(3) }]) },
       question: { findMany: vi.fn(({ where }: any) => Promise.resolve(
         where.id.in.map((id: string) => ({ id, difficulty: 'MEDIA', subject: 'Matemática', subjectRef: { name: 'Matemática' } })),
       )) },
@@ -121,5 +121,43 @@ describe('ScoreEstimateService', () => {
     // Só uma área estimada: ainda sem média.
     expect(estimate.average).toBeNull();
     expect(estimate.target).toBeNull();
+  });
+
+  it('a evolução recalcula a estimativa ao fim de cada semana, pelas datas das respostas', async () => {
+    const now = Date.now();
+    const daysAgo = (days: number) => new Date(now - days * 86_400_000);
+    const block = (prefix: string, subject: string, correct: number, wrong: number, days: number) =>
+      Array.from({ length: correct + wrong }, (_, i) => ({
+        questionId: `${prefix}${i}`, isCorrect: i < correct, createdAt: daysAgo(days), subject,
+      }));
+    // Há 5 semanas: Matemática e Linguagens pela metade. Há 2 dias: mais acertos em Matemática.
+    const attempts = [
+      ...block('m', 'Matemática', 5, 5, 35),
+      ...block('l', 'Língua Portuguesa', 5, 5, 35),
+      ...block('n', 'Matemática', 10, 0, 2),
+    ];
+    const subjectOf = new Map(attempts.map((a) => [a.questionId, a.subject]));
+    const prisma: any = {
+      questionAttempt: { findMany: vi.fn().mockResolvedValue(attempts) },
+      simulationSubmission: { findMany: vi.fn().mockResolvedValue([]) },
+      essayCorrection: { findMany: vi.fn().mockResolvedValue([]) },
+      question: { findMany: vi.fn(({ where }: any) => Promise.resolve(
+        where.id.in.map((id: string) => ({ id, difficulty: 'MEDIA', subject: subjectOf.get(id), subjectRef: null })),
+      )) },
+    };
+    const cutoffs: any = { targetForUser: vi.fn().mockResolvedValue({ status: 'MISSING_PROFILE', targetScore: null }) };
+
+    const history = await new ScoreEstimateService(prisma, cutoffs).history('user', 8);
+    expect(history).toHaveLength(8);
+    // Semanas em ordem, de domingo a sábado.
+    expect(new Date(`${history[0].weekStart}T00:00:00Z`).getUTCDay()).toBe(0);
+    expect(new Date(`${history[7].weekEnd}T00:00:00Z`).getUTCDay()).toBe(6);
+    // Antes das primeiras respostas não há estimativa.
+    expect(history[0].estimate).toBeNull();
+    // Depois delas: Matemática 640 e Linguagens 555 -> 598 (com 2 das 5 notas).
+    const middle = history.filter((point) => point.estimate !== null)[0];
+    expect(middle).toMatchObject({ estimate: 598, parts: 2 });
+    // Nesta semana Matemática subiu, e a média junto.
+    expect(history[7].estimate!).toBeGreaterThan(middle.estimate!);
   });
 });

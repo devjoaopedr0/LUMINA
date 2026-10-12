@@ -148,10 +148,18 @@ describe('ScheduleInsightsService.weeklySummary', () => {
       count: vi.fn().mockResolvedValue(7),
     };
     prisma.simulationSubmission = { findMany: vi.fn().mockResolvedValue([]) };
-    prisma.topicMastery.findMany.mockResolvedValue([
-      { topicId: 't1', status: 'APRENDENDO', masteryScore: 40, attempts: 2 },
-      { topicId: 'geral', status: 'APRENDENDO', masteryScore: 40, attempts: 2 },
-    ]);
+    prisma.topicMasteryHistory = { findMany: vi.fn()
+      // Linhas da semana: a última de cada tópico é como ele terminou.
+      .mockResolvedValueOnce([
+        { topicId: 't1', day: new Date('2026-10-12'), status: 'APRENDENDO', masteryScore: 30, attempts: 1 },
+        { topicId: 't1', day: new Date('2026-10-14'), status: 'APRENDENDO', masteryScore: 40, attempts: 2 },
+        { topicId: 'geral', day: new Date('2026-10-13'), status: 'APRENDENDO', masteryScore: 40, attempts: 2 },
+      ])
+      // Linhas de antes da semana: a última é de onde ele partiu.
+      .mockResolvedValueOnce([
+        { topicId: 't1', day: new Date('2026-09-20'), status: 'APRENDENDO', masteryScore: 10, attempts: 1 },
+        { topicId: 't1', day: new Date('2026-10-05'), status: 'APRENDENDO', masteryScore: 25, attempts: 1 },
+      ]) };
     prisma.topic.findMany.mockResolvedValue([
       { id: 't1', name: 'Frações', subject: { name: 'Matemática' } },
       { id: 'geral', name: 'Geral', subject: { name: 'Matemática' } },
@@ -170,6 +178,12 @@ describe('ScheduleInsightsService.weeklySummary', () => {
     });
     // O tópico-coringa não aparece.
     expect(summary?.topics.items.map((item) => item.name)).toEqual(['Frações']);
+    // 40 ao fim da semana, 25 antes dela.
+    expect(summary?.topics.items[0]).toMatchObject({ masteryScore: 40, delta: 15 });
+    expect(prisma.topicMasteryHistory.findMany.mock.calls[0][0].where.day).toEqual({
+      gte: new Date('2026-10-11T00:00:00Z'), lte: new Date('2026-10-17T00:00:00Z'),
+    });
+    expect(prisma.topicMasteryHistory.findMany.mock.calls[1][0].where.day).toEqual({ lt: new Date('2026-10-11T00:00:00Z') });
 
     expect(repo.findSessionsWithTasks).toHaveBeenNthCalledWith(1, 'schedule', new Date('2026-10-11T00:00:00Z'), new Date('2026-10-17T00:00:00Z'));
     // Meia-noite de domingo em Brasília = 03:00 UTC.

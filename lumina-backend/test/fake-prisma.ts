@@ -27,6 +27,7 @@ export function createFakePrisma() {
   const progress: any[] = [];
   const notebookEntries: any[] = [];
   const topicMasteries: any[] = [];
+  const topicMasteryHistory: any[] = [];
   let counter = 0;
   // IDs de verdade (UUID v4), como o Postgres gera — necessário porque o
   // ParseUUIDPipe valida o formato dos params de rota. O prefixo é ignorado.
@@ -845,6 +846,23 @@ export function createFakePrisma() {
           topic: include.topic ? (topics.find((t) => t.id === m.topicId) ?? null) : undefined,
         }));
       }),
+    },
+    // Histórico do domínio: uma linha por (aluno, tópico, dia).
+    topicMasteryHistory: {
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const { userId, topicId, day } = where.userId_topicId_day;
+        const sameDay = (row: any) =>
+          row.userId === userId && row.topicId === topicId && row.day.getTime() === day.getTime();
+        let entry = topicMasteryHistory.find(sameDay);
+        if (entry) Object.assign(entry, update);
+        else {
+          entry = { id: nextId('topic-mastery-history'), ...create };
+          topicMasteryHistory.push(entry);
+        }
+        return entry;
+      }),
+      findMany: vi.fn(async ({ where }: any) =>
+        topicMasteryHistory.filter((row) => !where?.userId || row.userId === where.userId)),
     },
     $transaction: vi.fn(async (cb: any) => Array.isArray(cb) ? Promise.all(cb) : cb(fake)),
     onModuleInit: vi.fn(),
