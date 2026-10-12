@@ -1,8 +1,10 @@
 /**
  * Conteúdos programáticos por disciplina do ENEM, agrupados por matéria
- * (StudySubject.code). Ainda não está ligado a nenhuma feature — guardado
- * como referência para o próximo passo do cronograma (priorização por
- * incidência/dificuldade).
+ * (StudySubject.code). Vira linhas de Topic no seed e alimenta o gerador do
+ * cronograma adaptativo. Os nomes aqui são os MESMOS que o banco de questões
+ * usa (ex.: "Ecologia", não "Ecologia (muito cobrada)"): nome diferente cria
+ * um segundo Topic para o mesmo assunto e divide o domínio do aluno entre os
+ * dois — ver TOPIC_MERGES em topic-merges.ts para os que já existiam assim.
  */
 export type StudySubjectTopicGroup = {
   /** Sub-área dentro da matéria (ex.: "Geometria" dentro de Matemática). */
@@ -23,7 +25,7 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
       {
         group: "Língua Portuguesa",
         topics: [
-          "Interpretação de texto (principal foco da prova)",
+          "Interpretação de texto",
           "Gêneros textuais",
           "Funções da linguagem",
           "Figuras de linguagem",
@@ -79,7 +81,7 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
           "Impulso e quantidade de movimento",
           "Hidrostática",
           "Termologia",
-          "Ondulatória",
+          "Ondas",
           "Óptica",
           "Eletrostática",
           "Eletrodinâmica",
@@ -120,7 +122,7 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
           "Bioquímica",
           "Genética",
           "Evolução",
-          "Ecologia (muito cobrada)",
+          "Ecologia",
           "Fisiologia humana",
           "Botânica",
           "Zoologia",
@@ -148,11 +150,11 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
       {
         group: "Geometria",
         topics: [
-          "Geometria plana (área e perímetro)",
-          "Geometria espacial (volume)",
+          "Geometria plana",
+          "Geometria espacial",
           "Teorema de Pitágoras",
           "Semelhança de triângulos",
-          "Trigonometria básica",
+          "Trigonometria",
         ],
       },
       {
@@ -161,15 +163,15 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
           "Média, mediana e moda",
           "Desvio padrão",
           "Análise de gráficos e tabelas",
-          "Probabilidade simples",
-          "Análise combinatória básica",
+          "Probabilidade",
+          "Análise combinatória",
         ],
       },
       {
         group: "Funções",
         topics: [
-          "Função do 1º grau",
-          "Função do 2º grau",
+          "Função afim",
+          "Função quadrática",
           "Função exponencial",
           "Função logarítmica",
         ],
@@ -193,7 +195,7 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
         topics: [
           "Brasil Colônia",
           "Brasil Império",
-          "República",
+          "Brasil República",
           "Era Vargas",
           "Ditadura Militar",
           "Movimentos sociais",
@@ -219,10 +221,10 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
           "Urbanização",
           "Industrialização",
           "Agricultura",
-          "Questões ambientais",
+          "Questão ambiental",
           "Mudanças climáticas",
           "Demografia",
-          "Migrações",
+          "Migração",
           "Cartografia",
         ],
       },
@@ -234,9 +236,9 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
       {
         group: "Filosofia",
         topics: [
-          "Filosofia Antiga (Sócrates, Platão, Aristóteles)",
-          "Filosofia Moderna (Descartes, Locke, Rousseau)",
-          "Filosofia Contemporânea",
+          "Filosofia antiga",
+          "Filosofia moderna",
+          "Filosofia contemporânea",
           "Ética",
           "Política",
           "Cidadania",
@@ -253,7 +255,7 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
           "Cultura",
           "Cidadania",
           "Movimentos sociais",
-          "Desigualdade social",
+          "Desigualdade",
           "Trabalho",
           "Indústria cultural",
           "Direitos Humanos",

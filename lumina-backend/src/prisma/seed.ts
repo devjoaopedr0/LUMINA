@@ -16,6 +16,7 @@ import { ESSAY_MODELS } from '../../prisma/seed-data/essay-models';
 import { EXAM_PAPERS } from '../../prisma/seed-data/exam-papers';
 import { FORMULAS, REPERTORIOS } from '../../prisma/seed-data/notebooks';
 import { STUDY_SUBJECT_TOPICS } from '../../prisma/seed-data/study-subject-topics';
+import { mergeDuplicateTopics } from './merge-duplicate-topics';
 import type { SeedQuestion } from '../../prisma/seed-data/types';
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from '../schedules/study-subject-question-bank-map';
 
@@ -532,6 +533,11 @@ async function main(): Promise<void> {
 
     console.log(
       `✓ Questões do banco prontas: ${imported} criadas, ${skipped} já existiam (${ALL_QUESTIONS.length} no total).`,
+    );
+
+    const topicMerge = await mergeDuplicateTopics(prisma);
+    console.log(
+      `✓ Tópicos duplicados fundidos: ${topicMerge.merged} (${topicMerge.questionsMoved} questões, ${topicMerge.masteriesMoved} domínios e ${topicMerge.tasksMoved} tarefas movidos).`,
     );
 
     const curriculumTopicsCreated = await seedCurriculumTopics(prisma);
