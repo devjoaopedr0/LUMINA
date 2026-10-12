@@ -115,3 +115,43 @@ describe('TopicMasteryService.listForUser', () => {
     expect(rows[0]).toMatchObject({ subject: 'Matemática', topic: 'Funções', due: true });
   });
 });
+
+describe('TopicMasteryService.registerStudy', () => {
+  function setupWithTopic(initial: any = null) {
+    const ctx = setup(initial);
+    ctx.prisma.topic = { findUnique: vi.fn(async () => ({ id: topicId, subjectId })) };
+    return ctx;
+  }
+
+  it('primeiro estudo tira o tópico de NAO_ESTUDADO sem inventar acerto', async () => {
+    const { service, store } = setupWithTopic();
+    await service.registerStudy(userId, topicId);
+    const row = store.get(`${userId}:${topicId}`);
+    expect(row).toMatchObject({ subjectId, status: 'APRENDENDO', reviewIntervalDays: 3 });
+    expect(row.attempts).toBeUndefined();
+    expect(row.lastStudiedAt).toBeInstanceOf(Date);
+    expect(row.nextReviewAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('revisão vencida é empurrada pelo intervalo atual; score e status ficam como estavam', async () => {
+    const { service, store } = setupWithTopic({
+      userId, topicId, subjectId, masteryScore: 90, status: 'DOMINADO', reviewIntervalDays: 6,
+      nextReviewAt: new Date('2020-01-01'),
+    });
+    await service.registerStudy(userId, topicId);
+    const row = store.get(`${userId}:${topicId}`);
+    expect(row).toMatchObject({ masteryScore: 90, status: 'DOMINADO', reviewIntervalDays: 6 });
+    const days = (row.nextReviewAt.getTime() - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(5);
+    expect(days).toBeLessThanOrEqual(6);
+  });
+
+  it('revisão ainda não vencida não é adiada', async () => {
+    const future = new Date(Date.now() + 10 * 86_400_000);
+    const { service, store } = setupWithTopic({
+      userId, topicId, subjectId, masteryScore: 50, status: 'PRATICANDO', reviewIntervalDays: 3, nextReviewAt: future,
+    });
+    await service.registerStudy(userId, topicId);
+    expect(store.get(`${userId}:${topicId}`).nextReviewAt).toBe(future);
+  });
+});

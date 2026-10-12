@@ -112,6 +112,43 @@ export class TopicMasteryService {
     });
   }
 
+  /** Registra que o aluno estudou o tópico sem responder questão (tarefa do
+   *  cronograma concluída). Não mexe em score nem em acertos — só tira o
+   *  tópico de NAO_ESTUDADO, marca a recência e empurra a revisão vencida
+   *  pra frente; sem isso o gerador devolvia a mesma tarefa no dia seguinte. */
+  async registerStudy(userId: string, topicId: string, db: Db = this.prisma): Promise<void> {
+    const topic = await db.topic.findUnique({ where: { id: topicId } });
+    if (!topic) return;
+
+    const existing = await db.topicMastery.findUnique({
+      where: { userId_topicId: { userId, topicId } },
+    });
+    const now = new Date();
+    const reviewIntervalDays = existing?.reviewIntervalDays ?? REVIEW_INITIAL_INTERVAL_DAYS;
+    const reviewIsDue = !existing?.nextReviewAt || existing.nextReviewAt <= now;
+    const nextReviewAt = new Date(now);
+    nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays);
+    nextReviewAt.setUTCHours(0, 0, 0, 0);
+
+    await db.topicMastery.upsert({
+      where: { userId_topicId: { userId, topicId } },
+      create: {
+        userId,
+        subjectId: topic.subjectId,
+        topicId,
+        status: TopicMasteryStatus.APRENDENDO,
+        lastStudiedAt: now,
+        nextReviewAt,
+        reviewIntervalDays,
+      },
+      update: {
+        lastStudiedAt: now,
+        ...(existing?.status === TopicMasteryStatus.NAO_ESTUDADO ? { status: TopicMasteryStatus.APRENDENDO } : {}),
+        ...(reviewIsDue ? { nextReviewAt } : {}),
+      },
+    });
+  }
+
   /** Domínio por tópico do aluno — base do futuro painel "o que você já sabe"
    *  (fase 1 é só isso: dado disponível para leitura, sem gerador ainda). */
   async listForUser(userId: string) {

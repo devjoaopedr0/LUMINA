@@ -58,8 +58,17 @@ describe('pickActivityType', () => {
     expect(pickActivityType(TopicMasteryStatus.NAO_ESTUDADO)).toBe(StudyActivityType.TEORIA);
     expect(pickActivityType(TopicMasteryStatus.APRENDENDO)).toBe(StudyActivityType.QUESTOES);
     expect(pickActivityType(TopicMasteryStatus.PRATICANDO)).toBe(StudyActivityType.QUESTOES);
-    expect(pickActivityType(TopicMasteryStatus.PRECISA_REFORCO)).toBe(StudyActivityType.REVISAO);
+    expect(pickActivityType(TopicMasteryStatus.PRECISA_REFORCO)).toBe(StudyActivityType.TEORIA);
     expect(pickActivityType(TopicMasteryStatus.DOMINADO)).toBe(StudyActivityType.REVISAO);
+  });
+
+  it('muda com a fase da reta (tabela do design §6)', () => {
+    expect(pickActivityType(null, 'CONSOLIDACAO')).toBe(StudyActivityType.TEORIA);
+    expect(pickActivityType(null, 'PREPARACAO')).toBe(StudyActivityType.QUESTOES);
+    expect(pickActivityType(TopicMasteryStatus.PRATICANDO, 'CONSOLIDACAO')).toBe(StudyActivityType.QUESTOES);
+    expect(pickActivityType(TopicMasteryStatus.PRATICANDO, 'PREPARACAO')).toBe(StudyActivityType.SIMULADO);
+    expect(pickActivityType(TopicMasteryStatus.PRECISA_REFORCO, 'CONSOLIDACAO')).toBe(StudyActivityType.QUESTOES);
+    expect(pickActivityType(TopicMasteryStatus.PRECISA_REFORCO, 'PREPARACAO')).toBe(StudyActivityType.REVISAO);
   });
 });
 

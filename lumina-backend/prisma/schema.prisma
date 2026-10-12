@@ -920,8 +920,30 @@ enum StudyTaskStatus {
   PENDING
   IN_PROGRESS
   DONE
+  /// O aluno decidiu não fazer (replanejamento, fase 4 §12). Fica registrada
+  /// em vez de apagada, mas não conta como tarefa perdida nem como concluída.
+  SKIPPED
 
   @@map("study_task_status")
+}
+
+/// Área do ENEM que o aluno marcou como prioritária no onboarding (fase 5,
+/// §11) — entra como `pesoObjetivo` na prioridade dos tópicos (§4).
+enum StudyArea {
+  LINGUAGENS
+  MATEMATICA
+  NATUREZA
+  HUMANAS
+
+  @@map("study_area")
+}
+
+/// Frequência da rotina de redação (fase 5, §9).
+enum StudyEssayFrequency {
+  WEEKLY
+  BIWEEKLY
+
+  @@map("study_essay_frequency")
 }
 
 /// Cronograma de estudo pessoal de um aluno, sempre associado ao ENEM
@@ -935,11 +957,18 @@ model StudySchedule {
   studyDays       Json                 @map("study_days")
   dailyMinutes    Int                  @map("daily_minutes")
   objective       String?
+  /// Onboarding (fase 5, §11): curso que o aluno quer e a área que ele quer
+  /// priorizar. Ambos opcionais — cronogramas antigos seguem sem eles.
+  targetCourse    String?              @map("target_course")
+  priorityArea    StudyArea?           @map("priority_area")
+  /// Rotina de redação (§9). Nulo com Redação no plano = semanal.
+  essayFrequency  StudyEssayFrequency? @map("essay_frequency")
   status          StudyScheduleStatus  @default(ACTIVE)
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
   user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   scheduleSubjects StudyScheduleSubject[]
+  dayMinutes      StudyScheduleDayMinutes[]
   sessions        StudySession[]
   tasks           StudyTask[]
   progress        StudyProgress?
@@ -981,6 +1010,21 @@ model StudyScheduleSubject {
   @@index([scheduleId])
   @@index([subjectId])
   @@map("study_schedule_subjects")
+}
+
+/// Tempo de estudo por dia da semana (onboarding, fase 5 §11: "Segunda: 2h,
+/// Terça: 1h30..."). Opcional: sem linhas aqui, vale `dailyMinutes` igual
+/// para todo dia de estudo, como sempre foi.
+model StudyScheduleDayMinutes {
+  id         String        @id @default(uuid()) @db.Uuid
+  scheduleId String        @map("schedule_id") @db.Uuid
+  /// 0 = domingo ... 6 = sábado (mesma convenção de StudySchedule.studyDays).
+  weekday    Int
+  minutes    Int
+  schedule   StudySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, weekday])
+  @@map("study_schedule_day_minutes")
 }
 
 /// Sessão de estudo planejada para um dia específico dentro do cronograma.

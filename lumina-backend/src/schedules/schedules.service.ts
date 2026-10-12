@@ -1,9 +1,18 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { StudyTaskStatus, type Prisma } from "@prisma/client";
+import { StudyActivityType, StudyTaskStatus, type Prisma } from "@prisma/client";
 import { SchedulesRepository } from "./schedules.repository";
 import { ScheduleGeneratorService } from "./schedule-generator.service";
+import { TopicMasteryService } from "../questions/topic-mastery.service";
+import { essayStepForWeek, pickEssaySession, scheduleWeekIndex, type EssayStep } from "./schedule-essay";
+import { computeSchedulePhase, type SchedulePhase } from "./schedule-phase";
+import { ESSAY_SUBJECT_CODE } from "./study-areas";
+import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from "./study-subject-question-bank-map";
 import { Db } from "./domain/types";
-import type { CreateStudyScheduleDto } from "./dto/create-study-schedule.dto";
+import type {
+  CreateStudyScheduleDto,
+  ReplanTaskDto,
+  UpdateStudyScheduleDto,
+} from "./dto/create-study-schedule.dto";
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -52,11 +61,60 @@ function withSubjectName<T extends object>(task: T): T & { subjectName: string |
   return { ...task, subjectName: subject?.name ?? null };
 }
 
+type ScheduleWithSubjects = NonNullable<
+  Awaited<ReturnType<SchedulesRepository["findScheduleByUserId"]>>
+>;
+
+/** Título das tarefas genéricas ("Inglês: estudo programado") — e de TODAS
+ *  as tarefas dos cronogramas criados antes do gerador adaptativo. */
+const STATIC_TASK_SUFFIX = ": estudo programado";
+
+/**
+ * Tarefa que o gerador criou e o aluno ainda não tocou — pode ser apagada e
+ * refeita num replanejamento. Tarefa manual (título livre, sem tópico), em
+ * andamento, concluída ou com tempo registrado nunca entra aqui.
+ */
+const REPLACEABLE_TASK_WHERE: Prisma.StudyTaskWhereInput = {
+  status: StudyTaskStatus.PENDING,
+  timeLogs: { none: {} },
+  OR: [
+    { topicId: { not: null } },
+    { activityType: StudyActivityType.REDACAO },
+    { title: { endsWith: STATIC_TASK_SUFFIX } },
+  ],
+};
+
+/** Gerar um dia faz mais de uma dezena de consultas; o limite padrão de 5s
+ *  da transação interativa não comporta um banco remoto. */
+const PLAN_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
+
+export interface ReplanPreview {
+  date: string;
+  subjects: { subjectName: string; beforeMinutes: number; afterMinutes: number }[];
+  warnings: string[];
+}
+
+export interface ReplanResult {
+  strategy: ReplanTaskDto["strategy"];
+  /** false = só a prévia do AUTO; nada foi gravado. */
+  applied: boolean;
+  movedTo: string | null;
+  preview?: ReplanPreview;
+}
+
+/** Desfaz a transação do AUTO quando o aluno só pediu a prévia. */
+class ReplanPreviewRollback extends Error {
+  constructor(readonly result: ReplanResult) {
+    super("replan-preview");
+  }
+}
+
 @Injectable()
 export class SchedulesService {
   constructor(
     private readonly repo: SchedulesRepository,
     private readonly generator: ScheduleGeneratorService,
+    private readonly topicMastery: TopicMasteryService,
   ) {}
 
   async findStudySubjects() {
@@ -78,31 +136,88 @@ export class SchedulesService {
     return this.repo.findScheduleByUserId(userId);
   }
 
-  async updateSchedule(
-    userId: string,
-    scheduleId: string,
-    data: {
-      startDate?: Date;
-      endDate?: Date;
-      studyDays?: number[];
-      dailyMinutes?: number;
-      objective?: string | null;
-    },
-  ) {
+  /**
+   * Edita o cronograma inteiro: período, disponibilidade, objetivo e
+   * disciplinas. Os dias a partir de hoje são refeitos — sessão que deixou de
+   * existir sai (se o aluno não tiver nada feito nela), dia novo ganha
+   * sessão, e as tarefas que o gerador criou e o aluno não tocou são apagadas
+   * para nascerem de novo com os parâmetros novos. O passado não muda.
+   */
+  async updateSchedule(userId: string, scheduleId: string, dto: UpdateStudyScheduleDto) {
     const schedule = await this.repo.findScheduleById(scheduleId);
     if (!schedule || schedule.userId !== userId) return null;
 
-    const update: Prisma.StudyScheduleUpdateInput = {};
-    if (data.startDate) update.startDate = data.startDate;
-    if (data.endDate) update.endDate = data.endDate;
-    if (data.studyDays) update.studyDays = data.studyDays;
-    if (data.dailyMinutes) update.dailyMinutes = data.dailyMinutes;
-    if (data.objective !== undefined) update.objective = data.objective;
+    const startDate = dto.startDate ? startOfDay(new Date(dto.startDate)) : schedule.startDate;
+    const endDate = dto.endDate ? startOfDay(new Date(dto.endDate)) : schedule.endDate;
+    const studyDays = dto.studyDays ?? (schedule.studyDays as number[]);
+    const dailyMinutes = dto.dailyMinutes ?? schedule.dailyMinutes;
+    const dayMinutes =
+      dto.dayMinutes ?? schedule.dayMinutes.map(({ weekday, minutes }) => ({ weekday, minutes }));
 
-    return this.repo.prisma.studySchedule.update({
-      where: { id: scheduleId },
-      data: update,
-    });
+    if (endDate < startDate) {
+      throw new BadRequestException("A data final deve ser igual ou posterior à inicial.");
+    }
+    if (dto.subjects && !dto.subjects.some((subject) => subject.targetHours > 0)) {
+      throw new BadRequestException("Informe horas de estudo para pelo menos uma disciplina.");
+    }
+    const minutesByWeekday = this.minutesByWeekday(studyDays, dailyMinutes, dayMinutes);
+    if (!eachDayOfInterval(startDate, endDate).some((d) => minutesByWeekday.has(d.getUTCDay()))) {
+      throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
+    }
+
+    const update: Prisma.StudyScheduleUpdateInput = { startDate, endDate, studyDays, dailyMinutes };
+    if (dto.objective !== undefined) update.objective = dto.objective || null;
+    if (dto.targetCourse !== undefined) update.targetCourse = dto.targetCourse || null;
+    if (dto.priorityArea !== undefined) update.priorityArea = dto.priorityArea ?? null;
+    if (dto.essayFrequency !== undefined) update.essayFrequency = dto.essayFrequency ?? null;
+
+    await this.repo.prisma.$transaction(async (tx: Db) => {
+      await tx.studySchedule.update({ where: { id: scheduleId }, data: update });
+      if (dto.subjects) {
+        await this.repo.deleteScheduleSubjects(tx, scheduleId);
+        await this.repo.createScheduleSubjects(tx, scheduleId, dto.subjects);
+      }
+      if (dto.dayMinutes !== undefined) {
+        await this.repo.replaceDayMinutes(tx, scheduleId, dayMinutes);
+      }
+
+      // Mesma tolerância de um dia do gatilho de geração: o "hoje" do aluno
+      // pode ser o "ontem" UTC do servidor.
+      const yesterday = addDays(startOfDay(new Date()), -1);
+      const from = startDate > yesterday ? startDate : yesterday;
+
+      await tx.studyTask.deleteMany({
+        where: { scheduleId, session: { date: { gte: from } }, ...REPLACEABLE_TASK_WHERE },
+      });
+      const sessions = await tx.studySession.findMany({
+        where: { scheduleId, date: { gte: from } },
+        include: { _count: { select: { tasks: true } } },
+      });
+      const wanted = new Map<number, { date: Date; scheduledMinutes: number }>();
+      for (const date of eachDayOfInterval(from, endDate)) {
+        const minutes = minutesByWeekday.get(date.getUTCDay());
+        if (minutes) wanted.set(date.getTime(), { date, scheduledMinutes: minutes });
+      }
+      for (const session of sessions) {
+        const want = wanted.get(session.date.getTime());
+        if (!want) {
+          // Dia que saiu do plano: só some se não sobrou nada do aluno nele.
+          if (session._count.tasks === 0) await tx.studySession.delete({ where: { id: session.id } });
+          continue;
+        }
+        wanted.delete(session.date.getTime());
+        if (session.scheduledMinutes !== want.scheduledMinutes) {
+          await tx.studySession.update({
+            where: { id: session.id },
+            data: { scheduledMinutes: want.scheduledMinutes },
+          });
+        }
+      }
+      await this.repo.createSessions(tx, scheduleId, [...wanted.values()]);
+      await this.updateProgress(tx, scheduleId);
+    }, PLAN_TX_OPTIONS);
+
+    return this.repo.findScheduleById(scheduleId);
   }
 
   async getScheduleTasks(
@@ -140,9 +255,6 @@ export class SchedulesService {
     if (!dto.subjects.some((subject) => subject.targetHours > 0)) {
       throw new BadRequestException("Informe horas de estudo para pelo menos uma disciplina.");
     }
-    if (this.countStudyDays(startDate, endDate, dto.studyDays) === 0) {
-      throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
-    }
 
     // As tarefas de cada dia não são mais geradas aqui: ficam pra quando o
     // dia for de fato consultado (getDailySession), com a prioridade calculada
@@ -150,10 +262,13 @@ export class SchedulesService {
     // docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §5). Gerar tudo de uma vez na
     // criação, pra meses no futuro, é exatamente o comportamento estático que
     // essa fase substitui.
-    const studyDays = new Set(dto.studyDays);
-    const sessionDates = eachDayOfInterval(startDate, endDate).filter((d) =>
-      studyDays.has(d.getUTCDay()),
-    );
+    const minutesByWeekday = this.minutesByWeekday(dto.studyDays, dto.dailyMinutes, dto.dayMinutes);
+    const sessions = eachDayOfInterval(startDate, endDate)
+      .filter((d) => minutesByWeekday.has(d.getUTCDay()))
+      .map((date) => ({ date, scheduledMinutes: minutesByWeekday.get(date.getUTCDay())! }));
+    if (sessions.length === 0) {
+      throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
+    }
 
     await this.repo.prisma.$transaction(async (tx: Db) => {
       const scheduleRecord = await this.repo.createSchedule(tx, {
@@ -163,18 +278,20 @@ export class SchedulesService {
         studyDays: dto.studyDays,
         dailyMinutes: dto.dailyMinutes,
         objective: dto.objective ?? null,
+        targetCourse: dto.targetCourse ?? null,
+        priorityArea: dto.priorityArea ?? null,
+        essayFrequency: dto.essayFrequency ?? null,
       });
 
       await this.repo.createScheduleSubjects(tx, scheduleRecord.id, dto.subjects);
-      await this.repo.createSessions(
-        tx,
-        scheduleRecord.id,
-        sessionDates.map((date) => ({ date, scheduledMinutes: dto.dailyMinutes })),
-      );
+      if (dto.dayMinutes?.length) {
+        await this.repo.replaceDayMinutes(tx, scheduleRecord.id, dto.dayMinutes);
+      }
+      await this.repo.createSessions(tx, scheduleRecord.id, sessions);
 
       await this.repo.upsertProgress(tx, scheduleRecord.id, {
         completedMinutes: 0,
-        totalScheduledMinutes: sessionDates.length * dto.dailyMinutes,
+        totalScheduledMinutes: sessions.reduce((sum, s) => sum + s.scheduledMinutes, 0),
         streakDays: 0,
         lastStudyDate: null,
         completedTasks: 0,
@@ -207,9 +324,24 @@ export class SchedulesService {
     // dia passado nunca visitado fica mesmo vazio (não tem o que "planejar"
     // retroativamente). É isso que torna o cronograma adaptativo: a
     // prioridade usada é a de agora, não a de quando o cronograma foi criado.
-    if (session && session.tasks.length === 0 && day.getTime() >= startOfDay(new Date()).getTime()) {
-      await this.generateTasksForSession(schedule, session);
-      session = await this.repo.findSessionByDate(schedule.id, day);
+    //
+    // `date` é o dia de calendário do ALUNO; o relógio do servidor é UTC. Em
+    // fuso atrás de UTC (Brasil) o "hoje" do aluno ainda é o "ontem" do
+    // servidor durante algumas horas da noite — por isso a tolerância de um
+    // dia, senão o dia de hoje deixava de ser gerado depois das 21h.
+    if (session && day.getTime() >= addDays(startOfDay(new Date()), -1).getTime()) {
+      // Cronograma criado antes do gerador adaptativo tem o dia preenchido
+      // com tarefas estáticas ("Matemática: estudo programado"). Enquanto o
+      // aluno não mexeu em nenhuma, o dia é refeito pelo gerador novo.
+      const legacy = this.isUntouchedLegacySession(session.tasks);
+      if (session.tasks.length === 0 || legacy) {
+        const current = session;
+        await this.repo.prisma.$transaction(async (tx: Db) => {
+          await this.planSession(tx, schedule, current, { replace: legacy });
+          await this.updateProgress(tx, schedule.id);
+        }, PLAN_TX_OPTIONS);
+        session = await this.repo.findSessionByDate(schedule.id, day);
+      }
     }
 
     // O cronômetro registra por matéria, então o tempo do dia vive em dois
@@ -244,6 +376,7 @@ export class SchedulesService {
 
     return {
       schedule,
+      phase: await this.phaseFor(schedule, day),
       // A visão diária do app lê `session.tasks`, então o tempo por tarefa
       // precisa vir nos dois lugares — `tasks` continua sendo o atalho.
       session: session ? { ...session, tasks: tasksWithMinutes } : null,
@@ -252,25 +385,158 @@ export class SchedulesService {
     };
   }
 
-  private async generateTasksForSession(
-    schedule: NonNullable<Awaited<ReturnType<SchedulesRepository["findScheduleByUserId"]>>>,
-    session: { id: string; date: Date; scheduledMinutes: number },
-  ): Promise<void> {
-    await this.repo.prisma.$transaction(async (tx: Db) => {
-      const tasks = await this.generator.buildTasksForSession(
-        { id: session.id, scheduleId: schedule.id, date: session.date, scheduledMinutes: session.scheduledMinutes },
-        schedule.userId,
-        schedule.scheduleSubjects.map((ss) => ({
-          subjectId: ss.subjectId,
-          targetHours: ss.targetHours,
-          subject: { name: ss.subject.name, code: ss.subject.code },
-        })),
-        tx,
-      );
-      if (tasks.length === 0) return;
-      await this.repo.createTasks(tx, tasks);
-      await this.updateProgress(tx, schedule.id);
+  /**
+   * Refaz o plano de um dia com o domínio de AGORA — usado depois do
+   * diagnóstico inicial, quando o dia já tinha sido planejado sem saber o
+   * nível do aluno. Só troca o que o gerador criou e o aluno não tocou.
+   */
+  async refreshDay(userId: string, date: Date) {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+    const day = startOfDay(date);
+    const session = await this.repo.findSessionByDate(schedule.id, day);
+    if (session && day.getTime() >= addDays(startOfDay(new Date()), -1).getTime()) {
+      await this.repo.prisma.$transaction(async (tx: Db) => {
+        await this.planSession(tx, schedule, session, { replace: true });
+        await this.updateProgress(tx, schedule.id);
+      }, PLAN_TX_OPTIONS);
+    }
+    return this.getDailySession(userId, date);
+  }
+
+  /**
+   * Resumo dos sete dias a partir de `start`: o que está planejado e o que já
+   * foi feito em cada um. Não gera tarefa nenhuma — dia ainda não aberto vem
+   * com `totalTasks: 0` e o tempo planejado da sessão.
+   */
+  async getWeek(userId: string, start: Date) {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+    const from = startOfDay(start);
+    const sessions = await this.repo.findSessionsWithTasks(schedule.id, from, addDays(from, 6));
+    return sessions.map((session) => {
+      const tasks = session.tasks.filter((t) => t.status !== StudyTaskStatus.SKIPPED);
+      return {
+        date: formatDate(session.date),
+        scheduledMinutes: session.scheduledMinutes,
+        totalTasks: tasks.length,
+        doneTasks: tasks.filter((t) => t.status === StudyTaskStatus.DONE).length,
+      };
     });
+  }
+
+  /** Fase da reta num dia (fase 3, §7). A prova é a data-alvo do vestibular
+   *  do aluno; sem ela, o fim do cronograma faz o papel de dia da prova. */
+  async phaseFor(
+    schedule: { userId: string; startDate: Date; endDate: Date },
+    date: Date,
+  ): Promise<SchedulePhase> {
+    const vestibular = await this.repo.findUserVestibular(schedule.userId);
+    const examDate = vestibular?.targetDate ?? schedule.endDate;
+    return computeSchedulePhase(schedule.startDate, examDate, startOfDay(date));
+  }
+
+  /** Dia de cronograma antigo que ninguém tocou: só tarefas estáticas
+   *  pendentes, e pelo menos uma de matéria que hoje teria tópico (ou de
+   *  Redação, que hoje tem rotina própria). Um dia só com Inglês/Espanhol
+   *  continua valendo — é assim que o gerador novo também o planeja. */
+  private isUntouchedLegacySession(
+    tasks: { topicId: string | null; title: string; status: StudyTaskStatus; subject: { code: string } | null }[],
+  ): boolean {
+    if (tasks.length === 0) return false;
+    const allStatic = tasks.every(
+      (t) => t.topicId === null && t.status === StudyTaskStatus.PENDING && t.title.endsWith(STATIC_TASK_SUFFIX),
+    );
+    return (
+      allStatic &&
+      tasks.some(
+        (t) =>
+          t.subject !== null &&
+          (t.subject.code === ESSAY_SUBJECT_CODE || t.subject.code in STUDY_SUBJECT_CODE_TO_SUBJECT_NAME),
+      )
+    );
+  }
+
+  /** Etapa de redação que cai nesta sessão, se a redação da semana for nela
+   *  (fase 5, §9). O dia é escolhido entre os que ainda dá para planejar. */
+  private async essayFor(
+    tx: Db,
+    schedule: ScheduleWithSubjects,
+    session: { id: string; date: Date },
+  ): Promise<EssayStep | null> {
+    if (!schedule.scheduleSubjects.some((ss) => ss.subject.code === ESSAY_SUBJECT_CODE)) return null;
+    const weekIndex = scheduleWeekIndex(schedule.startDate, session.date);
+    const step = essayStepForWeek(weekIndex, schedule.essayFrequency);
+    if (!step) return null;
+
+    const weekStart = addDays(startOfDay(schedule.startDate), weekIndex * 7);
+    const weekSessions = await tx.studySession.findMany({
+      where: { scheduleId: schedule.id, date: { gte: weekStart, lte: addDays(weekStart, 6) } },
+      include: {
+        tasks: { where: { activityType: StudyActivityType.REDACAO }, select: { id: true } },
+      },
+    });
+    // A semana já tem a sua redação (gerada antes, ou movida pelo aluno).
+    if (weekSessions.some((s) => s.tasks.length > 0)) return null;
+
+    const yesterday = addDays(startOfDay(new Date()), -1);
+    const pick = pickEssaySession(weekSessions.filter((s) => s.date >= yesterday));
+    return pick?.id === session.id ? step : null;
+  }
+
+  /**
+   * Planeja um dia com o gerador adaptativo. Sem `replace`, só age em dia que
+   * ainda não tem tarefa nenhuma. Com `replace`, apaga o que o gerador criou
+   * e o aluno não tocou (menos `keepTaskIds`) e refaz o resto do dia em volta
+   * do que ficou — é o que o replanejamento usa (fase 4, §12).
+   */
+  private async planSession(
+    tx: Db,
+    schedule: ScheduleWithSubjects,
+    session: { id: string; date: Date; scheduledMinutes: number },
+    options: { replace?: boolean; keepTaskIds?: string[] } = {},
+  ): Promise<void> {
+    if (options.replace) {
+      await tx.studyTask.deleteMany({
+        where: {
+          sessionId: session.id,
+          id: { notIn: options.keepTaskIds ?? [] },
+          ...REPLACEABLE_TASK_WHERE,
+        },
+      });
+    }
+    const kept = await tx.studyTask.findMany({
+      where: { sessionId: session.id, status: { not: StudyTaskStatus.SKIPPED } },
+    });
+    if (!options.replace && kept.length > 0) return;
+
+    const tasks = await this.generator.buildTasksForSession(
+      {
+        id: session.id,
+        scheduleId: schedule.id,
+        date: session.date,
+        scheduledMinutes: session.scheduledMinutes,
+        phase: await this.phaseFor(schedule, session.date),
+        priorityArea: schedule.priorityArea,
+        essay: kept.some((t) => t.activityType === StudyActivityType.REDACAO)
+          ? null
+          : await this.essayFor(tx, schedule, session),
+        occupiedMinutes: kept.reduce((sum, t) => sum + t.scheduledMinutes, 0),
+        excludeTopicIds: kept.flatMap((t) => (t.topicId ? [t.topicId] : [])),
+        occupiedBySubject: kept.reduce<Record<string, number>>((minutes, t) => {
+          if (t.subjectId) minutes[t.subjectId] = (minutes[t.subjectId] ?? 0) + t.scheduledMinutes;
+          return minutes;
+        }, {}),
+      },
+      schedule.userId,
+      schedule.scheduleSubjects.map((ss) => ({
+        subjectId: ss.subjectId,
+        targetHours: ss.targetHours,
+        subject: { name: ss.subject.name, code: ss.subject.code },
+      })),
+      tx,
+    );
+    if (tasks.length > 0) await this.repo.createTasks(tx, tasks);
   }
 
   async createTask(
@@ -296,7 +562,7 @@ export class SchedulesService {
         scheduledMinutes: data.scheduledMinutes,
       }, tx);
       await this.updateProgress(tx, session.scheduleId);
-      const withSubject = await this.repo.findTaskById(created.id);
+      const withSubject = await this.repo.findTaskById(created.id, tx);
       return withSubject ? withSubjectName(withSubject) : null;
     });
   }
@@ -319,10 +585,18 @@ export class SchedulesService {
       update.completedAt = null;
     }
 
+    const justCompleted =
+      data.status === StudyTaskStatus.DONE && task.status !== StudyTaskStatus.DONE;
+
     return this.repo.prisma.$transaction(async (tx: Db) => {
       await this.repo.updateTask(taskId, update, tx);
+      if (justCompleted && task.topicId) {
+        await this.topicMastery.registerStudy(userId, task.topicId, tx);
+      }
       await this.updateProgress(tx, task.scheduleId);
-      const refreshed = await this.repo.findTaskById(taskId);
+      // Pelo mesmo `tx`: fora dele a leitura não enxerga o update ainda não
+      // commitado e a resposta voltava com o status antigo.
+      const refreshed = await this.repo.findTaskById(taskId, tx);
       return refreshed ? withSubjectName(refreshed) : null;
     });
   }
@@ -346,6 +620,140 @@ export class SchedulesService {
     return this.repo.updateTask(taskId, { sessionId: newSession.id });
   }
 
+  /**
+   * Replanejamento com escolha do aluno (fase 4, §12) para uma tarefa que
+   * não foi feita:
+   *  - TOMORROW: vai para o próximo dia de estudo, por cima do plano dele;
+   *  - SATURDAY: vai para o próximo sábado (cria o dia se o aluno não estuda
+   *    aos sábados);
+   *  - AUTO: encaixa no próximo dia DENTRO do tempo planejado dele, refazendo
+   *    o resto do dia em volta — as outras matérias cedem tempo. Sem
+   *    `confirm`, devolve só a prévia (minutos por matéria antes/depois);
+   *  - SKIP: o aluno decide não fazer.
+   */
+  async replanTask(userId: string, taskId: string, dto: ReplanTaskDto): Promise<ReplanResult | null> {
+    const task = await this.repo.findTaskById(taskId);
+    if (!task || task.schedule.userId !== userId) return null;
+    if (task.status === StudyTaskStatus.DONE || task.status === StudyTaskStatus.SKIPPED) {
+      throw new BadRequestException("Só é possível reagendar uma tarefa que ainda não foi feita.");
+    }
+    const schedule = await this.repo.findScheduleById(task.scheduleId);
+    if (!schedule) return null;
+
+    const today = startOfDay(dto.date ? new Date(dto.date) : new Date());
+    const base = task.session.date > today ? task.session.date : today;
+
+    if (dto.strategy === "SKIP") {
+      await this.repo.prisma.$transaction(async (tx: Db) => {
+        await this.repo.updateTask(taskId, { status: StudyTaskStatus.SKIPPED, completedAt: null }, tx);
+        await this.updateProgress(tx, schedule.id);
+      });
+      return { strategy: "SKIP", applied: true, movedTo: null };
+    }
+
+    if (dto.strategy === "SATURDAY") {
+      let saturday = addDays(base, 1);
+      while (saturday.getUTCDay() !== 6) saturday = addDays(saturday, 1);
+      if (saturday > schedule.endDate) {
+        throw new BadRequestException("O próximo sábado já fica fora do período do cronograma.");
+      }
+      await this.repo.prisma.$transaction(async (tx: Db) => {
+        const existing = await tx.studySession.findUnique({
+          where: { scheduleId_date: { scheduleId: schedule.id, date: saturday } },
+        });
+        // Sábado fora dos dias de estudo vira um dia extra, sem tempo
+        // planejado próprio — só com o que o aluno jogou para lá.
+        const target =
+          existing ??
+          (await tx.studySession.create({
+            data: { scheduleId: schedule.id, date: saturday, scheduledMinutes: 0 },
+          }));
+        if (existing) await this.planSession(tx, schedule, existing);
+        await this.repo.updateTask(taskId, { sessionId: target.id }, tx);
+        await this.updateProgress(tx, schedule.id);
+      }, PLAN_TX_OPTIONS);
+      return { strategy: "SATURDAY", applied: true, movedTo: formatDate(saturday) };
+    }
+
+    // AUTO redistribui o tempo das matérias em volta de um TÓPICO; tarefa sem
+    // tópico (genérica, redação, manual) não tem o que redistribuir e segue
+    // para o próximo dia como no TOMORROW.
+    const redistribute = dto.strategy === "AUTO" && task.topicId !== null;
+
+    try {
+      return await this.repo.prisma.$transaction(async (tx: Db) => {
+        const target = await tx.studySession.findFirst({
+          where: {
+            scheduleId: schedule.id,
+            date: { gt: base },
+            ...(redistribute ? { scheduledMinutes: { gt: 0 } } : {}),
+          },
+          orderBy: { date: "asc" },
+        });
+        if (!target) {
+          throw new BadRequestException("Não há um próximo dia de estudo no cronograma.");
+        }
+
+        // O dia de destino precisa do próprio plano ANTES de receber a
+        // tarefa: um dia que já tem tarefa não é mais gerado ao ser aberto.
+        await this.planSession(tx, schedule, target);
+        const movedTo = formatDate(target.date);
+
+        if (!redistribute) {
+          await this.repo.updateTask(taskId, { sessionId: target.id }, tx);
+          await this.updateProgress(tx, schedule.id);
+          return { strategy: dto.strategy, applied: true, movedTo } satisfies ReplanResult;
+        }
+
+        const before = await this.minutesBySubject(tx, target.id);
+        await this.repo.updateTask(taskId, { sessionId: target.id }, tx);
+        await this.planSession(tx, schedule, target, { replace: true, keepTaskIds: [taskId] });
+        const after = await this.minutesBySubject(tx, target.id);
+
+        const names = [...new Set([...before.keys(), ...after.keys()])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+        const subjects = names.map((subjectName) => ({
+          subjectName,
+          beforeMinutes: before.get(subjectName) ?? 0,
+          afterMinutes: after.get(subjectName) ?? 0,
+        }));
+        const warnings = subjects
+          .filter((s) => s.afterMinutes < s.beforeMinutes)
+          .map((s) =>
+            s.afterMinutes === 0
+              ? `${s.subjectName} fica sem tempo nesse dia (tinha ${s.beforeMinutes}min).`
+              : `${s.subjectName} cai de ${s.beforeMinutes}min para ${s.afterMinutes}min nesse dia.`,
+          );
+        const result: ReplanResult = {
+          strategy: "AUTO",
+          applied: Boolean(dto.confirm),
+          movedTo,
+          preview: { date: movedTo, subjects, warnings },
+        };
+        if (!dto.confirm) throw new ReplanPreviewRollback(result);
+
+        await this.updateProgress(tx, schedule.id);
+        return result;
+      }, PLAN_TX_OPTIONS);
+    } catch (error) {
+      if (error instanceof ReplanPreviewRollback) return error.result;
+      throw error;
+    }
+  }
+
+  /** Minutos planejados por matéria num dia (sem as tarefas puladas). */
+  private async minutesBySubject(tx: Db, sessionId: string): Promise<Map<string, number>> {
+    const tasks = await tx.studyTask.findMany({
+      where: { sessionId, status: { not: StudyTaskStatus.SKIPPED } },
+      include: { subject: true },
+    });
+    const minutes = new Map<string, number>();
+    for (const task of tasks) {
+      const name = task.subject?.name ?? "Sem matéria";
+      minutes.set(name, (minutes.get(name) ?? 0) + task.scheduledMinutes);
+    }
+    return minutes;
+  }
+
   async completeTask(userId: string, taskId: string) {
     const task = await this.repo.findTaskById(taskId);
     if (!task || task.schedule.userId !== userId) return null;
@@ -355,8 +763,11 @@ export class SchedulesService {
         status: StudyTaskStatus.DONE,
         completedAt: task.completedAt ?? new Date(),
       }, tx);
+      if (task.status !== StudyTaskStatus.DONE && task.topicId) {
+        await this.topicMastery.registerStudy(userId, task.topicId, tx);
+      }
       await this.updateProgress(tx, task.scheduleId);
-      const refreshed = await this.repo.findTaskById(taskId);
+      const refreshed = await this.repo.findTaskById(taskId, tx);
       return refreshed ? withSubjectName(refreshed) : null;
     });
   }
@@ -465,6 +876,11 @@ export class SchedulesService {
       });
       if (futureSessions.length === 0) return { rescheduled: 0 };
 
+      // Cada dia de destino ganha o próprio plano antes de receber tarefa
+      // de fora — dia que já tem tarefa não é mais gerado ao ser aberto.
+      const targets = futureSessions.slice(0, missedTasks.length);
+      for (const target of targets) await this.planSession(tx, schedule, target);
+
       let idx = 0;
       for (const t of missedTasks) {
         const targetSession = futureSessions[idx % futureSessions.length];
@@ -478,7 +894,7 @@ export class SchedulesService {
       }
 
       return { rescheduled: missedTasks.length };
-    });
+    }, PLAN_TX_OPTIONS);
   }
 
   async getProgress(userId: string) {
@@ -527,13 +943,17 @@ export class SchedulesService {
   }
 
   private async updateProgress(tx: Db, scheduleId: string) {
-    const [tasks, logs, sessions] = await Promise.all([
+    const [allTasks, logs, sessions] = await Promise.all([
       tx.studyTask.findMany({ where: { scheduleId } }),
       // Pelo mesmo `tx`: a soma tem de enxergar o log que acabou de ser
       // gravado, senão o primeiro registro do dia não entra no progresso.
       this.repo.timeLogsForSchedule(scheduleId, undefined, tx),
       tx.studySession.findMany({ where: { scheduleId } }),
     ]);
+    // Tarefa que o aluno decidiu não fazer sai da conta: não é pendência.
+    const tasks = allTasks.filter(
+      (t: { status: StudyTaskStatus }) => t.status !== StudyTaskStatus.SKIPPED,
+    );
 
     const completedTasks = tasks.filter(
       (t: { status: StudyTaskStatus }) => t.status === StudyTaskStatus.DONE,
@@ -586,18 +1006,20 @@ export class SchedulesService {
     });
   }
 
-  private countStudyDays(
-    start: Date,
-    end: Date,
+  /** Minutos de estudo por dia da semana: o que o aluno informou para cada
+   *  dia (onboarding, §11) ou `dailyMinutes` onde ele não informou. Dia com
+   *  zero minuto não é dia de estudo. */
+  private minutesByWeekday(
     studyDays: number[],
-  ): number {
-    if (studyDays.length === 0) return 0;
-    let count = 0;
-    const current = startOfDay(start);
-    while (current <= endOfDay(end)) {
-      if (studyDays.includes(current.getUTCDay())) count++;
-      current.setUTCDate(current.getUTCDate() + 1);
+    dailyMinutes: number,
+    dayMinutes?: { weekday: number; minutes: number }[],
+  ): Map<number, number> {
+    const overrides = new Map((dayMinutes ?? []).map((d) => [d.weekday, d.minutes]));
+    const result = new Map<number, number>();
+    for (const weekday of studyDays) {
+      const minutes = overrides.get(weekday) ?? dailyMinutes;
+      if (minutes > 0) result.set(weekday, minutes);
     }
-    return count;
+    return result;
   }
 }

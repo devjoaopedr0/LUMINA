@@ -1,6 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { StudyTaskStatus } from "@prisma/client";
+import { StudyArea, StudyEssayFrequency, StudyTaskStatus } from "@prisma/client";
 import {
   IsDateString,
   IsInt,
@@ -17,6 +17,8 @@ import {
   ArrayUnique,
   ValidateNested,
   IsEnum,
+  IsBoolean,
+  IsIn,
 } from "class-validator";
 
 export class SubjectTargetDto {
@@ -28,6 +30,21 @@ export class SubjectTargetDto {
   @IsNumber()
   @Min(0)
   targetHours: number;
+}
+
+/// Tempo de estudo de um dia da semana (onboarding, fase 5 §11).
+export class DayMinutesDto {
+  @ApiProperty({ example: 1, description: "0=dom, 1=seg, ..., 6=sáb" })
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  weekday: number;
+
+  @ApiProperty({ example: 90, description: "Minutos nesse dia; 0 = não estuda" })
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  minutes: number;
 }
 
 export class CreateStudyScheduleDto {
@@ -62,6 +79,34 @@ export class CreateStudyScheduleDto {
   @IsString()
   @MaxLength(500)
   objective?: string;
+
+  @ApiProperty({
+    type: [DayMinutesDto],
+    required: false,
+    description: "Tempo por dia da semana. Dia de estudo sem entrada aqui usa dailyMinutes.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique((day: DayMinutesDto) => day?.weekday)
+  @ValidateNested({ each: true })
+  @Type(() => DayMinutesDto)
+  dayMinutes?: DayMinutesDto[];
+
+  @ApiProperty({ type: String, nullable: true, required: false, example: "Medicina" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  targetCourse?: string;
+
+  @ApiProperty({ enum: StudyArea, nullable: true, required: false })
+  @IsOptional()
+  @IsEnum(StudyArea)
+  priorityArea?: StudyArea;
+
+  @ApiProperty({ enum: StudyEssayFrequency, nullable: true, required: false })
+  @IsOptional()
+  @IsEnum(StudyEssayFrequency)
+  essayFrequency?: StudyEssayFrequency;
 
   @ApiProperty({ type: [SubjectTargetDto], description: "Disciplinas e horas-alvo" })
   @IsArray()
@@ -102,6 +147,43 @@ export class UpdateStudyScheduleDto {
   @IsString()
   @MaxLength(500)
   objective?: string;
+
+  @ApiProperty({
+    type: [DayMinutesDto],
+    required: false,
+    description: "Tempo por dia da semana. Dia de estudo sem entrada aqui usa dailyMinutes.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique((day: DayMinutesDto) => day?.weekday)
+  @ValidateNested({ each: true })
+  @Type(() => DayMinutesDto)
+  dayMinutes?: DayMinutesDto[];
+
+  @ApiProperty({ type: String, nullable: true, required: false, example: "Medicina" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  targetCourse?: string;
+
+  @ApiProperty({ enum: StudyArea, nullable: true, required: false })
+  @IsOptional()
+  @IsEnum(StudyArea)
+  priorityArea?: StudyArea;
+
+  @ApiProperty({ enum: StudyEssayFrequency, nullable: true, required: false })
+  @IsOptional()
+  @IsEnum(StudyEssayFrequency)
+  essayFrequency?: StudyEssayFrequency;
+
+  @ApiProperty({ type: [SubjectTargetDto], required: false, description: "Substitui as disciplinas do cronograma" })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique((subject: SubjectTargetDto) => subject?.subjectId)
+  @ValidateNested({ each: true })
+  @Type(() => SubjectTargetDto)
+  subjects?: SubjectTargetDto[];
 }
 
 export class CreateStudyTaskDto {
@@ -219,4 +301,32 @@ export class SetVestibularDto {
   @IsOptional()
   @IsDateString()
   targetDate?: string;
+}
+
+export const REPLAN_STRATEGIES = ["TOMORROW", "SATURDAY", "AUTO", "SKIP"] as const;
+export type ReplanStrategy = (typeof REPLAN_STRATEGIES)[number];
+
+/// Replanejamento de uma tarefa não feita (fase 4, §12).
+export class ReplanTaskDto {
+  @ApiProperty({
+    enum: REPLAN_STRATEGIES,
+    description:
+      "TOMORROW: próximo dia de estudo. SATURDAY: próximo sábado. AUTO: encaixa no " +
+      "próximo dia redistribuindo o tempo das outras matérias. SKIP: não fazer.",
+  })
+  @IsIn(REPLAN_STRATEGIES)
+  strategy: ReplanStrategy;
+
+  @ApiProperty({ format: "date", required: false, description: "Hoje no fuso do aluno" })
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "Só para AUTO: false devolve a prévia sem gravar; true aplica.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirm?: boolean;
 }

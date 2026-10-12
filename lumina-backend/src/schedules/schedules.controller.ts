@@ -16,9 +16,11 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { SchedulesService } from "./schedules.service";
+import { ScheduleInsightsService } from "./schedule-insights.service";
 import {
   CreateStudyScheduleDto,
   CreateStudyTaskDto,
+  ReplanTaskDto,
   RescheduleTaskDto,
   SetVestibularDto,
   SubjectTimeLogDto,
@@ -37,7 +39,10 @@ function userDate(date?: string): Date {
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class SchedulesController {
-  constructor(private readonly service: SchedulesService) {}
+  constructor(
+    private readonly service: SchedulesService,
+    private readonly insights: ScheduleInsightsService,
+  ) {}
 
   @Get("study/subjects")
   async getSubjects() {
@@ -82,13 +87,7 @@ export class SchedulesController {
     @Param("id") id: string,
     @Body() dto: UpdateStudyScheduleDto,
   ) {
-    return this.service.updateSchedule(user.id, id, {
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-      studyDays: dto.studyDays,
-      dailyMinutes: dto.dailyMinutes,
-      objective: dto.objective,
-    });
+    return this.service.updateSchedule(user.id, id, dto);
   }
 
   @Delete("study/schedule/:id")
@@ -103,6 +102,38 @@ export class SchedulesController {
     @Query("date") date?: string,
   ) {
     return this.service.getDailySession(user.id, userDate(date));
+  }
+
+  @Post("study/daily/refresh")
+  @ApiOperation({
+    summary: "Refaz o plano de um dia com o domínio atual",
+    description: "Troca só as tarefas geradas que o aluno ainda não tocou.",
+  })
+  async refreshDay(@CurrentUser() user: UserWithProfile, @Body("date") date?: string) {
+    return this.service.refreshDay(user.id, userDate(date));
+  }
+
+  @Get("study/week")
+  @ApiOperation({
+    summary: "Resumo de sete dias a partir de `start`",
+    description: "Tarefas planejadas e concluídas por dia. Não gera tarefas.",
+  })
+  async getWeek(
+    @CurrentUser() user: UserWithProfile,
+    @Query("start") start?: string,
+  ) {
+    return this.service.getWeek(user.id, userDate(start));
+  }
+
+  @Get("study/diagnostic")
+  @ApiOperation({
+    summary: "Diagnóstico inicial do onboarding",
+    description:
+      "Até 5 questões por área do ENEM, das matérias do cronograma. As respostas " +
+      "vão pelo endpoint normal de tentativa e alimentam o domínio por tópico.",
+  })
+  async getDiagnostic(@CurrentUser() user: UserWithProfile) {
+    return this.insights.diagnostic(user.id);
   }
 
   @Get("study/tasks")
@@ -148,6 +179,31 @@ export class SchedulesController {
     return this.service.rescheduleTask(user.id, id, dto.sessionId);
   }
 
+  @Post("study/tasks/:id/replan")
+  @ApiOperation({
+    summary: "Replaneja uma tarefa não feita",
+    description: "O aluno escolhe: próximo dia, sábado, redistribuir ou não fazer.",
+  })
+  async replanTask(
+    @CurrentUser() user: UserWithProfile,
+    @Param("id") id: string,
+    @Body() dto: ReplanTaskDto,
+  ) {
+    const result = await this.service.replanTask(user.id, id, dto);
+    if (!result) throw new NotFoundException("Tarefa não encontrada.");
+    return result;
+  }
+
+  @Get("study/tasks/:id/explain")
+  @ApiOperation({ summary: "Por que esta tarefa está no cronograma" })
+  async explainTask(@CurrentUser() user: UserWithProfile, @Param("id") id: string) {
+    const explanation = await this.insights.explainTask(user.id, id);
+    if (!explanation) throw new NotFoundException("Tarefa não encontrada.");
+    // `context` é o texto que vai para a LuminIA; a tela usa só os motivos.
+    const { context: _context, ...rest } = explanation;
+    return rest;
+  }
+
   @Patch("study/tasks/:id/complete")
   async completeTask(@CurrentUser() user: UserWithProfile, @Param("id") id: string) {
     return this.service.completeTask(user.id, id);
@@ -186,7 +242,8 @@ export class SchedulesController {
   async getProgress(@CurrentUser() user: UserWithProfile) {
     const summary = await this.service.getProgress(user.id);
     const evolution = await this.service.getProgressEvolution(user.id, 30);
-    return { summary, evolution };
+    const mastery = await this.insights.masterySummary(user.id);
+    return { summary, evolution, mastery };
   }
 
   @Post("study/reschedule-missed")

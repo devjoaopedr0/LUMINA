@@ -1,4 +1,4 @@
-# Cronograma adaptativo — design (ainda não implementado)
+# Cronograma adaptativo — design (fases 1–5 implementadas)
 
 Este documento projeta a reformulação do cronograma de estudos a partir da
 especificação funcional recebida (aluno → "o que estudar hoje, quanto tempo e
@@ -369,6 +369,68 @@ Sem mudança de arquitetura — é o design system que a Lumina já usa
 
 Cada fase é entregável e testável sozinha — a Fase 1 já é útil por si (dá
 para mostrar "domínio por tópico" no dashboard antes de tocar no gerador).
+
+---
+
+## Estado da implementação e desvios do design
+
+Fases 1 a 5 implementadas. Onde o código diverge do que está escrito acima:
+
+- **Fatia por matéria (§4-5).** O gerador não ordena a fila inteira só por
+  prioridade: cada matéria recebe uma fatia do dia proporcional às
+  horas-alvo, e a prioridade decide o tópico DENTRO da fatia. Com a fila
+  única, as matérias de menor peso ficavam sem tempo nenhum, todos os dias.
+- **Repetição entre dias (§5).** Tópico já agendado nos 3 dias vizinhos vai
+  para o fim da fila, e concluir uma tarefa de tópico registra o estudo em
+  `TopicMastery` (`registerStudy`: sai de `NAO_ESTUDADO`, atualiza
+  `lastStudiedAt`, empurra a revisão vencida). Sem isso o dia seguinte
+  repetia as mesmas tarefas para quem estuda sem responder questões.
+- **`currentPhase` não é gravado (§7).** A fase é função pura das datas e é
+  calculada na hora (`schedule-phase.ts`), devolvida em `GET /study/daily`.
+  A prova é `UserVestibular.targetDate`; sem ela, `StudySchedule.endDate`.
+- **Mix da fase é alvo, não trava (§7).** Entre os tópicos disponíveis vai
+  primeiro o de maior prioridade cujo tipo ainda tem tempo na fase; quando
+  não há tópico daquele tipo (aluno novo só tem teoria a fazer), o tempo vai
+  para os outros.
+- **Revisão vencida tem teto (§5, §8).** Entra primeiro, mas só até a fatia
+  de revisão da fase (mínimo de uma por dia); o excedente fica para os dias
+  seguintes, a mais atrasada na frente.
+- **Dia do aluno × relógio do servidor.** O gatilho de geração tolera um dia
+  de diferença, porque o "hoje" do aluno no Brasil ainda é o "ontem" UTC do
+  servidor à noite.
+
+- **Revezamento de matérias (§5).** Quando não cabem todas as matérias no
+  dia com pelo menos 30 minutos cada, entram só as mais "em dívida" (as que
+  receberam menos tempo do que a fatia delas pediria nas últimas duas
+  semanas). Dividir 2h por 13 matérias dava blocos de 3 a 13 minutos.
+- **Redação (§9).** `essayFrequency` é `WEEKLY`/`BIWEEKLY` (nulo = semanal).
+  A atividade cai no dia de estudo com mais tempo da semana, entre os que
+  ainda dá para planejar; Redação não entra na divisão diária por matéria.
+- **LuminIA (§10).** O cliente não manda `scheduleContext`: manda só
+  `scheduleTaskId` em `POST /ai/chat`, e o contexto é montado no servidor
+  (`ScheduleInsightsService.explainTask`). Texto vindo do cliente permitiria
+  justamente o que a seção quer evitar.
+- **Onboarding (§11).** A criação é um formulário em três etapas
+  (disponibilidade, objetivo, matérias). A área prioritária dá 25% a mais de
+  peso às matérias da área na divisão do dia. O diagnóstico é oferecido só a
+  quem não tem nenhum `TopicMastery`, usa a tentativa normal de questão e,
+  ao terminar, refaz o dia (`POST /study/daily/refresh`).
+- **Replanejamento (§12).** `POST /study/tasks/:id/replan`. `SKIP` usa o
+  status novo `SKIPPED` em vez de apagar. `AUTO` não regenera a semana:
+  encaixa a tarefa no próximo dia de estudo dentro do tempo dele e refaz só
+  esse dia em volta — a prévia (sem `confirm`) mostra os minutos por matéria
+  antes e depois. Sábado fora dos dias de estudo vira um dia extra de 0 min.
+- **Cronogramas antigos.** Dia com só tarefas estáticas intocadas
+  ("Matemática: estudo programado") é refeito pelo gerador ao ser aberto.
+- **Tópicos duplicados.** Fundidos por `mergeDuplicateTopics` (lista em
+  `prisma/seed-data/topic-merges.ts`, roda no seed); o tópico-coringa
+  "Geral" nunca vira tarefa.
+
+Endpoints novos: `GET /study/week`, `POST /study/daily/refresh`,
+`GET /study/diagnostic`, `POST /study/tasks/:id/replan`,
+`GET /study/tasks/:id/explain`; `GET /study/progress` passou a trazer
+`mastery` (conteúdos por status, §13) e `PATCH /study/schedule/:id` aceita o
+cronograma inteiro e refaz os dias a partir de hoje.
 
 ---
 

@@ -21,7 +21,8 @@ describe('Cronograma: regressões funcionais', () => {
     db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
     repo = {
       prisma: db,
-      findScheduleByUserId: vi.fn().mockResolvedValue({ id: 'schedule' }),
+      findScheduleByUserId: vi.fn().mockResolvedValue({ id: 'schedule', userId: 'user', startDate: new Date('2026-09-01'), endDate: new Date('2026-11-30') }),
+      findUserVestibular: vi.fn().mockResolvedValue(null),
       findTaskById: vi.fn(),
       findSessionById: vi.fn(),
       findSessionByDate: vi.fn(),
@@ -35,7 +36,7 @@ describe('Cronograma: regressões funcionais', () => {
     // O serviço deixa de filtrar logs direto no Prisma e passa a delegar ao
     // repositório, que também considera os registros ligados só à matéria.
     repo.timeLogsForSchedule = vi.fn((_id, _period, _client) => db.studyTimeLog.findMany());
-    service = new SchedulesService(repo as SchedulesRepository, {} as never);
+    service = new SchedulesService(repo as SchedulesRepository, {} as never, {} as never);
   });
 
   afterEach(() => vi.useRealTimers());
@@ -86,6 +87,62 @@ describe('Cronograma: regressões funcionais', () => {
     await service.updateTask('user', 'task', { status: 'PENDING' });
     expect(repo.updateTask).toHaveBeenCalledWith('task', { status: 'PENDING', completedAt: null }, db);
     expect(repo.upsertProgress).toHaveBeenCalled();
+  });
+
+  it('concluir tarefa de tópico registra o estudo no domínio do tópico, uma vez só', async () => {
+    const topicMastery = { registerStudy: vi.fn() };
+    service = new SchedulesService(repo as SchedulesRepository, {} as never, topicMastery as never);
+    repo.findTaskById.mockResolvedValue({ status: 'PENDING', topicId: 'topic', scheduleId: 'schedule', schedule: { userId: 'user' } });
+    await service.updateTask('user', 'task', { status: 'DONE' });
+    await service.completeTask('user', 'task');
+    expect(topicMastery.registerStudy).toHaveBeenCalledTimes(2);
+    expect(topicMastery.registerStudy).toHaveBeenCalledWith('user', 'topic', db);
+
+    // Já concluída: marcar de novo não conta como novo estudo.
+    repo.findTaskById.mockResolvedValue({ status: 'DONE', topicId: 'topic', scheduleId: 'schedule', schedule: { userId: 'user' } });
+    await service.completeTask('user', 'task');
+    await service.updateTask('user', 'task', { status: 'DONE' });
+    expect(topicMastery.registerStudy).toHaveBeenCalledTimes(2);
+  });
+
+  it('a resposta de escrita relê a tarefa dentro da transação', async () => {
+    repo.findTaskById.mockResolvedValue({ status: 'PENDING', scheduleId: 'schedule', schedule: { userId: 'user' } });
+    await service.updateTask('user', 'task', { status: 'DONE' });
+    expect(repo.findTaskById).toHaveBeenLastCalledWith('task', db);
+  });
+
+  it('gera as tarefas de "hoje" do aluno mesmo quando o servidor (UTC) já virou o dia', async () => {
+    // 21h em Brasília do dia 30/09 = 00h UTC do dia 01/10.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-01T00:10:00Z'));
+    const generator = { buildTasksForSession: vi.fn().mockResolvedValue([]) };
+    service = new SchedulesService(repo as SchedulesRepository, generator as never, {} as never);
+    repo.findScheduleByUserId.mockResolvedValue({
+      id: 'schedule', userId: 'user', scheduleSubjects: [],
+      startDate: new Date('2026-09-01'), endDate: new Date('2026-12-10'),
+    });
+    const emptySession = (date: string) => ({ id: 'session', date: new Date(date), scheduledMinutes: 60, tasks: [] });
+
+    repo.findSessionByDate.mockResolvedValue(emptySession('2026-09-30'));
+    const daily = await service.getDailySession('user', new Date('2026-09-30'));
+    expect(generator.buildTasksForSession).toHaveBeenCalledTimes(1);
+    // 29 de 100 dias decorridos: ainda fase de base, e o gerador recebe isso.
+    expect(daily?.phase).toBe('BASE');
+    expect(generator.buildTasksForSession.mock.calls[0][0]).toMatchObject({ phase: 'BASE' });
+
+    // Dia realmente passado continua sem geração retroativa.
+    repo.findSessionByDate.mockResolvedValue(emptySession('2026-09-28'));
+    await service.getDailySession('user', new Date('2026-09-28'));
+    expect(generator.buildTasksForSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('a fase usa a data da prova do vestibular quando o aluno informou uma', async () => {
+    // Cronograma de 01/09 a 30/11; em 15/10 seria BASE (49%). Com a prova em
+    // 31/10, o mesmo dia já está na consolidação (73%).
+    repo.findSessionByDate.mockResolvedValue(null);
+    expect((await service.getDailySession('user', new Date('2026-10-15')))?.phase).toBe('BASE');
+    repo.findUserVestibular.mockResolvedValue({ targetDate: new Date('2026-10-31') });
+    expect((await service.getDailySession('user', new Date('2026-10-15')))?.phase).toBe('CONSOLIDACAO');
   });
 
   it('concluir novamente preserva a data original', async () => {
@@ -216,7 +273,8 @@ describe('Cronograma: o cronômetro é por matéria, não por subtópico', () =>
     db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
     repo = {
       prisma: db,
-      findScheduleByUserId: vi.fn().mockResolvedValue({ id: 'schedule' }),
+      findScheduleByUserId: vi.fn().mockResolvedValue({ id: 'schedule', userId: 'user', startDate: new Date('2026-09-01'), endDate: new Date('2026-11-30') }),
+      findUserVestibular: vi.fn().mockResolvedValue(null),
       findTaskById: vi.fn(),
       findSessionByDate: vi.fn().mockResolvedValue(null),
       findScheduleSubjectById: vi.fn().mockResolvedValue({ subjectId: MATEMATICA }),
@@ -225,7 +283,7 @@ describe('Cronograma: o cronômetro é por matéria, não por subtópico', () =>
       upsertProgress: vi.fn((_tx, _id, data) => data),
     };
     repo.timeLogsForSchedule = vi.fn((_id, _period, _client) => db.studyTimeLog.findMany());
-    service = new SchedulesService(repo as SchedulesRepository, {} as never);
+    service = new SchedulesService(repo as SchedulesRepository, {} as never, {} as never);
   });
 
   it('registra o tempo pela matéria, sem amarrar a uma tarefa', async () => {

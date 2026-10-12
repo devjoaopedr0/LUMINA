@@ -86,6 +86,50 @@ describe('AiService', () => {
     });
   });
 
+  describe('contexto do cronograma (LuminIA explica a tarefa)', () => {
+    const question = { message: { role: 'user' as const, content: 'Por que essa tarefa está no meu dia?' }, history: [] };
+    const context = [
+      'Contexto do cronograma do aluno:',
+      'Tarefa: "Questões — Ondas" — 40 minutos em 20/10.',
+      'Motivos de a tarefa estar no dia:',
+      '- Seu domínio nesse tópico está em 35%.',
+      '- Você está na fase de Consolidação.',
+    ].join('\n');
+
+    it('o mock responde com os próprios motivos, sem provedor externo', async () => {
+      const res = await service.sendMessage(question, context);
+      expect(res.message).toBe(
+        'Essa tarefa está no seu cronograma por estes motivos:\n- Seu domínio nesse tópico está em 35%.\n- Você está na fase de Consolidação.',
+      );
+    });
+
+    it('nos provedores reais o contexto entra como mensagem de sistema, antes do histórico', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: 'Porque seu domínio está baixo.' } }] }), { status: 200 }),
+      );
+      const real = new AiService({
+        get: vi.fn((key: string) => ({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test' } as Record<string, string>)[key]),
+      } as never);
+      await real.sendMessage({ ...question, history: [{ role: 'assistant', content: 'Olá!' }] }, context);
+
+      const body = JSON.parse(String((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(body.messages.map((m: { role: string }) => m.role)).toEqual(['system', 'system', 'assistant', 'user']);
+      expect(body.messages[1].content).toBe(context);
+    });
+
+    it('sem contexto nada muda na conversa', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: 'Oi.' } }] }), { status: 200 }),
+      );
+      const real = new AiService({
+        get: vi.fn((key: string) => ({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test' } as Record<string, string>)[key]),
+      } as never);
+      await real.sendMessage(question);
+      const body = JSON.parse(String((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(body.messages.map((m: { role: string }) => m.role)).toEqual(['system', 'user']);
+    });
+  });
+
   describe('provedores reais', () => {
     function withConfig(values: Record<string, string | undefined>) {
       const configService = { get: vi.fn((key: string) => values[key]) };

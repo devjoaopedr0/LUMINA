@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Prisma, StudyTaskStatus } from "@prisma/client";
+import { Prisma, StudyArea, StudyEssayFrequency, StudyTaskStatus } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { Db } from "./domain/types";
 
@@ -18,6 +18,7 @@ export class SchedulesRepository {
       where: { userId },
       include: {
         scheduleSubjects: { include: { subject: true } },
+        dayMinutes: true,
       },
     });
   }
@@ -27,6 +28,7 @@ export class SchedulesRepository {
       where: { id },
       include: {
         scheduleSubjects: { include: { subject: true } },
+        dayMinutes: true,
       },
     });
   }
@@ -40,6 +42,9 @@ export class SchedulesRepository {
       studyDays: number[];
       dailyMinutes: number;
       objective?: string | null;
+      targetCourse?: string | null;
+      priorityArea?: StudyArea | null;
+      essayFrequency?: StudyEssayFrequency | null;
     },
   ) {
     return tx.studySchedule.create({
@@ -50,7 +55,24 @@ export class SchedulesRepository {
         studyDays: data.studyDays,
         dailyMinutes: data.dailyMinutes,
         objective: data.objective ?? null,
+        targetCourse: data.targetCourse ?? null,
+        priorityArea: data.priorityArea ?? null,
+        essayFrequency: data.essayFrequency ?? null,
       },
+    });
+  }
+
+  /** Troca o tempo por dia da semana do cronograma (lista vazia = volta a
+   *  valer `dailyMinutes` para todos os dias). */
+  async replaceDayMinutes(
+    tx: Db,
+    scheduleId: string,
+    rows: { weekday: number; minutes: number }[],
+  ) {
+    await tx.studyScheduleDayMinutes.deleteMany({ where: { scheduleId } });
+    if (rows.length === 0) return;
+    await tx.studyScheduleDayMinutes.createMany({
+      data: rows.map((row) => ({ scheduleId, weekday: row.weekday, minutes: row.minutes })),
     });
   }
 
@@ -107,13 +129,23 @@ export class SchedulesRepository {
     return tx.studyTask.createMany({ data: tasks });
   }
 
-  async findSessionByDate(scheduleId: string, date: Date) {
-    return this.prisma.studySession.findUnique({
+  async findSessionByDate(scheduleId: string, date: Date, tx: Db = this.prisma) {
+    return tx.studySession.findUnique({
       where: { scheduleId_date: { scheduleId, date } },
       include: {
         sessionSubjects: { include: { subject: true } },
         tasks: { include: { subject: true }, orderBy: { createdAt: "desc" } },
       },
+    });
+  }
+
+  /** Sessões de um intervalo com as tarefas (e a matéria de cada uma) — base
+   *  da visão semanal e do replanejamento. */
+  async findSessionsWithTasks(scheduleId: string, from: Date, to: Date, tx: Db = this.prisma) {
+    return tx.studySession.findMany({
+      where: { scheduleId, date: { gte: from, lte: to } },
+      orderBy: { date: "asc" },
+      include: { tasks: { include: { subject: true } } },
     });
   }
 
@@ -160,8 +192,8 @@ export class SchedulesRepository {
     };
   }
 
-  async findTaskById(id: string) {
-    return this.prisma.studyTask.findUnique({
+  async findTaskById(id: string, tx: Db = this.prisma) {
+    return tx.studyTask.findUnique({
       where: { id },
       include: { subject: true, session: true, schedule: true },
     });

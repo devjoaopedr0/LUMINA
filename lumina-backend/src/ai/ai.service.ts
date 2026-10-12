@@ -16,8 +16,11 @@ export class AiService {
   /**
    * Envia mensagem para o provedor de IA configurado.
    * Suporta: OpenAI, OpenRouter, Anthropic, Groq, ou mock para desenvolvimento.
+   *
+   * `context` é texto montado NO SERVIDOR (ex.: por que uma tarefa está no
+   * cronograma do aluno) e entra como mensagem de sistema antes do histórico.
    */
-  async sendMessage(dto: AiChatRequestDto): Promise<AiChatResponseDto> {
+  async sendMessage(dto: AiChatRequestDto, context?: string): Promise<AiChatResponseDto> {
     const { message, history } = dto;
 
     // Validação básica
@@ -32,16 +35,16 @@ export class AiService {
 
     switch (provider) {
       case 'openai':
-        return this.callOpenAI(message, history);
+        return this.callOpenAI(message, history, context);
       case 'openrouter':
-        return this.callOpenRouter(message, history);
+        return this.callOpenRouter(message, history, context);
       case 'anthropic':
-        return this.callAnthropic(message, history);
+        return this.callAnthropic(message, history, context);
       case 'groq':
-        return this.callGroq(message, history);
+        return this.callGroq(message, history, context);
       case 'mock':
       default:
-        return this.mockResponse(message, history);
+        return this.mockResponse(message, history, context);
     }
   }
 
@@ -51,9 +54,19 @@ export class AiService {
   private async mockResponse(
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
+    context?: string,
   ): Promise<AiChatResponseDto> {
     // Simula latência
     await new Promise((r) => setTimeout(r, 800 + Math.random() * 500));
+
+    // Com contexto do cronograma, o mock responde com os próprios motivos —
+    // assim a explicação funciona em desenvolvimento, sem provedor externo.
+    if (context) {
+      const reasons = context.split('\n').filter((line) => line.startsWith('- '));
+      return {
+        message: ['Essa tarefa está no seu cronograma por estes motivos:', ...reasons].join('\n'),
+      };
+    }
 
     const userMsg = message.content.toLowerCase();
 
@@ -92,6 +105,7 @@ export class AiService {
   private async callOpenAI(
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
+    context?: string,
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -105,6 +119,7 @@ export class AiService {
       providerName: 'OpenAI',
       message,
       history,
+      context,
       headers: {},
     });
   }
@@ -119,6 +134,7 @@ export class AiService {
   private async callOpenRouter(
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
+    context?: string,
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -140,6 +156,7 @@ export class AiService {
       providerName: 'OpenRouter',
       message,
       history,
+      context,
       headers: {
         'HTTP-Referer': this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5174',
         'X-Title': 'Lumina',
@@ -159,10 +176,12 @@ export class AiService {
     providerName: string;
     message: AiChatMessageDto;
     history: AiChatMessageDto[];
+    context?: string;
     headers: Record<string, string>;
   }): Promise<AiChatResponseDto> {
     const messages: ProviderMessage[] = [
       { role: 'system', content: this.getSystemPrompt() },
+      ...(params.context ? [{ role: 'system' as const, content: params.context }] : []),
       ...params.history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
       { role: 'user', content: params.message.content },
     ];
@@ -225,6 +244,7 @@ export class AiService {
   private async callAnthropic(
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
+    context?: string,
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     const model = this.config.get<string>('ANTHROPIC_MODEL') || 'claude-3-haiku-20240307';
@@ -249,7 +269,7 @@ export class AiService {
         model,
         max_tokens: 800,
         temperature: 0.7,
-        system: this.getSystemPrompt(),
+        system: context ? `\n\n` : this.getSystemPrompt(),
         messages,
       }),
     });
@@ -282,6 +302,7 @@ export class AiService {
   private async callGroq(
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
+    context?: string,
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('GROQ_API_KEY');
     if (!apiKey) {
@@ -295,6 +316,7 @@ export class AiService {
       providerName: 'Groq',
       message,
       history,
+      context,
       headers: {},
     });
   }
