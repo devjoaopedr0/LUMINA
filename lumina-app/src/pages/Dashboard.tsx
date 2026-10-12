@@ -117,6 +117,11 @@ function InviteManagementCard({ workspaceId, invites, inviteForm, setInviteForm,
   );
 }
 
+/** A partir de quantos % de acerto uma matéria é ponto forte, e abaixo de
+ *  quantos ela pede atenção. Entre os dois, não é nem uma coisa nem outra. */
+const STRONG_ACCURACY = 70;
+const ATTENTION_ACCURACY = 60;
+
 export function Dashboard() {
   const { user } = useAuth();
   const isStudent = user?.accountType === 'STUDENT_INDEPENDENT' || user?.accountType === 'STUDENT_INSTITUTION';
@@ -218,8 +223,16 @@ export function Dashboard() {
   const completion = useMemo(() => !progress?.totalTasks ? 0 : Math.min(100, Math.round((progress.completedTasks / progress.totalTasks) * 100)), [progress]);
   const todayLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   const subjectPerformance = performance?.bySubject.slice(0, 5) ?? [];
-  const strongestSubject = [...subjectPerformance].filter((item) => item.totalAttempts >= 3).sort((a, b) => b.accuracy - a.accuracy)[0];
-  const attentionSubject = [...subjectPerformance].filter((item) => item.totalAttempts >= 3).sort((a, b) => a.accuracy - b.accuracy)[0];
+  // Só entra matéria com respostas suficientes para dizer alguma coisa. E
+  // cada rótulo tem a sua faixa: sem isso, com uma matéria só (ou todas bem),
+  // a mesma matéria com 100% aparecia como ponto forte E ponto de atenção.
+  const ratedSubjects = subjectPerformance.filter((item) => item.totalAttempts >= 3);
+  const strongestSubject = ratedSubjects
+    .filter((item) => item.accuracy >= STRONG_ACCURACY)
+    .sort((a, b) => b.accuracy - a.accuracy)[0];
+  const attentionSubject = ratedSubjects
+    .filter((item) => item.accuracy < ATTENTION_ACCURACY)
+    .sort((a, b) => a.accuracy - b.accuracy)[0];
   const recentResults = simulations.filter((item) => item.result).slice(0, 3);
   const nextSimulations = simulations.filter((item) => !item.result).slice(0, 3);
   const topicPerformance = performance?.byTopic.slice(0, 5) ?? [];
