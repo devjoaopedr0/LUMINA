@@ -7,6 +7,8 @@ interface ProviderMessage {
   content: string;
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -202,6 +204,10 @@ export class AiService {
             temperature: 0.7,
             max_tokens: 800,
           }),
+          // Modelo gratuito às vezes aceita a conexão e não responde: sem
+          // limite, a conversa do aluno ficava pendurada para sempre. O
+          // estouro cai no catch e a vez passa para o próximo modelo.
+          signal: AbortSignal.timeout(this.requestTimeoutMs()),
         });
 
         if (!response.ok) {
@@ -265,6 +271,7 @@ export class AiService {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
+      signal: AbortSignal.timeout(this.requestTimeoutMs()),
       body: JSON.stringify({
         model,
         max_tokens: 800,
@@ -284,6 +291,12 @@ export class AiService {
     };
 
     return { message: data.content[0]?.text?.trim() ?? 'Sem resposta.' };
+  }
+
+  /** Tempo máximo de espera por UMA chamada ao provedor (`AI_TIMEOUT_MS`). */
+  private requestTimeoutMs(): number {
+    const configured = Number(this.config.get<string>('AI_TIMEOUT_MS'));
+    return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   private getSystemPrompt(): string {

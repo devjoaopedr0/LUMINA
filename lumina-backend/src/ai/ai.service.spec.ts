@@ -130,6 +130,35 @@ describe('AiService', () => {
     });
   });
 
+  describe('tempo-limite do provedor', () => {
+    const prompt = { message: { role: 'user' as const, content: 'explique Hardy-Weinberg' }, history: [] };
+    const withConfig = (values: Record<string, string | undefined>) =>
+      new AiService({ get: vi.fn((key: string) => values[key]) } as never);
+    const timeoutError = () => Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+
+    it('toda chamada sai com um sinal de cancelamento', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 }),
+      );
+      await withConfig({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test', AI_TIMEOUT_MS: '1500' }).sendMessage(prompt);
+      expect((fetchSpy.mock.calls[0] as [string, RequestInit])[1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('modelo que não responde a tempo cede a vez ao próximo', async () => {
+      vi.spyOn(globalThis, 'fetch')
+        .mockRejectedValueOnce(timeoutError())
+        .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: 'Resposta do segundo.' } }] }), { status: 200 }));
+      const service = withConfig({ AI_PROVIDER: 'openrouter', OPENAI_API_KEY: 'sk-or-test', AI_MODEL: 'lento', AI_FALLBACK_MODELS: 'rapido' });
+      await expect(service.sendMessage(prompt)).resolves.toEqual({ message: 'Resposta do segundo.' });
+    });
+
+    it('quando todos estouram, o erro diz que foi tempo-limite em vez de pendurar', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError());
+      const service = withConfig({ AI_PROVIDER: 'openrouter', OPENAI_API_KEY: 'sk-or-test', AI_MODEL: 'lento' });
+      await expect(service.sendMessage(prompt)).rejects.toThrow(/timeout/);
+    });
+  });
+
   describe('provedores reais', () => {
     function withConfig(values: Record<string, string | undefined>) {
       const configService = { get: vi.fn((key: string) => values[key]) };
