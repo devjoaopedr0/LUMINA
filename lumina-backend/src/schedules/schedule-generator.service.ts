@@ -142,10 +142,31 @@ export class ScheduleGeneratorService {
     const sliceMinutes = remainingMinutes;
     const occupied = (ss: ScheduleSubjectForGeneration) => session.occupiedBySubject?.[ss.subjectId] ?? 0;
     const dayMinutes = sliceMinutes + todaySubjects.reduce((sum, ss) => sum + occupied(ss), 0);
+    // Nenhuma matéria do dia fica com menos que um bloco mínimo: com pesos
+    // muito diferentes a proporção pura dava 17 minutos para a menor. Quem
+    // ficaria abaixo recebe o mínimo, e as outras dividem o resto pela
+    // proporção. (Matéria que já tem tarefa no dia não precisa do piso.)
+    const minBlock = Math.min(MIN_SUBJECT_BLOCK_MINUTES, Math.floor(dayMinutes / todaySubjects.length));
+    const atMinimum = new Set<string>();
+    const shareOf = (ss: ScheduleSubjectForGeneration) => {
+      if (atMinimum.has(ss.subjectId)) return minBlock;
+      const freeWeight = todaySubjects
+        .filter((s) => !atMinimum.has(s.subjectId))
+        .reduce((sum, s) => sum + sliceWeight(s), 0);
+      const freeMinutes = dayMinutes - atMinimum.size * minBlock;
+      return freeWeight > 0 ? Math.floor(freeMinutes * (sliceWeight(ss) / freeWeight)) : 0;
+    };
+    for (let changed = totalWeight > 0; changed; ) {
+      const below = todaySubjects.find(
+        (ss) => !atMinimum.has(ss.subjectId) && occupied(ss) === 0 && shareOf(ss) < minBlock,
+      );
+      if (below) atMinimum.add(below.subjectId);
+      changed = Boolean(below);
+    }
     const rawBudget = new Map(
       todaySubjects.map((ss) => [
         ss.subjectId,
-        totalWeight > 0 ? Math.max(0, Math.floor(dayMinutes * (sliceWeight(ss) / totalWeight)) - occupied(ss)) : 0,
+        totalWeight > 0 ? Math.max(0, shareOf(ss) - occupied(ss)) : 0,
       ]),
     );
     // Quando o que já está no dia passa da fatia da matéria, as outras cedem

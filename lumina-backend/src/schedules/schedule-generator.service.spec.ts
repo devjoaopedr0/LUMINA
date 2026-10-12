@@ -230,6 +230,19 @@ describe('ScheduleGeneratorService.buildTasksForSession', () => {
       expect(subjectsOf(tasks)).not.toContain('ss-MATH');
     });
 
+    it('com pesos muito diferentes, a matéria menor ainda recebe um bloco inteiro', async () => {
+      // 1h para duas matérias, 75h contra 30h: a proporção pura daria 42 e 17.
+      const pair = [
+        { subjectId: 'ss-BIOLOGY', targetHours: 75, subject: { name: 'Biologia', code: 'BIOLOGY' } },
+        { subjectId: 'ss-ARTS', targetHours: 30, subject: { name: 'Artes', code: 'ARTS' } },
+      ];
+      const tasks = await new ScheduleGeneratorService({} as never)
+        .buildTasksForSession({ ...session, scheduledMinutes: 60 }, userId, pair, db());
+      const minutes = (id: string) => tasks.filter((t) => t.subjectId === id).reduce((s, t) => s + (t.scheduledMinutes as number), 0);
+      expect(minutes('ss-ARTS')).toBe(30);
+      expect(minutes('ss-BIOLOGY')).toBe(30);
+    });
+
     it('matéria com mais horas-alvo aparece em mais dias', async () => {
       const weighted = subjects.map((s, i) => (i === 0 ? { ...s, targetHours: 40 } : s));
       const received: Record<string, number> = {};
