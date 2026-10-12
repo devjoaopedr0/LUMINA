@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiEssays, apiGetDailySession, apiGetErrorNotebookSummary, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiGetReviewQuestions, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type ErrorNotebookSummary, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
-import { formatCalendarDate } from "@/lib/utils";
+import { formatCalendarDate, localDateKey } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
@@ -194,7 +194,7 @@ export function Dashboard() {
     if (!isStudent) { setLoading(false); return; }
     const token = getAccessToken();
     if (!token) return;
-    Promise.allSettled([apiGetDailySession(token), apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token), apiGetReviewQuestions(token), apiGetErrorNotebookSummary(token)])
+    Promise.allSettled([apiGetDailySession(token, localDateKey()),apiGetProgress(token), apiGetQuestionPerformance(token), apiSimulations(token), apiEssays(token), apiGetQuestionProgress(token), apiGetReviewQuestions(token), apiGetErrorNotebookSummary(token)])
       .then(([daily, progressData, performanceData, simulationData, essayData, questionsData, reviewData, notebookData]) => {
         if (daily.status === 'fulfilled') { setSession(daily.value?.session ?? null); setSchedule(daily.value?.schedule ?? null); }
         if (progressData.status === 'fulfilled') { setProgress(progressData.value.summary); setEvolution(progressData.value.evolution ?? []); }

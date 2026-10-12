@@ -9,6 +9,15 @@ export function cn(...inputs: ClassValue[]) {
  * para dar feedback imediato no formulário, além da validação do backend. */
 export const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
+/** Dia de calendário do ALUNO (fuso do navegador) como "AAAA-MM-DD" — é o
+ * que o backend espera em `?date=`. `toISOString()` daria o dia em UTC, que
+ * à noite no Brasil já é o dia seguinte. */
+export function localDateKey(date: Date = new Date()): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 /** Formata uma data-calendário (sem hora) vinda do backend, tipicamente um
  * `@db.Date` do Prisma serializado como meia-noite UTC
  * (ex: "2026-09-08T00:00:00.000Z"). Passar isso por `new Date(...)` e depois

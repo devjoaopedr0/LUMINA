@@ -1046,7 +1046,17 @@ export function apiRemoveErrorNotebookEntry(
 // Cronograma de Estudos
 // =============================================================================
 
-export type StudyTaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
+/** SKIPPED: o aluno decidiu não fazer (replanejamento). */
+export type StudyTaskStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "SKIPPED";
+
+export type StudyArea = "LINGUAGENS" | "MATEMATICA" | "NATUREZA" | "HUMANAS";
+export type StudyEssayFrequency = "WEEKLY" | "BIWEEKLY";
+
+/** Tempo de estudo de um dia da semana (0 = domingo ... 6 = sábado). */
+export interface StudyDayMinutes {
+  weekday: number;
+  minutes: number;
+}
 
 export type StudyScheduleStatus = "ACTIVE" | "COMPLETED" | "CANCELLED";
 
@@ -1070,6 +1080,11 @@ export interface StudySchedule {
   studyDays: number[];
   dailyMinutes: number;
   objective: string | null;
+  targetCourse?: string | null;
+  priorityArea?: StudyArea | null;
+  essayFrequency?: StudyEssayFrequency | null;
+  /** Vazio = `dailyMinutes` vale para todo dia de estudo. */
+  dayMinutes?: StudyDayMinutes[];
   status: StudyScheduleStatus;
   createdAt: string;
   updatedAt: string;
@@ -1085,6 +1100,9 @@ export interface StudyTask {
   scheduleId: string;
   sessionId: string;
   subjectId: string | null;
+  /** Tópico do banco de questões, quando a tarefa veio do gerador adaptativo. */
+  topicId?: string | null;
+  activityType?: "TEORIA" | "QUESTOES" | "REVISAO" | "SIMULADO" | "REDACAO";
   title: string;
   description: string | null;
   status: StudyTaskStatus;
@@ -1149,6 +1167,10 @@ export interface CreateStudySchedulePayload {
   studyDays: number[];
   dailyMinutes: number;
   objective?: string;
+  dayMinutes?: StudyDayMinutes[];
+  targetCourse?: string;
+  priorityArea?: StudyArea;
+  essayFrequency?: StudyEssayFrequency;
   subjects: StudyScheduleSubjectTarget[];
 }
 
@@ -1191,7 +1213,8 @@ export function apiCreateStudySchedule(
 export function apiUpdateStudySchedule(
   accessToken: string,
   id: string,
-  payload: Partial<CreateStudySchedulePayload>
+  // `priorityArea: null` limpa a área; campo omitido não é alterado.
+  payload: Partial<Omit<CreateStudySchedulePayload, "priorityArea">> & { priorityArea?: StudyArea | null }
 ): Promise<StudySchedule | null> {
   return request(`/study/schedule/${id}`, {
     method: "PATCH",
@@ -1207,8 +1230,12 @@ export function apiDeleteStudySchedule(accessToken: string, id: string): Promise
   });
 }
 
+export type SchedulePhase = "BASE" | "CONSOLIDACAO" | "PREPARACAO";
+
 export interface DailySession {
   schedule: StudySchedule;
+  /** Fase da reta até a prova no dia consultado. */
+  phase?: SchedulePhase;
   session: StudySession | null;
   tasks: StudyTask[];
   /** Minutos registrados hoje por matéria (o cronômetro trabalha por matéria). */
@@ -1327,10 +1354,91 @@ export function apiLogSubjectTime(
   });
 }
 
-export function apiGetProgress(
-  accessToken: string
-): Promise<{ summary: StudyProgressSummary | null; evolution: ProgressEvolutionPoint[] | null }> {
+/** Conteúdos por status de domínio, só das matérias do cronograma. */
+export interface StudyMasterySummary {
+  totalTopics: number;
+  naoEstudados: number;
+  aprendendo: number;
+  praticando: number;
+  dominados: number;
+  precisaReforco: number;
+  /** Tópicos com revisão espaçada vencida hoje. */
+  paraRevisar: number;
+}
+
+export interface StudyProgressResponse {
+  summary: StudyProgressSummary | null;
+  evolution: ProgressEvolutionPoint[] | null;
+  mastery?: StudyMasterySummary | null;
+}
+
+export function apiGetProgress(accessToken: string): Promise<StudyProgressResponse> {
   return request("/study/progress", { headers: authHeaders(accessToken) });
+}
+
+/** Resumo de um dia na visão semanal. `totalTasks: 0` com tempo planejado =
+ * dia de estudo ainda não aberto (as tarefas nascem quando o dia é aberto). */
+export interface StudyWeekDay {
+  date: string;
+  scheduledMinutes: number;
+  totalTasks: number;
+  doneTasks: number;
+}
+
+export function apiGetWeek(accessToken: string, start: string): Promise<StudyWeekDay[] | null> {
+  return request(`/study/week?start=${encodeURIComponent(start)}`, { headers: authHeaders(accessToken) });
+}
+
+/** Refaz o plano do dia com o domínio de agora (depois do diagnóstico). */
+export function apiRefreshDay(accessToken: string, date: string): Promise<DailySession | null> {
+  return request("/study/daily/refresh", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ date }),
+  });
+}
+
+export type ReplanStrategy = "TOMORROW" | "SATURDAY" | "AUTO" | "SKIP";
+
+export interface ReplanPreview {
+  date: string;
+  subjects: { subjectName: string; beforeMinutes: number; afterMinutes: number }[];
+  warnings: string[];
+}
+
+export interface ReplanResult {
+  strategy: ReplanStrategy;
+  /** false = só a prévia do AUTO; nada foi gravado. */
+  applied: boolean;
+  movedTo: string | null;
+  preview?: ReplanPreview;
+}
+
+/** Replaneja uma tarefa não feita. `date` é hoje no fuso do aluno. */
+export function apiReplanTask(
+  accessToken: string,
+  id: string,
+  payload: { strategy: ReplanStrategy; date: string; confirm?: boolean }
+): Promise<ReplanResult> {
+  return request(`/study/tasks/${id}/replan`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface StudyDiagnosticArea {
+  area: StudyArea;
+  label: string;
+  questions: Question[];
+}
+
+/** Diagnóstico inicial: até 5 questões por área, das matérias do cronograma.
+ * `recommended` só vem true para quem ainda não tem domínio registrado. */
+export function apiGetDiagnostic(
+  accessToken: string
+): Promise<{ recommended: boolean; areas: StudyDiagnosticArea[] } | null> {
+  return request("/study/diagnostic", { headers: authHeaders(accessToken) });
 }
 
 export function apiSetVestibular(

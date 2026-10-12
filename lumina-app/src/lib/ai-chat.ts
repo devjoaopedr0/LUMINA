@@ -9,6 +9,19 @@ export interface AiChatMessage {
   content: string;
 }
 
+/** Evento que qualquer tela dispara para abrir a LuminIA já com uma
+ * pergunta — ex.: "por que essa tarefa está no meu dia?" no cronograma. */
+export const ASK_AI_EVENT = "lumina:ask-ai";
+
+export interface AskAiDetail {
+  message: string;
+  scheduleTaskId?: string;
+}
+
+export function askAi(detail: AskAiDetail): void {
+  window.dispatchEvent(new CustomEvent<AskAiDetail>(ASK_AI_EVENT, { detail }));
+}
+
 export class AiChatNotConfiguredError extends Error {
   constructor() {
     super("A integração com a IA ainda não foi configurada.");
@@ -39,6 +52,7 @@ const apiClient = createApiClient({
 export async function sendAiChatMessage(
   message: string,
   history: AiChatMessage[],
+  options: { scheduleTaskId?: string } = {},
 ): Promise<string> {
   if (!message.trim()) throw new Error("Mensagem vazia.");
   if (message.length > 4000) throw new Error("Mensagem muito longa (máx. 4000 caracteres).");
@@ -55,6 +69,8 @@ export async function sendAiChatMessage(
     body: JSON.stringify({
       message: { role: "user", content: message },
       history: history.map(({ role, content }) => ({ role, content })),
+      // Só o id da tarefa: o contexto do cronograma é montado no servidor.
+      ...(options.scheduleTaskId ? { scheduleTaskId: options.scheduleTaskId } : {}),
     }),
   });
   return res.message;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Bot, ChevronDown, MessageCircle, Send, Sparkles } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { AiChatNotConfiguredError, sendAiChatMessage, type AiChatMessage } from "@/lib/ai-chat";
+import { ASK_AI_EVENT, AiChatNotConfiguredError, sendAiChatMessage, type AiChatMessage, type AskAiDetail } from "@/lib/ai-chat";
 
 const INITIAL_MESSAGE: AiChatMessage = {
   id: "welcome",
@@ -27,19 +27,31 @@ export function AiChatWidget() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, open]);
 
-  if (!user || !location.pathname.startsWith("/app")) return null;
+  // A última versão de `send` fica numa ref: o ouvinte do evento é
+  // registrado uma vez só e mesmo assim enxerga o histórico atual.
+  const sendRef = useRef<(content: string, options?: { scheduleTaskId?: string }) => void>(() => undefined);
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    const content = input.trim();
+  // Outras telas abrem a conversa já com uma pergunta (ex.: o cronograma
+  // pergunta "por que essa tarefa está no meu dia?" passando o id da tarefa).
+  useEffect(() => {
+    function onAsk(event: Event) {
+      const detail = (event as CustomEvent<AskAiDetail>).detail;
+      if (!detail?.message) return;
+      setOpen(true);
+      sendRef.current(detail.message, { scheduleTaskId: detail.scheduleTaskId });
+    }
+    window.addEventListener(ASK_AI_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_AI_EVENT, onAsk);
+  }, []);
+
+  async function send(content: string, options: { scheduleTaskId?: string } = {}) {
     if (!content || sending) return;
     const userMessage: AiChatMessage = { id: crypto.randomUUID(), role: "user", content };
     const nextHistory = [...messages, userMessage];
     setMessages(nextHistory);
-    setInput("");
     setSending(true);
     try {
-      const response = await sendAiChatMessage(content, nextHistory);
+      const response = await sendAiChatMessage(content, nextHistory, options);
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: response }]);
     } catch (error) {
       setMessages((current) => [
@@ -56,6 +68,19 @@ export function AiChatWidget() {
       setSending(false);
     }
   }
+  useEffect(() => {
+    sendRef.current = (content, options) => void send(content, options);
+  });
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const content = input.trim();
+    if (!content || sending) return;
+    setInput("");
+    void send(content);
+  }
+
+  if (!user || !location.pathname.startsWith("/app")) return null;
 
   return (
     <div className="fixed bottom-5 right-5 z-50 sm:bottom-6 sm:right-6">
