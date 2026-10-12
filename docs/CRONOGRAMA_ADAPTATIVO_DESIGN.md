@@ -264,6 +264,22 @@ placar (`practice_answered` / `practice_correct`), que aparece na tarefa.
   tópico sem questões no banco; nesse caso não há placar.
 - Reabrir a tarefa apaga o placar.
 
+### Estudar: resumo de teoria do tópico
+
+Tarefa aberta com tópico também tem "Estudar" (botão principal nas tarefas de
+Teoria): abre um resumo do tópico em cinco seções fixas — em poucas palavras, o
+que você precisa saber, exemplo resolvido, erros comuns e como cai no ENEM — e
+termina em "Praticar agora", que leva para o bloco de questões.
+
+- O resumo fica em `topic_lessons`, um por tópico e igual para todos os alunos:
+  é gerado pela IA na primeira abertura (uns 10 a 15 s) e reaproveitado depois.
+- Texto que não segue as cinco seções é descartado, não guardado; sem provedor
+  de IA (`AI_PROVIDER=mock`) ou com o provedor fora do ar, a tela avisa e
+  oferece tentar de novo — não há conteúdo inventado no lugar.
+- É conteúdo gerado: a tela avisa que pode ter erro. `source` aceita `MANUAL`
+  para um resumo escrito ou revisado por professor substituir o gerado (ainda
+  não há tela para isso; hoje é direto no banco).
+
 ## 7. Fases pela proximidade da prova (seção 15)
 
 ```

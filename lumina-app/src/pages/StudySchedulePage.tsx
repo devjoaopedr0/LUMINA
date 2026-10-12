@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -36,6 +37,7 @@ import { DiagnosticQuiz } from "@/components/schedule/DiagnosticQuiz";
 import { ReplanMenu } from "@/components/schedule/ReplanMenu";
 import { ScheduleForm } from "@/components/schedule/ScheduleForm";
 import { SubjectTopicsView } from "@/components/schedule/SubjectTopicsView";
+import { TaskLesson } from "@/components/schedule/TaskLesson";
 import { TaskPractice } from "@/components/schedule/TaskPractice";
 import { STUDY_AREA_LABEL, WEEKDAY_LABELS, minutesToHours, topicQuestionsPath } from "@/components/schedule/shared";
 import { useAuth } from "@/contexts/AuthContext";
@@ -262,11 +264,15 @@ function ProgressPanel({ progress }: {
 }
 
 /**
- * Abre a prática de uma tarefa. O modal mora na página, não no item: a lista
- * se atualiza sozinha e a tarefa concluída muda de grupo — se o modal fosse do
- * item, ele sumia junto, antes de o aluno ver o resultado.
+ * Abre o resumo ou a prática de uma tarefa. Os modais moram na página, não no
+ * item: a lista se atualiza sozinha e a tarefa concluída muda de grupo — se o
+ * modal fosse do item, ele sumia junto, antes de o aluno ver o resultado.
  */
-const PracticeContext = createContext<((task: StudyTask) => void) | null>(null);
+interface TaskStudyActions {
+  practice: (task: StudyTask) => void;
+  study: (task: StudyTask) => void;
+}
+const PracticeContext = createContext<TaskStudyActions | null>(null);
 
 interface TaskItemProps {
   task: StudyTask;
@@ -305,7 +311,7 @@ function taskCustomNote(task: StudyTask): string | null {
 
 function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDetails = false, onReplanned }: TaskItemProps) {
   const [error, setError] = useState<string | null>(null);
-  const startPractice = useContext(PracticeContext);
+  const studyActions = useContext(PracticeContext);
 
   const status = task.status;
   const badgeClass = TASK_STATUS_BADGE[status];
@@ -374,8 +380,9 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDet
             <Sparkles className="h-4 w-4" />
             Por quê?
           </Button>
-          {/* Direto para praticar: as questões do tópico no banco de questões. */}
-          {task.topic && (
+          {/* Tarefa aberta tem "Estudar" e "Praticar"; na concluída fica o
+              atalho para as questões do tópico no banco. */}
+          {task.topic && !(canCreateTasks && open) && (
             <Link
               to={topicQuestionsPath(task.topic.subjectId, task.topic.id)}
               className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-graphite transition-colors hover:bg-graphite/5"
@@ -392,11 +399,25 @@ function TaskItem({ task, onUpdate, canCreateTasks, hideSubject = false, hideDet
           )}
           {/* Praticar conclui a tarefa com o resultado das questões — é o
               caminho principal; "Concluir" fica para quem estudou por fora. */}
-          {canCreateTasks && open && task.topic && startPractice && (
-            <Button size="sm" onClick={() => startPractice(task)}>
-              <Play className="h-4 w-4" />
-              Praticar
-            </Button>
+          {canCreateTasks && open && task.topic && studyActions && (
+            <>
+              <Button
+                size="sm"
+                variant={task.activityType === "TEORIA" ? "primary" : "outline"}
+                onClick={() => studyActions.study(task)}
+              >
+                <BookOpenCheck className="h-4 w-4" />
+                Estudar
+              </Button>
+              <Button
+                size="sm"
+                variant={task.activityType === "TEORIA" ? "outline" : "primary"}
+                onClick={() => studyActions.practice(task)}
+              >
+                <Play className="h-4 w-4" />
+                Praticar
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -425,6 +446,8 @@ export function StudySchedulePage() {
   const [diagnosticAreas, setDiagnosticAreas] = useState<StudyDiagnosticArea[] | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [practiceTask, setPracticeTask] = useState<StudyTask | null>(null);
+  const [lessonTask, setLessonTask] = useState<StudyTask | null>(null);
+  const studyActions = useMemo(() => ({ practice: setPracticeTask, study: setLessonTask }), []);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -638,7 +661,7 @@ export function StudySchedulePage() {
   }
 
   return (
-    <PracticeContext.Provider value={setPracticeTask}>
+    <PracticeContext.Provider value={studyActions}>
     <div className="min-h-screen bg-surface-card">
       <header className="border-b border-surface-line bg-white">
         <div className="container-lumina flex h-[72px] items-center justify-between">
@@ -911,6 +934,16 @@ export function StudySchedulePage() {
           />
         )}
 
+        {lessonTask && (
+          <TaskLesson
+            task={lessonTask}
+            onClose={() => setLessonTask(null)}
+            onPractice={() => {
+              setPracticeTask(lessonTask);
+              setLessonTask(null);
+            }}
+          />
+        )}
         {practiceTask && (
           <TaskPractice
             task={practiceTask}

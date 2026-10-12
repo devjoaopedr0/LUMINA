@@ -1193,6 +1193,24 @@ export interface StudyTaskPractice {
   questions: Question[];
 }
 
+/** Resumo de teoria do tópico da tarefa (seções "## ", listas "- ", **negrito**). */
+export interface StudyTaskLesson {
+  taskId: string;
+  subject: string | null;
+  topic: string;
+  topicId: string;
+  level: TopicLevel | null;
+  content: string;
+  /** "AI" = gerado; "MANUAL" = escrito ou revisado por alguém. */
+  source: string;
+  updatedAt: string;
+}
+
+/** Na primeira abertura de um tópico o resumo é gerado na hora (pode levar ~15 s). */
+export function apiGetTaskLesson(accessToken: string, taskId: string): Promise<StudyTaskLesson> {
+  return request(`/ai/lessons/task/${taskId}`, { headers: authHeaders(accessToken) });
+}
+
 export function apiGetTaskPractice(accessToken: string, taskId: string): Promise<StudyTaskPractice> {
   return request(`/study/tasks/${taskId}/practice`, { headers: authHeaders(accessToken) });
 }

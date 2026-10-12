@@ -9,6 +9,13 @@ interface ProviderMessage {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+const DEFAULT_MAX_TOKENS = 800;
+
+/** Ajustes de uma geração que foge do padrão de conversa (texto longo). */
+interface GenerationOptions {
+  maxTokens?: number;
+  timeoutMs?: number;
+}
 
 @Injectable()
 export class AiService {
@@ -54,6 +61,35 @@ export class AiService {
       case 'mock':
       default:
         return this.mockResponse(message, history, context);
+    }
+  }
+
+  /**
+   * Gera um texto fora da conversa (ex.: o resumo de teoria de um tópico),
+   * com prompt de sistema próprio em vez da persona da LuminIA. Devolve null
+   * quando não há provedor de IA configurado (AI_PROVIDER=mock): quem chama
+   * decide o que mostrar — aqui não se inventa conteúdo de estudo.
+   */
+  async generateText(params: {
+    system: string;
+    prompt: string;
+    maxTokens?: number;
+    timeoutMs?: number;
+  }): Promise<string | null> {
+    const provider = this.config.get<string>('AI_PROVIDER')?.toLowerCase() || 'mock';
+    const message: AiChatMessageDto = { role: 'user', content: params.prompt };
+    const options: GenerationOptions = { maxTokens: params.maxTokens, timeoutMs: params.timeoutMs };
+    switch (provider) {
+      case 'openai':
+        return (await this.callOpenAI(message, [], undefined, params.system, options)).message;
+      case 'openrouter':
+        return (await this.callOpenRouter(message, [], undefined, params.system, options)).message;
+      case 'anthropic':
+        return (await this.callAnthropic(message, [], undefined, params.system, options)).message;
+      case 'groq':
+        return (await this.callGroq(message, [], undefined, params.system, options)).message;
+      default:
+        return null;
     }
   }
 
@@ -117,6 +153,7 @@ export class AiService {
     history: AiChatMessageDto[],
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
+    options: GenerationOptions = {},
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -132,6 +169,7 @@ export class AiService {
       history,
       context,
       systemPrompt,
+      options,
       headers: {},
     });
   }
@@ -148,6 +186,7 @@ export class AiService {
     history: AiChatMessageDto[],
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
+    options: GenerationOptions = {},
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -171,15 +210,16 @@ export class AiService {
       history,
       context,
       systemPrompt,
+      options,
       headers: {
         'HTTP-Referer': this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5174',
         'X-Title': 'Lumina',
       },
       // Os modelos gratuitos raciocinam antes de responder e gastavam o
-      // orçamento de tokens nisso (resposta vazia) ou 20 s de espera. Para
-      // uma conversa de tutoria, raciocínio curto basta — e a resposta chega
-      // em poucos segundos.
-      extraBody: { reasoning: { effort: 'low', exclude: true } },
+      // orçamento de tokens inteiro nisso (resposta vazia) ou 20 s de espera
+      // — num texto longo, como o resumo de teoria, nem "raciocínio curto"
+      // sobrava espaço para a resposta. Para tutoria, responder direto basta.
+      extraBody: { reasoning: { enabled: false } },
     });
   }
 
@@ -197,6 +237,7 @@ export class AiService {
     history: AiChatMessageDto[];
     context?: string;
     systemPrompt: string;
+    options: GenerationOptions;
     headers: Record<string, string>;
     /** Campos do corpo que só este provedor entende. */
     extraBody?: Record<string, unknown>;
@@ -222,13 +263,13 @@ export class AiService {
             model,
             messages,
             temperature: 0.8,
-            max_tokens: 800,
+            max_tokens: params.options.maxTokens ?? DEFAULT_MAX_TOKENS,
             ...params.extraBody,
           }),
           // Modelo gratuito às vezes aceita a conexão e não responde: sem
           // limite, a conversa do aluno ficava pendurada para sempre. O
           // estouro cai no catch e a vez passa para o próximo modelo.
-          signal: AbortSignal.timeout(this.requestTimeoutMs()),
+          signal: AbortSignal.timeout(params.options.timeoutMs ?? this.requestTimeoutMs()),
         });
 
         if (!response.ok) {
@@ -273,6 +314,7 @@ export class AiService {
     history: AiChatMessageDto[],
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
+    options: GenerationOptions = {},
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     const model = this.config.get<string>('ANTHROPIC_MODEL') || 'claude-3-haiku-20240307';
@@ -293,10 +335,10 @@ export class AiService {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      signal: AbortSignal.timeout(this.requestTimeoutMs()),
+      signal: AbortSignal.timeout(options.timeoutMs ?? this.requestTimeoutMs()),
       body: JSON.stringify({
         model,
-        max_tokens: 800,
+        max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
         temperature: 0.7,
         system: context ? `${systemPrompt}\n\n${context}` : systemPrompt,
         messages,
@@ -329,6 +371,7 @@ export class AiService {
     history: AiChatMessageDto[],
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
+    options: GenerationOptions = {},
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('GROQ_API_KEY');
     if (!apiKey) {
@@ -344,6 +387,7 @@ export class AiService {
       history,
       context,
       systemPrompt,
+      options,
       headers: {},
     });
   }

@@ -120,7 +120,7 @@ export function TaskPractice({ task, onClose, onCompleted }: TaskPracticeProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
       <div role="dialog" aria-label="Praticar tarefa" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[24px] bg-white p-6 sm:p-8">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>

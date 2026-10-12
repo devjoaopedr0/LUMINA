@@ -553,10 +553,28 @@ model Topic {
   subject   Subject    @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
   topicMasteries TopicMastery[]
   studyTasks     StudyTask[]
+  lesson         TopicLesson?
 
   @@unique([subjectId, name])
   @@index([subjectId])
   @@map("topics")
+}
+
+/// Resumo de teoria do tópico, mostrado na tarefa de "Teoria" do
+/// cronograma. Um por tópico e igual para todos os alunos: é gerado na
+/// primeira vez que alguém abre e reaproveitado depois.
+model TopicLesson {
+  id        String   @id @default(uuid()) @db.Uuid
+  topicId   String   @unique @map("topic_id") @db.Uuid
+  /// Texto em seções ("## Título"), listas ("- ") e **negrito**.
+  content   String
+  /// De onde veio: "AI" (gerado) ou "MANUAL" (escrito/revisado por alguém).
+  source    String   @default("AI") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@map("topic_lessons")
 }
 
 /// Estado de domínio do aluno num tópico — cronograma adaptativo, fase 1

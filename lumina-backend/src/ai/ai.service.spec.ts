@@ -230,9 +230,9 @@ describe('AiService', () => {
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-or-test');
       expect((init.headers as Record<string, string>)['X-Title']).toBe('Lumina');
       expect(JSON.parse(String(init.body)).model).toBe('nvidia/nemotron-3-super-120b-a12b:free');
-      // Raciocínio curto e fora da resposta: o modelo gratuito responde em
-      // segundos em vez de gastar os tokens pensando.
-      expect(JSON.parse(String(init.body)).reasoning).toEqual({ effort: 'low', exclude: true });
+      // Sem raciocínio: o modelo gratuito responde em segundos em vez de
+      // gastar os tokens pensando.
+      expect(JSON.parse(String(init.body)).reasoning).toEqual({ enabled: false });
       fetchSpy.mockRestore();
     });
 
