@@ -97,6 +97,10 @@ export class UserResponseDto {
   targetUniversity: string | null;
 
   @Expose()
+  @ApiProperty({ nullable: true, description: 'Modalidade de concorrência no Sisu (AC, LB_PPI...)' })
+  sisuModality: string | null;
+
+  @Expose()
   @ApiProperty({ nullable: true })
   preferredStudyPeriod: string | null;
 

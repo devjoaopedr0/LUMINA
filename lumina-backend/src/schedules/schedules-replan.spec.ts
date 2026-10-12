@@ -19,7 +19,7 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
   let generator: { buildTasksForSession: ReturnType<typeof vi.fn> };
 
   const schedule = {
-    id: 'schedule', userId: 'user', priorityArea: null, essayFrequency: null,
+    id: 'schedule', userId: 'user', priorityAreas: [], excludedTopicIds: [], essayFrequency: null,
     startDate: new Date('2026-09-21'), endDate: new Date('2026-11-27'),
     studyDays: [1, 2, 3, 4, 5], dailyMinutes: 120, dayMinutes: [],
     scheduleSubjects: [
@@ -236,11 +236,15 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
     });
 
     it('valida dia da semana repetido e fora da faixa, e aceita os campos do onboarding', async () => {
-      const ok = { ...dto, dayMinutes: [{ weekday: 1, minutes: 90 }], targetCourse: 'Medicina', priorityArea: 'NATUREZA', essayFrequency: 'BIWEEKLY' };
+      const ok = { ...dto, dayMinutes: [{ weekday: 1, minutes: 90 }], targetCourse: 'Medicina', priorityAreas: ['NATUREZA', 'HUMANAS', 'MATEMATICA'], essayFrequency: 'BIWEEKLY' };
       expect(await validate(plainToInstance(CreateStudyScheduleDto, ok))).toHaveLength(0);
       expect(await validate(plainToInstance(CreateStudyScheduleDto, { ...dto, dayMinutes: [{ weekday: 7, minutes: 30 }] }))).not.toHaveLength(0);
       expect(await validate(plainToInstance(CreateStudyScheduleDto, { ...dto, dayMinutes: [{ weekday: 1, minutes: 30 }, { weekday: 1, minutes: 60 }] }))).not.toHaveLength(0);
-      expect(await validate(plainToInstance(CreateStudyScheduleDto, { ...dto, priorityArea: 'EXATAS' }))).not.toHaveLength(0);
+      expect(await validate(plainToInstance(CreateStudyScheduleDto, { ...dto, priorityAreas: ['EXATAS'] }))).not.toHaveLength(0);
+      // No máximo três áreas, sem repetir.
+      const four = ['NATUREZA', 'HUMANAS', 'MATEMATICA', 'LINGUAGENS'];
+      expect(await validate(plainToInstance(CreateStudyScheduleDto, { ...dto, priorityAreas: four }))).not.toHaveLength(0);
+      expect(await validate(plainToInstance(CreateStudyScheduleDto, { ...dto, priorityAreas: ['NATUREZA', 'NATUREZA'] }))).not.toHaveLength(0);
     });
   });
 
@@ -315,8 +319,8 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
       expect(generator.buildTasksForSession).not.toHaveBeenCalled();
     });
 
-    it('dia só com matéria sem catálogo (Inglês) não é "antigo": o gerador novo também o planeja assim', async () => {
-      repo.findSessionByDate.mockResolvedValue(session([staticTask('Inglês', 'ENGLISH')]));
+    it('dia só com matéria sem catálogo não é "antigo": o gerador novo também o planeja assim', async () => {
+      repo.findSessionByDate.mockResolvedValue(session([staticTask('Libras', 'LIBRAS')]));
       await service.getDailySession('user', new Date('2026-09-30'));
       expect(db.studyTask.deleteMany).not.toHaveBeenCalled();
     });
@@ -377,6 +381,50 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
     expect(db.studyTask.deleteMany.mock.calls[0][0].where).toMatchObject({ sessionId: 'session', status: 'PENDING' });
     expect(generator.buildTasksForSession.mock.lastCall?.[0]).toMatchObject({ occupiedMinutes: 40, excludeTopicIds: ['x'] });
     expect(daily?.session?.id).toBe('session');
+  });
+
+  describe('o aluno escolhe os tópicos', () => {
+    beforeEach(() => {
+      db.topic = { findUnique: vi.fn().mockResolvedValue({ id: 'topic' }) };
+    });
+
+    it('tirar um tópico guarda a escolha e refaz os dias em que ele estava agendado', async () => {
+      db.studyTask.findMany.mockImplementation(({ where }: any) =>
+        Promise.resolve(where?.topicId === 'topic' ? [{ sessionId: 's1' }, { sessionId: 's1' }, { sessionId: 's2' }] : []),
+      );
+      db.studySession.findMany.mockResolvedValue([
+        { id: 's1', date: new Date('2026-10-01'), scheduledMinutes: 120 },
+        { id: 's2', date: new Date('2026-10-02'), scheduledMinutes: 120 },
+      ]);
+      const result = await service.setTopicIncluded('user', 'topic', false);
+
+      expect(result).toEqual({ topicId: 'topic', included: false });
+      expect(db.studySchedule.update).toHaveBeenCalledWith({ where: { id: 'schedule' }, data: { excludedTopicIds: ['topic'] } });
+      // Só de ontem em diante, e só tarefa gerada que o aluno não tocou.
+      const lookup = db.studyTask.findMany.mock.calls.find(([arg]: any[]) => arg.where?.topicId === 'topic')[0];
+      expect(lookup.where).toMatchObject({ session: { date: { gte: new Date('2026-09-29') } }, status: 'PENDING' });
+      expect(generator.buildTasksForSession).toHaveBeenCalledTimes(2);
+      expect(generator.buildTasksForSession.mock.lastCall?.[0].excludeTopicIds).toContain('topic');
+    });
+
+    it('devolver um tópico só o tira da lista; ele volta nos próximos dias gerados', async () => {
+      repo.findScheduleByUserId.mockResolvedValue({ ...schedule, excludedTopicIds: ['topic', 'outro'] });
+      await service.setTopicIncluded('user', 'topic', true);
+      expect(db.studySchedule.update).toHaveBeenCalledWith({ where: { id: 'schedule' }, data: { excludedTopicIds: ['outro'] } });
+      expect(generator.buildTasksForSession).not.toHaveBeenCalled();
+    });
+
+    it('tópico tirado nunca entra num dia novo', async () => {
+      repo.findScheduleByUserId.mockResolvedValue({ ...schedule, excludedTopicIds: ['fora'] });
+      repo.findSessionByDate.mockResolvedValue({ id: 'session', date: new Date('2026-09-30'), scheduledMinutes: 120, tasks: [] });
+      await service.getDailySession('user', new Date('2026-09-30'));
+      expect(generator.buildTasksForSession.mock.lastCall?.[0].excludeTopicIds).toEqual(['fora']);
+    });
+
+    it('tópico inexistente não é aceito', async () => {
+      db.topic.findUnique.mockResolvedValue(null);
+      expect(await service.setTopicIncluded('user', 'nada', false)).toBeNull();
+    });
   });
 
   it('visão semanal: resume cada dia sem gerar tarefa', async () => {

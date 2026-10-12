@@ -7,9 +7,9 @@
  * (fase 2), que precisa saber, dado um StudySubject escolhido no cronograma,
  * qual Subject/Topic consultar para TopicMastery.
  *
- * Matérias sem entrada aqui (Inglês, Espanhol, Educação Física, Redação)
- * ainda não têm catálogo de tópicos — o gerador cai no modo genérico para
- * elas até a fase 5 (redação tem lógica própria) ou até o catálogo crescer.
+ * Só Redação fica de fora: não é dividida em tópicos, tem rotina semanal
+ * própria (schedule-essay.ts). Matéria cujo Subject ainda não existe no
+ * banco (seed não rodado) cai no modo genérico do gerador.
  */
 export const STUDY_SUBJECT_CODE_TO_SUBJECT_NAME: Record<string, string> = {
   PORTUGUESE: 'Língua Portuguesa',
@@ -23,4 +23,7 @@ export const STUDY_SUBJECT_CODE_TO_SUBJECT_NAME: Record<string, string> = {
   GEOGRAPHY: 'Geografia',
   PHILOSOPHY: 'Filosofia',
   SOCILOGY: 'Sociologia',
+  ENGLISH: 'Inglês',
+  SPANISH: 'Espanhol',
+  PHYSICAL_EDUCATION: 'Educação Física',
 };

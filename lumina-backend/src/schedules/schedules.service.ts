@@ -168,7 +168,7 @@ export class SchedulesService {
     const update: Prisma.StudyScheduleUpdateInput = { startDate, endDate, studyDays, dailyMinutes };
     if (dto.objective !== undefined) update.objective = dto.objective || null;
     if (dto.targetCourse !== undefined) update.targetCourse = dto.targetCourse || null;
-    if (dto.priorityArea !== undefined) update.priorityArea = dto.priorityArea ?? null;
+    if (dto.priorityAreas !== undefined) update.priorityAreas = dto.priorityAreas;
     if (dto.essayFrequency !== undefined) update.essayFrequency = dto.essayFrequency ?? null;
 
     await this.repo.prisma.$transaction(async (tx: Db) => {
@@ -279,7 +279,7 @@ export class SchedulesService {
         dailyMinutes: dto.dailyMinutes,
         objective: dto.objective ?? null,
         targetCourse: dto.targetCourse ?? null,
-        priorityArea: dto.priorityArea ?? null,
+        priorityAreas: dto.priorityAreas ?? [],
         essayFrequency: dto.essayFrequency ?? null,
       });
 
@@ -517,12 +517,16 @@ export class SchedulesService {
         date: session.date,
         scheduledMinutes: session.scheduledMinutes,
         phase: await this.phaseFor(schedule, session.date),
-        priorityArea: schedule.priorityArea,
+        priorityAreas: schedule.priorityAreas,
         essay: kept.some((t) => t.activityType === StudyActivityType.REDACAO)
           ? null
           : await this.essayFor(tx, schedule, session),
         occupiedMinutes: kept.reduce((sum, t) => sum + t.scheduledMinutes, 0),
-        excludeTopicIds: kept.flatMap((t) => (t.topicId ? [t.topicId] : [])),
+        excludeTopicIds: [
+          ...kept.flatMap((t) => (t.topicId ? [t.topicId] : [])),
+          // Tópicos que o aluno tirou do cronograma nunca são agendados.
+          ...schedule.excludedTopicIds,
+        ],
         occupiedBySubject: kept.reduce<Record<string, number>>((minutes, t) => {
           if (t.subjectId) minutes[t.subjectId] = (minutes[t.subjectId] ?? 0) + t.scheduledMinutes;
           return minutes;
@@ -537,6 +541,49 @@ export class SchedulesService {
       tx,
     );
     if (tasks.length > 0) await this.repo.createTasks(tx, tasks);
+  }
+
+  /**
+   * O aluno escolhe quais tópicos estudar. Tirar um tópico o guarda no
+   * cronograma (o gerador não o agenda mais) e refaz os dias, de hoje em
+   * diante, em que ele estava agendado e intocado. Devolver só o reinclui:
+   * ele volta à fila nos próximos dias gerados.
+   */
+  async setTopicIncluded(userId: string, topicId: string, included: boolean) {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+    const topic = await this.repo.prisma.topic.findUnique({ where: { id: topicId } });
+    if (!topic) return null;
+
+    const excluded = new Set(schedule.excludedTopicIds);
+    if (included) excluded.delete(topicId);
+    else excluded.add(topicId);
+    const excludedTopicIds = [...excluded];
+
+    await this.repo.prisma.$transaction(async (tx: Db) => {
+      await tx.studySchedule.update({ where: { id: schedule.id }, data: { excludedTopicIds } });
+      if (included) return;
+
+      const yesterday = addDays(startOfDay(new Date()), -1);
+      const scheduled = await tx.studyTask.findMany({
+        where: {
+          scheduleId: schedule.id,
+          topicId,
+          session: { date: { gte: yesterday } },
+          ...REPLACEABLE_TASK_WHERE,
+        },
+        select: { sessionId: true },
+      });
+      const sessionIds = [...new Set(scheduled.map((task) => task.sessionId))];
+      if (sessionIds.length === 0) return;
+      const sessions = await tx.studySession.findMany({ where: { id: { in: sessionIds } } });
+      for (const session of sessions) {
+        await this.planSession(tx, { ...schedule, excludedTopicIds }, session, { replace: true });
+      }
+      await this.updateProgress(tx, schedule.id);
+    }, PLAN_TX_OPTIONS);
+
+    return { topicId, included };
   }
 
   async createTask(

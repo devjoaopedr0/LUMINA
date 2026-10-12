@@ -12,6 +12,8 @@ import {
   MinLength,
 } from 'class-validator';
 
+import { SISU_MODALITIES } from '../../cutoffs/sisu-modality';
+
 const emptyToNull = ({ value }: { value: unknown }) =>
   typeof value === 'string' && value.trim() === '' ? null : value;
 
@@ -90,6 +92,13 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(120)
   targetUniversity?: string | null;
+
+  /** Modalidade de concorrência no Sisu: escolhe qual nota de corte vira a
+   *  meta do aluno. Vazio volta para ampla concorrência. */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsIn(SISU_MODALITIES)
+  sisuModality?: string | null;
 
   @IsOptional()
   @IsIn(['MANHA', 'TARDE', 'NOITE', 'FLEXIVEL'])

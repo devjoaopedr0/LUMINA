@@ -21,8 +21,8 @@ export interface SessionForGeneration {
   scheduledMinutes: number;
   /** Fase da reta no dia da sessão (fase 3, §7). Ausente = BASE. */
   phase?: SchedulePhase;
-  /** Área que o aluno marcou como prioritária no onboarding (fase 5, §11). */
-  priorityArea?: StudyArea | null;
+  /** Áreas que o aluno marcou como prioritárias no onboarding (fase 5, §11). */
+  priorityAreas?: StudyArea[];
   /** Etapa de redação que cai nesta sessão (fase 5, §9) — quem chama decide
    *  o dia; aqui ela só ocupa o tempo antes da divisão por matéria. */
   essay?: EssayStep | null;
@@ -110,9 +110,9 @@ export class ScheduleGeneratorService {
     if (sliceSubjects.length === 0 || remainingMinutes < MIN_TASK_MINUTES) return tasks;
 
     const inPriorityArea = (s: ScheduleSubjectForGeneration) =>
-      Boolean(session.priorityArea) && STUDY_SUBJECT_CODE_TO_AREA[s.subject.code] === session.priorityArea;
+      (session.priorityAreas ?? []).includes(STUDY_SUBJECT_CODE_TO_AREA[s.subject.code]);
     // Peso da matéria na divisão do dia: as horas-alvo, com um reforço para
-    // as matérias da área que o aluno marcou como prioritária (§11).
+    // as matérias das áreas que o aluno marcou como prioritárias (§11).
     const sliceWeight = (s: ScheduleSubjectForGeneration) =>
       s.targetHours * (inPriorityArea(s) ? PRIORITY_AREA_SLICE_BOOST : 1);
     const maxTargetHours = Math.max(...sliceSubjects.map((s) => s.targetHours));

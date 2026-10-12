@@ -43,7 +43,7 @@ export class SchedulesRepository {
       dailyMinutes: number;
       objective?: string | null;
       targetCourse?: string | null;
-      priorityArea?: StudyArea | null;
+      priorityAreas?: StudyArea[];
       essayFrequency?: StudyEssayFrequency | null;
     },
   ) {
@@ -56,7 +56,7 @@ export class SchedulesRepository {
         dailyMinutes: data.dailyMinutes,
         objective: data.objective ?? null,
         targetCourse: data.targetCourse ?? null,
-        priorityArea: data.priorityArea ?? null,
+        priorityAreas: data.priorityAreas ?? [],
         essayFrequency: data.essayFrequency ?? null,
       },
     });
@@ -134,7 +134,9 @@ export class SchedulesRepository {
       where: { scheduleId_date: { scheduleId, date } },
       include: {
         sessionSubjects: { include: { subject: true } },
-        tasks: { include: { subject: true }, orderBy: { createdAt: "desc" } },
+        // `topic` vai junto: é dele que a tela tira o link para as questões
+        // do tópico no banco de questões.
+        tasks: { include: { subject: true, topic: true }, orderBy: { createdAt: "desc" } },
       },
     });
   }
@@ -175,7 +177,7 @@ export class SchedulesRepository {
     const [items, total] = await Promise.all([
       this.prisma.studyTask.findMany({
         where,
-        include: { subject: true, session: true },
+        include: { subject: true, topic: true, session: true },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
@@ -195,7 +197,7 @@ export class SchedulesRepository {
   async findTaskById(id: string, tx: Db = this.prisma) {
     return tx.studyTask.findUnique({
       where: { id },
-      include: { subject: true, session: true, schedule: true },
+      include: { subject: true, topic: true, session: true, schedule: true },
     });
   }
 

@@ -15,10 +15,10 @@ import { AMPLIACAO_QUESTIONS } from '../../prisma/seed-data/ampliacao';
 import { ESSAY_MODELS } from '../../prisma/seed-data/essay-models';
 import { EXAM_PAPERS } from '../../prisma/seed-data/exam-papers';
 import { FORMULAS, REPERTORIOS } from '../../prisma/seed-data/notebooks';
-import { STUDY_SUBJECT_TOPICS } from '../../prisma/seed-data/study-subject-topics';
 import { mergeDuplicateTopics } from './merge-duplicate-topics';
+import { importSisuCutoffs } from './import-sisu-cutoffs';
+import { seedCurriculumTopics } from './seed-curriculum-topics';
 import type { SeedQuestion } from '../../prisma/seed-data/types';
-import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from '../schedules/study-subject-question-bank-map';
 
 /**
  * Seed do banco de questões da Lumina. Cria:
@@ -220,30 +220,6 @@ async function ensureTopic(prisma: PrismaClient, subjectId: string, name: string
     update: {},
     create: { subjectId, name },
   });
-}
-
-/** Garante os tópicos do currículo (item 2 do design do cronograma adaptativo)
- *  como linhas reais de Topic, mesmo para tópicos que nenhuma questão ainda
- *  cobre — TopicMastery precisa de um topicId para existir, não só de
- *  questões respondidas. Idempotente (mesmo upsert de ensureTopic). */
-async function seedCurriculumTopics(prisma: PrismaClient): Promise<number> {
-  let created = 0;
-  for (const entry of STUDY_SUBJECT_TOPICS) {
-    const subjectName = STUDY_SUBJECT_CODE_TO_SUBJECT_NAME[entry.subjectCode];
-    if (!subjectName) continue;
-    const subject = await ensureSubject(prisma, subjectName);
-    for (const group of entry.groups) {
-      for (const topicName of group.topics) {
-        const existing = await prisma.topic.findUnique({
-          where: { subjectId_name: { subjectId: subject.id, name: topicName } },
-        });
-        if (existing) continue;
-        await ensureTopic(prisma, subject.id, topicName);
-        created += 1;
-      }
-    }
-  }
-  return created;
 }
 
 async function ensureExam(prisma: PrismaClient, name: string, year: number) {
@@ -538,6 +514,11 @@ async function main(): Promise<void> {
     const topicMerge = await mergeDuplicateTopics(prisma);
     console.log(
       `✓ Tópicos duplicados fundidos: ${topicMerge.merged} (${topicMerge.questionsMoved} questões, ${topicMerge.masteriesMoved} domínios e ${topicMerge.tasksMoved} tarefas movidos).`,
+    );
+
+    const cutoffs = await importSisuCutoffs(prisma);
+    console.log(
+      `✓ Notas de corte do Sisu prontas: ${cutoffs.rows} cursos/ano das edições ${cutoffs.years.join(', ')}.`,
     );
 
     const curriculumTopicsCreated = await seedCurriculumTopics(prisma);

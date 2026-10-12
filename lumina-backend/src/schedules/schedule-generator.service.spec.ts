@@ -438,9 +438,9 @@ describe('ScheduleGeneratorService.buildTasksForSession', () => {
         question: { findMany: vi.fn().mockResolvedValue([]) },
       };
       const history = { subjectId: 'study-subject-history', targetHours: 10, subject: { name: 'História', code: 'HISTORY' } };
-      const mathMinutes = async (priorityArea: 'HUMANAS' | null) => {
+      const mathMinutes = async (priorityAreas: ('HUMANAS' | 'LINGUAGENS' | 'MATEMATICA')[]) => {
         const tasks = await service().buildTasksForSession(
-          { ...session, scheduledMinutes: 160, priorityArea }, userId, [mathStudySubject({ targetHours: 10 }), history], db,
+          { ...session, scheduledMinutes: 160, priorityAreas }, userId, [mathStudySubject({ targetHours: 10 }), history], db,
         );
         return tasks
           .filter((t) => t.subjectId === 'study-subject-math')
@@ -448,8 +448,10 @@ describe('ScheduleGeneratorService.buildTasksForSession', () => {
       };
       // Mesmas horas-alvo: 80min para cada. Com Humanas prioritária, História
       // passa a pesar 12,5 contra 10 e Matemática cede tempo (71 de 160).
-      expect(await mathMinutes(null)).toBe(80);
-      expect(await mathMinutes('HUMANAS')).toBe(71);
+      expect(await mathMinutes([])).toBe(80);
+      expect(await mathMinutes(['HUMANAS', 'LINGUAGENS'])).toBe(71);
+      // As duas áreas marcadas: o reforço vale para as duas e a divisão volta a ser igual.
+      expect(await mathMinutes(['HUMANAS', 'MATEMATICA'])).toBe(80);
     });
   });
 

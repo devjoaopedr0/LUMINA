@@ -411,8 +411,9 @@ Fases 1 a 5 implementadas. Onde o código diverge do que está escrito acima:
   (`ScheduleInsightsService.explainTask`). Texto vindo do cliente permitiria
   justamente o que a seção quer evitar.
 - **Onboarding (§11).** A criação é um formulário em três etapas
-  (disponibilidade, objetivo, matérias). A área prioritária dá 25% a mais de
-  peso às matérias da área na divisão do dia. O diagnóstico é oferecido só a
+  (disponibilidade, objetivo, matérias). O aluno marca até três áreas
+  prioritárias (`priorityAreas`), e as matérias delas ganham 25% a mais de
+  peso na divisão do dia. O diagnóstico é oferecido só a
   quem não tem nenhum `TopicMastery`, usa a tentativa normal de questão e,
   ao terminar, refaz o dia (`POST /study/daily/refresh`).
 - **Replanejamento (§12).** `POST /study/tasks/:id/replan`. `SKIP` usa o

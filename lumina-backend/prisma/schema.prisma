@@ -279,6 +279,9 @@ model UserProfile {
   schoolName String? @map("school_name") @db.VarChar(120)
   desiredCourse String? @map("desired_course") @db.VarChar(120)
   targetUniversity String? @map("target_university") @db.VarChar(120)
+  /// Modalidade de concorrência do aluno no Sisu (AC, LB_PPI, LI_EP...) —
+  /// escolhe qual nota de corte vira a meta dele. Nulo = ampla concorrência.
+  sisuModality String? @map("sisu_modality") @db.VarChar(10)
   preferredStudyPeriod String? @map("preferred_study_period") @db.VarChar(20)
   studySessionMinutes Int? @map("study_session_minutes")
   weeklyStudyDays Int? @map("weekly_study_days")
@@ -287,6 +290,45 @@ model UserProfile {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
+}
+
+/// Nota de corte do Sisu de um curso ofertado (curso + campus + turno) numa
+/// edição, a partir dos relatórios "Inscrições e notas de corte" que o MEC
+/// publica. Uma linha por curso e ano, com a nota de cada modalidade em
+/// coluna: ampla concorrência e as oito da Lei de Cotas (LB = até o limite
+/// de renda, LI = independente de renda; PPI, quilombolas, PCD e demais
+/// egressos de escola pública). Nula onde o curso não teve aquela vaga.
+model SisuCutoff {
+  id                 String @id @default(uuid()) @db.Uuid
+  year               Int
+  /// CO_IES_CURSO do e-MEC: o mesmo curso/campus/turno ao longo dos anos.
+  courseCode         Int    @map("course_code")
+  institutionCode    Int    @map("institution_code")
+  institutionName    String @map("institution_name")
+  institutionAcronym String @map("institution_acronym")
+  campus             String
+  city               String
+  state              String @db.Char(2)
+  courseName         String @map("course_name")
+  degree             String
+  shift              String
+  /// Nome do curso e sigla/nome da instituição sem acento e em maiúsculas,
+  /// para casar com o texto livre do cadastro ("medicina", "ufc").
+  courseKey          String @map("course_key")
+  institutionKey     String @map("institution_key")
+  scoreAc            Float? @map("score_ac")
+  scoreLbPpi         Float? @map("score_lb_ppi")
+  scoreLbQ           Float? @map("score_lb_q")
+  scoreLbPcd         Float? @map("score_lb_pcd")
+  scoreLbEp          Float? @map("score_lb_ep")
+  scoreLiPpi         Float? @map("score_li_ppi")
+  scoreLiQ           Float? @map("score_li_q")
+  scoreLiPcd         Float? @map("score_li_pcd")
+  scoreLiEp          Float? @map("score_li_ep")
+
+  @@unique([year, courseCode])
+  @@index([courseKey])
+  @@map("sisu_cutoffs")
 }
 
 /// Organização que licencia a Lumina (escola, cursinho, professor
@@ -927,7 +969,7 @@ enum StudyTaskStatus {
   @@map("study_task_status")
 }
 
-/// Área do ENEM que o aluno marcou como prioritária no onboarding (fase 5,
+/// Área do ENEM que o aluno pode marcar como prioritária no onboarding (fase 5,
 /// §11) — entra como `pesoObjetivo` na prioridade dos tópicos (§4).
 enum StudyArea {
   LINGUAGENS
@@ -957,10 +999,13 @@ model StudySchedule {
   studyDays       Json                 @map("study_days")
   dailyMinutes    Int                  @map("daily_minutes")
   objective       String?
-  /// Onboarding (fase 5, §11): curso que o aluno quer e a área que ele quer
-  /// priorizar. Ambos opcionais — cronogramas antigos seguem sem eles.
+  /// Onboarding (fase 5, §11): curso que o aluno quer e as áreas que ele
+  /// quer priorizar (até três). Ambos opcionais.
   targetCourse    String?              @map("target_course")
-  priorityArea    StudyArea?           @map("priority_area")
+  priorityAreas   StudyArea[]          @default([]) @map("priority_areas")
+  /// Tópicos (Topic.id) que o aluno tirou do próprio cronograma: o gerador
+  /// não os agenda e eles não contam nos indicadores de domínio.
+  excludedTopicIds String[]            @default([]) @map("excluded_topic_ids") @db.Uuid
   /// Rotina de redação (§9). Nulo com Redação no plano = semanal.
   essayFrequency  StudyEssayFrequency? @map("essay_frequency")
   status          StudyScheduleStatus  @default(ACTIVE)

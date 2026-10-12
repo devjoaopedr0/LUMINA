@@ -15,6 +15,7 @@ import {
   MaxLength,
   ArrayNotEmpty,
   ArrayUnique,
+  ArrayMaxSize,
   ValidateNested,
   IsEnum,
   IsBoolean,
@@ -74,7 +75,7 @@ export class CreateStudyScheduleDto {
   @Max(1440)
   dailyMinutes: number;
 
-  @ApiProperty({ type: String, nullable: true, example: "Passar no ENEM com 1400+ pontos" })
+  @ApiProperty({ type: String, nullable: true, example: "Média 750 no ENEM para Medicina" })
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -98,10 +99,13 @@ export class CreateStudyScheduleDto {
   @MaxLength(120)
   targetCourse?: string;
 
-  @ApiProperty({ enum: StudyArea, nullable: true, required: false })
+  @ApiProperty({ enum: StudyArea, isArray: true, required: false, description: "Até três áreas prioritárias" })
   @IsOptional()
-  @IsEnum(StudyArea)
-  priorityArea?: StudyArea;
+  @IsArray()
+  @ArrayMaxSize(3)
+  @ArrayUnique()
+  @IsEnum(StudyArea, { each: true })
+  priorityAreas?: StudyArea[];
 
   @ApiProperty({ enum: StudyEssayFrequency, nullable: true, required: false })
   @IsOptional()
@@ -166,10 +170,13 @@ export class UpdateStudyScheduleDto {
   @MaxLength(120)
   targetCourse?: string;
 
-  @ApiProperty({ enum: StudyArea, nullable: true, required: false })
+  @ApiProperty({ enum: StudyArea, isArray: true, required: false, description: "Até três áreas prioritárias" })
   @IsOptional()
-  @IsEnum(StudyArea)
-  priorityArea?: StudyArea;
+  @IsArray()
+  @ArrayMaxSize(3)
+  @ArrayUnique()
+  @IsEnum(StudyArea, { each: true })
+  priorityAreas?: StudyArea[];
 
   @ApiProperty({ enum: StudyEssayFrequency, nullable: true, required: false })
   @IsOptional()
@@ -329,4 +336,11 @@ export class ReplanTaskDto {
   @IsOptional()
   @IsBoolean()
   confirm?: boolean;
+}
+
+/// O aluno inclui ou tira um tópico do próprio cronograma.
+export class SetTopicIncludedDto {
+  @ApiProperty({ description: "false tira o tópico do cronograma; true devolve." })
+  @IsBoolean()
+  included: boolean;
 }

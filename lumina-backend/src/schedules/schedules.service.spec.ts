@@ -118,7 +118,7 @@ describe('Cronograma: regressões funcionais', () => {
     const generator = { buildTasksForSession: vi.fn().mockResolvedValue([]) };
     service = new SchedulesService(repo as SchedulesRepository, generator as never, {} as never);
     repo.findScheduleByUserId.mockResolvedValue({
-      id: 'schedule', userId: 'user', scheduleSubjects: [],
+      id: 'schedule', userId: 'user', scheduleSubjects: [], excludedTopicIds: [],
       startDate: new Date('2026-09-01'), endDate: new Date('2026-12-10'),
     });
     const emptySession = (date: string) => ({ id: 'session', date: new Date(date), scheduledMinutes: 60, tasks: [] });

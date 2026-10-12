@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StudyActivityType, StudyArea, TopicMasteryStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { CutoffsService } from '../cutoffs/cutoffs.service';
 import { QuestionsService } from '../questions/questions.service';
 import type { QuestionResponseDto } from '../questions/dto/question-response.dto';
 import { SchedulesRepository } from './schedules.repository';
@@ -51,6 +52,27 @@ export interface MasterySummary {
   paraRevisar: number;
 }
 
+export interface SubjectTopics {
+  /** StudySubject.id (a matéria do cronograma). */
+  subjectId: string;
+  subjectName: string;
+  /** Subject.id no banco de questões — é o filtro de matéria de lá. */
+  questionBankSubjectId: string | null;
+  topics: {
+    id: string;
+    name: string;
+    status: TopicMasteryStatus;
+    masteryScore: number;
+    attempts: number;
+    correctAttempts: number;
+    /** Revisão espaçada vencida. */
+    due: boolean;
+    questionCount: number;
+    /** false = o aluno tirou este tópico do cronograma. */
+    included: boolean;
+  }[];
+}
+
 export interface TaskExplanation {
   taskId: string;
   title: string;
@@ -80,6 +102,7 @@ export class ScheduleInsightsService {
     private readonly repo: SchedulesRepository,
     private readonly schedules: SchedulesService,
     private readonly questions: QuestionsService,
+    private readonly cutoffs: CutoffsService,
   ) {}
 
   /** Subject (banco de questões) de cada matéria do cronograma que tem
@@ -104,7 +127,11 @@ export class ScheduleInsightsService {
       this.prisma.topic.findMany({ where: { subjectId: { in: subjectIds } }, select: { id: true, name: true } }),
       this.prisma.topicMastery.findMany({ where: { userId, subjectId: { in: subjectIds } } }),
     ]);
-    const topicIds = new Set(topics.filter((t) => t.name !== CATCH_ALL_TOPIC_NAME).map((t) => t.id));
+    // Tópico que o aluno tirou do cronograma não é conteúdo "a ver".
+    const excluded = new Set(schedule.excludedTopicIds);
+    const topicIds = new Set(
+      topics.filter((t) => t.name !== CATCH_ALL_TOPIC_NAME && !excluded.has(t.id)).map((t) => t.id),
+    );
     const rows = masteries.filter((m) => topicIds.has(m.topicId));
 
     const count = (status: TopicMasteryStatus) => rows.filter((m) => m.status === status).length;
@@ -119,6 +146,61 @@ export class ScheduleInsightsService {
       precisaReforco: count(TopicMasteryStatus.PRECISA_REFORCO),
       paraRevisar: studied.filter((m) => m.nextReviewAt && m.nextReviewAt <= now).length,
     };
+  }
+
+  /**
+   * Tópicos de cada matéria do cronograma com a situação do aluno em cada
+   * um — o que ele já domina, o que está estudando, o que está para revisar
+   * e o que tirou do plano. Redação não aparece: não é dividida em tópicos.
+   */
+  async topicsBySubject(userId: string): Promise<SubjectTopics[] | null> {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+    const subjects = await this.questionBankSubjects(schedule.scheduleSubjects);
+    const subjectIds = subjects.map((s) => s.id);
+    const [topics, masteries, questionRows] = await Promise.all([
+      this.prisma.topic.findMany({ where: { subjectId: { in: subjectIds } }, orderBy: { name: 'asc' } }),
+      this.prisma.topicMastery.findMany({ where: { userId, subjectId: { in: subjectIds } } }),
+      this.prisma.question.findMany({ where: { subjectId: { in: subjectIds } }, select: { topicId: true } }),
+    ]);
+    const masteryByTopic = new Map(masteries.map((m) => [m.topicId, m]));
+    const questionCount = new Map<string, number>();
+    for (const row of questionRows) {
+      if (row.topicId) questionCount.set(row.topicId, (questionCount.get(row.topicId) ?? 0) + 1);
+    }
+    const excluded = new Set(schedule.excludedTopicIds);
+    const subjectByName = new Map(subjects.map((s) => [s.name, s]));
+    const now = new Date();
+
+    return schedule.scheduleSubjects
+      .filter((ss) => ss.subject.code !== ESSAY_SUBJECT_CODE)
+      .map((ss) => {
+        const bankSubject = subjectByName.get(STUDY_SUBJECT_CODE_TO_SUBJECT_NAME[ss.subject.code] ?? '');
+        return {
+          subjectId: ss.subjectId,
+          subjectName: ss.subject.name,
+          questionBankSubjectId: bankSubject?.id ?? null,
+          topics: topics
+            .filter((t) => t.subjectId === bankSubject?.id && t.name !== CATCH_ALL_TOPIC_NAME)
+            .map((t) => {
+              const mastery = masteryByTopic.get(t.id);
+              const status = mastery?.status ?? TopicMasteryStatus.NAO_ESTUDADO;
+              return {
+                id: t.id,
+                name: t.name,
+                status,
+                masteryScore: mastery?.masteryScore ?? 0,
+                attempts: mastery?.attempts ?? 0,
+                correctAttempts: mastery?.correctAttempts ?? 0,
+                due:
+                  status !== TopicMasteryStatus.NAO_ESTUDADO &&
+                  Boolean(mastery?.nextReviewAt && mastery.nextReviewAt <= now),
+                questionCount: questionCount.get(t.id) ?? 0,
+                included: !excluded.has(t.id),
+              };
+            }),
+        };
+      });
   }
 
   /**
@@ -168,9 +250,8 @@ export class ScheduleInsightsService {
       const questionCount = countByTopic.get(task.topic.id) ?? 0;
       const maxTargetHours = Math.max(...schedule.scheduleSubjects.map((ss) => ss.targetHours));
       const inPriorityArea =
-        Boolean(schedule.priorityArea) &&
         Boolean(task.subject) &&
-        STUDY_SUBJECT_CODE_TO_AREA[task.subject!.code] === schedule.priorityArea;
+        schedule.priorityAreas.includes(STUDY_SUBJECT_CODE_TO_AREA[task.subject!.code]);
       const terms = topicPriorityTerms({
         masteryScore: mastery?.masteryScore ?? null,
         status: mastery?.status ?? null,
@@ -205,8 +286,8 @@ export class ScheduleInsightsService {
       if (!terms.naoEstudado && terms.diasSemEstudar !== null && terms.diasSemEstudar >= STALE_DAYS) {
         reasons.push(`Faz ${terms.diasSemEstudar} dias que você não estuda esse tópico.`);
       }
-      if (inPriorityArea && schedule.priorityArea) {
-        reasons.push(`${task.subject?.name} é da área que você marcou como prioritária (${STUDY_AREA_LABEL[schedule.priorityArea]}).`);
+      if (inPriorityArea && task.subject) {
+        reasons.push(`${task.subject?.name} é de uma área que você marcou como prioritária (${STUDY_AREA_LABEL[STUDY_SUBJECT_CODE_TO_AREA[task.subject.code]]}).`);
       }
     }
 
@@ -218,12 +299,20 @@ export class ScheduleInsightsService {
     if (task.topic) reasons.push(ACTIVITY_REASON[task.activityType]);
     reasons.push(`Você está na fase de ${PHASE_LABEL[phase]} do cronograma: ${PHASE_REASON[phase]}.`);
 
+    // Meta de nota pela nota de corte do Sisu (curso e universidade do
+    // cadastro): a LuminIA fala da média real que o aluno precisa, em vez de
+    // repetir o número que ele digitou no objetivo.
+    const cutoff = await this.cutoffs.targetForUser(userId);
+
     const context = [
       'Contexto do cronograma do aluno (dados reais do sistema; use-os para explicar, sem inventar outros números):',
       `Tarefa: "${task.title}" — ${task.scheduledMinutes} minutos em ${formatDayMonth(task.session.date)}.`,
       `Matéria: ${task.subject?.name ?? 'sem matéria'}.${task.topic ? ` Tópico: ${task.topic.name}.` : ''}`,
       schedule.objective ? `Objetivo do aluno: ${schedule.objective}.` : null,
       schedule.targetCourse ? `Curso-alvo: ${schedule.targetCourse}.` : null,
+      cutoff.status === 'OK'
+        ? `Meta de nota: ${cutoff.message} A nota do ENEM vai até 1000 por prova; a meta é a média das cinco e é recalculada a cada edição do Sisu.`
+        : null,
       'Motivos de a tarefa estar no dia:',
       ...reasons.map((reason) => `- ${reason}`),
     ]

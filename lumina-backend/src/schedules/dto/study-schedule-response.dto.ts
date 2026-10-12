@@ -101,7 +101,7 @@ export class StudyScheduleResponseDto {
   @ApiProperty({ example: 120 })
   dailyMinutes: number;
 
-  @ApiProperty({ type: String, nullable: true, example: "Passar no ENEM com 1400+ pontos" })
+  @ApiProperty({ type: String, nullable: true, example: "Média 750 no ENEM para Medicina" })
   objective: string | null;
 
   @ApiProperty({ example: "ACTIVE" })

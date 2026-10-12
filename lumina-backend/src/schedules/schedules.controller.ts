@@ -7,9 +7,11 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
   ParseIntPipe,
+  ParseUUIDPipe,
   DefaultValuePipe,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -22,6 +24,7 @@ import {
   CreateStudyTaskDto,
   ReplanTaskDto,
   RescheduleTaskDto,
+  SetTopicIncludedDto,
   SetVestibularDto,
   SubjectTimeLogDto,
   TimeLogDto,
@@ -111,6 +114,30 @@ export class SchedulesController {
   })
   async refreshDay(@CurrentUser() user: UserWithProfile, @Body("date") date?: string) {
     return this.service.refreshDay(user.id, userDate(date));
+  }
+
+  @Get("study/topics")
+  @ApiOperation({
+    summary: "Tópicos de cada matéria do cronograma",
+    description: "Situação do aluno em cada tópico e se ele está no plano.",
+  })
+  async getTopics(@CurrentUser() user: UserWithProfile) {
+    return this.insights.topicsBySubject(user.id);
+  }
+
+  @Put("study/topics/:id")
+  @ApiOperation({
+    summary: "Inclui ou tira um tópico do cronograma",
+    description: "Tirar refaz os dias, de hoje em diante, em que o tópico estava agendado.",
+  })
+  async setTopicIncluded(
+    @CurrentUser() user: UserWithProfile,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetTopicIncludedDto,
+  ) {
+    const result = await this.service.setTopicIncluded(user.id, id, dto.included);
+    if (!result) throw new NotFoundException("Tópico não encontrado.");
+    return result;
   }
 
   @Get("study/week")

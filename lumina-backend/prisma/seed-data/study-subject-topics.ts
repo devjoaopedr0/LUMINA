@@ -70,6 +70,53 @@ export const STUDY_SUBJECT_TOPICS: StudySubjectTopics[] = [
     ],
   },
   {
+    subjectCode: "ENGLISH",
+    groups: [
+      {
+        group: "Inglês",
+        topics: [
+          "Compreensão textual",
+          "Vocabulário",
+          "Conectivos",
+          "Expressões idiomáticas",
+        ],
+      },
+    ],
+  },
+  {
+    subjectCode: "SPANISH",
+    groups: [
+      {
+        group: "Espanhol",
+        topics: [
+          "Compreensão textual",
+          "Vocabulário",
+          "Falsos cognatos",
+          "Conectivos",
+          "Tempos verbais",
+          "Gêneros textuais",
+          "Variação linguística do espanhol",
+        ],
+      },
+    ],
+  },
+  {
+    subjectCode: "PHYSICAL_EDUCATION",
+    groups: [
+      {
+        group: "Educação Física",
+        topics: [
+          "Práticas corporais e cultura",
+          "Esporte e sociedade",
+          "Saúde e qualidade de vida",
+          "Corpo, mídia e padrões de beleza",
+          "Lazer e inclusão",
+          "Jogos, lutas e danças",
+        ],
+      },
+    ],
+  },
+  {
     subjectCode: "PHYSICS",
     groups: [
       {

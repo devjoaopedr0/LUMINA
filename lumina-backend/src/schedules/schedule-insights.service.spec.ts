@@ -4,7 +4,7 @@ import { ScheduleInsightsService } from './schedule-insights.service';
 const userId = 'user';
 const schedule = {
   id: 'schedule', userId, objective: 'Passar em Medicina', targetCourse: 'Medicina',
-  priorityArea: 'NATUREZA', essayFrequency: null,
+  priorityAreas: ['NATUREZA', 'MATEMATICA'], essayFrequency: null, excludedTopicIds: [] as string[],
   scheduleSubjects: [
     { subjectId: 'ss-math', targetHours: 40, subject: { name: 'Matemática', code: 'MATH' } },
     { subjectId: 'ss-physics', targetHours: 20, subject: { name: 'Física', code: 'PHYSICS' } },
@@ -27,8 +27,9 @@ function setup() {
   };
   const schedules: any = { phaseFor: vi.fn().mockResolvedValue('BASE') };
   const questions: any = { findAll: vi.fn().mockResolvedValue({ items: [] }) };
-  const service = new ScheduleInsightsService(prisma, repo, schedules, questions);
-  return { service, prisma, repo, schedules, questions };
+  const cutoffs: any = { targetForUser: vi.fn().mockResolvedValue({ status: 'MISSING_PROFILE', message: '' }) };
+  const service = new ScheduleInsightsService(prisma, repo, schedules, questions, cutoffs);
+  return { service, prisma, repo, schedules, questions, cutoffs };
 }
 
 describe('ScheduleInsightsService.masterySummary (§13)', () => {
@@ -58,16 +59,54 @@ describe('ScheduleInsightsService.masterySummary (§13)', () => {
     });
   });
 
+  it('tópico que o aluno tirou do cronograma sai da conta', async () => {
+    const { service, prisma, repo } = setup();
+    repo.findScheduleByUserId.mockResolvedValue({ ...schedule, excludedTopicIds: ['t2'] });
+    prisma.topic.findMany.mockResolvedValue(['t1', 't2', 't3'].map((id) => ({ id, name: id })));
+    prisma.topicMastery.findMany.mockResolvedValue([{ topicId: 't2', status: 'DOMINADO', nextReviewAt: null }]);
+    expect(await service.masterySummary(userId)).toMatchObject({ totalTopics: 2, dominados: 0, naoEstudados: 2 });
+  });
+
   it('só olha as matérias do cronograma que têm catálogo de tópicos', async () => {
     const { service, prisma } = setup();
     await service.masterySummary(userId);
-    expect(prisma.subject.findMany).toHaveBeenCalledWith({ where: { name: { in: ['Matemática', 'Física'] } } });
+    // Redação fica de fora: não é dividida em tópicos.
+    expect(prisma.subject.findMany).toHaveBeenCalledWith({ where: { name: { in: ['Matemática', 'Física', 'Inglês'] } } });
   });
 
   it('sem cronograma não há indicador', async () => {
     const { service, repo } = setup();
     repo.findScheduleByUserId.mockResolvedValue(null);
     expect(await service.masterySummary(userId)).toBeNull();
+  });
+});
+
+describe('ScheduleInsightsService.topicsBySubject', () => {
+  it('lista os tópicos de cada matéria com a situação do aluno e se estão no plano', async () => {
+    const { service, prisma, repo } = setup();
+    repo.findScheduleByUserId.mockResolvedValue({ ...schedule, excludedTopicIds: ['m-juros'] });
+    prisma.topic.findMany.mockResolvedValue([
+      { id: 'm-funcoes', subjectId: 'qb-math', name: 'Funções' },
+      { id: 'm-geral', subjectId: 'qb-math', name: 'Geral' },
+      { id: 'm-juros', subjectId: 'qb-math', name: 'Juros' },
+      { id: 'f-ondas', subjectId: 'qb-physics', name: 'Ondas' },
+    ]);
+    prisma.topicMastery.findMany.mockResolvedValue([
+      { topicId: 'm-funcoes', status: 'PRATICANDO', masteryScore: 60, attempts: 5, correctAttempts: 3, nextReviewAt: new Date(Date.now() - 86_400_000) },
+    ]);
+    prisma.question.findMany.mockResolvedValue([{ topicId: 'm-funcoes' }, { topicId: 'm-funcoes' }, { topicId: 'f-ondas' }]);
+
+    const result = await service.topicsBySubject(userId);
+    // Redação não tem tópicos; Inglês não tem Subject neste banco de teste.
+    expect(result?.map((s) => [s.subjectName, s.questionBankSubjectId, s.topics.length])).toEqual([
+      ['Matemática', 'qb-math', 2],
+      ['Física', 'qb-physics', 1],
+      ['Inglês', null, 0],
+    ]);
+    expect(result?.[0].topics).toEqual([
+      { id: 'm-funcoes', name: 'Funções', status: 'PRATICANDO', masteryScore: 60, attempts: 5, correctAttempts: 3, due: true, questionCount: 2, included: true },
+      { id: 'm-juros', name: 'Juros', status: 'NAO_ESTUDADO', masteryScore: 0, attempts: 0, correctAttempts: 0, due: false, questionCount: 0, included: false },
+    ]);
   });
 });
 
@@ -98,7 +137,7 @@ describe('ScheduleInsightsService.explainTask (§10)', () => {
       'Seu domínio nesse tópico está em 35% (aprendendo, 1 acerto(s) em 4 questão(ões)).',
       'É um dos tópicos mais cobrados de Física no banco de questões (3 questões).',
       'Faz 25 dias que você não estuda esse tópico.',
-      'Física é da área que você marcou como prioritária (Ciências da Natureza).',
+      'Física é de uma área que você marcou como prioritária (Ciências da Natureza).',
       'Física recebe uma fatia do dia proporcional às 20h que você definiu para a matéria.',
       'A atividade é questões porque o tópico já passou da teoria: agora é praticar.',
       'Você está na fase de Consolidação do cronograma: o foco passa para questões e revisão.',
@@ -106,6 +145,18 @@ describe('ScheduleInsightsService.explainTask (§10)', () => {
     expect(explanation?.context).toContain('Tarefa: "Questões — Ondas" — 40 minutos em 20/10.');
     expect(explanation?.context).toContain('Curso-alvo: Medicina.');
     expect(explanation?.context).toContain('- Seu domínio nesse tópico está em 35%');
+  });
+
+  it('leva para a LuminIA a meta de nota do aluno pela nota de corte', async () => {
+    const { service, prisma, cutoffs } = setup();
+    prisma.studyTask.findUnique.mockResolvedValue(baseTask);
+    cutoffs.targetForUser.mockResolvedValue({
+      status: 'OK',
+      message: 'A nota de corte média de MEDICINA na UFC (2023–2025) foi 802,0: é a média do ENEM que você precisa alcançar.',
+    });
+    const explanation = await service.explainTask(userId, 'task');
+    expect(explanation?.context).toContain('Meta de nota: A nota de corte média de MEDICINA na UFC (2023–2025) foi 802,0');
+    expect(explanation?.context).toContain('vai até 1000 por prova');
   });
 
   it('tópico nunca estudado e revisão vencida viram motivos próprios', async () => {
