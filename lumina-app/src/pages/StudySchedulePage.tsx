@@ -39,6 +39,7 @@ import { ScheduleForm } from "@/components/schedule/ScheduleForm";
 import { SubjectTopicsView } from "@/components/schedule/SubjectTopicsView";
 import { TaskLesson } from "@/components/schedule/TaskLesson";
 import { TaskPractice } from "@/components/schedule/TaskPractice";
+import { WeeklySummaryView } from "@/components/schedule/WeeklySummaryView";
 import { STUDY_AREA_LABEL, WEEKDAY_LABELS, minutesToHours, topicQuestionsPath } from "@/components/schedule/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { askAi } from "@/lib/ai-chat";
@@ -885,11 +886,14 @@ export function StudySchedulePage() {
                 <FocusTimer subjects={subjects} onSaved={() => loadAll({ silent: true })} />
               )}
                {activeTab === "weekly" && (
-                <WeeklyView
-                  weekDays={weekDays}
-                  week={weekData}
-                  onOpenDay={(day) => { setCurrentDate(day); setActiveTab("daily"); }}
-                />
+                <>
+                  <WeeklyView
+                    weekDays={weekDays}
+                    week={weekData}
+                    onOpenDay={(day) => { setCurrentDate(day); setActiveTab("daily"); }}
+                  />
+                  <WeeklySummaryView date={weekStartKey} />
+                </>
               )}
               {activeTab === "monthly" && (
                 <MonthlyView

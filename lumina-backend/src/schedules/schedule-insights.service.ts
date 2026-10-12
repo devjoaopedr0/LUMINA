@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { StudyActivityType, StudyArea, TopicMasteryStatus } from '@prisma/client';
+import { StudyActivityType, StudyArea, StudyTaskStatus, TopicMasteryStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { SCHEDULE_CONTEXT_GUIDANCE } from '../ai/luminia-persona';
 import { CutoffsService } from '../cutoffs/cutoffs.service';
@@ -13,6 +13,7 @@ import { ESSAY_SUBJECT_CODE, STUDY_AREA_LABEL, STUDY_SUBJECT_CODE_TO_AREA } from
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from './study-subject-question-bank-map';
 import { compareByTrack, topicLevel, type TopicLevel } from './topic-sequence';
 import { pickPracticeQuestions } from './schedule-practice';
+import { buildWeeklySummary, type WeeklySummary } from './schedule-weekly-summary';
 
 const MASTERY_STATUS_LABEL: Record<TopicMasteryStatus, string> = {
   NAO_ESTUDADO: 'não estudado',
@@ -43,6 +44,8 @@ const HIGH_INCIDENCE = 60;
 const STALE_DAYS = 14;
 const DIAGNOSTIC_QUESTIONS_PER_AREA = 5;
 const CATCH_ALL_TOPIC_NAME = 'Geral';
+/** Brasília está 3 horas atrás do UTC (sem horário de verão). */
+const BRAZIL_UTC_OFFSET_HOURS = 3;
 
 export interface MasterySummary {
   totalTopics: number;
@@ -225,6 +228,106 @@ export class ScheduleInsightsService {
             }),
         };
       });
+  }
+
+  /**
+   * Resumo da semana (domingo a sábado) que contém `date`: tarefas, tempo,
+   * questões, simulados e tópicos trabalhados, com a semana anterior para
+   * comparar. Só leitura.
+   */
+  async weeklySummary(userId: string, date: Date): Promise<WeeklySummary | null> {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+
+    const day = new Date(date);
+    day.setUTCHours(0, 0, 0, 0);
+    const weekStart = new Date(day);
+    weekStart.setUTCDate(weekStart.getUTCDate() - weekStart.getUTCDay());
+    const shift = (base: Date, days: number, hours = 0) =>
+      new Date(base.getTime() + days * 86_400_000 + hours * 3_600_000);
+    const weekEnd = shift(weekStart, 6);
+    // As sessões têm data pura (meia-noite UTC); respostas e cronômetro têm
+    // hora de verdade, e a semana do aluno vira à meia-noite de Brasília.
+    const period = { from: shift(weekStart, 0, BRAZIL_UTC_OFFSET_HOURS), to: shift(weekStart, 7, BRAZIL_UTC_OFFSET_HOURS) };
+    const previousPeriod = { from: shift(period.from, -7), to: period.from };
+
+    const [sessions, previousSessions, logs, previousLogs, attempts, previousAttempts, simulations, masteries, cutoff] =
+      await Promise.all([
+        this.repo.findSessionsWithTasks(schedule.id, weekStart, weekEnd),
+        this.repo.findSessionsWithTasks(schedule.id, shift(weekStart, -7), shift(weekStart, -1)),
+        this.repo.timeLogsForSchedule(schedule.id, period),
+        this.repo.timeLogsForSchedule(schedule.id, previousPeriod),
+        this.prisma.questionAttempt.findMany({
+          where: { userId, createdAt: { gte: period.from, lt: period.to } },
+          select: { isCorrect: true },
+        }),
+        this.prisma.questionAttempt.count({
+          where: { userId, createdAt: { gte: previousPeriod.from, lt: previousPeriod.to } },
+        }),
+        this.prisma.simulationSubmission.findMany({
+          where: { userId, submittedAt: { gte: period.from, lt: period.to } },
+          select: { correct: true, total: true },
+        }),
+        this.prisma.topicMastery.findMany({
+          where: {
+            userId,
+            lastStudiedAt: { gte: period.from, lt: period.to },
+            status: { not: TopicMasteryStatus.NAO_ESTUDADO },
+          },
+        }),
+        this.cutoffs.targetForUser(userId),
+      ]);
+
+    const topics = masteries.length
+      ? await this.prisma.topic.findMany({
+          where: { id: { in: masteries.map((m) => m.topicId) } },
+          include: { subject: true },
+        })
+      : [];
+    const topicById = new Map(topics.map((topic) => [topic.id, topic]));
+    const minutes = (rows: { durationMinutes: number }[]) => rows.reduce((sum, row) => sum + row.durationMinutes, 0);
+    const fmt = (value: Date) => value.toISOString().slice(0, 10);
+
+    return buildWeeklySummary({
+      weekStart: fmt(weekStart),
+      weekEnd: fmt(weekEnd),
+      inProgress: Date.now() < period.to.getTime() && Date.now() >= period.from.getTime(),
+      tasks: sessions.flatMap((session) =>
+        session.tasks.map((task) => ({
+          status: task.status,
+          scheduledMinutes: task.scheduledMinutes,
+          subjectId: task.subjectId,
+          subjectName: task.subject?.name ?? null,
+        })),
+      ),
+      studiedMinutes: minutes(logs),
+      attempts,
+      simulations,
+      topics: masteries
+        .filter((mastery) => topicById.has(mastery.topicId) && topicById.get(mastery.topicId)!.name !== CATCH_ALL_TOPIC_NAME)
+        .map((mastery) => {
+          const topic = topicById.get(mastery.topicId)!;
+          return {
+            id: topic.id,
+            name: topic.name,
+            subject: topic.subject?.name ?? null,
+            status: mastery.status,
+            masteryScore: mastery.masteryScore,
+            attempts: mastery.attempts,
+          };
+        }),
+      previous: {
+        tasksDone: previousSessions
+          .flatMap((session) => session.tasks)
+          .filter((task) => task.status === StudyTaskStatus.DONE).length,
+        questionsAnswered: previousAttempts,
+        studiedMinutes: minutes(previousLogs),
+      },
+      target:
+        cutoff.status === 'OK' && cutoff.targetScore !== null
+          ? { score: cutoff.targetScore, course: cutoff.course, university: cutoff.university, year: cutoff.projectedYear }
+          : null,
+    });
   }
 
   /**

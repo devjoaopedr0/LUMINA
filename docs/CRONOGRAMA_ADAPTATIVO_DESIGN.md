@@ -421,6 +421,24 @@ Já bem coberto por `ProgressPanel` + `StudyProgress`. Faltam só:
 
 ---
 
+### Resumo semanal
+
+A aba "Semanal" traz, abaixo dos sete dias, o resumo da semana em exibição
+(`GET study/weekly-summary`): tarefas concluídas sobre as planejadas, tempo no
+cronômetro, questões respondidas e acerto (somando as dos simulados enviados),
+cumprimento por matéria e os tópicos em que o aluno mexeu, sempre comparando
+com a semana anterior. A LuminIA comenta a semana (`GET ai/weekly-comment`) em
+cima dos mesmos fatos; sem provedor de IA sai um comentário fixo.
+
+- Só entra dado registrado. O sistema não guarda histórico de domínio, então os
+  tópicos aparecem com a situação ATUAL, não com "quanto subiu na semana".
+- A meta do Sisu é mostrada, mas não há "quanto falta": o app não estima a nota
+  do ENEM do aluno. A LuminIA é instruída a não fazer essa conta.
+- Semana em andamento é marcada como tal: o planejado inclui dias que ainda não
+  chegaram, então não vira porcentagem de cumprimento nem atraso.
+- A semana vira à meia-noite de Brasília (respostas e cronômetro têm hora; as
+  sessões, só data).
+
 ## 14. Design visual (seção 19)
 
 Sem mudança de arquitetura — é o design system que a Lumina já usa

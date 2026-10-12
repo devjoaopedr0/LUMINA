@@ -1195,6 +1195,41 @@ export interface StudyTaskPractice {
   questions: Question[];
 }
 
+/** Resumo da semana do cronograma — só dados registrados, nada estimado. */
+export interface WeeklySummary {
+  weekStart: string;
+  weekEnd: string;
+  /** A semana ainda não acabou: o planejado inclui dias que não chegaram. */
+  inProgress: boolean;
+  tasks: { planned: number; done: number; skipped: number; completionRate: number };
+  minutes: { planned: number; studied: number };
+  questions: { answered: number; correct: number; accuracy: number | null };
+  simulations: { count: number; correct: number; total: number };
+  subjects: { subjectId: string; name: string; plannedTasks: number; doneTasks: number; plannedMinutes: number }[];
+  topics: {
+    studied: number;
+    mastered: number;
+    needAttention: number;
+    items: { id: string; name: string; subject: string | null; status: TopicMasteryStatus; masteryScore: number; attempts: number }[];
+  };
+  previous: { tasksDone: number; questionsAnswered: number; studiedMinutes: number };
+  target: { score: number; course: string | null; university: string | null; year: number | null } | null;
+  highlights: string[];
+}
+
+/** `date` (AAAA-MM-DD): qualquer dia da semana desejada. */
+export function apiGetWeeklySummary(accessToken: string, date: string): Promise<WeeklySummary | null> {
+  return request(`/study/weekly-summary?date=${date}`, { headers: authHeaders(accessToken) });
+}
+
+/** Comentário da LuminIA sobre a semana (ou um texto fixo, sem IA disponível). */
+export function apiGetWeeklyComment(
+  accessToken: string,
+  date: string
+): Promise<{ comment: string; source: "AI" | "FALLBACK" }> {
+  return request(`/ai/weekly-comment?date=${date}`, { headers: authHeaders(accessToken) });
+}
+
 /** Resumo de teoria do tópico da tarefa (seções "## ", listas "- ", **negrito**). */
 export interface StudyTaskLesson {
   taskId: string;

@@ -133,6 +133,58 @@ describe('ScheduleInsightsService.topicsBySubject — trilha', () => {
   });
 });
 
+describe('ScheduleInsightsService.weeklySummary', () => {
+  it('lê a semana de domingo a sábado, com as horas viradas para Brasília', async () => {
+    const { service, prisma, repo, cutoffs } = setup();
+    repo.findSessionsWithTasks = vi.fn()
+      .mockResolvedValueOnce([{ tasks: [
+        { status: 'DONE', scheduledMinutes: 30, subjectId: 'ss-math', subject: { name: 'Matemática' } },
+        { status: 'PENDING', scheduledMinutes: 30, subjectId: 'ss-math', subject: { name: 'Matemática' } },
+      ] }])
+      .mockResolvedValueOnce([{ tasks: [{ status: 'DONE' }, { status: 'DONE' }, { status: 'PENDING' }] }]);
+    repo.timeLogsForSchedule = vi.fn().mockResolvedValueOnce([{ durationMinutes: 25 }]).mockResolvedValueOnce([]);
+    prisma.questionAttempt = {
+      findMany: vi.fn().mockResolvedValue([{ isCorrect: true }, { isCorrect: false }]),
+      count: vi.fn().mockResolvedValue(7),
+    };
+    prisma.simulationSubmission = { findMany: vi.fn().mockResolvedValue([]) };
+    prisma.topicMastery.findMany.mockResolvedValue([
+      { topicId: 't1', status: 'APRENDENDO', masteryScore: 40, attempts: 2 },
+      { topicId: 'geral', status: 'APRENDENDO', masteryScore: 40, attempts: 2 },
+    ]);
+    prisma.topic.findMany.mockResolvedValue([
+      { id: 't1', name: 'Frações', subject: { name: 'Matemática' } },
+      { id: 'geral', name: 'Geral', subject: { name: 'Matemática' } },
+    ]);
+    cutoffs.targetForUser.mockResolvedValue({ status: 'OK', targetScore: 731.3, course: 'MEDICINA', university: 'UFC', projectedYear: 2026 });
+
+    // 14/10/2026 é quarta: a semana vai de domingo 11 a sábado 17.
+    const summary = await service.weeklySummary(userId, new Date('2026-10-14T15:00:00Z'));
+    expect(summary).toMatchObject({
+      weekStart: '2026-10-11', weekEnd: '2026-10-17',
+      tasks: { planned: 2, done: 1, completionRate: 50 },
+      minutes: { planned: 60, studied: 25 },
+      questions: { answered: 2, correct: 1, accuracy: 50 },
+      previous: { tasksDone: 2, questionsAnswered: 7, studiedMinutes: 0 },
+      target: { score: 731.3, course: 'MEDICINA', university: 'UFC', year: 2026 },
+    });
+    // O tópico-coringa não aparece.
+    expect(summary?.topics.items.map((item) => item.name)).toEqual(['Frações']);
+
+    expect(repo.findSessionsWithTasks).toHaveBeenNthCalledWith(1, 'schedule', new Date('2026-10-11T00:00:00Z'), new Date('2026-10-17T00:00:00Z'));
+    // Meia-noite de domingo em Brasília = 03:00 UTC.
+    expect(prisma.questionAttempt.findMany.mock.calls[0][0].where.createdAt).toEqual({
+      gte: new Date('2026-10-11T03:00:00Z'), lt: new Date('2026-10-18T03:00:00Z'),
+    });
+  });
+
+  it('sem cronograma não há resumo', async () => {
+    const { service, repo } = setup();
+    repo.findScheduleByUserId.mockResolvedValue(null);
+    expect(await service.weeklySummary(userId, new Date())).toBeNull();
+  });
+});
+
 describe('ScheduleInsightsService.taskPractice', () => {
   const task = {
     id: 'task', title: 'Questões — Ondas',

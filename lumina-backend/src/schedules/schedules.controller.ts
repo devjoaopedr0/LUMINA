@@ -153,6 +153,15 @@ export class SchedulesController {
     return this.service.getWeek(user.id, userDate(start));
   }
 
+  @Get("study/weekly-summary")
+  @ApiOperation({
+    summary: "Resumo da semana (domingo a sábado) que contém `date`",
+    description: "Tarefas, tempo, questões, simulados e tópicos trabalhados, com a semana anterior para comparar.",
+  })
+  async weeklySummary(@CurrentUser() user: UserWithProfile, @Query("date") date?: string) {
+    return this.insights.weeklySummary(user.id, userDate(date));
+  }
+
   @Get("study/diagnostic")
   @ApiOperation({
     summary: "Diagnóstico inicial do onboarding",
