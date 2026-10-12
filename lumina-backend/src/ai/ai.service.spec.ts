@@ -98,9 +98,41 @@ describe('AiService', () => {
 
     it('o mock responde com os próprios motivos, sem provedor externo', async () => {
       const res = await service.sendMessage(question, context);
+      // Mesmo sem provedor, a explicação sai como conversa, não como lista.
       expect(res.message).toBe(
-        'Essa tarefa está no seu cronograma por estes motivos:\n- Seu domínio nesse tópico está em 35%.\n- Você está na fase de Consolidação.',
+        'O principal motivo: seu domínio nesse tópico está em 35%.\n\n' +
+        'Além disso, você está na fase de Consolidação.\n\n' +
+        'Faz sentido para você? Se quiser trocar o dia, é só usar o "Reagendar" na tarefa.',
       );
+    });
+
+    it('o prompt de sistema traz a persona, a conversa-modelo e o nome do aluno', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: 'Oi, Ana.' } }] }), { status: 200 }),
+      );
+      const real = new AiService({
+        get: vi.fn((key: string) => ({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test' } as Record<string, string>)[key]),
+      } as never);
+      await real.sendMessage(question, undefined, 'Ana');
+      const body = JSON.parse(String((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body));
+      const system = body.messages[0].content as string;
+      expect(system).toContain('Você é a LuminIA, a tutora de estudos do app Lumina');
+      expect(system).toContain('O aluno se chama Ana.');
+      expect(system).toContain('Aluno: to muito atrasado, acho que não vai dar tempo');
+      expect(system).toContain('os fatos e números deles são ilustrativos');
+    });
+
+    it('anthropic recebe o prompt de sistema junto com o contexto', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ content: [{ text: 'Porque é a base.' }] }), { status: 200 }),
+      );
+      const real = new AiService({
+        get: vi.fn((key: string) => ({ AI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'sk-test' } as Record<string, string>)[key]),
+      } as never);
+      await real.sendMessage(question, context);
+      const body = JSON.parse(String((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(body.system).toContain('Você é a LuminIA');
+      expect(body.system.endsWith(context)).toBe(true);
     });
 
     it('nos provedores reais o contexto entra como mensagem de sistema, antes do histórico', async () => {
@@ -198,6 +230,9 @@ describe('AiService', () => {
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-or-test');
       expect((init.headers as Record<string, string>)['X-Title']).toBe('Lumina');
       expect(JSON.parse(String(init.body)).model).toBe('nvidia/nemotron-3-super-120b-a12b:free');
+      // Raciocínio curto e fora da resposta: o modelo gratuito responde em
+      // segundos em vez de gastar os tokens pensando.
+      expect(JSON.parse(String(init.body)).reasoning).toEqual({ effort: 'low', exclude: true });
       fetchSpy.mockRestore();
     });
 

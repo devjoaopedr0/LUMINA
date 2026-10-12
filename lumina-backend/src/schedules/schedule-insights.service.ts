@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StudyActivityType, StudyArea, TopicMasteryStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { SCHEDULE_CONTEXT_GUIDANCE } from '../ai/luminia-persona';
 import { CutoffsService } from '../cutoffs/cutoffs.service';
 import { QuestionsService } from '../questions/questions.service';
 import type { QuestionResponseDto } from '../questions/dto/question-response.dto';
@@ -338,6 +339,7 @@ export class ScheduleInsightsService {
         : null,
       'Motivos de a tarefa estar no dia:',
       ...reasons.map((reason) => `- ${reason}`),
+      SCHEDULE_CONTEXT_GUIDANCE,
     ]
       .filter((line): line is string => line !== null)
       .join('\n');

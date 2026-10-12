@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiChatMessageDto, AiChatRequestDto, AiChatResponseDto } from './ai.dto';
+import { humanizeReasons, luminiaSystemPrompt } from './luminia-persona';
 
 interface ProviderMessage {
   role: 'user' | 'assistant' | 'system';
@@ -21,9 +22,15 @@ export class AiService {
    *
    * `context` é texto montado NO SERVIDOR (ex.: por que uma tarefa está no
    * cronograma do aluno) e entra como mensagem de sistema antes do histórico.
+   * `studentFirstName` deixa a LuminIA chamar o aluno pelo nome.
    */
-  async sendMessage(dto: AiChatRequestDto, context?: string): Promise<AiChatResponseDto> {
+  async sendMessage(
+    dto: AiChatRequestDto,
+    context?: string,
+    studentFirstName?: string | null,
+  ): Promise<AiChatResponseDto> {
     const { message, history } = dto;
+    const systemPrompt = luminiaSystemPrompt(studentFirstName);
 
     // Validação básica
     if (!message?.content?.trim()) {
@@ -37,13 +44,13 @@ export class AiService {
 
     switch (provider) {
       case 'openai':
-        return this.callOpenAI(message, history, context);
+        return this.callOpenAI(message, history, context, systemPrompt);
       case 'openrouter':
-        return this.callOpenRouter(message, history, context);
+        return this.callOpenRouter(message, history, context, systemPrompt);
       case 'anthropic':
-        return this.callAnthropic(message, history, context);
+        return this.callAnthropic(message, history, context, systemPrompt);
       case 'groq':
-        return this.callGroq(message, history, context);
+        return this.callGroq(message, history, context, systemPrompt);
       case 'mock':
       default:
         return this.mockResponse(message, history, context);
@@ -64,10 +71,11 @@ export class AiService {
     // Com contexto do cronograma, o mock responde com os próprios motivos —
     // assim a explicação funciona em desenvolvimento, sem provedor externo.
     if (context) {
-      const reasons = context.split('\n').filter((line) => line.startsWith('- '));
-      return {
-        message: ['Essa tarefa está no seu cronograma por estes motivos:', ...reasons].join('\n'),
-      };
+      const reasons = context
+        .split('\n')
+        .filter((line) => line.startsWith('- '))
+        .map((line) => line.slice(2));
+      return { message: humanizeReasons(reasons) };
     }
 
     const userMsg = message.content.toLowerCase();
@@ -108,6 +116,7 @@ export class AiService {
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
     context?: string,
+    systemPrompt = luminiaSystemPrompt(),
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -122,6 +131,7 @@ export class AiService {
       message,
       history,
       context,
+      systemPrompt,
       headers: {},
     });
   }
@@ -137,6 +147,7 @@ export class AiService {
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
     context?: string,
+    systemPrompt = luminiaSystemPrompt(),
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -159,10 +170,16 @@ export class AiService {
       message,
       history,
       context,
+      systemPrompt,
       headers: {
         'HTTP-Referer': this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5174',
         'X-Title': 'Lumina',
       },
+      // Os modelos gratuitos raciocinam antes de responder e gastavam o
+      // orçamento de tokens nisso (resposta vazia) ou 20 s de espera. Para
+      // uma conversa de tutoria, raciocínio curto basta — e a resposta chega
+      // em poucos segundos.
+      extraBody: { reasoning: { effort: 'low', exclude: true } },
     });
   }
 
@@ -179,10 +196,13 @@ export class AiService {
     message: AiChatMessageDto;
     history: AiChatMessageDto[];
     context?: string;
+    systemPrompt: string;
     headers: Record<string, string>;
+    /** Campos do corpo que só este provedor entende. */
+    extraBody?: Record<string, unknown>;
   }): Promise<AiChatResponseDto> {
     const messages: ProviderMessage[] = [
-      { role: 'system', content: this.getSystemPrompt() },
+      { role: 'system', content: params.systemPrompt },
       ...(params.context ? [{ role: 'system' as const, content: params.context }] : []),
       ...params.history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
       { role: 'user', content: params.message.content },
@@ -201,8 +221,9 @@ export class AiService {
           body: JSON.stringify({
             model,
             messages,
-            temperature: 0.7,
+            temperature: 0.8,
             max_tokens: 800,
+            ...params.extraBody,
           }),
           // Modelo gratuito às vezes aceita a conexão e não responde: sem
           // limite, a conversa do aluno ficava pendurada para sempre. O
@@ -251,6 +272,7 @@ export class AiService {
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
     context?: string,
+    systemPrompt = luminiaSystemPrompt(),
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     const model = this.config.get<string>('ANTHROPIC_MODEL') || 'claude-3-haiku-20240307';
@@ -276,7 +298,7 @@ export class AiService {
         model,
         max_tokens: 800,
         temperature: 0.7,
-        system: context ? `\n\n` : this.getSystemPrompt(),
+        system: context ? `${systemPrompt}\n\n${context}` : systemPrompt,
         messages,
       }),
     });
@@ -299,16 +321,6 @@ export class AiService {
     return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
-  private getSystemPrompt(): string {
-    return `Você é a LuminIA, assistente de estudos do app Lumina.
-- Responda em português do Brasil.
-- Seja conciso, didático e encorajador.
-- Foque em ENEM, vestibulares brasileiros e ensino médio.
-- Não invente fatos; se não souber, diga que não sabe.
-- Não forneça respostas de questões de prova atuais (ética).
-- Para redação, use as competências do ENEM (C1 a C5).`;
-  }
-
   /**
    * Groq (Llama 3.1, Mixtral, Gemma — API compatível OpenAI, grátis e rápido).
    */
@@ -316,6 +328,7 @@ export class AiService {
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
     context?: string,
+    systemPrompt = luminiaSystemPrompt(),
   ): Promise<AiChatResponseDto> {
     const apiKey = this.config.get<string>('GROQ_API_KEY');
     if (!apiKey) {
@@ -330,6 +343,7 @@ export class AiService {
       message,
       history,
       context,
+      systemPrompt,
       headers: {},
     });
   }

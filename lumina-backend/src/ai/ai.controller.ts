@@ -26,6 +26,6 @@ export class AiController {
     const explanation = dto.scheduleTaskId
       ? await this.scheduleInsights.explainTask(user.id, dto.scheduleTaskId)
       : null;
-    return this.aiService.sendMessage(dto, explanation?.context);
+    return this.aiService.sendMessage(dto, explanation?.context, user.profile?.firstName);
   }
 }
