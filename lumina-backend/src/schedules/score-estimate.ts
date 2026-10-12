@@ -1,36 +1,22 @@
 import { QuestionDifficulty, StudyArea } from '@prisma/client';
+import { ENEM_SCALE, triScore } from './enem-tri';
 
 /**
- * Estimativa da nota do ENEM do aluno, pelo desempenho nas questões do app.
+ * Estimativa da nota do ENEM do aluno, pelo desempenho nas questões do app —
+ * as avulsas e, principalmente, as dos simulados (um simulado modelo ENEM
+ * traz 45 questões por área de uma vez).
  *
- * É uma APROXIMAÇÃO, e a tela diz isso. A nota de verdade sai da TRI, que
- * depende de quais questões o aluno acerta e da coerência entre elas — não dá
- * para reproduzir com o banco de questões do app. O que se faz aqui:
- *
- *  1. acerto ponderado pela dificuldade da questão (acertar difícil vale mais
- *     que acertar fácil), por área;
- *  2. esse acerto posiciona o aluno entre a menor e a maior nota que a área
- *     costuma ter no ENEM (AREA_SCALE) — zero acerto fica no piso, 100% no
- *     teto, como na prova;
- *  3. sai uma FAIXA, não um número: quanto menos questões respondidas, mais
- *     larga.
+ * Cada área recebe uma nota estilo TRI (enem-tri.ts): o mesmo modelo da
+ * prova, com os parâmetros das questões vindos da dificuldade cadastrada. É
+ * uma APROXIMAÇÃO, e a tela diz isso; por isso sai sempre em FAIXA, mais
+ * larga quanto menos questões o aluno respondeu.
  *
  * Com poucas questões numa área não há estimativa para ela: melhor "responda
  * mais N" do que um número sem base.
  */
 
-/**
- * Menor e maior nota de cada área, arredondadas, pelas edições recentes do
- * ENEM (o INEP divulga os extremos a cada ano; variam alguns pontos entre
- * edições). Servem de régua, não de previsão — vale conferir e ajustar
- * quando sair uma edição nova.
- */
-export const AREA_SCALE: Record<StudyArea, { min: number; max: number }> = {
-  LINGUAGENS: { min: 290, max: 820 },
-  HUMANAS: { min: 290, max: 820 },
-  NATUREZA: { min: 315, max: 870 },
-  MATEMATICA: { min: 320, max: 960 },
-};
+/** Piso e teto de cada área (a régua completa está em enem-tri.ts). */
+export const AREA_SCALE: Record<StudyArea, { min: number; max: number }> = ENEM_SCALE;
 
 export const AREA_ORDER: StudyArea[] = [
   StudyArea.LINGUAGENS,
@@ -44,16 +30,11 @@ export const MIN_QUESTIONS_PER_AREA = 10;
 /** Com menos áreas estimadas que isso, não há média. */
 export const MIN_AREAS_FOR_AVERAGE = 2;
 
-const DIFFICULTY_WEIGHT: Record<QuestionDifficulty, number> = { FACIL: 1, MEDIA: 1.5, DIFICIL: 2 };
-
-/** Meia-largura da faixa: ~90 pontos com 10 questões, ~40 com 50, piso de 35. */
-function margin(answered: number): number {
-  return Math.round(Math.min(90, Math.max(35, 280 / Math.sqrt(answered))));
-}
-
 export interface AreaAnswer {
   isCorrect: boolean;
   difficulty: QuestionDifficulty;
+  /** Número de alternativas da questão (acerto no chute). */
+  alternatives?: number;
 }
 
 export interface AreaEstimate {
@@ -78,19 +59,8 @@ export function estimateArea(area: StudyArea, answers: AreaAnswer[]): AreaEstima
     return { area, answered, correct, accuracy, estimate: null, low: null, high: null, missing: MIN_QUESTIONS_PER_AREA - answered };
   }
 
-  const totalWeight = answers.reduce((sum, answer) => sum + DIFFICULTY_WEIGHT[answer.difficulty], 0);
-  const correctWeight = answers
-    .filter((answer) => answer.isCorrect)
-    .reduce((sum, answer) => sum + DIFFICULTY_WEIGHT[answer.difficulty], 0);
-  const { min, max } = AREA_SCALE[area];
-  const estimate = Math.round(min + (max - min) * (correctWeight / totalWeight));
-  const spread = margin(answered);
-  return {
-    area, answered, correct, accuracy, estimate,
-    low: Math.max(min, estimate - spread),
-    high: Math.min(max, estimate + spread),
-    missing: 0,
-  };
+  const { score, low, high } = triScore(area, answers);
+  return { area, answered, correct, accuracy, estimate: score, low, high, missing: 0 };
 }
 
 export interface ScoreEstimate {

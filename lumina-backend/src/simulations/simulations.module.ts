@@ -5,12 +5,13 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
 import { QuestionsModule } from '../questions/questions.module';
 import { SchedulesModule } from '../schedules/schedules.module';
-import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
+import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateEnemSimulationDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
 import { AnswerSheetService } from './answer-sheet.service';
 import { QuestionScanService } from './question-scan.service';
 import { TaskSimulationService } from './task-simulation.service';
+import { EnemSimulationService } from './enem-simulation.service';
 
 @ApiTags('simulations')
 @ApiBearerAuth()
@@ -23,6 +24,7 @@ export class SimulationsController {
     private readonly answerSheetService: AnswerSheetService,
     private readonly questionScanService: QuestionScanService,
     private readonly taskSimulation: TaskSimulationService,
+    private readonly enem: EnemSimulationService,
   ) {}
   @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
@@ -48,15 +50,21 @@ export class SimulationsController {
     const result = await this.service.submit(user.id, id, dto.answers);
     // Simulado que nasceu de uma tarefa do cronograma conclui a tarefa com a nota.
     await this.taskSimulation.completeFromSubmission(user.id, id, result.correct, result.total);
-    return result;
+    return { ...result, tri: await this.enem.triForSubmission(user.id, id) };
   }
+  /** Simulado modelo ENEM: um dia de prova, 90 questões (45 por área), com o tempo oficial. */
+  @Post('enem') createEnem(@CurrentUser() user: UserWithProfile, @Body() dto: CreateEnemSimulationDto) { return this.enem.create(user.id, dto.day); }
   /** Simulado da tarefa de "Simulado" do cronograma: cria na primeira vez, depois devolve o mesmo. */
   @Post('from-task/:taskId') async fromTask(@CurrentUser() user: UserWithProfile, @Param('taskId', ParseUUIDPipe) taskId: string) {
     const started = await this.taskSimulation.startForTask(user.id, taskId);
     if (!started) throw new NotFoundException('Tarefa não encontrada.');
     return started;
   }
-  @Get(':id/submission') submission(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.submission(user.id, id); }
+  @Get(':id/submission') async submission(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    const result = await this.service.submission(user.id, id);
+    // Nota estilo TRI por área (e a média, no modelo ENEM).
+    return { ...result, tri: await this.enem.triForSubmission(user.id, id) };
+  }
 
   // Adaptive simulation endpoints
   @Post('adaptive/start') adaptiveStart(@CurrentUser() user: UserWithProfile, @Body() dto: { examId?: string }) { return this.adaptiveService.start(user.id, dto.examId); }
@@ -91,5 +99,5 @@ export class SimulationsController {
   @Post('question-scans/processing/:id/save-question') saveQuestionScanAsQuestion(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveAsQuestion(user.id, id, dto); }
   @Post('question-scans/processing/:id/save-error-notebook') saveQuestionScanToErrorNotebook(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveToErrorNotebook(user.id, id, dto); }
 }
-@Module({ imports: [QuestionsModule, SchedulesModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService, QuestionScanService, TaskSimulationService] })
+@Module({ imports: [QuestionsModule, SchedulesModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
 export class SimulationsModule {}

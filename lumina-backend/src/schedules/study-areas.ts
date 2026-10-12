@@ -1,4 +1,5 @@
 import { StudyArea } from '@prisma/client';
+import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from './study-subject-question-bank-map';
 
 /**
  * Área do ENEM de cada matéria do cronograma (StudySubject.code). Usada para
@@ -28,6 +29,23 @@ export const STUDY_AREA_LABEL: Record<StudyArea, string> = {
   NATUREZA: 'Ciências da Natureza',
   HUMANAS: 'Ciências Humanas',
 };
+
+/** Área do ENEM de cada matéria do BANCO DE QUESTÕES, pelo nome dela
+ *  (Subject.name) — o banco não usa os códigos do cronograma. */
+const AREA_BY_SUBJECT_NAME = new Map<string, StudyArea>(
+  Object.entries(STUDY_SUBJECT_CODE_TO_SUBJECT_NAME)
+    .filter(([code]) => code in STUDY_SUBJECT_CODE_TO_AREA)
+    .map(([code, name]) => [name, STUDY_SUBJECT_CODE_TO_AREA[code]]),
+);
+
+export function areaOfSubjectName(name: string | null | undefined): StudyArea | undefined {
+  return name ? AREA_BY_SUBJECT_NAME.get(name) : undefined;
+}
+
+/** Matérias do banco de questões que compõem uma área do ENEM. */
+export function subjectNamesOfArea(area: StudyArea): string[] {
+  return [...AREA_BY_SUBJECT_NAME].filter(([, value]) => value === area).map(([name]) => name);
+}
 
 /** Código da matéria Redação no catálogo do cronograma. */
 export const ESSAY_SUBJECT_CODE = 'ESSAY';

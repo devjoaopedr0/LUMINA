@@ -15,6 +15,7 @@ import {
   apiSimulationResult,
   apiSimulations,
   apiSubmitSimulation,
+  apiCreateEnemSimulation,
   type AssessmentType,
   type Question,
   type QuestionDifficulty,
@@ -320,7 +321,10 @@ export function Simulations() {
     return ids;
   }
 
-  const canSubmit = simulation && !result && Object.keys(answers).length === simulation.items.length;
+  // No modelo ENEM a questão pode ficar em branco (conta como erro), como na prova.
+  const isEnemModel = Boolean(simulation?.enemDay);
+  const blankCount = simulation ? simulation.items.length - Object.keys(answers).length : 0;
+  const canSubmit = simulation && !result && (isEnemModel || blankCount === 0);
   const isRealExamMode = simulation?.isRealExam ?? false;
   const showTimer = simulation?.durationMinutes !== null && simulation?.durationMinutes !== undefined && !result;
 
@@ -381,17 +385,44 @@ export function Simulations() {
           {result ? (
             <>
               <p className="my-3 font-semibold">Resultado: {result.correct} de {result.total} acertos ({Math.round(100 * result.correct / result.total)}%).</p>
+              {result.tri && result.tri.areas.length > 0 && (
+                <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Nota estilo TRI</p>
+                  {result.tri.average !== null && (
+                    <p className="mt-1 text-3xl font-bold text-graphite">
+                      {result.tri.average}
+                      <span className="ml-2 text-sm font-medium text-graphite-500">média das áreas deste dia</span>
+                    </p>
+                  )}
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {result.tri.areas.map(area => (
+                      <div key={area.area} className="rounded-lg border bg-white p-3">
+                        <p className="text-xs text-graphite-500">{area.label}</p>
+                        <p className="text-xl font-bold text-graphite">{area.score}</p>
+                        <p className="text-xs text-graphite-500">
+                          entre {area.low} e {area.high} · {area.correct} de {area.total} acertos
+                          {area.lowConfidence ? ' · poucas questões: só indicativa' : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-graphite-500">
+                    Calculada pelo mesmo modelo do ENEM: a nota não é proporcional aos acertos, e acertar as difíceis
+                    errando as fáceis vale menos. É uma aproximação — as questões daqui não têm a calibração oficial da prova.
+                  </p>
+                </div>
+              )}
               {result.timeSpentMinutes && <p className="mb-3 text-sm text-graphite-500">Tempo gasto: {result.timeSpentMinutes} min</p>}
               {result.startedAt && <p className="mb-3 text-sm text-graphite-500">Iniciado em: {new Date(result.startedAt).toLocaleString('pt-BR')}</p>}
               {result.items.map(item => (
                 <p key={item.position} className={item.isCorrect ? 'text-green-700' : 'text-red-700'}>
-                  Questão {item.position} · marcou {String.fromCharCode(64 + item.selectedPosition)} · correta {String.fromCharCode(64 + item.correctPosition)} · {item.subject}{item.area ? ` (${item.area})` : ''}
+                  Questão {item.position} · {item.selectedPosition ? `marcou ${String.fromCharCode(64 + item.selectedPosition)}` : 'em branco'} · correta {String.fromCharCode(64 + item.correctPosition)} · {item.subject}{item.area ? ` (${item.area})` : ''}
                 </p>
               ))}
             </>
           ) : (
             <>
-              <p className="my-3 text-sm">Marque uma alternativa por questão. O envio é definitivo.{isRealExamMode && ' No modo prova real, o envio automático ocorre ao fim do tempo.'}</p>
+              <p className="my-3 text-sm">Marque uma alternativa por questão. O envio é definitivo.{isRealExamMode && ' No modo prova real, o envio automático ocorre ao fim do tempo.'}{isEnemModel && ' Neste simulado modelo ENEM você pode enviar antes do fim do tempo e deixar questões em branco (contam como erro).'}</p>
               {simulation.items.map(item => (
                 <div key={item.id} className="mb-4 border-b pb-3">
                   <div className="flex items-baseline justify-between mb-2">
@@ -421,6 +452,9 @@ export function Simulations() {
               >
                 {isRealExamMode && timerActive ? 'Envio automático ao fim do tempo' : 'Enviar respostas'}
               </button>
+              {isEnemModel && blankCount > 0 && (
+                <span className="ml-3 text-sm text-graphite-500">{blankCount} {blankCount === 1 ? 'questão' : 'questões'} em branco</span>
+              )}
             </>
           )}
         </section>
@@ -463,6 +497,29 @@ export function Simulations() {
               {classes.map(c => <p key={c.id} className="mt-2 text-sm">{c.name}{c.joinCode && <> · código para alunos: <strong>{c.joinCode}</strong></>}</p>)}
             </section>
           )}
+          <section className="mb-7 rounded-xl border border-primary-200 bg-primary-50 p-5">
+            <h2 className="font-bold">Simulado modelo ENEM</h2>
+            <p className="mt-1 text-sm text-graphite-500">
+              Um dia de prova completo: 90 questões (45 de cada área), com o tempo oficial e nota estilo TRI no final.
+              As questões que você ainda não respondeu vêm primeiro.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {([1, 2] as const).map(day => (
+                <button
+                  key={day}
+                  disabled={busy}
+                  onClick={() => void run(async () => {
+                    const { simulationId } = await apiCreateEnemSimulation(token(), day);
+                    setParams({ id: simulationId });
+                  })}
+                  className="rounded-lg bg-graphite px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {day === 1 ? '1º dia · Linguagens e Humanas (5h30)' : '2º dia · Natureza e Matemática (5h)'}
+                </button>
+              ))}
+            </div>
+            {busy && <p className="mt-3 text-sm text-graphite-500">Montando a prova... leva alguns segundos.</p>}
+          </section>
           <section className="mb-7 rounded-xl border bg-white p-5">
             <h2 className="font-bold">Simulados disponíveis</h2>
             {list.length ? (
@@ -473,6 +530,7 @@ export function Simulations() {
                     <div className="flex items-center gap-2 text-xs text-graphite-500">
                       {s.durationMinutes && <span>⏱ {s.durationMinutes} min</span>}
                       {s.isRealExam && <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700">Prova real</span>}
+                      {s.enemDay && <span className="px-1.5 py-0.5 rounded bg-primary-50 text-primary-700">Modelo ENEM · {s.enemDay}º dia</span>}
                       {s.assessmentType !== 'SIMULATION' && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{ASSESSMENT_LABEL[s.assessmentType].toLowerCase()}</span>}
                     </div>
                   </div>

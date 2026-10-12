@@ -47,8 +47,15 @@ export class CreateSimulationDto {
 export class SimulationAnswerDto {
   @IsInt() @Min(1) @Max(90)
   position!: number;
-  @IsInt() @Min(1) @Max(5)
+  /** 0 = em branco. Só o simulado modelo ENEM aceita; os outros recusam no serviço. */
+  @IsInt() @Min(0) @Max(5)
   selectedPosition!: number;
+}
+
+export class CreateEnemSimulationDto {
+  /** Dia de prova: 1 = Linguagens e Humanas; 2 = Natureza e Matemática. */
+  @IsInt() @IsIn([1, 2])
+  day!: 1 | 2;
 }
 
 export class SubmitSimulationDto {

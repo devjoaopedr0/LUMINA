@@ -185,3 +185,27 @@ describe('histórico do domínio', () => {
     expect(prisma.topicMasteryHistory.upsert).not.toHaveBeenCalled();
   });
 });
+
+describe('várias tentativas de uma vez (simulado)', () => {
+  it('dá o mesmo domínio que registrar uma a uma, com uma leitura e uma gravação', async () => {
+    const results = [true, true, false, true, true, true, false, true];
+    const oneByOne = setup();
+    for (const isCorrect of results) await oneByOne.service.registerAttempt(userId, subjectId, topicId, isCorrect);
+    const batch = setup();
+    await batch.service.registerAttempts(userId, subjectId, topicId, results);
+
+    const pick = ({ attempts, correctAttempts, correctStreak, masteryScore, status, reviewIntervalDays }: any) =>
+      ({ attempts, correctAttempts, correctStreak, masteryScore, status, reviewIntervalDays });
+    const key = `${userId}:${topicId}`;
+    expect(pick(batch.store.get(key))).toEqual(pick(oneByOne.store.get(key)));
+    expect(batch.prisma.topicMastery.findUnique).toHaveBeenCalledTimes(1);
+    expect(batch.prisma.topicMastery.upsert).toHaveBeenCalledTimes(1);
+    expect(batch.prisma.topicMasteryHistory.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('lista vazia não grava nada', async () => {
+    const { service, prisma } = setup();
+    await service.registerAttempts(userId, subjectId, topicId, []);
+    expect(prisma.topicMastery.upsert).not.toHaveBeenCalled();
+  });
+});

@@ -106,6 +106,18 @@ describe('SimulationsService.submit', () => {
     expect(prisma.simulationSubmission.create).not.toHaveBeenCalled();
   });
 
+  it('questão em branco só vale no simulado modelo ENEM, e conta como erro', async () => {
+    const blank = [{ position: 1, selectedPosition: 0 }, { position: 2, selectedPosition: 1 }];
+    const common = setup();
+    await expect(common.service.submit(userId, simulationId, blank)).rejects.toBeInstanceOf(BadRequestException);
+
+    const enem = setup({ ...sample, enemDay: 1 } as never);
+    await enem.service.submit(userId, simulationId, blank);
+    expect(enem.prisma.simulationSubmission.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ correct: 1, total: 2, answers: blank }) }),
+    );
+  });
+
   it('recusa usuário sem acesso e segundo envio', async () => {
     const { service } = setup({ ...sample, class: { members: [], teachers: [] } });
     await expect(service.submit(userId, simulationId, [{ position: 1, selectedPosition: 1 }, { position: 2, selectedPosition: 1 }])).rejects.toBeInstanceOf(NotFoundException);

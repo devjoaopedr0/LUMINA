@@ -3,8 +3,7 @@ import { EssayCorrectionStatus, QuestionDifficulty, StudyArea } from '@prisma/cl
 import { CutoffsService } from '../cutoffs/cutoffs.service';
 import { PrismaService } from '../database/prisma.service';
 import { buildScoreEstimate, type AreaAnswer, type ScoreEstimate } from './score-estimate';
-import { STUDY_AREA_LABEL, STUDY_SUBJECT_CODE_TO_AREA } from './study-areas';
-import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from './study-subject-question-bank-map';
+import { STUDY_AREA_LABEL, areaOfSubjectName } from './study-areas';
 
 /** Só o desempenho recente conta: quem estudou evoluiu desde o começo. */
 const ESTIMATE_WINDOW_DAYS = 120;
@@ -16,13 +15,6 @@ const DAY_MS = 86_400_000;
 /** Brasília está 3 horas atrás do UTC (sem horário de verão). */
 const BRAZIL_UTC_OFFSET_MS = 3 * 3_600_000;
 
-/** Área do ENEM de cada matéria do banco de questões, pelo nome dela. */
-const AREA_BY_SUBJECT_NAME = new Map<string, StudyArea>(
-  Object.entries(STUDY_SUBJECT_CODE_TO_SUBJECT_NAME)
-    .filter(([code]) => code in STUDY_SUBJECT_CODE_TO_AREA)
-    .map(([code, name]) => [name, STUDY_SUBJECT_CODE_TO_AREA[code]]),
-);
-
 /** Uma resposta do aluno a uma questão do banco, de qualquer origem. */
 interface Answer {
   questionId: string;
@@ -30,6 +22,7 @@ interface Answer {
   at: Date;
   area: StudyArea;
   difficulty: QuestionDifficulty;
+  alternatives?: number;
 }
 
 interface EstimateData {
@@ -111,7 +104,11 @@ export class ScoreEstimateService {
     }
     const answersByArea: Partial<Record<StudyArea, AreaAnswer[]>> = {};
     for (const answer of first.values()) {
-      (answersByArea[answer.area] ??= []).push({ isCorrect: answer.isCorrect, difficulty: answer.difficulty });
+      (answersByArea[answer.area] ??= []).push({
+        isCorrect: answer.isCorrect,
+        difficulty: answer.difficulty,
+        alternatives: answer.alternatives,
+      });
     }
     return buildScoreEstimate({
       answersByArea,
@@ -168,7 +165,13 @@ export class ScoreEstimateService {
     const questions = questionIds.length
       ? await this.prisma.question.findMany({
           where: { id: { in: questionIds } },
-          select: { id: true, difficulty: true, subject: true, subjectRef: { select: { name: true } } },
+          select: {
+            id: true,
+            difficulty: true,
+            subject: true,
+            subjectRef: { select: { name: true } },
+            _count: { select: { alternatives: true } },
+          },
         })
       : [];
     const questionById = new Map(questions.map((question) => [question.id, question]));
@@ -177,9 +180,14 @@ export class ScoreEstimateService {
     for (const answer of raw) {
       const question = questionById.get(answer.questionId);
       // Questão antiga sem matéria estruturada: vale o nome em texto.
-      const area = question && AREA_BY_SUBJECT_NAME.get(question.subjectRef?.name ?? question.subject);
+      const area = question && areaOfSubjectName(question.subjectRef?.name ?? question.subject);
       if (!question || !area) continue;
-      answers.push({ ...answer, area, difficulty: question.difficulty ?? QuestionDifficulty.MEDIA });
+      answers.push({
+        ...answer,
+        area,
+        difficulty: question.difficulty ?? QuestionDifficulty.MEDIA,
+        alternatives: question._count?.alternatives || undefined,
+      });
     }
     answers.sort((a, b) => a.at.getTime() - b.at.getTime());
 

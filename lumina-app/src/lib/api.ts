@@ -446,10 +446,20 @@ export const apiSetWorkspaceRolePermissions = (token: string, workspaceId: strin
 
 export interface SimulationClass { id: string; name: string; joinCode: string | null; isTeacher: boolean }
 export type AssessmentType = 'ACTIVITY' | 'LIST' | 'TEST' | 'SIMULATION' | 'ADAPTIVE';
-export interface SimulationSummary { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; durationMinutes: number | null; isRealExam: boolean; className: string | null; questionCount: number; result: { correct: number; total: number; submittedAt: string } | null }
+export interface SimulationSummary { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; durationMinutes: number | null; isRealExam: boolean; enemDay?: number | null; className: string | null; questionCount: number; result: { correct: number; total: number; submittedAt: string } | null }
 export interface SimulationItem { id: string; position: number; stem: string; subject: string; area: string | null; alternatives: { position: number; text: string }[]; correctPosition?: number }
-export interface Simulation { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; durationMinutes: number | null; isRealExam: boolean; className: string | null; sheetVersion: number; answerSheetTemplateId: string | null; items: SimulationItem[] }
-export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; startedAt: string | null; timeSpentMinutes: number | null; items: { position: number; subject: string; area: string | null; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
+export interface Simulation { id: string; title: string; createdAt: string; assessmentType: AssessmentType; dueAt: string | null; durationMinutes: number | null; isRealExam: boolean; enemDay?: number | null; className: string | null; sheetVersion: number; answerSheetTemplateId: string | null; items: SimulationItem[] }
+/** Nota estilo TRI de um simulado, por área do ENEM. É uma aproximação: o
+ *  modelo é o da prova, mas os parâmetros das questões vêm da dificuldade
+ *  cadastrada, não de calibração oficial. */
+export interface SimulationTri {
+  /** 1 ou 2 quando é um simulado modelo ENEM; null nos demais. */
+  enemDay: number | null;
+  areas: { area: StudyArea; label: string; correct: number; total: number; score: number; low: number; high: number; lowConfidence: boolean }[];
+  /** Média das áreas — só no simulado modelo ENEM. */
+  average: number | null;
+}
+export interface SimulationResult { id: string; simulationId: string; correct: number; total: number; submittedAt: string; startedAt: string | null; timeSpentMinutes: number | null; tri?: SimulationTri | null; items: { position: number; subject: string; area: string | null; selectedPosition: number; correctPosition: number; isCorrect: boolean }[] }
 
 // Adaptive Simulation (item 16)
 export interface AdaptiveSessionSummary {
@@ -611,6 +621,8 @@ export const apiLinkClassUser = (token: string, id: string, kind: 'teachers' | '
 export const apiUnlinkClassUser = (token: string, id: string, kind: 'teachers' | 'members', userId: string) => request(`/simulations/classes/${id}/${kind}/${userId}`, { method: 'DELETE', headers: authHeaders(token) });
 export const apiSimulations = (token: string): Promise<SimulationSummary[]> => request('/simulations', { headers: authHeaders(token) });
 export const apiCreateSimulation = (token: string, title: string, questionIds: string[], classId?: string, assessmentType: AssessmentType = 'SIMULATION', dueAt?: string, durationMinutes?: number, isRealExam?: boolean, generateAnswerSheet?: boolean): Promise<Simulation> => request('/simulations', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ title, questionIds, classId, assessmentType, dueAt, durationMinutes, isRealExam, generateAnswerSheet }) });
+/** Simulado modelo ENEM de um dia de prova: 90 questões (45 por área), com o tempo oficial. */
+export const apiCreateEnemSimulation = (token: string, day: 1 | 2): Promise<{ simulationId: string }> => request('/simulations/enem', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ day }) });
 export const apiSimulation = (token: string, id: string, answers = false): Promise<Simulation> => request(`/simulations/${id}${answers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
 export const apiSimulationResult = (token: string, id: string): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { headers: authHeaders(token) });
 export const apiSubmitSimulation = (token: string, id: string, answers: { position: number; selectedPosition: number }[]): Promise<SimulationResult> => request(`/simulations/${id}/submission`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers }) });

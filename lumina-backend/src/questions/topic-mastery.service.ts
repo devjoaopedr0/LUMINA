@@ -53,72 +53,87 @@ export class TopicMasteryService {
     isCorrect: boolean,
     db: Db = this.prisma,
   ): Promise<void> {
-    if (!subjectId || !topicId) return;
+    await this.registerAttempts(userId, subjectId, topicId, [isCorrect], db);
+  }
+
+  /**
+   * Várias tentativas do MESMO tópico de uma vez, na ordem em que foram
+   * respondidas — é o que um simulado manda. O resultado é idêntico a chamar
+   * registerAttempt uma a uma, mas com uma leitura e uma gravação por tópico:
+   * um simulado de 90 questões fazia 270 idas ao banco numa transação só e
+   * estourava o tempo dela.
+   */
+  async registerAttempts(
+    userId: string,
+    subjectId: string | null | undefined,
+    topicId: string | null | undefined,
+    results: boolean[],
+    db: Db = this.prisma,
+  ): Promise<void> {
+    if (!subjectId || !topicId || results.length === 0) return;
 
     const existing = await db.topicMastery.findUnique({
       where: { userId_topicId: { userId, topicId } },
     });
 
-    const attempts = (existing?.attempts ?? 0) + 1;
-    const correctAttempts = (existing?.correctAttempts ?? 0) + (isCorrect ? 1 : 0);
-    const correctStreak = isCorrect ? (existing?.correctStreak ?? 0) + 1 : 0;
+    let attempts = existing?.attempts ?? 0;
+    let correctAttempts = existing?.correctAttempts ?? 0;
+    let correctStreak = existing?.correctStreak ?? 0;
+    let masteryScore = existing?.masteryScore ?? 0;
+    let status: TopicMasteryStatus = existing?.status ?? TopicMasteryStatus.NAO_ESTUDADO;
+    // null = o tópico ainda não tem intervalo de revisão (primeira tentativa).
+    let reviewIntervalDays: number | null = existing?.reviewIntervalDays ?? null;
 
-    const accuracy = correctAttempts / attempts;
-    const streakFactor = Math.min(correctStreak / MASTERY_STREAK_TARGET, 1);
-    const masteryScore = Math.round(100 * (0.7 * accuracy + 0.3 * streakFactor));
+    for (const isCorrect of results) {
+      attempts += 1;
+      correctAttempts += isCorrect ? 1 : 0;
+      correctStreak = isCorrect ? correctStreak + 1 : 0;
 
-    const previousStatus = existing?.status ?? TopicMasteryStatus.NAO_ESTUDADO;
-    let status: TopicMasteryStatus;
-    if (previousStatus === TopicMasteryStatus.DOMINADO && !isCorrect) {
-      // Domínio que caiu por erro novo — volta pra fila de reforço, não
-      // simplesmente "praticando" (o aluno já tinha dominado isso antes).
-      status = TopicMasteryStatus.PRECISA_REFORCO;
-    } else if (masteryScore >= MASTERY_DOMINADO_THRESHOLD && correctStreak >= MASTERY_DOMINADO_STREAK) {
-      status = TopicMasteryStatus.DOMINADO;
-    } else if (masteryScore >= MASTERY_PRATICANDO_THRESHOLD) {
-      status = TopicMasteryStatus.PRATICANDO;
-    } else {
-      status = TopicMasteryStatus.APRENDENDO;
+      const accuracy = correctAttempts / attempts;
+      const streakFactor = Math.min(correctStreak / MASTERY_STREAK_TARGET, 1);
+      masteryScore = Math.round(100 * (0.7 * accuracy + 0.3 * streakFactor));
+
+      if (status === TopicMasteryStatus.DOMINADO && !isCorrect) {
+        // Domínio que caiu por erro novo — volta pra fila de reforço, não
+        // simplesmente "praticando" (o aluno já tinha dominado isso antes).
+        status = TopicMasteryStatus.PRECISA_REFORCO;
+      } else if (masteryScore >= MASTERY_DOMINADO_THRESHOLD && correctStreak >= MASTERY_DOMINADO_STREAK) {
+        status = TopicMasteryStatus.DOMINADO;
+      } else if (masteryScore >= MASTERY_PRATICANDO_THRESHOLD) {
+        status = TopicMasteryStatus.PRATICANDO;
+      } else {
+        status = TopicMasteryStatus.APRENDENDO;
+      }
+
+      // Revisão espaçada: acerto estica o intervalo (dobra, até o teto); erro
+      // reseta pro mínimo — mesma ideia do caderno de erros, aplicada ao
+      // domínio do tópico em vez de à questão específica.
+      reviewIntervalDays = isCorrect
+        ? reviewIntervalDays !== null
+          ? Math.min(reviewIntervalDays * 2, REVIEW_MAX_INTERVAL_DAYS)
+          : REVIEW_INITIAL_INTERVAL_DAYS
+        : REVIEW_RESET_INTERVAL_DAYS;
     }
 
-    // Revisão espaçada: acerto estica o intervalo (dobra, até o teto); erro
-    // reseta pro mínimo — mesma ideia do caderno de erros, aplicada ao
-    // domínio do tópico em vez de à questão específica.
-    const reviewIntervalDays = isCorrect
-      ? existing
-        ? Math.min(existing.reviewIntervalDays * 2, REVIEW_MAX_INTERVAL_DAYS)
-        : REVIEW_INITIAL_INTERVAL_DAYS
-      : REVIEW_RESET_INTERVAL_DAYS;
     const now = new Date();
     const nextReviewAt = new Date(now);
-    nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays);
+    nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays!);
     nextReviewAt.setUTCHours(0, 0, 0, 0);
 
+    const values = {
+      masteryScore,
+      attempts,
+      correctAttempts,
+      correctStreak,
+      status,
+      lastStudiedAt: now,
+      nextReviewAt,
+      reviewIntervalDays: reviewIntervalDays!,
+    };
     const saved = await db.topicMastery.upsert({
       where: { userId_topicId: { userId, topicId } },
-      create: {
-        userId,
-        subjectId,
-        topicId,
-        masteryScore,
-        attempts,
-        correctAttempts,
-        correctStreak,
-        status,
-        lastStudiedAt: now,
-        nextReviewAt,
-        reviewIntervalDays,
-      },
-      update: {
-        masteryScore,
-        attempts,
-        correctAttempts,
-        correctStreak,
-        status,
-        lastStudiedAt: now,
-        nextReviewAt,
-        reviewIntervalDays,
-      },
+      create: { userId, subjectId, topicId, ...values },
+      update: values,
     });
     await this.recordHistory(saved, now, db);
   }

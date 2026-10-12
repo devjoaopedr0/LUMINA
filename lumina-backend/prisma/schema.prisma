@@ -757,6 +757,9 @@ model Simulation {
   durationMinutes Int?          @map("duration_minutes")
   /** Modo "prova real": cronômetro obrigatório, sem dicas, resultado só ao final. */
   isRealExam     Boolean        @default(false) @map("is_real_exam")
+  /// Simulado modelo ENEM: 1 ou 2 = o dia de prova que ele reproduz (90
+  /// questões, 45 por área). Nulo nos simulados comuns.
+  enemDay        Int?           @map("enem_day")
   createdAt      DateTime       @default(now()) @map("created_at")
   creator        User           @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   class          Class?         @relation(fields: [classId], references: [id], onDelete: SetNull)

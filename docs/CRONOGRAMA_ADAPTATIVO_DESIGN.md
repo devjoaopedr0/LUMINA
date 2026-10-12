@@ -439,27 +439,52 @@ cima dos mesmos fatos; sem provedor de IA sai um comentário fixo.
 - A semana vira à meia-noite de Brasília (respostas e cronômetro têm hora; as
   sessões, só data).
 
-### Estimativa de nota
+### Estimativa de nota e nota estilo TRI
 
 `GET study/score-estimate` devolve uma estimativa da nota do ENEM do aluno, por
 área e na média, sempre como faixa, e a distância até a meta do Sisu. Aparece no
 cartão "Sua nota estimada hoje" do cronograma e entra no comentário semanal da
 LuminIA, marcada como estimativa.
 
-É uma aproximação declarada — a nota real usa TRI, que o app não reproduz:
+A nota de cada área é calculada no estilo TRI (`enem-tri.ts`): o modelo logístico
+de três parâmetros da prova, com a proficiência estimada por EAP. A nota não é
+proporcional aos acertos, e acertar as difíceis errando as fáceis vale menos que
+o mesmo número de acertos coerentes. O que NÃO é igual ao ENEM, e a tela avisa:
 
-- Por área, o acerto ponderado pela dificuldade da questão (fácil 1, média 1,5,
-  difícil 2) posiciona o aluno entre a menor e a maior nota que a área costuma
-  ter no ENEM (`AREA_SCALE` em `score-estimate.ts`, valores arredondados das
-  edições recentes — conferir e ajustar a cada edição).
-- Cada questão conta uma vez, pela primeira resposta dos últimos 120 dias
-  (avulsas e de simulados enviados).
+- Os parâmetros das questões não são calibrados em pré-teste: a dificuldade vem
+  do nível cadastrado (fácil, média, difícil), a discriminação é a mesma para
+  todas e o acerto no chute é 1/número de alternativas.
+- A régua (piso, média e teto de cada área) e o ajuste de dificuldade por área
+  foram escolhidos para a relação acertos → nota ficar parecida com a das
+  edições recentes (30/45 em Matemática dá cerca de 770; em Linguagens, cerca de
+  630). São valores de memória, não validados contra notas reais: conferir com
+  os dados do INEP e ajustar em `enem-tri.ts`.
+
+O que entra na estimativa:
+
+- Cada questão conta uma vez, pela primeira resposta dos últimos 120 dias, das
+  avulsas e dos simulados enviados (questão em branco conta como erro).
 - Área com menos de 10 questões não tem estimativa: mostra quantas faltam. A
   média só existe com pelo menos duas áreas, e diz quantas das 5 notas entraram.
-- A faixa é mais larga com poucas questões (cerca de ±90 com 10, ±35 com 60+).
+- A faixa é um desvio-padrão da proficiência: estreita com mais questões.
 - Redação entra pela média das últimas 3 correções concluídas, quando há.
-- Nada disso foi validado contra notas reais de alunos: os pesos e a régua são
-  chutes iniciais, na mesma categoria dos pesos da prioridade.
+
+### Simulado modelo ENEM
+
+`POST simulations/enem` (`day` 1 ou 2) monta um dia de prova: 90 questões, 45 de
+cada área do dia (1º: Linguagens e Humanas; 2º: Natureza e Matemática), com o
+tempo oficial (5h30 e 5h). A redação do 1º dia não entra — tem fluxo próprio.
+
+- Dentro da área as matérias se revezam e vêm primeiro as questões que o aluno
+  nunca respondeu, em ordem sorteada. Sem 45 questões numa área, o simulado não
+  é montado (hoje Matemática tem 48 no banco: os simulados dela se repetem).
+- O aluno pode enviar antes do fim e deixar questões em branco (contam como
+  erro). Não usa o "modo prova real" do app, que só envia quando o tempo acaba.
+- Todo simulado enviado devolve a nota estilo TRI por área (`tri` no resultado);
+  a média só sai no modelo ENEM. Área com menos de 10 questões é marcada como
+  indicativa.
+- A correção atualiza o domínio uma vez por tópico, com as respostas dele em
+  ordem (`registerAttempts`): uma por questão estourava a transação em 90.
 
 ### Histórico de domínio e evolução
 

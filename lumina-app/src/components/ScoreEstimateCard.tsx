@@ -156,12 +156,13 @@ export function ScoreEstimateCard({ className = "" }: { className?: string }) {
       )}
 
       <p className="mt-4 text-xs text-graphite-400">
-        Estimativa aproximada, calculada pelos seus acertos nas questões do app nos últimos meses (as difíceis pesam
-        mais). A nota real do ENEM usa TRI e pode ficar fora dessa faixa.{" "}
-        <Link to="/app/questoes" className="font-semibold text-primary-700 hover:underline">
-          Responder mais questões
+        Nota estilo TRI, calculada pelas suas respostas dos últimos meses — as questões avulsas e, principalmente,
+        os simulados. Usa o mesmo modelo do ENEM, mas sem a calibração oficial das questões: é uma aproximação e a
+        nota real pode ficar fora dessa faixa.{" "}
+        <Link to="/app/simulados" className="font-semibold text-primary-700 hover:underline">
+          Fazer um simulado modelo ENEM
         </Link>{" "}
-        deixa a estimativa mais precisa.
+        (90 questões) é o que mais melhora a estimativa.
       </p>
     </Card>
   );

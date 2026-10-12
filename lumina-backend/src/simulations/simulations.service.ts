@@ -46,6 +46,10 @@ function buildAutoAnswerSheetLayout(items: { position: number; alternatives: unk
   return { markers, layout };
 }
 
+/** Corrigir um simulado longo mexe no domínio de dezenas de tópicos: precisa
+ *  de mais que os 5 s padrão de uma transação. */
+const SUBMIT_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
+
 @Injectable()
 export class SimulationsService {
   constructor(
@@ -481,8 +485,8 @@ export class SimulationsService {
   }
 
   async list(userId: string) {
-    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, assessmentType: true, dueAt: true, durationMinutes: true, isRealExam: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
-    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, assessmentType: r.assessmentType, dueAt: r.dueAt, durationMinutes: r.durationMinutes, isRealExam: r.isRealExam, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
+    const rows = await this.prisma.simulation.findMany({ where: { OR: [{ createdBy: userId }, { class: { members: { some: { userId } } } }, { class: { teachers: { some: { userId } } } }] }, select: { id: true, title: true, createdAt: true, assessmentType: true, dueAt: true, durationMinutes: true, isRealExam: true, enemDay: true, class: { select: { name: true } }, submissions: { where: { userId }, select: { correct: true, total: true, submittedAt: true }, take: 1 }, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' } });
+    return rows.map(({ submissions, ...r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, assessmentType: r.assessmentType, dueAt: r.dueAt, durationMinutes: r.durationMinutes, isRealExam: r.isRealExam, enemDay: r.enemDay ?? null, className: r.class?.name ?? null, questionCount: r._count.items, result: submissions[0] ?? null }));
   }
 
   async get(userId: string, id: string, includeAnswers = false) {
@@ -502,6 +506,8 @@ export class SimulationsService {
     for (const item of simulation.items) {
       const choice = byPosition.get(item.position);
       const alternatives = item.alternatives as { position: number }[];
+      // No modelo ENEM a questão pode ficar em branco (0): conta como erro.
+      if (choice === 0 && simulation.enemDay) continue;
       if (!choice || !alternatives.some(a => a.position === choice)) throw new BadRequestException(`Resposta inválida para a questão ${item.position}.`);
     }
     const correct = simulation.items.filter(item => byPosition.get(item.position) === item.correctPosition).length;
@@ -518,14 +524,21 @@ export class SimulationsService {
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.simulationSubmission.create({ data: { id: randomUUID(), simulationId: id, userId, answers: answers.map(a => ({ position: a.position, selectedPosition: a.selectedPosition })), correct, total: simulation.items.length, startedAt: new Date() } });
+        // Uma atualização de domínio por tópico, com as respostas dele na
+        // ordem da prova — não uma por questão (ver registerAttempts).
+        const byTopic = new Map<string, { subjectId: string | null; topicId: string | null; results: boolean[] }>();
         for (const item of simulation.items) {
           if (!item.questionId) continue;
           const question = questionById.get(item.questionId);
-          if (!question) continue;
-          const isCorrect = byPosition.get(item.position) === item.correctPosition;
-          await this.topicMasteryService.registerAttempt(userId, question.subjectId, question.topicId, isCorrect, tx);
+          if (!question?.topicId) continue;
+          const entry = byTopic.get(question.topicId) ?? { subjectId: question.subjectId, topicId: question.topicId, results: [] };
+          entry.results.push(byPosition.get(item.position) === item.correctPosition);
+          byTopic.set(question.topicId, entry);
         }
-      });
+        for (const entry of byTopic.values()) {
+          await this.topicMasteryService.registerAttempts(userId, entry.subjectId, entry.topicId, entry.results, tx);
+        }
+      }, SUBMIT_TX_OPTIONS);
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') throw new ConflictException('Este simulado já foi enviado.');
       throw error;
@@ -545,7 +558,7 @@ export class SimulationsService {
   private publicSimulation(row: {
     id: string; title: string; createdAt: Date; assessmentType?: string;
     dueAt?: Date | null; class?: { name: string } | null;
-    durationMinutes?: number | null; isRealExam?: boolean;
+    durationMinutes?: number | null; isRealExam?: boolean; enemDay?: number | null;
     answerSheetTemplate?: { id: string } | null;
     items: { id: string; questionId: string | null; position: number; stem: string; subject: string; area?: string | null; alternatives: unknown; correctPosition: number }[]
   }, includeAnswers = false) {
@@ -555,6 +568,7 @@ export class SimulationsService {
       dueAt: row.dueAt ?? null, className: row.class?.name ?? null,
       durationMinutes: row.durationMinutes ?? null,
       isRealExam: row.isRealExam ?? false,
+      enemDay: row.enemDay ?? null,
       sheetVersion: 1,
       answerSheetTemplateId: row.answerSheetTemplate?.id ?? null,
       items: row.items.map(i => ({

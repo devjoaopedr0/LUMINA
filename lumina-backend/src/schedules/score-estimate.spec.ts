@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { triScore } from './enem-tri';
 import { AREA_SCALE, buildScoreEstimate, estimateArea, type AreaAnswer } from './score-estimate';
 import { ScoreEstimateService } from './score-estimate.service';
 import { STUDY_AREA_LABEL } from './study-areas';
@@ -16,31 +17,38 @@ describe('estimativa de nota por área', () => {
     });
   });
 
-  it('o acerto posiciona o aluno entre o piso e o teto da área', () => {
-    const { min, max } = AREA_SCALE.MATEMATICA;
-    expect(estimateArea('MATEMATICA', answers(0, 20)).estimate).toBe(min);
-    expect(estimateArea('MATEMATICA', answers(20, 0)).estimate).toBe(max);
-    expect(estimateArea('MATEMATICA', answers(10, 10)).estimate).toBe((min + max) / 2);
-    // A mesma taxa de acerto vale notas diferentes em áreas diferentes.
-    expect(estimateArea('LINGUAGENS', answers(10, 10)).estimate).toBe(555);
+  it('a nota da área é a nota estilo TRI das respostas', () => {
+    const half = answers(10, 10);
+    const tri = triScore('MATEMATICA', half);
+    expect(estimateArea('MATEMATICA', half)).toMatchObject({
+      estimate: tri.score, low: tri.low, high: tri.high, answered: 20, correct: 10, accuracy: 50,
+    });
+    // Mais acertos, mais nota — dentro do piso e do teto da área.
+    const scores = [answers(0, 20), half, answers(20, 0)].map((items) => estimateArea('MATEMATICA', items).estimate!);
+    expect(scores[0]).toBeLessThan(scores[1]);
+    expect(scores[1]).toBeLessThan(scores[2]);
+    expect(scores[0]).toBeGreaterThanOrEqual(AREA_SCALE.MATEMATICA.min);
+    expect(scores[2]).toBeLessThanOrEqual(AREA_SCALE.MATEMATICA.max);
+    // A mesma taxa de acerto vale mais em Matemática que em Linguagens, como na prova.
+    expect(scores[1]).toBeGreaterThan(estimateArea('LINGUAGENS', half).estimate!);
   });
 
-  it('acertar questão difícil vale mais que acertar fácil', () => {
-    const hardRight = [...answers(5, 0, 'DIFICIL'), ...answers(0, 5, 'FACIL')];
-    const easyRight = [...answers(5, 0, 'FACIL'), ...answers(0, 5, 'DIFICIL')];
-    const hard = estimateArea('NATUREZA', hardRight);
-    const easy = estimateArea('NATUREZA', easyRight);
-    expect(hard.accuracy).toBe(easy.accuracy);
-    expect(hard.estimate!).toBeGreaterThan(easy.estimate!);
+  it('coerência conta: acertar as difíceis errando as fáceis vale menos que o contrário', () => {
+    const incoherent = [...answers(5, 0, 'DIFICIL'), ...answers(0, 5, 'FACIL')];
+    const coherent = [...answers(5, 0, 'FACIL'), ...answers(0, 5, 'DIFICIL')];
+    expect(estimateArea('NATUREZA', incoherent).accuracy).toBe(estimateArea('NATUREZA', coherent).accuracy);
+    expect(estimateArea('NATUREZA', coherent).estimate!).toBeGreaterThan(estimateArea('NATUREZA', incoherent).estimate!);
+    // E acertar questão difícil vale mais que acertar a mesma quantidade de fáceis.
+    expect(estimateArea('NATUREZA', answers(8, 2, 'DIFICIL')).estimate!)
+      .toBeGreaterThan(estimateArea('NATUREZA', answers(8, 2, 'FACIL')).estimate!);
   });
 
-  it('a faixa estreita com mais questões e não passa do piso nem do teto', () => {
+  it('a faixa estreita com mais questões', () => {
     const few = estimateArea('HUMANAS', answers(5, 5));
-    const many = estimateArea('HUMANAS', answers(50, 50));
+    const many = estimateArea('HUMANAS', answers(45, 45));
+    expect(few.low!).toBeLessThan(few.estimate!);
+    expect(few.high!).toBeGreaterThan(few.estimate!);
     expect(few.high! - few.low!).toBeGreaterThan(many.high! - many.low!);
-    expect(many.high! - many.low!).toBe(70);
-    expect(estimateArea('HUMANAS', answers(20, 0)).high).toBe(AREA_SCALE.HUMANAS.max);
-    expect(estimateArea('HUMANAS', answers(0, 20)).low).toBe(AREA_SCALE.HUMANAS.min);
   });
 });
 
@@ -59,15 +67,18 @@ describe('estimativa da média', () => {
 
   it('a média junta as áreas estimadas e a redação, e diz quantas notas entraram', () => {
     const estimate = build({ MATEMATICA: answers(10, 10), LINGUAGENS: answers(10, 10) }, [800, 700]);
-    // Matemática 640, Linguagens 555, redação 750.
+    // Média de Matemática, Linguagens e redação (750).
+    const expected = Math.round(
+      (triScore('MATEMATICA', answers(10, 10)).score + triScore('LINGUAGENS', answers(10, 10)).score + 750) / 3,
+    );
     expect(estimate.essay).toEqual({ score: 750, corrections: 2 });
-    expect(estimate.average).toMatchObject({ estimate: 648, parts: 3, complete: false });
-    expect(estimate.average!.low).toBeLessThan(648);
-    expect(estimate.average!.high).toBeGreaterThan(648);
-    expect(estimate.gap).toBe(83.3);
-    expect(estimate.message).toContain('em torno de 648');
+    expect(estimate.average).toMatchObject({ estimate: expected, parts: 3, complete: false });
+    expect(estimate.average!.low).toBeLessThan(expected);
+    expect(estimate.average!.high).toBeGreaterThan(expected);
+    expect(estimate.gap).toBe(Math.round((731.3 - expected) * 10) / 10);
+    expect(estimate.message).toContain('em torno de ' + expected);
     expect(estimate.message).toContain('(com 3 das 5 notas)');
-    expect(estimate.message).toContain('Faltam cerca de 83 pontos para a meta de 731.3');
+    expect(estimate.message).toContain('Faltam cerca de ' + Math.round(731.3 - expected) + ' pontos para a meta de 731.3');
   });
 
   it('com as quatro áreas e a redação a média é completa; acima da meta, diz que alcança', () => {
@@ -116,7 +127,7 @@ describe('ScoreEstimateService', () => {
     const estimate = await new ScoreEstimateService(prisma, cutoffs).forUser('user');
     const math = estimate.areas.find((area) => area.area === 'MATEMATICA')!;
     expect(math).toMatchObject({ answered: 10, correct: 9, missing: 0 });
-    expect(math.estimate).toBe(896);
+    expect(math.estimate).toBe(triScore('MATEMATICA', answers(9, 1)).score);
     expect(estimate.essay.score).toBe(760);
     // Só uma área estimada: ainda sem média.
     expect(estimate.average).toBeNull();
@@ -154,9 +165,12 @@ describe('ScoreEstimateService', () => {
     expect(new Date(`${history[7].weekEnd}T00:00:00Z`).getUTCDay()).toBe(6);
     // Antes das primeiras respostas não há estimativa.
     expect(history[0].estimate).toBeNull();
-    // Depois delas: Matemática 640 e Linguagens 555 -> 598 (com 2 das 5 notas).
+    // Depois delas: média de Matemática e Linguagens pela metade (2 das 5 notas).
     const middle = history.filter((point) => point.estimate !== null)[0];
-    expect(middle).toMatchObject({ estimate: 598, parts: 2 });
+    expect(middle).toMatchObject({
+      estimate: Math.round((triScore('MATEMATICA', answers(5, 5)).score + triScore('LINGUAGENS', answers(5, 5)).score) / 2),
+      parts: 2,
+    });
     // Nesta semana Matemática subiu, e a média junto.
     expect(history[7].estimate!).toBeGreaterThan(middle.estimate!);
   });
