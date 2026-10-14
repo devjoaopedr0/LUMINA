@@ -1,0 +1,12 @@
+-- Busca textual de questões sem acento: "funcoes" precisa achar "Funções".
+-- A extensão `unaccent` (PostgreSQL contrib) remove os diacríticos dos dois
+-- lados do ILIKE. A aplicação degrada para o `contains` tradicional caso a
+-- extensão não exista, então esta migration é segura em qualquer ambiente.
+--
+-- Sem índice de propósito: `unaccent(text)` é STABLE no PostgreSQL, e função
+-- STABLE não pode aparecer em expressão de índice sem um wrapper IMMUTABLE.
+-- A busca já é limitada aos workspaces do usuário e roda em milissegundos
+-- mesmo sem índice. Se o volume um dia justificar, o caminho é criar o
+-- wrapper IMMUTABLE (como documenta a própria doc do unaccent) e um índice
+-- GIN com pg_trgm por cima.
+CREATE EXTENSION IF NOT EXISTS unaccent;

@@ -47,6 +47,13 @@ describe('AuthService', () => {
     };
 
     prisma = {
+      authSession: {
+        create: vi.fn().mockResolvedValue({ id: 'session-1' }),
+        update: vi.fn().mockResolvedValue({ id: 'session-1' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'session-1' }),
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: vi.fn((cb: any) =>
         cb({
           workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-1' }) },
@@ -75,6 +82,7 @@ describe('AuthService', () => {
 
     jwtService = {
       signAsync: vi.fn().mockResolvedValue('signed-token'),
+      verifyAsync: vi.fn(),
     };
 
     configService = {
@@ -172,6 +180,85 @@ describe('AuthService', () => {
       await expect(service.register(registerDto)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
+
+    it('cria o usuário como DIRECTOR e a instituição na mesma transação quando o cadastro inclui dados institucionais', async () => {
+      usersRepository.findByEmail.mockResolvedValue(null);
+      usersRepository.findByUsername.mockResolvedValue(null);
+      usersRepository.createWithProfile.mockResolvedValue(baseUser);
+
+      const tx = {
+        workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-1' }) },
+        role: { create: vi.fn().mockResolvedValue({ id: 'role-1' }) },
+        workspaceMember: { create: vi.fn().mockResolvedValue({}) },
+        permission: { findMany: vi.fn().mockResolvedValue([]) },
+        institution: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'inst-1', workspace: { id: 'ws-inst' } }),
+          findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'inst-1' }),
+        },
+        user: { update: vi.fn().mockResolvedValue(baseUser) },
+      };
+      prisma.$transaction.mockImplementation((cb: any) => cb(tx));
+
+      const result = await service.register({
+        ...registerDto,
+        institution: { name: 'Escola Lumina', email: 'contato@escola.com' },
+      });
+
+      // A conta responsável nasce como DIRECTOR — o dashboard institucional
+      // depende desse accountType — e a instituição é criada na MESMA
+      // transação do cadastro (não num passo posterior).
+      expect(usersRepository.createWithProfile).toHaveBeenCalledWith(
+        expect.objectContaining({ accountType: 'DIRECTOR' }),
+        expect.anything(),
+      );
+      expect(tx.institution.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ name: 'Escola Lumina' }) }),
+      );
+      expect(tx.workspaceMember.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'ACTIVE' }) }),
+      );
+      expect(result.accessToken).toBe('signed-token');
+    });
+
+    it('rejeita combinar cadastro institucional com outro tipo de conta', async () => {
+      await expect(
+        service.register({
+          ...registerDto,
+          accountType: 'STUDENT_INDEPENDENT',
+          institution: { name: 'Escola', email: 'escola@exemplo.com' },
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('desfaz todo o cadastro se o e-mail da instituição já está em uso', async () => {
+      usersRepository.findByEmail.mockResolvedValue(null);
+      usersRepository.findByUsername.mockResolvedValue(null);
+      usersRepository.createWithProfile.mockResolvedValue(baseUser);
+
+      const tx = {
+        workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-1' }) },
+        role: { create: vi.fn().mockResolvedValue({ id: 'role-1' }) },
+        workspaceMember: { create: vi.fn().mockResolvedValue({}) },
+        permission: { findMany: vi.fn().mockResolvedValue([]) },
+        institution: {
+          findUnique: vi.fn().mockResolvedValue({ id: 'inst-existente' }),
+          create: vi.fn(),
+          findUniqueOrThrow: vi.fn(),
+        },
+        user: { update: vi.fn() },
+      };
+      prisma.$transaction.mockImplementation((cb: any) => cb(tx));
+
+      await expect(
+        service.register({
+          ...registerDto,
+          institution: { name: 'Escola', email: 'existe@exemplo.com' },
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.institution.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('login', () => {
@@ -230,6 +317,49 @@ describe('AuthService', () => {
       usersRepository.findById.mockResolvedValue({ ...baseUser, status: UserStatus.SUSPENDED });
 
       await expect(service.validateUserById(baseUser.id)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe('refresh', () => {
+    it('troca um refresh token válido por um novo par de tokens', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: baseUser.id, email: baseUser.email });
+      usersRepository.findById.mockResolvedValue(baseUser);
+
+      const result = await service.refresh('refresh-token-valido');
+
+      expect(jwtService.verifyAsync).toHaveBeenCalledWith('refresh-token-valido', {
+        secret: 'refresh-secret',
+      });
+      expect(result.accessToken).toBe('signed-token');
+      expect(result.refreshToken).toBe('signed-token');
+      expect(result.user.email).toBe(baseUser.email);
+    });
+
+    it('lança UnauthorizedException quando o refresh token é inválido ou expirado', async () => {
+      jwtService.verifyAsync.mockRejectedValue(new Error('jwt expired'));
+
+      await expect(service.refresh('token-invalido')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(usersRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('lança UnauthorizedException quando o usuário do payload não existe mais', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: 'user-deletado', email: 'x@x.com' });
+      usersRepository.findById.mockResolvedValue(null);
+
+      await expect(service.refresh('refresh-token-valido')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('lança UnauthorizedException quando a conta não está mais ACTIVE', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: baseUser.id, email: baseUser.email });
+      usersRepository.findById.mockResolvedValue({ ...baseUser, status: UserStatus.SUSPENDED });
+
+      await expect(service.refresh('refresh-token-valido')).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });

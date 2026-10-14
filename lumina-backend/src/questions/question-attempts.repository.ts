@@ -25,6 +25,11 @@ export type AttemptWithQuestion = QuestionAttempt & {
   };
 };
 
+export interface AttemptCounts {
+  attempts: number;
+  correct: number;
+}
+
 /** Acesso via Prisma à tabela question_attempts (histórico de respostas). */
 @Injectable()
 export class QuestionAttemptsRepository {
@@ -78,5 +83,30 @@ export class QuestionAttemptsRepository {
         },
       },
     });
+  }
+
+  /** Contagens agregadas de tentativas por questão — base das estatísticas de
+   * acerto do banco. Usa findMany + select (e não groupBy) para funcionar
+   * igualmente no fake de testes e em drivers sem suporte a groupBy. */
+  async countsByQuestionIds(
+    questionIds: string[],
+    db: Db = this.prisma,
+  ): Promise<Map<string, AttemptCounts>> {
+    const ids = [...new Set(questionIds)];
+    if (ids.length === 0) return new Map();
+
+    const rows = await db.questionAttempt.findMany({
+      where: { questionId: { in: ids } },
+      select: { questionId: true, isCorrect: true },
+    });
+
+    const counts = new Map<string, AttemptCounts>();
+    for (const row of rows) {
+      const current = counts.get(row.questionId) ?? { attempts: 0, correct: 0 };
+      current.attempts += 1;
+      if (row.isCorrect) current.correct += 1;
+      counts.set(row.questionId, current);
+    }
+    return counts;
   }
 }

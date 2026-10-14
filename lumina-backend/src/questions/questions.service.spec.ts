@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { QuestionDifficulty } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuestionsService } from './questions.service';
+import { StudyGuideHintProvider } from './hints/study-guide-hint.provider';
+import { QuestionHintsService } from './hints/question-hints.service';
 
 describe('QuestionsService', () => {
   let service: QuestionsService;
@@ -12,6 +14,10 @@ describe('QuestionsService', () => {
   let questionProgressRepository: any;
   let subjectsRepository: any;
   let examsRepository: any;
+  let textSearchRepository: any;
+  let hintProvider: StudyGuideHintProvider;
+  let errorNotebookService: any;
+  let topicMasteryService: any;
 
   const baseWorkspace = { id: 'ws-1', name: 'Workspace de Maria', type: 'PERSONAL' };
   const baseQuestion = {
@@ -43,7 +49,7 @@ describe('QuestionsService', () => {
   ];
 
   beforeEach(() => {
-    prisma = { $transaction: vi.fn((cb: any) => cb(prisma)) };
+    prisma = { $transaction: vi.fn((cb: any) => cb(prisma)), teacherProfile: { findUnique: vi.fn().mockResolvedValue(null) } };
     questionsRepository = {
       findById: vi.fn(),
       create: vi.fn(),
@@ -56,6 +62,7 @@ describe('QuestionsService', () => {
     };
     questionAttemptsRepository = {
       create: vi.fn(),
+      countsByQuestionIds: vi.fn().mockResolvedValue(new Map()),
     };
     questionAccessService = {
       getPersonalWorkspaceOrThrow: vi.fn().mockResolvedValue(baseWorkspace),
@@ -72,6 +79,8 @@ describe('QuestionsService', () => {
       recordAttempt: vi.fn().mockResolvedValue({}),
       find: vi.fn().mockResolvedValue(null),
       setFavorite: vi.fn().mockResolvedValue({}),
+      setMarkedForReview: vi.fn().mockResolvedValue({}),
+      findManyForQuestions: vi.fn().mockResolvedValue([]),
     };
     subjectsRepository = {
       findById: vi.fn(),
@@ -83,6 +92,18 @@ describe('QuestionsService', () => {
       findById: vi.fn(),
       findOrCreate: vi.fn(),
     };
+    textSearchRepository = {
+      findIdsMatching: vi.fn().mockResolvedValue([]),
+    };
+    hintProvider = new StudyGuideHintProvider();
+    errorNotebookService = {
+      registerAttempt: vi.fn().mockResolvedValue(null),
+      toEntryDto: vi.fn(),
+    };
+    topicMasteryService = {
+      registerAttempt: vi.fn().mockResolvedValue(undefined),
+      listForUser: vi.fn().mockResolvedValue([]),
+    };
 
     service = new QuestionsService(
       prisma,
@@ -92,6 +113,11 @@ describe('QuestionsService', () => {
       questionProgressRepository,
       subjectsRepository,
       examsRepository,
+      textSearchRepository,
+      hintProvider,
+      new QuestionHintsService(hintProvider),
+      errorNotebookService,
+      topicMasteryService,
     );
   });
 
@@ -122,6 +148,16 @@ describe('QuestionsService', () => {
   }
 
   describe('create', () => {
+    it('limita a matéria de professor e identifica conteúdo autoral', async () => {
+      mockClassification();
+      prisma.teacherProfile.findUnique.mockResolvedValue({ subject: 'Física' });
+      await expect(service.create('user-1', createDto)).rejects.toBeInstanceOf(BadRequestException);
+      expect(questionsRepository.create).not.toHaveBeenCalled();
+      prisma.teacherProfile.findUnique.mockResolvedValue({ subject: 'Matemática' });
+      questionsRepository.create.mockResolvedValue({ ...baseQuestion, alternatives });
+      await service.create('user-1', createDto);
+      expect(questionsRepository.create).toHaveBeenCalledWith(expect.objectContaining({ sourceType: 'PARTNER', sourceName: 'Professor da Lumina', subject: 'Matemática' }));
+    });
     it('cria a questão com alternativas normalizadas e retorna a visão de autor', async () => {
       mockClassification();
       questionsRepository.create.mockImplementation(
@@ -143,10 +179,10 @@ describe('QuestionsService', () => {
           examId: 'exam-1',
           exam: 'ENEM',
           alternatives: [
-            { text: '4', position: 1, isCorrect: false },
-            { text: '6', position: 2, isCorrect: false },
-            { text: '8', position: 3, isCorrect: true },
-            { text: '10', position: 4, isCorrect: false },
+            { text: '4', position: 1, isCorrect: false, explanation: null },
+            { text: '6', position: 2, isCorrect: false, explanation: null },
+            { text: '8', position: 3, isCorrect: true, explanation: null },
+            { text: '10', position: 4, isCorrect: false, explanation: null },
           ],
         }),
       );
@@ -380,8 +416,8 @@ describe('QuestionsService', () => {
       expect(questionsRepository.createAlternatives).toHaveBeenCalledWith(
         'question-1',
         [
-          { text: '4', position: 1, isCorrect: false },
-          { text: '9', position: 2, isCorrect: true },
+          { text: '4', position: 1, isCorrect: false, explanation: null },
+          { text: '9', position: 2, isCorrect: true, explanation: null },
         ],
         prisma,
       );
@@ -433,7 +469,16 @@ describe('QuestionsService', () => {
 
       const result = await service.answer('user-1', 'question-1', { selectedPosition: 3 });
 
-      expect(result).toEqual({ isCorrect: true, selectedPosition: 3, correctPosition: 3 });
+      expect(result).toEqual({
+        isCorrect: true,
+        selectedPosition: 3,
+        correctPosition: 3,
+        // nenhuma alternativa tem explicação escrita pelo autor neste caso
+        explanations: [],
+        stats: null,
+        // questão que não está no caderno: nada a mostrar aqui
+        errorNotebook: null,
+      });
       expect(questionAttemptsRepository.create).toHaveBeenCalledWith(
         {
           questionId: 'question-1',
@@ -451,6 +496,25 @@ describe('QuestionsService', () => {
         true,
         prisma,
       );
+    });
+
+    it('a tentativa também é registrada no caderno de erros, na mesma transação', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      const entrada = { id: 'entry-1', questionId: 'question-1', status: 'ABERTA' };
+      errorNotebookService.registerAttempt.mockResolvedValue(entrada);
+      errorNotebookService.toEntryDto.mockReturnValue({ questionId: 'question-1' });
+
+      const result = await service.answer('user-1', 'question-1', { selectedPosition: 1 });
+
+      expect(errorNotebookService.registerAttempt).toHaveBeenCalledWith(
+        'user-1',
+        'question-1',
+        false,
+        prisma,
+      );
+      // A interface recebe o estado novo do caderno na mesma resposta, sem
+      // precisar chamar o caderno de novo.
+      expect(result.errorNotebook).toEqual({ questionId: 'question-1' });
     });
 
     it('retorna erro quando a posição escolhida não é a correta', async () => {
@@ -511,6 +575,291 @@ describe('QuestionsService', () => {
         true,
       );
       expect(result).toEqual({ isFavorite: true });
+    });
+  });
+
+  describe('marcar para revisar', () => {
+    it('marca a questão para revisar sem mexer no favorito', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionProgressRepository.find.mockResolvedValue({ isFavorite: true, markedForReview: false });
+
+      const result = await service.toggleMarkedForReview('user-1', 'question-1', true);
+
+      expect(questionProgressRepository.setMarkedForReview).toHaveBeenCalledWith(
+        'user-1',
+        'question-1',
+        true,
+      );
+      expect(questionProgressRepository.setFavorite).not.toHaveBeenCalled();
+      expect(result).toEqual({ markedForReview: true });
+    });
+
+    it('alterna o estado quando nenhuma preferência é informada', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionProgressRepository.find.mockResolvedValue({ markedForReview: true });
+
+      const result = await service.toggleMarkedForReview('user-1', 'question-1');
+
+      expect(questionProgressRepository.setMarkedForReview).toHaveBeenCalledWith(
+        'user-1',
+        'question-1',
+        false,
+      );
+      expect(result).toEqual({ markedForReview: false });
+    });
+
+    it('recusa marcar questão de workspace inacessível', async () => {
+      questionsRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.toggleMarkedForReview('user-1', 'question-1', true),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(questionProgressRepository.setMarkedForReview).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dica de questão', () => {
+    it('entrega a dica sem gravar tentativa (dica não é resposta)', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+
+      const result = await service.hint('user-1', 'question-1', 2);
+
+      expect(result.level).toBe(2);
+      expect(result.provider).toBe('rules');
+      expect(result.hint).toMatch(/enunciado/i);
+      expect(questionAttemptsRepository.create).not.toHaveBeenCalled();
+      expect(questionProgressRepository.recordAttempt).not.toHaveBeenCalled();
+    });
+
+    it('nunca revela a alternativa correta', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+
+      for (const level of [1, 2, 3]) {
+        const { hint } = await service.hint('user-1', 'question-1', level);
+        expect(hint).not.toMatch(/\b8\b/);
+      }
+    });
+
+    it('recusa dica de questão inacessível', async () => {
+      questionsRepository.findById.mockResolvedValue(null);
+
+      await expect(service.hint('user-1', 'question-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('explicação de cada alternativa errada', () => {
+    const comExplicacoes = [
+      { id: 'alt-1', questionId: 'question-1', text: '4', position: 1, isCorrect: false, explanation: '2^2 dá 4, não 2^3.' },
+      { id: 'alt-2', questionId: 'question-1', text: '6', position: 2, isCorrect: false, explanation: null },
+      { id: 'alt-3', questionId: 'question-1', text: '8', position: 3, isCorrect: true, explanation: '2^3 = 8.' },
+    ];
+
+    it('devolve as explicações escritas pelo autor junto com o resultado da tentativa', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives: comExplicacoes });
+
+      const result = await service.answer('user-1', 'question-1', { selectedPosition: 1 });
+
+      expect(result.explanations).toEqual([
+        {
+          position: 1,
+          text: '4',
+          isCorrect: false,
+          selected: true,
+          explanation: '2^2 dá 4, não 2^3.',
+        },
+        {
+          position: 3,
+          text: '8',
+          isCorrect: true,
+          selected: false,
+          explanation: '2^3 = 8.',
+        },
+      ]);
+    });
+
+    it('devolve lista vazia quando a questão não explica as alternativas', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+
+      const result = await service.answer('user-1', 'question-1', { selectedPosition: 3 });
+
+      expect(result.explanations).toEqual([]);
+    });
+
+    it('a visão de responder nunca carrega a explicação da alternativa', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives: comExplicacoes });
+
+      const result = await service.findById('user-1', 'question-1', false);
+
+      expect(result.alternatives.every((alternative) => alternative.explanation === undefined)).toBe(
+        true,
+      );
+    });
+
+    it('a visão de autor carrega a explicação de cada alternativa para edição', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives: comExplicacoes });
+
+      const result = await service.findById('user-1', 'question-1', true);
+
+      expect(result.alternatives[0].explanation).toBe('2^2 dá 4, não 2^3.');
+    });
+  });
+
+  describe('progresso do aluno na listagem', () => {
+    it('leva o estado de cada questão da página (marcada para revisar, respostas)', async () => {
+      questionsRepository.count.mockResolvedValue(1);
+      questionsRepository.findMany.mockResolvedValue([{ ...baseQuestion, alternatives }]);
+      questionProgressRepository.findManyForQuestions.mockResolvedValue([
+        {
+          questionId: 'question-1',
+          attempts: 3,
+          correctAttempts: 1,
+          incorrectAttempts: 2,
+          lastAttemptAt: new Date('2026-09-20T12:00:00Z'),
+          isFavorite: true,
+          markedForReview: true,
+        },
+      ]);
+
+      const result = await service.findAll('user-1', { page: 1, limit: 20 });
+
+      expect(questionProgressRepository.findManyForQuestions).toHaveBeenCalledWith('user-1', [
+        'question-1',
+      ]);
+      expect(result.items[0].progress).toEqual({
+        attempts: 3,
+        correctAttempts: 1,
+        incorrectAttempts: 2,
+        lastAttemptAt: new Date('2026-09-20T12:00:00Z'),
+        isFavorite: true,
+        markedForReview: true,
+      });
+    });
+
+    it('devolve progress null para questão com a qual o aluno ainda não interagiu', async () => {
+      questionsRepository.count.mockResolvedValue(1);
+      questionsRepository.findMany.mockResolvedValue([{ ...baseQuestion, alternatives }]);
+
+      const result = await service.findAll('user-1', { page: 1, limit: 20 });
+
+      expect(result.items[0].progress).toBeNull();
+    });
+  });
+
+  describe('estatísticas de acerto por questão', () => {
+    it('inclui as estatísticas agregadas na listagem quando há tentativas', async () => {
+      questionsRepository.count.mockResolvedValue(1);
+      questionsRepository.findMany.mockResolvedValue([{ ...baseQuestion, alternatives }]);
+      questionAttemptsRepository.countsByQuestionIds.mockResolvedValue(
+        new Map([['question-1', { attempts: 4, correct: 3 }]]),
+      );
+
+      const result = await service.findAll('user-1', { page: 1, limit: 20 });
+
+      expect(questionAttemptsRepository.countsByQuestionIds).toHaveBeenCalledWith(['question-1']);
+      expect(result.items[0].stats).toEqual({ attempts: 4, correct: 3, accuracyPercent: 75 });
+    });
+
+    it('expõe stats null na listagem quando a questão ainda não tem tentativas', async () => {
+      questionsRepository.count.mockResolvedValue(1);
+      questionsRepository.findMany.mockResolvedValue([{ ...baseQuestion, alternatives }]);
+
+      const result = await service.findAll('user-1', { page: 1, limit: 20 });
+
+      expect(result.items[0].stats).toBeNull();
+    });
+
+    it('inclui stats no detalhe da questão', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionAttemptsRepository.countsByQuestionIds.mockResolvedValue(
+        new Map([['question-1', { attempts: 2, correct: 1 }]]),
+      );
+
+      const result = await service.findById('user-1', 'question-1', false);
+
+      expect(result.stats).toEqual({ attempts: 2, correct: 1, accuracyPercent: 50 });
+    });
+
+    it('retorna stats já contando a tentativa registrada', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionAttemptsRepository.countsByQuestionIds.mockResolvedValue(
+        new Map([['question-1', { attempts: 1, correct: 1 }]]),
+      );
+
+      const result = await service.answer('user-1', 'question-1', { selectedPosition: 3 });
+
+      expect(result.stats).toEqual({ attempts: 1, correct: 1, accuracyPercent: 100 });
+    });
+  });
+
+  describe('findSimilar', () => {
+    const similarQuestion = (overrides: Record<string, unknown> = {}) => ({
+      ...baseQuestion,
+      id: 'question-2',
+      alternatives,
+      ...overrides,
+    });
+
+    it('prioriza questões do mesmo assunto e exclui a própria', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionsRepository.findMany.mockResolvedValue([
+        similarQuestion({ id: 'question-3' }),
+        similarQuestion({ id: 'question-2', topicId: 'topic-2' }),
+        { ...baseQuestion, alternatives },
+      ]);
+
+      const result = await service.findSimilar('user-1', 'question-1', 5);
+
+      expect(questionsRepository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: { in: ['ws-1'] },
+          OR: expect.arrayContaining([{ topicId: 'topic-1' }]),
+        }),
+        expect.objectContaining({ take: 60 }),
+      );
+      expect(result.items.map((item) => item.id)).toEqual(['question-3', 'question-2']);
+      expect(result.limit).toBe(5);
+    });
+
+    it('respeita o limite informado e o teto de segurança', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionsRepository.findMany.mockResolvedValue([]);
+
+      await expect(service.findSimilar('user-1', 'question-1', 999)).resolves.toMatchObject({
+        items: [],
+        limit: 12,
+      });
+      await expect(service.findSimilar('user-1', 'question-1')).resolves.toMatchObject({
+        limit: 5,
+      });
+    });
+
+    it('usa a fronteira de visibilidade do usuário (workspace pessoal + banco)', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionsRepository.findMany.mockResolvedValue([]);
+      questionAccessService.getBankWorkspace.mockResolvedValue({
+        id: 'ws-banco',
+        name: 'Banco Lumina',
+        type: 'INSTITUTION',
+      });
+
+      await service.findSimilar('user-1', 'question-1', 5);
+
+      expect(questionsRepository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: { in: ['ws-1', 'ws-banco'] } }),
+        expect.anything(),
+      );
+    });
+
+    it('lança NotFoundException para questão de outro workspace', async () => {
+      questionsRepository.findById.mockResolvedValue({
+        ...baseQuestion,
+        workspaceId: 'outro-workspace',
+        alternatives,
+      });
+
+      await expect(service.findSimilar('user-1', 'question-1', 5)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

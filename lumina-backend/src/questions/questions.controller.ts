@@ -23,6 +23,7 @@ import { UserWithProfile } from '../users/users.repository';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateAttemptDto } from './dto/create-attempt.dto';
 import { CreateQuestionDto } from './dto/create-question.dto';
+import { ImportEnemDto } from './dto/import-enem.dto';
 import {
   ImportCsvQuestionsDto,
   ImportJsonQuestionsDto,
@@ -34,9 +35,16 @@ import {
   AttemptResultDto,
   PaginatedQuestionsDto,
   QuestionResponseDto,
+  SimilarQuestionsDto,
 } from './dto/question-response.dto';
 import { QueryQuestionsDto } from './dto/query-questions.dto';
+import {
+  QuestionHintDto,
+  QuestionHintQueryDto,
+  QuestionReviewStateDto,
+} from './dto/question-resolution.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { EnemImportService } from './import/enem/enem-import.service';
 import { QuestionImportService } from './import/question-import.service';
 import { QuestionsService } from './questions.service';
 
@@ -51,6 +59,7 @@ export class QuestionsController {
   constructor(
     private readonly questionsService: QuestionsService,
     private readonly questionImportService: QuestionImportService,
+    private readonly enemImportService: EnemImportService,
   ) {}
 
   @Post()
@@ -110,6 +119,36 @@ export class QuestionsController {
     return this.questionImportService.importFromCsv(dto.content, workspace.id, user.id);
   }
 
+  @Post('import/enem')
+  @ApiOperation({
+    summary:
+      'Baixa um caderno oficial do ENEM (PDFs públicos do INEP) e importa as questões dele.',
+  })
+  @ApiResponse({ status: 201, type: ImportReportDto })
+  @ApiResponse({ status: 400, description: 'URL de PDF fora do domínio do INEP, ou PDF inacessível.' })
+  @ApiResponse({ status: 403, description: 'Sem permissão para gerenciar questões no destino informado.' })
+  async importEnem(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: ImportEnemDto,
+  ): Promise<ImportReportDto> {
+    const workspace = await this.questionsService.getImportWorkspace(
+      user.id,
+      dto.target ?? QuestionImportTarget.BANK,
+    );
+    const { questions, skipped } = await this.enemImportService.fetchExam({
+      year: dto.year,
+      day: dto.day,
+      provaUrl: dto.provaUrl,
+      gabaritoUrl: dto.gabaritoUrl,
+    });
+    return this.questionImportService.importScrapedQuestions(
+      questions,
+      skipped,
+      workspace.id,
+      user.id,
+    );
+  }
+
   @Get()
   @ApiOperation({
     summary:
@@ -136,6 +175,21 @@ export class QuestionsController {
     @Query('includeAnswer') includeAnswer?: string,
   ): Promise<QuestionResponseDto> {
     return this.questionsService.findById(user.id, id, includeAnswer === 'true');
+  }
+
+  @Get(':id/similar')
+  @ApiOperation({
+    summary:
+      'Retorna questões semelhantes (mesmo assunto, disciplina ou exame), excluindo a própria — dentro dos workspaces acessíveis ao usuário.',
+  })
+  @ApiResponse({ status: 200, type: SimilarQuestionsDto })
+  @ApiResponse({ status: 404, description: 'Questão não encontrada.' })
+  similar(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit?: string,
+  ): Promise<SimilarQuestionsDto> {
+    return this.questionsService.findSimilar(user.id, id, limit ? Number(limit) : undefined);
   }
 
   @Patch(':id')
@@ -178,6 +232,46 @@ export class QuestionsController {
     @Body() dto: CreateAttemptDto,
   ): Promise<AttemptResultDto> {
     return this.questionsService.answer(user.id, id, dto);
+  }
+
+  @Get(':id/hint')
+  @ApiOperation({
+    summary:
+      'Dica para destravar a questão sem revelar a resposta. Níveis 1 a 3, do mais leve ao quase resolutivo.',
+  })
+  @ApiResponse({ status: 200, type: QuestionHintDto })
+  @ApiResponse({ status: 404, description: 'Questão não encontrada.' })
+  @ApiResponse({ status: 400, description: 'Nível de dica fora da faixa válida (1-3).' })
+  hint(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: QuestionHintQueryDto,
+  ): Promise<QuestionHintDto> {
+    return this.questionsService.hint(user.id, id, query.level);
+  }
+
+  @Post(':id/review')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Marca a questão como "para revisar" (compromisso de retomar depois).',
+  })
+  @ApiResponse({ status: 200, type: QuestionReviewStateDto })
+  markForReview(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QuestionReviewStateDto> {
+    return this.questionsService.toggleMarkedForReview(user.id, id, true);
+  }
+
+  @Delete(':id/review')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a marcação "para revisar".' })
+  @ApiResponse({ status: 200, type: QuestionReviewStateDto })
+  unmarkForReview(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QuestionReviewStateDto> {
+    return this.questionsService.toggleMarkedForReview(user.id, id, false);
   }
 
   @Post(':id/favorite')

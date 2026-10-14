@@ -29,6 +29,15 @@ export class StudyTaskResponseDto {
   @ApiProperty({ type: String, nullable: true, format: "date-time" })
   completedAt: Date | null;
 
+  @ApiProperty({ type: Number, nullable: true, example: 10, description: "Questões respondidas na prática da tarefa." })
+  practiceAnswered: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 7, description: "Acertos na prática da tarefa." })
+  practiceCorrect: number | null;
+
+  @ApiProperty({ type: String, nullable: true, description: "Simulado montado para a tarefa de simulado." })
+  simulationId: string | null;
+
   @ApiProperty({ type: String, nullable: true, example: "Revisar dúvidas com o Professor" })
   notes: string | null;
 

@@ -8,10 +8,18 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseModule } from './database/prisma.module';
 import { QuestionsModule } from './questions/questions.module';
 import { SchedulesModule } from './schedules/schedules.module';
+import { MentalMathModule } from './mental-math/mental-math.module';
+import { EssaysModule } from './essays/essays.module';
+import { SimulationsModule } from './simulations/simulations.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
+import { InstitutionsModule } from './institutions/institutions.module';
+import { SearchModule } from './search/search.module';
 import { validateEnv } from './config/env.validation';
 import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { AiModule } from './ai/ai.module';
+import { CutoffsModule } from './cutoffs/cutoffs.module';
+import { NotebooksModule } from './notebooks/notebooks.module';
 
 @Module({
   imports: [
@@ -29,8 +37,16 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
     UsersModule,
     AuthModule,
     WorkspacesModule,
+    InstitutionsModule,
     QuestionsModule,
     SchedulesModule,
+    MentalMathModule,
+    EssaysModule,
+    SimulationsModule,
+    SearchModule,
+    AiModule,
+    CutoffsModule,
+    NotebooksModule,
   ],
   providers: [
     RateLimitMiddleware,

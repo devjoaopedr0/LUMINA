@@ -3,28 +3,37 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
   ParseIntPipe,
+  ParseUUIDPipe,
   DefaultValuePipe,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { SchedulesService } from "./schedules.service";
+import { ScheduleInsightsService } from "./schedule-insights.service";
 import {
   CreateStudyScheduleDto,
   CreateStudyTaskDto,
+  ReplanTaskDto,
   RescheduleTaskDto,
+  SetTopicIncludedDto,
+  CompletePracticeDto,
   SetVestibularDto,
+  SubjectTimeLogDto,
   TimeLogDto,
   UpdateStudyScheduleDto,
   UpdateStudyTaskDto,
 } from "./dto/create-study-schedule.dto";
 import type { UserWithProfile } from "../users/users.repository";
+import { ScoreEstimateService } from "./score-estimate.service";
 
 function userDate(date?: string): Date {
   return date ? new Date(date) : new Date();
@@ -35,7 +44,11 @@ function userDate(date?: string): Date {
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class SchedulesController {
-  constructor(private readonly service: SchedulesService) {}
+  constructor(
+    private readonly service: SchedulesService,
+    private readonly insights: ScheduleInsightsService,
+    private readonly scoreEstimates: ScoreEstimateService,
+  ) {}
 
   @Get("study/subjects")
   async getSubjects() {
@@ -80,13 +93,7 @@ export class SchedulesController {
     @Param("id") id: string,
     @Body() dto: UpdateStudyScheduleDto,
   ) {
-    return this.service.updateSchedule(user.id, id, {
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-      studyDays: dto.studyDays,
-      dailyMinutes: dto.dailyMinutes,
-      objective: dto.objective,
-    });
+    return this.service.updateSchedule(user.id, id, dto);
   }
 
   @Delete("study/schedule/:id")
@@ -101,6 +108,86 @@ export class SchedulesController {
     @Query("date") date?: string,
   ) {
     return this.service.getDailySession(user.id, userDate(date));
+  }
+
+  @Post("study/daily/refresh")
+  @ApiOperation({
+    summary: "Refaz o plano de um dia com o domínio atual",
+    description: "Troca só as tarefas geradas que o aluno ainda não tocou.",
+  })
+  async refreshDay(@CurrentUser() user: UserWithProfile, @Body("date") date?: string) {
+    return this.service.refreshDay(user.id, userDate(date));
+  }
+
+  @Get("study/topics")
+  @ApiOperation({
+    summary: "Tópicos de cada matéria do cronograma",
+    description: "Situação do aluno em cada tópico e se ele está no plano.",
+  })
+  async getTopics(@CurrentUser() user: UserWithProfile) {
+    return this.insights.topicsBySubject(user.id);
+  }
+
+  @Put("study/topics/:id")
+  @ApiOperation({
+    summary: "Inclui ou tira um tópico do cronograma",
+    description: "Tirar refaz os dias, de hoje em diante, em que o tópico estava agendado.",
+  })
+  async setTopicIncluded(
+    @CurrentUser() user: UserWithProfile,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetTopicIncludedDto,
+  ) {
+    const result = await this.service.setTopicIncluded(user.id, id, dto.included);
+    if (!result) throw new NotFoundException("Tópico não encontrado.");
+    return result;
+  }
+
+  @Get("study/week")
+  @ApiOperation({
+    summary: "Resumo de sete dias a partir de `start`",
+    description: "Tarefas planejadas e concluídas por dia. Não gera tarefas.",
+  })
+  async getWeek(
+    @CurrentUser() user: UserWithProfile,
+    @Query("start") start?: string,
+  ) {
+    return this.service.getWeek(user.id, userDate(start));
+  }
+
+  @Get("study/weekly-summary")
+  @ApiOperation({
+    summary: "Resumo da semana (domingo a sábado) que contém `date`",
+    description: "Tarefas, tempo, questões, simulados e tópicos trabalhados, com a semana anterior para comparar.",
+  })
+  async weeklySummary(@CurrentUser() user: UserWithProfile, @Query("date") date?: string) {
+    return this.insights.weeklySummary(user.id, userDate(date));
+  }
+
+  @Get("study/score-estimate")
+  @ApiOperation({
+    summary: "Estimativa da nota do ENEM pelo desempenho nas questões",
+    description: "Aproximação com faixa de incerteza, por área e na média; compara com a meta do Sisu quando há.",
+  })
+  async scoreEstimate(@CurrentUser() user: UserWithProfile) {
+    return this.scoreEstimates.forUser(user.id);
+  }
+
+  @Get("study/score-estimate/history")
+  @ApiOperation({ summary: "A estimativa de nota ao fim de cada uma das últimas semanas" })
+  async scoreEstimateHistory(@CurrentUser() user: UserWithProfile) {
+    return this.scoreEstimates.history(user.id);
+  }
+
+  @Get("study/diagnostic")
+  @ApiOperation({
+    summary: "Diagnóstico inicial do onboarding",
+    description:
+      "Até 5 questões por área do ENEM, das matérias do cronograma. As respostas " +
+      "vão pelo endpoint normal de tentativa e alimentam o domínio por tópico.",
+  })
+  async getDiagnostic(@CurrentUser() user: UserWithProfile) {
+    return this.insights.diagnostic(user.id);
   }
 
   @Get("study/tasks")
@@ -146,6 +233,51 @@ export class SchedulesController {
     return this.service.rescheduleTask(user.id, id, dto.sessionId);
   }
 
+  @Post("study/tasks/:id/replan")
+  @ApiOperation({
+    summary: "Replaneja uma tarefa não feita",
+    description: "O aluno escolhe: próximo dia, sábado, redistribuir ou não fazer.",
+  })
+  async replanTask(
+    @CurrentUser() user: UserWithProfile,
+    @Param("id") id: string,
+    @Body() dto: ReplanTaskDto,
+  ) {
+    const result = await this.service.replanTask(user.id, id, dto);
+    if (!result) throw new NotFoundException("Tarefa não encontrada.");
+    return result;
+  }
+
+  @Get("study/tasks/:id/explain")
+  @ApiOperation({ summary: "Por que esta tarefa está no cronograma" })
+  async explainTask(@CurrentUser() user: UserWithProfile, @Param("id") id: string) {
+    const explanation = await this.insights.explainTask(user.id, id);
+    if (!explanation) throw new NotFoundException("Tarefa não encontrada.");
+    // `context` é o texto que vai para a LuminIA; a tela usa só os motivos.
+    const { context: _context, ...rest } = explanation;
+    return rest;
+  }
+
+  @Get("study/tasks/:id/practice")
+  @ApiOperation({ summary: "Bloco de questões do tópico da tarefa, para praticar" })
+  async taskPractice(@CurrentUser() user: UserWithProfile, @Param("id") id: string) {
+    const practice = await this.insights.taskPractice(user.id, id);
+    if (!practice) throw new NotFoundException("Tarefa não encontrada.");
+    return practice;
+  }
+
+  @Post("study/tasks/:id/practice/complete")
+  @ApiOperation({ summary: "Conclui a tarefa com o resultado do bloco de questões respondido" })
+  async completePractice(
+    @CurrentUser() user: UserWithProfile,
+    @Param("id") id: string,
+    @Body() dto: CompletePracticeDto,
+  ) {
+    const task = await this.service.completeTaskWithPractice(user.id, id, dto.questionIds);
+    if (!task) throw new NotFoundException("Tarefa não encontrada.");
+    return task;
+  }
+
   @Patch("study/tasks/:id/complete")
   async completeTask(@CurrentUser() user: UserWithProfile, @Param("id") id: string) {
     return this.service.completeTask(user.id, id);
@@ -156,11 +288,36 @@ export class SchedulesController {
     return this.service.stopTimer(user.id, id, dto.durationMinutes);
   }
 
+  @Post("study/timer")
+  @ApiOperation({
+    summary: "Registra tempo de estudo por matéria",
+    description:
+      "Usado pelo cronômetro: o aluno informa a disciplina e os minutos, sem " +
+      "depender de subtópico ou de tarefa do dia.",
+  })
+  async logSubjectTime(
+    @CurrentUser() user: UserWithProfile,
+    @Body() dto: SubjectTimeLogDto,
+  ) {
+    const result = await this.service.logSubjectTime(
+      user.id,
+      dto.subjectId,
+      dto.durationMinutes,
+    );
+    if (!result) {
+      throw new NotFoundException(
+        "Matéria fora do seu cronograma. Escolha uma disciplina planejada.",
+      );
+    }
+    return result;
+  }
+
   @Get("study/progress")
   async getProgress(@CurrentUser() user: UserWithProfile) {
     const summary = await this.service.getProgress(user.id);
     const evolution = await this.service.getProgressEvolution(user.id, 30);
-    return { summary, evolution };
+    const mastery = await this.insights.masterySummary(user.id);
+    return { summary, evolution, mastery };
   }
 
   @Post("study/reschedule-missed")

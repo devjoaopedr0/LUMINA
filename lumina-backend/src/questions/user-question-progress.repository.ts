@@ -16,6 +16,19 @@ export type ProgressWithQuestion = UserQuestionProgress & {
   };
 };
 
+/** Estado do aluno em uma questão, sem os campos de bookkeeping. É o que a
+ * listagem de questões carrega (uma consulta para a página inteira). */
+export type UserQuestionState = Pick<
+  UserQuestionProgress,
+  | 'questionId'
+  | 'attempts'
+  | 'correctAttempts'
+  | 'incorrectAttempts'
+  | 'lastAttemptAt'
+  | 'isFavorite'
+  | 'markedForReview'
+>;
+
 /**
  * Acesso via Prisma a user_question_progress — o acompanhamento da evolução
  * do aluno em cada questão (tentativas certas/erradas, último acesso,
@@ -72,6 +85,45 @@ export class UserQuestionProgressRepository {
     });
   }
 
+  /** Marca (ou desmarca) a questão para revisão. Não mexe em nenhum outro
+   * contador: favoritar e revisitar são decisões independentes do aluno. */
+  setMarkedForReview(
+    userId: string,
+    questionId: string,
+    markedForReview: boolean,
+    db: Db = this.prisma,
+  ): Promise<UserQuestionProgress> {
+    return db.userQuestionProgress.upsert({
+      where: { userId_questionId: { userId, questionId } },
+      update: { markedForReview },
+      create: { userId, questionId, markedForReview },
+    });
+  }
+
+  /** Progresso do aluno em várias questões de uma vez — uma única consulta
+   * para a página inteira da listagem, sem N+1. */
+  findManyForQuestions(
+    userId: string,
+    questionIds: string[],
+    db: Db = this.prisma,
+  ): Promise<UserQuestionState[]> {
+    const ids = [...new Set(questionIds)];
+    if (ids.length === 0) return Promise.resolve([]);
+
+    return db.userQuestionProgress.findMany({
+      where: { userId, questionId: { in: ids } },
+      select: {
+        questionId: true,
+        attempts: true,
+        correctAttempts: true,
+        incorrectAttempts: true,
+        lastAttemptAt: true,
+        isFavorite: true,
+        markedForReview: true,
+      },
+    });
+  }
+
   findManyByUser(
     userId: string,
     options: { skip: number; take: number; where?: Prisma.UserQuestionProgressWhereInput },
@@ -91,6 +143,7 @@ export class UserQuestionProgressRepository {
         incorrectAttempts: true,
         lastAttemptAt: true,
         isFavorite: true,
+        markedForReview: true,
         createdAt: true,
         updatedAt: true,
         question: {

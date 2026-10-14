@@ -20,6 +20,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   /** Retorno vira `request.user` em qualquer rota protegida pelo JwtAuthGuard. */
   async validate(payload: JwtPayload) {
-    return this.authService.validateUserById(payload.sub);
+    return this.authService.validateUserById(payload.sub, payload.sessionVersion, payload.sessionId);
   }
 }

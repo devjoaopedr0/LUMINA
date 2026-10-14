@@ -1,4 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { Type } from "class-transformer";
+import { StudyArea, StudyEssayFrequency, StudyTaskStatus } from "@prisma/client";
 import {
   IsDateString,
   IsInt,
@@ -11,6 +13,14 @@ import {
   Max,
   MinLength,
   MaxLength,
+  ArrayNotEmpty,
+  ArrayUnique,
+  ArrayMaxSize,
+  ArrayMinSize,
+  ValidateNested,
+  IsEnum,
+  IsBoolean,
+  IsIn,
 } from "class-validator";
 
 export class SubjectTargetDto {
@@ -24,6 +34,21 @@ export class SubjectTargetDto {
   targetHours: number;
 }
 
+/// Tempo de estudo de um dia da semana (onboarding, fase 5 §11).
+export class DayMinutesDto {
+  @ApiProperty({ example: 1, description: "0=dom, 1=seg, ..., 6=sáb" })
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  weekday: number;
+
+  @ApiProperty({ example: 90, description: "Minutos nesse dia; 0 = não estuda" })
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  minutes: number;
+}
+
 export class CreateStudyScheduleDto {
   @ApiProperty({ format: "date", example: "2025-01-01" })
   @IsDateString()
@@ -35,9 +60,11 @@ export class CreateStudyScheduleDto {
 
   @ApiProperty({
     example: [0, 1, 2, 3, 4],
-    description: "Dias da semana disponíveis (0=dom, 1=seg, ..., 6=dom)",
+    description: "Dias da semana disponíveis (0=dom, 1=seg, ..., 6=sáb)",
   })
   @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
   @IsInt({ each: true })
   @Min(0, { each: true })
   @Max(6, { each: true })
@@ -49,14 +76,49 @@ export class CreateStudyScheduleDto {
   @Max(1440)
   dailyMinutes: number;
 
-  @ApiProperty({ type: String, nullable: true, example: "Passar no ENEM com 1400+ pontos" })
+  @ApiProperty({ type: String, nullable: true, example: "Média 750 no ENEM para Medicina" })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   objective?: string;
 
+  @ApiProperty({
+    type: [DayMinutesDto],
+    required: false,
+    description: "Tempo por dia da semana. Dia de estudo sem entrada aqui usa dailyMinutes.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique((day: DayMinutesDto) => day?.weekday)
+  @ValidateNested({ each: true })
+  @Type(() => DayMinutesDto)
+  dayMinutes?: DayMinutesDto[];
+
+  @ApiProperty({ type: String, nullable: true, required: false, example: "Medicina" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  targetCourse?: string;
+
+  @ApiProperty({ enum: StudyArea, isArray: true, required: false, description: "Até três áreas prioritárias" })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @ArrayUnique()
+  @IsEnum(StudyArea, { each: true })
+  priorityAreas?: StudyArea[];
+
+  @ApiProperty({ enum: StudyEssayFrequency, nullable: true, required: false })
+  @IsOptional()
+  @IsEnum(StudyEssayFrequency)
+  essayFrequency?: StudyEssayFrequency;
+
   @ApiProperty({ type: [SubjectTargetDto], description: "Disciplinas e horas-alvo" })
   @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique((subject: SubjectTargetDto) => subject?.subjectId)
+  @ValidateNested({ each: true })
+  @Type(() => SubjectTargetDto)
   subjects: SubjectTargetDto[];
 }
 
@@ -90,6 +152,46 @@ export class UpdateStudyScheduleDto {
   @IsString()
   @MaxLength(500)
   objective?: string;
+
+  @ApiProperty({
+    type: [DayMinutesDto],
+    required: false,
+    description: "Tempo por dia da semana. Dia de estudo sem entrada aqui usa dailyMinutes.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique((day: DayMinutesDto) => day?.weekday)
+  @ValidateNested({ each: true })
+  @Type(() => DayMinutesDto)
+  dayMinutes?: DayMinutesDto[];
+
+  @ApiProperty({ type: String, nullable: true, required: false, example: "Medicina" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  targetCourse?: string;
+
+  @ApiProperty({ enum: StudyArea, isArray: true, required: false, description: "Até três áreas prioritárias" })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @ArrayUnique()
+  @IsEnum(StudyArea, { each: true })
+  priorityAreas?: StudyArea[];
+
+  @ApiProperty({ enum: StudyEssayFrequency, nullable: true, required: false })
+  @IsOptional()
+  @IsEnum(StudyEssayFrequency)
+  essayFrequency?: StudyEssayFrequency;
+
+  @ApiProperty({ type: [SubjectTargetDto], required: false, description: "Substitui as disciplinas do cronograma" })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique((subject: SubjectTargetDto) => subject?.subjectId)
+  @ValidateNested({ each: true })
+  @Type(() => SubjectTargetDto)
+  subjects?: SubjectTargetDto[];
 }
 
 export class CreateStudyTaskDto {
@@ -141,8 +243,8 @@ export class UpdateStudyTaskDto {
 
   @ApiProperty({ enum: ["PENDING", "IN_PROGRESS", "DONE"], required: false })
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsEnum(StudyTaskStatus)
+  status?: StudyTaskStatus;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -175,6 +277,22 @@ export class TimeLogDto {
   durationMinutes: number;
 }
 
+/// Registro de tempo do cronômetro, que é por MATÉRIA e não por subtópico.
+export class SubjectTimeLogDto {
+  @ApiProperty({
+    example: "a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01",
+    description: "Disciplina (matéria) que está sendo estudada",
+  })
+  @IsUUID()
+  subjectId: string;
+
+  @ApiProperty({ example: 45 })
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  durationMinutes: number;
+}
+
 export class SetVestibularDto {
   @ApiProperty({ example: "c0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e00", nullable: true })
   @IsOptional()
@@ -185,10 +303,55 @@ export class SetVestibularDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  customName?: string;
+  customName?: string | null;
 
   @ApiProperty({ format: "date", nullable: true, example: "2025-01-15" })
   @IsOptional()
   @IsDateString()
   targetDate?: string;
+}
+
+export const REPLAN_STRATEGIES = ["TOMORROW", "SATURDAY", "AUTO", "SKIP"] as const;
+export type ReplanStrategy = (typeof REPLAN_STRATEGIES)[number];
+
+/// Replanejamento de uma tarefa não feita (fase 4, §12).
+export class ReplanTaskDto {
+  @ApiProperty({
+    enum: REPLAN_STRATEGIES,
+    description:
+      "TOMORROW: próximo dia de estudo. SATURDAY: próximo sábado. AUTO: encaixa no " +
+      "próximo dia redistribuindo o tempo das outras matérias. SKIP: não fazer.",
+  })
+  @IsIn(REPLAN_STRATEGIES)
+  strategy: ReplanStrategy;
+
+  @ApiProperty({ format: "date", required: false, description: "Hoje no fuso do aluno" })
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "Só para AUTO: false devolve a prévia sem gravar; true aplica.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirm?: boolean;
+}
+
+/// Conclui a tarefa pelo bloco de questões que o aluno acabou de fazer.
+export class CompletePracticeDto {
+  @ApiProperty({ type: [String], description: "Questões do bloco de prática (as respostas já foram registradas)." })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @IsUUID("4", { each: true })
+  questionIds: string[];
+}
+
+/// O aluno inclui ou tira um tópico do próprio cronograma.
+export class SetTopicIncludedDto {
+  @ApiProperty({ description: "false tira o tópico do cronograma; true devolve." })
+  @IsBoolean()
+  included: boolean;
 }

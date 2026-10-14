@@ -1,8 +1,12 @@
-const ACCESS_TOKEN_KEY = "lumina_access_token";
-const REFRESH_TOKEN_KEY = "lumina_refresh_token";
+export const ACCESS_TOKEN_KEY = "lumina_access_token";
+export const REFRESH_TOKEN_KEY = "lumina_refresh_token";
 
 export function getAccessToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export function setTokens(accessToken: string, refreshToken: string): void {

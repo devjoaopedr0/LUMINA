@@ -70,6 +70,45 @@ export class QuestionCatalogController {
     return this.catalogService.listExamQuestions(user.id, params.id, query);
   }
 
+  @Get('exam-papers')
+  @ApiOperation({ summary: 'Lista as provas antigas publicadas (PDF, páginas, gabarito).' })
+  listExamPapers(@CurrentUser() user: UserWithProfile) {
+    return this.catalogService.listExamPapers(user.id);
+  }
+
+  @Get('exam-papers/compare')
+  @ApiOperation({ summary: 'Compara duas edições do mesmo vestibular e mede a repetição de questões.' })
+  @ApiResponse({ status: 400, description: 'Edições de vestibulares diferentes ou a mesma edição duas vezes.' })
+  @ApiResponse({ status: 404, description: 'Prova não encontrada ou não publicada.' })
+  compareExamPapers(
+    @CurrentUser() user: UserWithProfile,
+    @Query('baseId', ParseUUIDPipe) baseId: string,
+    @Query('compareId', ParseUUIDPipe) compareId: string,
+  ) {
+    return this.catalogService.compareExamPapers(user.id, baseId, compareId);
+  }
+
+  @Get('exam-papers/:id')
+  @ApiOperation({ summary: 'Detalhe de uma prova antiga publicada.' })
+  @ApiResponse({ status: 404, description: 'Prova não encontrada ou não publicada.' })
+  getExamPaper(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.catalogService.getExamPaper(user.id, id);
+  }
+
+  @Get('exam-papers/:id/pages')
+  @ApiOperation({ summary: 'Lista as páginas de uma prova antiga.' })
+  @ApiResponse({ status: 404, description: 'Prova não encontrada ou não publicada.' })
+  getExamPaperPages(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.catalogService.getExamPaperPages(user.id, id);
+  }
+
+  @Get('exam-papers/:id/questions')
+  @ApiOperation({ summary: 'Lista as questões mapeadas de uma prova antiga.' })
+  @ApiResponse({ status: 404, description: 'Prova não encontrada ou não publicada.' })
+  getExamPaperQuestions(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.catalogService.getExamPaperQuestions(user.id, id);
+  }
+
   /** Mantém o ParseUUIDPipe registrado no Swagger como exemplo de rota. */
   @Get('subjects/:id')
   @ApiOperation({ summary: 'Detalhe de uma disciplina.' })

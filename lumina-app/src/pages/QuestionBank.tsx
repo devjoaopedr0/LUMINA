@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
+  Bookmark,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -11,31 +12,31 @@ import {
   LogOut,
   Pencil,
   Plus,
-  RotateCcw,
   Search,
+  Sparkles,
   Trash2,
   Upload,
   X,
-  XCircle,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { QuestionResolution } from "@/components/QuestionResolution";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  apiAnswerQuestion,
   apiCreateQuestion,
   apiDeleteQuestion,
   apiGetQuestion,
+  apiGetSimilarQuestions,
   apiImportQuestionFile,
   apiGetSubjectTopics,
   apiListExams,
   apiListQuestions,
   apiListSubjects,
+  apiSetQuestionReview,
   apiUpdateQuestion,
   ApiError,
-  type AttemptResult,
   type Exam,
   type PaginatedQuestions,
   type Question,
@@ -44,30 +45,19 @@ import {
   type QuestionFilters,
   type QuestionPayload,
   type QuestionImportReport,
+  type QuestionSort,
   type Subject,
   type Topic,
 } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
-
-const DIFFICULTY_LABEL: Record<QuestionDifficulty, string> = {
-  FACIL: "Fácil",
-  MEDIA: "Média",
-  DIFICIL: "Difícil",
-};
-
-const DIFFICULTY_BADGE: Record<QuestionDifficulty, string> = {
-  FACIL: "border-success/25 bg-success/10 text-success",
-  MEDIA: "border-primary/30 bg-primary/10 text-primary-700",
-  DIFICIL: "border-alert/25 bg-alert/10 text-alert",
-};
-
-function positionLetter(position: number): string {
-  return String.fromCharCode(64 + position);
-}
+import { CLASSE_DIFICULDADE, origemDaQuestao, positionLetter, ROTULO_DIFICULDADE } from "@/lib/question-labels";
 
 function filterSelectClass() {
   return "h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30";
 }
+
+const SORT_LABEL: Record<QuestionSort, string> = { newest: "Mais recentes", oldest: "Mais antigas", year_desc: "Ano (mais novo)", year_asc: "Ano (mais antigo)" };
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 function uniqueNames(items: { name: string }[]): string[] {
   return [...new Set(items.map((item) => item.name))].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -138,12 +128,13 @@ function useQuestionCatalog() {
 }
 
 interface QuestionFormProps {
+  teacherSubject?: string | null;
   initial: Question | null;
   onSaved: (question: Question) => void;
   onCancel: () => void;
 }
 
-function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
+function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFormProps) {
   const catalog = useQuestionCatalog();
   const emptyAlternatives = (): QuestionAlternativePayload[] => [
     { text: "", isCorrect: false },
@@ -153,6 +144,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
   ];
 
   const [subjectId, setSubjectId] = useState(initial?.subjectId ?? "");
+  const [teacherTopic, setTeacherTopic] = useState(initial?.topic ?? "");
   const [topicId, setTopicId] = useState(initial?.topicId ?? "");
   const [difficulty, setDifficulty] = useState<QuestionDifficulty>(
     initial?.difficulty ?? "MEDIA"
@@ -161,9 +153,14 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
   const [year, setYear] = useState(initial?.year?.toString() ?? "");
   const [examNumber, setExamNumber] = useState(initial?.examNumber?.toString() ?? "");
   const [stem, setStem] = useState(initial?.stem ?? "");
+  const [explanation, setExplanation] = useState(initial?.explanation ?? "");
   const [alternatives, setAlternatives] = useState<QuestionAlternativePayload[]>(
     initial?.alternatives
-      ? initial.alternatives.map((a) => ({ text: a.text, isCorrect: a.isCorrect ?? false }))
+      ? initial.alternatives.map((a) => ({
+          text: a.text,
+          isCorrect: a.isCorrect ?? false,
+          explanation: a.explanation ?? "",
+        }))
       : emptyAlternatives()
   );
   const [error, setError] = useState<string | null>(null);
@@ -197,6 +194,16 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
     );
   }
 
+  /** "Por que esta alternativa está errada" (opcional). É o texto que o aluno
+   * só lê depois de responder — antes, entregaria o gabarito. */
+  function updateAlternativeExplanation(index: number, explanation: string) {
+    setAlternatives((current) =>
+      current.map((alternative, i) =>
+        i === index ? { ...alternative, explanation } : alternative
+      )
+    );
+  }
+
   function removeAlternative(index: number) {
     setAlternatives((current) => current.filter((_, i) => i !== index));
   }
@@ -209,10 +216,10 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
   }
 
   function validate(): string | null {
-    if (!subjectId) return "Selecione a matéria.";
-    if (!topicId) return "Selecione o conteúdo/tópico.";
-    if (!examName) return "Selecione o exame/vestibular de origem.";
-    if (!year) return "Selecione o ano do exame.";
+    if (!teacherSubject && !subjectId) return "Selecione a matéria.";
+    if (teacherSubject ? teacherTopic.trim().length < 2 : !topicId) return "Informe o conteúdo/tópico.";
+    if (!teacherSubject && !examName) return "Selecione o exame/vestibular de origem.";
+    if (!teacherSubject && !year) return "Selecione o ano do exame.";
     if (stem.trim().length < 5) return "O enunciado precisa de pelo menos 5 caracteres.";
     if (alternatives.length < 2) return "Uma questão precisa de pelo menos 2 alternativas.";
     if (alternatives.some((a) => !a.text.trim()))
@@ -237,16 +244,17 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
     setSaving(true);
 
     const payload: QuestionPayload = {
-      subject: subjectName,
-      subjectId,
-      topic: topicName,
-      topicId,
+      subject: teacherSubject || subjectName,
+      subjectId: teacherSubject ? undefined : subjectId,
+      topic: teacherSubject ? teacherTopic.trim() : topicName,
+      topicId: teacherSubject ? undefined : topicId,
       difficulty,
-      exam: examName,
-      examId: catalog.examIdFor(examName, Number(year)),
-      year: Number(year),
+      exam: examName || undefined,
+      examId: year ? catalog.examIdFor(examName, Number(year)) : undefined,
+      year: year ? Number(year) : null,
       examNumber: examNumber ? Number(examNumber) : null,
       stem: stem.trim(),
+      explanation: explanation.trim() || undefined,
       alternatives,
     };
 
@@ -274,7 +282,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
           <label htmlFor="subject" className="mb-1.5 block text-sm font-medium text-graphite">
             Matéria
           </label>
-          <select
+          {teacherSubject ? <input id="subject" value={teacherSubject} disabled className={filterSelectClass()} /> : <select
             id="subject"
             value={subjectId}
             onChange={(e) => handleSubjectChange(e.target.value)}
@@ -287,13 +295,13 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
                 {subject.name}
               </option>
             ))}
-          </select>
+          </select>}
         </div>
         <div>
           <label htmlFor="topic" className="mb-1.5 block text-sm font-medium text-graphite">
             Conteúdo / tópico
           </label>
-          <select
+          {teacherSubject ? <Input id="topic" value={teacherTopic} onChange={event => setTeacherTopic(event.target.value)} placeholder="Ex.: Interpretação de texto" required /> : <select
             id="topic"
             value={topicId}
             onChange={(e) => setTopicId(e.target.value)}
@@ -309,7 +317,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
                 {topic.name}
               </option>
             ))}
-          </select>
+          </select>}
         </div>
       </div>
 
@@ -341,7 +349,7 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
               setYear("");
             }}
             className={filterSelectClass()}
-            required
+            required={!teacherSubject}
           >
             <option value="">Selecione o exame</option>
             {catalog.examNames.map((name) => (
@@ -406,6 +414,21 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
       </div>
 
       <div>
+        <label htmlFor="explanation" className="mb-1.5 block text-sm font-medium text-graphite">
+          Gabarito comentado <span className="font-normal text-graphite-400">(opcional)</span>
+        </label>
+        <textarea
+          id="explanation"
+          value={explanation}
+          onChange={(e) => setExplanation(e.target.value)}
+          placeholder="Explique a resposta correta para quem estuda..."
+          maxLength={4000}
+          rows={3}
+          className="min-h-[96px] w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors placeholder:text-graphite-400 focus:border-primary-600 focus:ring-2 focus:ring-primary/30"
+        />
+      </div>
+
+      <div>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium text-graphite">Alternativas</span>
           {alternatives.length < 6 && (
@@ -437,13 +460,25 @@ function QuestionForm({ initial, onSaved, onCancel }: QuestionFormProps) {
               <span className="mt-3.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-xs font-semibold text-graphite-500">
                 {positionLetter(index + 1)}
               </span>
-              <Input
-                value={alternative.text}
-                onChange={(e) => updateAlternative(index, e.target.value)}
-                placeholder={`Texto da alternativa ${positionLetter(index + 1)}`}
-                maxLength={1000}
-                className="flex-1"
-              />
+              <div className="flex flex-1 flex-col gap-2">
+                <Input
+                  value={alternative.text}
+                  onChange={(e) => updateAlternative(index, e.target.value)}
+                  placeholder={`Texto da alternativa ${positionLetter(index + 1)}`}
+                  maxLength={1000}
+                />
+                <Input
+                  value={alternative.explanation ?? ""}
+                  onChange={(e) => updateAlternativeExplanation(index, e.target.value)}
+                  placeholder={
+                    alternative.isCorrect
+                      ? "Por que esta é a correta (opcional)"
+                      : "Por que esta está errada (opcional)"
+                  }
+                  maxLength={2000}
+                  className="text-xs"
+                />
+              </div>
               {alternatives.length > 2 && (
                 <button
                   type="button"
@@ -482,68 +517,56 @@ interface QuestionCardProps {
   question: Question;
   onEdit: (question: Question) => void;
   onDelete: (question: Question) => void;
+  showSimilar?: boolean;
 }
 
-function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
-  const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
-  const [result, setResult] = useState<AttemptResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: QuestionCardProps) {
+  const [similarItems, setSimilarItems] = useState<Question[] | null>(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
+  const [markedForReview, setMarkedForReview] = useState(question.progress?.markedForReview ?? false);
+  const [togglingReview, setTogglingReview] = useState(false);
 
-  const origin = [
-    question.exam,
-    question.year ? String(question.year) : null,
-    question.examNumber ? `questão ${question.examNumber}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const origin = origemDaQuestao(question);
 
-  async function handleAnswer() {
-    if (selectedPosition === null) {
-      setError("Escolha uma alternativa para responder.");
-      return;
-    }
-    setError(null);
-    setSubmitting(true);
+  async function loadSimilar() {
+    if (similarItems !== null || similarLoading) return;
+    setSimilarLoading(true);
+    setSimilarError(null);
     const token = getAccessToken() ?? "";
     try {
-      const attempt = await apiAnswerQuestion(token, question.id, selectedPosition);
-      setResult(attempt);
+      const data = await apiGetSimilarQuestions(token, question.id, 5);
+      setSimilarItems(data.items);
     } catch (err) {
-      setError(
+      setSimilarError(
         err instanceof ApiError
           ? err.message
-          : "Não foi possível registrar sua resposta. Tente novamente."
+          : "Não foi possível carregar questões semelhantes."
       );
     } finally {
-      setSubmitting(false);
+      setSimilarLoading(false);
     }
   }
 
-  function reset() {
-    setSelectedPosition(null);
-    setResult(null);
-    setError(null);
-  }
-
-  function alternativeStyle(position: number): string {
-    if (result) {
-      if (position === result.correctPosition) {
-        return "border-success bg-success/5 text-graphite";
-      }
-      if (position === result.selectedPosition && !result.isCorrect) {
-        return "border-alert bg-alert/5 text-alert";
-      }
-      return "border-surface-line bg-white text-graphite-500";
+  /** Marca/desmarca a questão para revisar. O estado otimista é revertido se a
+   * chamada falhar, para o botão nunca mentir sobre o que está salvo. */
+  async function toggleReview() {
+    const next = !markedForReview;
+    setMarkedForReview(next);
+    setTogglingReview(true);
+    const token = getAccessToken() ?? "";
+    try {
+      const data = await apiSetQuestionReview(token, question.id, next);
+      setMarkedForReview(data.markedForReview);
+    } catch {
+      setMarkedForReview(!next);
+    } finally {
+      setTogglingReview(false);
     }
-    if (selectedPosition === position) {
-      return "border-primary bg-primary/10 text-graphite";
-    }
-    return "border-surface-line bg-white text-graphite hover:border-graphite/30";
   }
 
   return (
-    <Card className="bg-white">
+    <Card className="bg-white" data-question-id={question.id}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-semibold text-graphite">
@@ -553,13 +576,47 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
             {question.topic}
           </span>
           <span
-            className={`rounded-full border px-3 py-1 text-xs font-semibold ${DIFFICULTY_BADGE[question.difficulty]}`}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${CLASSE_DIFICULDADE[question.difficulty]}`}
           >
-            {DIFFICULTY_LABEL[question.difficulty]}
+            {ROTULO_DIFICULDADE[question.difficulty]}
           </span>
-          <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-medium text-graphite-500">
-            {origin}
-          </span>
+          {origin && (
+            <span className="rounded-full bg-graphite/5 px-3 py-1 text-xs font-medium text-graphite-500">
+              {origin}
+            </span>
+          )}
+          {question.stats && question.stats.attempts > 0 && (
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                question.stats.accuracyPercent >= 60
+                  ? "border-success/25 bg-success/10 text-success"
+                  : question.stats.accuracyPercent >= 40
+                    ? "border-primary/30 bg-primary/10 text-primary-700"
+                    : "border-alert/25 bg-alert/10 text-alert"
+              }`}
+              title="Estatísticas de acerto no banco"
+            >
+              {question.stats.attempts} {question.stats.attempts === 1 ? "resposta" : "respostas"} ·{" "}
+              {question.stats.accuracyPercent}% de acerto
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={toggleReview}
+            disabled={togglingReview}
+            aria-pressed={markedForReview}
+            title={
+              markedForReview ? "Remover da lista de revisão" : "Marcar para revisar depois"
+            }
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+              markedForReview
+                ? "border-primary/30 bg-primary/10 text-primary-700"
+                : "border-surface-line bg-white text-graphite-500 hover:text-graphite"
+            }`}
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${markedForReview ? "fill-current" : ""}`} />
+            {markedForReview ? "Para revisar" : "Revisar depois"}
+          </button>
         </div>
         {question.canManage && (
           <div className="flex items-center gap-1.5">
@@ -586,78 +643,73 @@ function QuestionCard({ question, onEdit, onDelete }: QuestionCardProps) {
       <p className="mt-4 whitespace-pre-line text-[15px] leading-relaxed text-graphite">
         {question.stem}
       </p>
+      {question.sourcePdf ? <a className="mt-2 inline-block text-sm text-primary-700 underline" href={`${question.sourcePdf.url}#page=${question.sourcePdf.page}`} target="_blank" rel="noopener noreferrer">Ver página {question.sourcePdf.page} no PDF oficial</a> : null}
 
-      <div className="mt-5 flex flex-col gap-2.5">
-        {question.alternatives.map((alternative) => (
-          <button
-            key={alternative.id}
-            type="button"
-            onClick={() => {
-              setSelectedPosition(alternative.position);
-              setError(null);
-            }}
-            disabled={result !== null || submitting}
-            className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all disabled:cursor-default ${alternativeStyle(alternative.position)}`}
-          >
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-graphite/5 text-xs font-semibold text-graphite-600">
-              {positionLetter(alternative.position)}
-            </span>
-            <span className="text-sm leading-relaxed">{alternative.text}</span>
-            {result && alternative.position === result.correctPosition && (
-              <CheckCircle2 className="ml-auto mt-0.5 h-5 w-5 shrink-0 text-success" />
-            )}
-            {result && alternative.position === result.selectedPosition && !result.isCorrect && (
-              <XCircle className="ml-auto mt-0.5 h-5 w-5 shrink-0 text-alert" />
-            )}
-          </button>
-        ))}
-      </div>
+      <QuestionResolution
+        questionId={question.id}
+        alternatives={question.alternatives}
+        explanation={question.explanation}
+      />
 
-      {error && (
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {result && (
-        <div
-          className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-sm ${
-            result.isCorrect
-              ? "border-success/25 bg-success/5 text-graphite-600"
-              : "border-alert/25 bg-alert/5 text-alert"
-          }`}
-        >
-          {result.isCorrect ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-          ) : (
-            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-alert" />
+      {showSimilar && (
+        <div className="mt-5 border-t border-surface-line pt-4">
+          {similarItems === null && !similarLoading && !similarError && (
+            <button
+              type="button"
+              onClick={loadSimilar}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 transition-colors hover:text-graphite"
+            >
+              <Sparkles className="h-4 w-4" />
+              Ver questões semelhantes
+            </button>
           )}
-          <span>
-            {result.isCorrect
-              ? "Acertou!"
-              : `Errou — a alternativa correta é a ${positionLetter(result.correctPosition)}.`}
-          </span>
+          {similarLoading && (
+            <span className="inline-flex items-center gap-2 text-sm text-graphite-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Buscando questões semelhantes...
+            </span>
+          )}
+          {similarError && !similarItems && (
+            <p className="flex items-start gap-2 text-sm text-alert">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{similarError}</span>
+            </p>
+          )}
+          {similarItems !== null && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-graphite">
+                  Questões semelhantes ({similarItems.length})
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimilarItems(null);
+                    setSimilarError(null);
+                  }}
+                  className="text-xs font-medium text-graphite-400 transition-colors hover:text-graphite"
+                >
+                  Fechar
+                </button>
+              </div>
+              {similarItems.length === 0 && (
+                <p className="text-sm text-graphite-400">
+                  Nenhuma questão muito parecida por aqui — ajuste os filtros para explorar o banco.
+                </p>
+              )}
+              {similarItems.map((item) => (
+                <QuestionCard
+                  key={item.id}
+                  question={item}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  showSimilar={false}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      <div className="mt-4 flex justify-end">
-        {result ? (
-          <Button type="button" variant="outline" size="sm" onClick={reset}>
-            <RotateCcw className="h-4 w-4" />
-            Responder novamente
-          </Button>
-        ) : (
-          <Button type="button" size="sm" onClick={handleAnswer} disabled={submitting}>
-            {submitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4" />
-            )}
-            Responder
-          </Button>
-        )}
-      </div>
     </Card>
   );
 }
@@ -667,14 +719,29 @@ export function QuestionBank() {
   const navigate = useNavigate();
   const catalog = useQuestionCatalog();
 
-  const [filters, setFilters] = useState<QuestionFilters>({ page: 1, limit: 10 });
+  // O cronograma abre esta tela já num tópico (?subjectId=…&topicId=…):
+  // os filtros nascem com ele, em vez de o aluno ter de procurar de novo.
+  const [searchParams] = useSearchParams();
+  const linkedSubjectId = searchParams.get("subjectId") ?? "";
+  const linkedTopicId = searchParams.get("topicId") ?? "";
+  const [filters, setFilters] = useState<QuestionFilters>({
+    page: 1,
+    limit: 10,
+    sort: "newest",
+    subjectId: linkedSubjectId || undefined,
+    topicId: linkedTopicId || undefined,
+  });
   const [draft, setDraft] = useState({
-    subjectId: "",
-    topicId: "",
+    search: "",
+    examNumber: "",
+    subjectId: linkedSubjectId,
+    topicId: linkedTopicId,
     difficulty: "",
     examName: "",
     year: "",
   });
+  const [sort, setSort] = useState<QuestionSort>("newest");
+  const [limit, setLimit] = useState(10);
   const [data, setData] = useState<PaginatedQuestions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -685,6 +752,15 @@ export function QuestionBank() {
   const [importing, setImporting] = useState(false);
   const [importReport, setImportReport] = useState<QuestionImportReport | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Vindo do cronograma já num tópico: a lista de tópicos da matéria precisa
+  // estar carregada para o filtro aparecer preenchido, não em branco.
+  const { loadTopics } = catalog;
+  useEffect(() => {
+    if (linkedSubjectId) loadTopics(linkedSubjectId);
+    // `loadTopics` muda a cada render; só a matéria do link importa aqui.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedSubjectId]);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -717,10 +793,13 @@ export function QuestionBank() {
     const year = draft.year ? Number(draft.year) : undefined;
     setFilters({
       page: 1,
-      limit: filters.limit,
+      limit,
+      sort,
       subjectId: draft.subjectId || undefined,
       topicId: draft.topicId || undefined,
       difficulty: (draft.difficulty || undefined) as QuestionDifficulty | undefined,
+      search: draft.search.trim() || undefined,
+      examNumber: draft.examNumber ? Number(draft.examNumber) : undefined,
       examId: year ? catalog.examIdFor(draft.examName, year) : undefined,
       exam: draft.examName || undefined,
       year,
@@ -728,8 +807,20 @@ export function QuestionBank() {
   }
 
   function clearFilters() {
-    setDraft({ subjectId: "", topicId: "", difficulty: "", examName: "", year: "" });
-    setFilters({ page: 1, limit: filters.limit });
+    setDraft({ search: "", examNumber: "", subjectId: "", topicId: "", difficulty: "", examName: "", year: "" });
+    setSort("newest");
+    setLimit(10);
+    setFilters({ page: 1, limit: 10, sort: "newest" });
+  }
+
+  function changeSort(value: QuestionSort) {
+    setSort(value);
+    setFilters((f) => ({ ...f, sort: value, page: 1 }));
+  }
+
+  function changeLimit(value: number) {
+    setLimit(value);
+    setFilters((f) => ({ ...f, limit: value, page: 1 }));
   }
 
   function startCreate() {
@@ -829,6 +920,7 @@ export function QuestionBank() {
             </div>
             <Card className="bg-white">
               <QuestionForm
+                teacherSubject={user?.teacherSubject}
                 initial={editing}
                 onSaved={handleSaved}
                 onCancel={() => {
@@ -850,12 +942,12 @@ export function QuestionBank() {
                   matéria, conteúdo, dificuldade e origem.
                 </p>
               </div>
-              {data?.canManageBank && (
+              {(data?.canManageBank || user?.teacherSubject) && (
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => { setImportOpen(true); setImportError(null); setImportReport(null); }}>
+                  {data?.canManageBank ? <Button variant="outline" onClick={() => { setImportOpen(true); setImportError(null); setImportReport(null); }}>
                     <Upload className="h-4 w-4" />
                     Importar arquivo
-                  </Button>
+                  </Button> : null}
                   <Button onClick={startCreate}>
                     <Plus className="h-4 w-4" />
                     Nova questão
@@ -926,6 +1018,8 @@ export function QuestionBank() {
 
             <Card className="mt-8 bg-white">
               <form onSubmit={applyFilters} className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                <label className="md:col-span-3 text-sm">Texto da questão<input value={draft.search} maxLength={120} onChange={event => setDraft(d => ({ ...d, search: event.target.value }))} placeholder="Buscar no enunciado" className="mt-1 w-full rounded-xl border border-surface-line p-3" /></label>
+                <label className="md:col-span-2 text-sm">Número na prova<input type="number" min={1} max={9999} value={draft.examNumber} onChange={event => setDraft(d => ({ ...d, examNumber: event.target.value }))} placeholder="Ex.: 47" className="mt-1 w-full rounded-xl border border-surface-line p-3" /></label>
                 <select
                   value={draft.subjectId}
                   onChange={(e) => handleSubjectChange(e.target.value)}
@@ -1003,10 +1097,28 @@ export function QuestionBank() {
               </form>
             </Card>
 
-            <div className="mt-6 flex items-center justify-between">
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-graphite-500">
                 {data ? `${data.total} ${data.total === 1 ? "questão encontrada" : "questões encontradas"}` : ""}
               </p>
+              <div className="flex items-center gap-3 text-sm text-graphite-500">
+                <label className="flex items-center gap-2">
+                  Ordenar por
+                  <select value={sort} onChange={(e) => changeSort(e.target.value as QuestionSort)} className="rounded-lg border border-surface-line p-2">
+                    {(Object.keys(SORT_LABEL) as QuestionSort[]).map((s) => (
+                      <option key={s} value={s}>{SORT_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2">
+                  Por página
+                  <select value={limit} onChange={(e) => changeLimit(parseInt(e.target.value, 10))} className="rounded-lg border border-surface-line p-2">
+                    {PAGE_SIZE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
 
             {loading ? (

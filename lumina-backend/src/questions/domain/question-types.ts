@@ -24,12 +24,16 @@ export interface ExternalQuestion {
   correctOptionIndex?: number;
   explanation?: string;
   imageUrl?: string;
+  sourcePdf?: { url: string; page: number };
 }
 
 export interface ExternalQuestionOption {
   text: string;
   /** Opcional quando `correctLetter`/`correctOptionIndex` estiverem preenchidos. */
   correct?: boolean;
+  /** Por que a alternativa está errada. Opcional: nem toda questão detalha o
+   * porquê de cada distrator. */
+  explanation?: string;
 }
 
 /** Formato interno já normalizado (pronto para validação/deduplicação/
@@ -45,9 +49,10 @@ export interface NormalizedQuestion {
   topic: string;
   difficulty: QuestionDifficulty;
   stem: string;
-  alternatives: { text: string; isCorrect: boolean }[];
+  alternatives: { text: string; isCorrect: boolean; explanation: string | null }[];
   explanation: string | null;
   imageUrl: string | null;
+  sourcePdf?: { url: string; page: number };
 }
 
 /** Relatório de uma execução de importação — a API nunca insere questões

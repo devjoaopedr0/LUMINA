@@ -19,6 +19,7 @@ import { UsersService } from '../users/users.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { InstitutionsService } from '../institutions/institutions.service';
 import { EmailVerificationCodeRepository } from './email-verification-codes.repository';
 import { GoogleProfile } from './interfaces/google-profile.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -61,6 +62,16 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
+    const accountType = dto.accountType ?? 'STUDENT_INDEPENDENT';
+    if (dto.institution && (dto.accountType || dto.teacherSubject)) {
+      throw new BadRequestException('O cadastro institucional não pode ser combinado com outro tipo de conta.');
+    }
+    if (accountType === 'TEACHER' && !dto.teacherSubject) {
+      throw new BadRequestException('A matéria é obrigatória para contas de professor.');
+    }
+    if (accountType !== 'TEACHER' && dto.teacherSubject) {
+      throw new BadRequestException('A matéria só pode ser informada em contas de professor.');
+    }
     const existingEmail = await this.usersRepository.findByEmail(dto.email);
     if (existingEmail) {
       throw new ConflictException('Já existe uma conta com este e-mail.');
@@ -81,11 +92,14 @@ export class AuthService {
           firstName: dto.firstName,
           lastName: dto.lastName,
           username: dto.username,
+          teacherSubject: dto.teacherSubject,
+          accountType: dto.institution ? 'DIRECTOR' : accountType,
         },
         tx,
       );
 
       await this.createPersonalWorkspace(tx, createdUser.id, dto.firstName);
+      if (dto.institution) await InstitutionsService.createInTransaction(tx, createdUser.id, dto.institution);
 
       return createdUser;
     });
@@ -123,12 +137,55 @@ export class AuthService {
   /** Usado pelo JwtStrategy a cada requisição autenticada — garante que o
    * usuário ainda existe e continua ACTIVE, mesmo que o access token em si
    * ainda seja válido (ex: conta suspensa após o token ter sido emitido). */
-  async validateUserById(userId: string): Promise<UserWithProfile> {
+  async validateUserById(userId: string, sessionVersion?: number, sessionId?: string): Promise<UserWithProfile & { authSessionId?: string }> {
     const user = await this.usersRepository.findById(userId);
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException();
     }
-    return user;
+    if ((sessionVersion ?? 0) !== (user.sessionVersion ?? 0)) throw new UnauthorizedException('Sessão encerrada. Faça login novamente.');
+    if (sessionId) {
+      const session = await this.prisma.authSession.findFirst({ where: { id: sessionId, userId, revokedAt: null } });
+      if (!session) throw new UnauthorizedException('Sessão encerrada. Faça login novamente.');
+    }
+    return { ...user, authSessionId: sessionId };
+  }
+
+  async logoutAll(userId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } }),
+      this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+  }
+
+  async listSessions(userId: string, currentSessionId?: string) {
+    const sessions = await this.prisma.authSession.findMany({ where: { userId, revokedAt: null }, orderBy: { createdAt: 'desc' } });
+    return sessions.map(({ id, createdAt, lastUsedAt }) => ({ id, createdAt, lastUsedAt, current: id === currentSessionId }));
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    await this.prisma.authSession.updateMany({ where: { id: sessionId, userId, revokedAt: null }, data: { revokedAt: new Date() } });
+  }
+
+  /** Troca um refresh token válido por um novo par de tokens. O access token
+   * dura pouco (JWT_EXPIRES_IN, ex: 15min) de propósito — é este endpoint
+   * que permite a sessão continuar sem pedir login de novo a cada expiração.
+   * Reemite também um novo refresh token (rotação): como não há uma tabela
+   * de refresh tokens revogados, isto NÃO impede reuso do token antigo antes
+   * dele expirar por conta própria — é só JWT stateless, igual ao access
+   * token. Uma denylist/rotação com revogação de verdade fica para uma
+   * iteração futura, se for necessário. */
+  async refresh(refreshToken: string): Promise<AuthResponseDto> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
+    }
+
+    const user = await this.validateUserById(payload.sub, payload.sessionVersion, payload.sessionId);
+    return this.buildAuthResponse(user, payload.sessionId);
   }
 
   /** Chamado pelo GoogleStrategy com os dados já extraídos do perfil do
@@ -200,6 +257,24 @@ export class AuthService {
     const updated = await this.usersRepository.findById(userId);
 
     return this.usersService.toPublicUser(updated as UserWithProfile);
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user?.passwordHash) {
+      throw new BadRequestException('Esta conta ainda não possui uma senha local.');
+    }
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('A senha atual está incorreta.');
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException('A nova senha deve ser diferente da senha atual.');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, AuthService.BCRYPT_SALT_ROUNDS);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash, sessionVersion: { increment: 1 } } }),
+      this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
   }
 
   /** Confirma o e-mail de uma conta recém-cadastrada com o código recebido
@@ -358,8 +433,11 @@ export class AuthService {
     });
   }
 
-  private async buildAuthResponse(user: UserWithProfile): Promise<AuthResponseDto> {
-    const payload: JwtPayload = { sub: user.id, email: user.email };
+  private async buildAuthResponse(user: UserWithProfile, existingSessionId?: string): Promise<AuthResponseDto> {
+    const session = existingSessionId
+      ? await this.prisma.authSession.update({ where: { id: existingSessionId }, data: { lastUsedAt: new Date() } })
+      : await this.prisma.authSession.create({ data: { userId: user.id } });
+    const payload: JwtPayload = { sub: user.id, email: user.email, sessionVersion: user.sessionVersion, sessionId: session.id };
 
     const accessToken = await this.jwtService.signAsync(payload);
     const refreshToken = await this.jwtService.signAsync(payload, {

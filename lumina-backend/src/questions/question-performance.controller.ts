@@ -48,6 +48,22 @@ export class QuestionPerformanceController {
     });
   }
 
+  @Get('review')
+  @ApiOperation({
+    summary: 'Questões que o usuário marcou para revisar (fila de retomada).',
+  })
+  @ApiResponse({ status: 200, type: PaginatedProgressDto })
+  getMarkedForReview(
+    @CurrentUser() user: UserWithProfile,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PaginatedProgressDto> {
+    return this.performanceService.getMarkedForReview(user.id, {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
   @Get('performance')
   @ApiOperation({ summary: 'Estatísticas de desempenho por disciplina e assunto.' })
   @ApiResponse({ status: 200, type: PerformanceResponseDto })

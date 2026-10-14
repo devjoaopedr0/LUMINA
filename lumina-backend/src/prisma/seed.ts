@@ -12,6 +12,12 @@ import { BIOLOGICAS_QUESTIONS } from '../../prisma/seed-data/biologicas';
 import { HUMANAS_QUESTIONS } from '../../prisma/seed-data/humanas';
 import { LINGUAGENS_QUESTIONS } from '../../prisma/seed-data/linguagens';
 import { AMPLIACAO_QUESTIONS } from '../../prisma/seed-data/ampliacao';
+import { ESSAY_MODELS } from '../../prisma/seed-data/essay-models';
+import { EXAM_PAPERS } from '../../prisma/seed-data/exam-papers';
+import { FORMULAS, REPERTORIOS } from '../../prisma/seed-data/notebooks';
+import { mergeDuplicateTopics } from './merge-duplicate-topics';
+import { importSisuCutoffs } from './import-sisu-cutoffs';
+import { seedCurriculumTopics } from './seed-curriculum-topics';
 import type { SeedQuestion } from '../../prisma/seed-data/types';
 
 /**
@@ -27,6 +33,9 @@ import type { SeedQuestion } from '../../prisma/seed-data/types';
  *  - o catálogo de classificação: disciplinas, assuntos e provas;
  *  - as questões originais (criadas para o projeto) vinculadas ao banco,
  *    a partir dos arquivos em prisma/seed-data/.
+ *  - o acervo de exibição: modelos de redação nota mil (item 23), provas
+ *    anteriores publicadas (item 19) e os cadernos de fórmulas e repertórios
+ *    da conta demo (itens 21 e 22), para nenhuma tela abrir vazia.
  *
  * Idempotente: reexecutar não duplica (checa usuários/institution por e-mail,
  * workspaces por tipo/vínculo, assuntos/provas por nome e questões por
@@ -223,6 +232,156 @@ async function ensureExam(prisma: PrismaClient, name: string, year: number) {
   );
 }
 
+/** Página de prova sem arquivo no storage: um SVG embutido como data URI, que
+ * o <img> da tela de provas carrega sem depender de bucket. Serve só para o
+ * acervo de demonstração — prova real entra por upload com URL do storage. */
+function placeholderPage(title: string, year: number, pageNumber: number): string {
+  const lines = Array.from({ length: 18 }, (_, i) => {
+    const y = 150 + i * 52;
+    const width = i % 5 === 4 ? 420 : 690;
+    return (
+      `<rect x="48" y="${y}" width="${width}" height="10" rx="5" fill="#e3e6ea"/>` +
+      `<rect x="48" y="${y + 20}" width="${Math.round(width * 0.72)}" height="10" rx="5" fill="#eef0f3"/>`
+    );
+  }).join('');
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="794" height="1123" viewBox="0 0 794 1123">' +
+    '<rect width="794" height="1123" fill="#ffffff"/>' +
+    '<rect x="0" y="0" width="794" height="96" fill="#f4f5f7"/>' +
+    `<text x="48" y="58" font-family="sans-serif" font-size="22" font-weight="bold" fill="#22262b">${title} ${year}</text>` +
+    `<text x="48" y="82" font-family="sans-serif" font-size="14" fill="#6b7280">Pagina ${pageNumber} - exemplar de demonstracao</text>` +
+    lines +
+    '<text x="48" y="1080" font-family="sans-serif" font-size="11" fill="#9aa1a9">Conteudo ilustrativo. Nao e a prova oficial.</text>' +
+    '</svg>';
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/** Item 23: biblioteca de redações nota mil. Sem vínculo com usuário, então
+ * a chave de idempotência é (exam, year, theme). */
+async function seedEssayModels(prisma: PrismaClient): Promise<number> {
+  let created = 0;
+  for (const model of ESSAY_MODELS) {
+    const competencies = model.competencies;
+    const totalScore = Object.values(competencies).reduce((sum, score) => sum + score, 0);
+    const existing = await prisma.essayModel.findFirst({
+      where: { exam: model.exam, year: model.year, theme: model.theme },
+    });
+    if (existing) continue;
+    await prisma.essayModel.create({
+      data: {
+        year: model.year,
+        exam: model.exam,
+        theme: model.theme,
+        text: model.text,
+        competenciesJson: competencies,
+        totalScore,
+        highlightsJson: model.highlights,
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
+/** Item 19: provas anteriores publicadas, com páginas de exemplar e as
+ * questões do banco vinculadas. Uma prova é (examId, year) no schema, então
+ * o seed é idempotente por essa chave. */
+async function seedExamPapers(prisma: PrismaClient, bankId: string): Promise<number> {
+  let created = 0;
+  for (const paper of EXAM_PAPERS) {
+    const exam = await ensureExam(prisma, paper.exam, paper.year);
+    const existing = await prisma.examPaper.findFirst({
+      where: { examId: exam.id, year: paper.year },
+    });
+    if (existing) continue;
+
+    const questions = await prisma.question.findMany({
+      where: { workspaceId: bankId, exam: paper.exam, year: paper.year },
+      select: { id: true, subject: true },
+      take: 5,
+    });
+
+    await prisma.examPaper.create({
+      data: {
+        examId: exam.id,
+        year: paper.year,
+        metadataJson: paper.metadata,
+        gabaritoJson: paper.gabarito,
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+        pages: {
+          create: Array.from({ length: paper.pages }, (_, index) => ({
+            pageNumber: index + 1,
+            imageUrl: placeholderPage(paper.exam, paper.year, index + 1),
+            dimensionsJson: { width: 794, height: 1123 },
+            textContent: `Página ${index + 1} de ${paper.exam} ${paper.year} (exemplar de demonstração).`,
+          })),
+        },
+        questions: {
+          create: questions.map((question, index) => ({
+            questionId: question.id,
+            number: index + 1,
+            pageNumber: Math.min(index + 1, paper.pages),
+            area: question.subject,
+          })),
+        },
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
+/** Itens 21 e 22: cadernos do aluno. A chave de idempotência é o título /
+ * nome, porque o aluno pode renomear os dois a qualquer momento. */
+async function seedNotebooks(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<{ formulas: number; repertoires: number }> {
+  let formulas = 0;
+  for (const formula of FORMULAS) {
+    const existing = await prisma.formula.findFirst({
+      where: { userId, name: formula.name },
+    });
+    if (existing) continue;
+    await prisma.formula.create({
+      data: {
+        userId,
+        name: formula.name,
+        discipline: formula.discipline,
+        topic: formula.topic,
+        latex: formula.latex,
+        description: formula.description,
+        isFavorite: formula.isFavorite ?? false,
+      },
+    });
+    formulas += 1;
+  }
+
+  let repertoires = 0;
+  for (const repertoire of REPERTORIOS) {
+    const existing = await prisma.repertoire.findFirst({
+      where: { userId, title: repertoire.title },
+    });
+    if (existing) continue;
+    await prisma.repertoire.create({
+      data: {
+        userId,
+        title: repertoire.title,
+        summary: repertoire.summary,
+        source: repertoire.source,
+        year: repertoire.year,
+        theme: repertoire.theme,
+        keywords: repertoire.keywords,
+        isStudied: repertoire.isStudied ?? false,
+      },
+    });
+    repertoires += 1;
+  }
+
+  return { formulas, repertoires };
+}
+
 async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' });
   const prisma = new PrismaClient({ adapter });
@@ -350,6 +509,40 @@ async function main(): Promise<void> {
 
     console.log(
       `✓ Questões do banco prontas: ${imported} criadas, ${skipped} já existiam (${ALL_QUESTIONS.length} no total).`,
+    );
+
+    const topicMerge = await mergeDuplicateTopics(prisma);
+    console.log(
+      `✓ Tópicos duplicados fundidos: ${topicMerge.merged} (${topicMerge.questionsMoved} questões, ${topicMerge.masteriesMoved} domínios e ${topicMerge.tasksMoved} tarefas movidos).`,
+    );
+
+    const cutoffs = await importSisuCutoffs(prisma);
+    console.log(
+      `✓ Notas de corte do Sisu prontas: ${cutoffs.rows} cursos/ano das edições ${cutoffs.years.join(', ')}.`,
+    );
+
+    const curriculumTopicsCreated = await seedCurriculumTopics(prisma);
+    console.log(
+      `✓ Tópicos do currículo do ENEM prontos: ${curriculumTopicsCreated} criados (cronograma adaptativo, fase 1).`,
+    );
+
+    // ----------------------------------------------------------------------
+    // 4. Acervo de exibição: modelos de redação, provas antigas e cadernos
+    // ----------------------------------------------------------------------
+
+    const modelsCreated = await seedEssayModels(prisma);
+    console.log(
+      `✓ Modelos de redação nota mil prontos: ${modelsCreated} criados, ${ESSAY_MODELS.length} no total.`,
+    );
+
+    const papersCreated = await seedExamPapers(prisma, bank.id);
+    console.log(
+      `✓ Provas anteriores publicadas: ${papersCreated} criadas, ${EXAM_PAPERS.length} no total.`,
+    );
+
+    const notebooks = await seedNotebooks(prisma, demo.id);
+    console.log(
+      `✓ Caderno do usuário demo: ${notebooks.formulas} fórmulas e ${notebooks.repertoires} repertórios criados.`,
     );
   } finally {
     await prisma.$disconnect();

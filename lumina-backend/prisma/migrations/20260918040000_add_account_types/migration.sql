@@ -1,0 +1,4 @@
+CREATE TYPE "AccountType" AS ENUM ('STUDENT_INDEPENDENT', 'STUDENT_INSTITUTION', 'TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN');
+ALTER TABLE "users" ADD COLUMN "account_type" "AccountType" NOT NULL DEFAULT 'STUDENT_INDEPENDENT';
+UPDATE "users" SET "account_type" = 'TEACHER'
+WHERE "id" IN (SELECT "user_id" FROM "teacher_profiles");

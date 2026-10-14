@@ -1,23 +1,38 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { ArrowLeft, CheckCircle2, LoaderCircle, Save, UploadCloud, UserRound, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CutoffTargetCard } from '@/components/CutoffTargetCard';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/contexts/AuthContext';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiChangePassword, apiGetUserVestibular, apiListAuthSessions, apiRevokeAuthSession, apiSetVestibular, SISU_MODALITY_OPTIONS, type AuthSession, type SisuModality } from '@/lib/api';
+import { getAccessToken } from '@/lib/auth';
 
 export function Profile() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, logout, logoutAll } = useAuth();
   const [form, setForm] = useState({
-    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '',
+    firstName: '', lastName: '', username: '', avatarUrl: '', phone: '', birthDate: '', bio: '', educationLevel: '', schoolYear: '', schoolName: '', desiredCourse: '', targetUniversity: '', sisuModality: '', preferredStudyPeriod: '', studySessionMinutes: '', weeklyStudyDays: '',
   });
+  const [targetExam, setTargetExam] = useState('');
+  const [targetExamDate, setTargetExamDate] = useState('');
+  const [savingExam, setSavingExam] = useState(false);
+  const [examError, setExamError] = useState('');
+  const [examSuccess, setExamSuccess] = useState(false);
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirmation: '' });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [closingSessions, setClosingSessions] = useState(false);
+  const [sessions, setSessions] = useState<AuthSession[]>([]);
+  const [sessionError, setSessionError] = useState('');
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const accountTypeLabel = ({ STUDENT_INDEPENDENT: 'Aluno independente', STUDENT_INSTITUTION: 'Aluno de instituição', TEACHER: 'Professor', COORDINATOR: 'Coordenador', DIRECTOR: 'Diretor', ADMIN: 'Administrador' } as const)[user?.accountType ?? 'STUDENT_INDEPENDENT'];
 
   useEffect(() => {
     if (!user) return;
@@ -29,8 +44,79 @@ export function Profile() {
       phone: user.phone ?? '',
       birthDate: user.birthDate?.slice(0, 10) ?? '',
       bio: user.bio ?? '',
+      educationLevel: user.educationLevel ?? '',
+      schoolYear: user.schoolYear?.toString() ?? '',
+      schoolName: user.schoolName ?? '',
+      desiredCourse: user.desiredCourse ?? '',
+      targetUniversity: user.targetUniversity ?? '',
+      sisuModality: user.sisuModality ?? '',
+      preferredStudyPeriod: user.preferredStudyPeriod ?? '',
+      studySessionMinutes: user.studySessionMinutes?.toString() ?? '',
+      weeklyStudyDays: user.weeklyStudyDays?.toString() ?? '',
     });
   }, [user]);
+
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    const token = getAccessToken();
+    if (!token) return;
+    void apiGetUserVestibular(token).then((goal) => {
+      setTargetExam(goal?.customName ?? goal?.exam?.name ?? '');
+      setTargetExamDate(goal?.targetDate?.slice(0, 10) ?? '');
+    }).catch(() => setExamError('Não foi possível carregar o vestibular-alvo.'));
+  }, [userId]);
+
+  async function saveTargetExam() {
+    const token = getAccessToken();
+    if (!token) return;
+    setSavingExam(true);
+    setExamError('');
+    setExamSuccess(false);
+    try {
+      await apiSetVestibular(token, { customName: targetExam.trim() || null, targetDate: targetExamDate || undefined });
+      setExamSuccess(true);
+    } catch (caught) {
+      setExamError(caught instanceof ApiError ? caught.message : 'Não foi possível salvar o vestibular-alvo.');
+    } finally { setSavingExam(false); }
+  }
+
+  async function changePassword() {
+    if (passwords.next !== passwords.confirmation) {
+      setPasswordError('A confirmação não corresponde à nova senha.');
+      return;
+    }
+    const token = getAccessToken();
+    if (!token) return;
+    setChangingPassword(true);
+    setPasswordError('');
+    try {
+      await apiChangePassword(token, passwords.current, passwords.next);
+      logout();
+    } catch (caught) {
+      setPasswordError(caught instanceof ApiError ? caught.message : 'Não foi possível alterar a senha.');
+    } finally { setChangingPassword(false); }
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    const token = getAccessToken();
+    if (token) void apiListAuthSessions(token).then(setSessions).catch(() => setSessionError('Não foi possível carregar as sessões.'));
+  }, [user]);
+
+  async function revokeSession(id: string, current: boolean) {
+    const token = getAccessToken();
+    if (!token) return;
+    setRevokingId(id);
+    setSessionError('');
+    try {
+      await apiRevokeAuthSession(token, id);
+      if (current) { logout(); return; }
+      setSessions((items) => items.filter((item) => item.id !== id));
+    } catch (caught) {
+      setSessionError(caught instanceof ApiError ? caught.message : 'Não foi possível encerrar a sessão.');
+    } finally { setRevokingId(null); }
+  }
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -98,6 +184,15 @@ export function Profile() {
         phone: form.phone.trim() || null,
         birthDate: form.birthDate || null,
         bio: form.bio.trim() || null,
+        educationLevel: form.educationLevel || null,
+        schoolYear: form.schoolYear ? Number(form.schoolYear) : null,
+        schoolName: form.schoolName.trim() || null,
+        desiredCourse: form.desiredCourse.trim() || null,
+        targetUniversity: form.targetUniversity.trim() || null,
+        sisuModality: (form.sisuModality || null) as SisuModality | null,
+        preferredStudyPeriod: form.preferredStudyPeriod || null,
+        studySessionMinutes: form.studySessionMinutes ? Number(form.studySessionMinutes) : null,
+        weeklyStudyDays: form.weeklyStudyDays ? Number(form.weeklyStudyDays) : null,
       });
       setSuccess(true);
     } catch (caught) {
@@ -108,6 +203,14 @@ export function Profile() {
   }
 
   const initials = `${form.firstName[0] ?? ''}${form.lastName[0] ?? ''}`.toUpperCase() || 'LU';
+
+  async function handleLogoutAll() {
+    setClosingSessions(true);
+    setError('');
+    try { await logoutAll(); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Não foi possível encerrar as sessões.'); }
+    finally { setClosingSessions(false); }
+  }
 
   return (
     <div className="min-h-screen bg-surface-card">
@@ -125,6 +228,15 @@ export function Profile() {
           <p className="text-sm font-semibold text-primary-700">Sua conta</p>
           <h1 className="mt-1 text-3xl font-semibold text-graphite">Meu perfil</h1>
           <p className="mt-2 text-sm text-graphite-500">Mantenha seus dados atualizados para personalizar sua experiência.</p>
+          <button type="button" disabled={closingSessions} onClick={() => void handleLogoutAll()} className="mt-4 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50">{closingSessions ? 'Encerrando sessões...' : 'Sair de todos os dispositivos'}</button>
+          <section className="mt-6 rounded-xl border border-surface-line bg-white p-4" aria-label="Sessões ativas">
+            <h2 className="font-semibold text-graphite">Sessões ativas</h2>
+            {sessionError && <p role="alert" className="mt-2 text-sm text-alert">{sessionError}</p>}
+            {sessions.map((session) => <div key={session.id} className="mt-3 flex items-center justify-between gap-4 border-t border-surface-line pt-3 text-sm">
+              <span>{session.current ? 'Este dispositivo' : 'Outra sessão'} · Iniciada em {new Date(session.createdAt).toLocaleString('pt-BR')}</span>
+              <button type="button" disabled={revokingId === session.id} onClick={() => void revokeSession(session.id, session.current)} className="font-semibold text-red-700 disabled:opacity-50">Encerrar</button>
+            </div>)}
+          </section>
         </div>
 
         <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -134,6 +246,7 @@ export function Profile() {
             </div>
             <p className="mt-4 font-semibold text-graphite">{form.firstName || 'Seu nome'} {form.lastName}</p>
             <p className="mt-1 text-xs text-graphite-400">{user?.email}</p>
+            <p className="mt-2 inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-graphite">{accountTypeLabel}</p>
             <div
               role="button"
               tabIndex={0}
@@ -160,7 +273,7 @@ export function Profile() {
           <Card className="bg-white">
             <div className="mb-6 flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15"><UserRound className="h-5 w-5" /></span>
-              <div><h2 className="font-semibold text-graphite">Dados pessoais</h2><p className="text-xs text-graphite-400">Campos públicos do seu perfil</p></div>
+              <div><h2 className="font-semibold text-graphite">Seu perfil</h2><p className="text-xs text-graphite-400">Dados pessoais e acadêmicos</p></div>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -175,6 +288,51 @@ export function Profile() {
                 <p className="mt-1 text-right text-xs text-graphite-400">{form.bio.length}/500</p>
               </div>
             </div>
+
+            <div className="mt-7 border-t border-surface-line pt-6">
+              <h3 className="mb-4 font-semibold text-graphite">Dados acadêmicos</h3>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field label="Etapa de ensino"><select value={form.educationLevel} onChange={(e) => update('educationLevel', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Não informado</option><option value="FUNDAMENTAL_II">Ensino fundamental II</option><option value="ENSINO_MEDIO">Ensino médio</option><option value="CURSINHO">Cursinho</option><option value="SUPERIOR">Ensino superior</option><option value="OUTRO">Outro</option></select></Field>
+                <Field label="Série ou ano"><Input type="number" min={1} max={9} value={form.schoolYear} onChange={(e) => update('schoolYear', e.target.value)} placeholder="Ex.: 3" /></Field>
+                <div className="sm:col-span-2"><Field label="Escola ou cursinho atual"><Input value={form.schoolName} onChange={(e) => update('schoolName', e.target.value)} maxLength={120} placeholder="Opcional" /></Field></div>
+                <Field label="Curso desejado"><Input value={form.desiredCourse} onChange={(e) => update('desiredCourse', e.target.value)} maxLength={120} placeholder="Ex.: Medicina" /></Field>
+                <Field label="Universidade-alvo"><Input value={form.targetUniversity} onChange={(e) => update('targetUniversity', e.target.value)} maxLength={120} placeholder="Ex.: UFC" /></Field>
+                <div className="sm:col-span-2"><Field label="Modalidade de concorrência no Sisu"><select value={form.sisuModality} onChange={(e) => update('sisuModality', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Ampla concorrência (padrão)</option>{SISU_MODALITY_OPTIONS.filter((option) => option.value !== 'AC').map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div>
+              </div>
+              {/* A meta usa o que está SALVO: muda depois de salvar o perfil. */}
+              <CutoffTargetCard className="mt-5" linkToProfile={false} refreshKey={`${user?.desiredCourse}|${user?.targetUniversity}|${user?.sisuModality}`} />
+              <div className="mt-6 border-t border-surface-line pt-5">
+                <h4 className="mb-3 font-semibold text-graphite">Vestibular-alvo</h4>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Prova ou vestibular"><Input value={targetExam} onChange={(e) => { setTargetExam(e.target.value); setExamSuccess(false); }} maxLength={100} placeholder="Ex.: ENEM ou UECE" /></Field>
+                  <Field label="Data da prova"><Input type="date" value={targetExamDate} onChange={(e) => { setTargetExamDate(e.target.value); setExamSuccess(false); }} /></Field>
+                </div>
+                {examError && <p role="alert" className="mt-3 text-sm text-alert">{examError}</p>}
+                {examSuccess && <p className="mt-3 text-sm text-success">Vestibular-alvo salvo.</p>}
+                <button type="button" disabled={savingExam} onClick={() => void saveTargetExam()} className="mt-4 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-700 disabled:opacity-50">{savingExam ? 'Salvando...' : 'Salvar vestibular-alvo'}</button>
+              </div>
+            </div>
+
+            <div className="mt-7 border-t border-surface-line pt-6">
+              <h3 className="mb-4 font-semibold text-graphite">Preferências de estudo</h3>
+              <div className="grid gap-5 sm:grid-cols-3">
+                <Field label="Melhor período"><select value={form.preferredStudyPeriod} onChange={(e) => update('preferredStudyPeriod', e.target.value)} className="w-full rounded-xl border border-surface-line bg-white px-4 py-3 text-sm"><option value="">Não informado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option><option value="NOITE">Noite</option><option value="FLEXIVEL">Flexível</option></select></Field>
+                <Field label="Minutos por sessão"><Input type="number" min={15} max={180} step={5} value={form.studySessionMinutes} onChange={(e) => update('studySessionMinutes', e.target.value)} placeholder="Ex.: 50" /></Field>
+                <Field label="Dias por semana"><Input type="number" min={1} max={7} value={form.weeklyStudyDays} onChange={(e) => update('weeklyStudyDays', e.target.value)} placeholder="Ex.: 5" /></Field>
+              </div>
+            </div>
+
+            {user?.hasPassword && <div className="mt-7 border-t border-surface-line pt-6">
+              <h3 className="font-semibold text-graphite">Configurações da conta</h3>
+              <p className="mt-1 text-xs text-graphite-400">Ao trocar a senha, todas as sessões serão encerradas.</p>
+              <div className="mt-4 grid gap-5 sm:grid-cols-3">
+                <Field label="Senha atual"><Input type="password" autoComplete="current-password" value={passwords.current} onChange={(e) => setPasswords((value) => ({ ...value, current: e.target.value }))} /></Field>
+                <Field label="Nova senha"><Input type="password" autoComplete="new-password" minLength={8} maxLength={72} value={passwords.next} onChange={(e) => setPasswords((value) => ({ ...value, next: e.target.value }))} /></Field>
+                <Field label="Confirmar nova senha"><Input type="password" autoComplete="new-password" minLength={8} maxLength={72} value={passwords.confirmation} onChange={(e) => setPasswords((value) => ({ ...value, confirmation: e.target.value }))} /></Field>
+              </div>
+              {passwordError && <p role="alert" className="mt-3 text-sm text-alert">{passwordError}</p>}
+              <button type="button" disabled={changingPassword || !passwords.current || passwords.next.length < 8 || !passwords.confirmation} onClick={() => void changePassword()} className="mt-4 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50">{changingPassword ? 'Alterando...' : 'Alterar senha'}</button>
+            </div>}
 
             {error && <p role="alert" className="mt-5 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">{error}</p>}
             {success && <p className="mt-5 flex items-center gap-2 rounded-xl border border-success/20 bg-success/5 p-3 text-sm text-graphite-600"><CheckCircle2 className="h-4 w-4 text-success" /> Perfil atualizado com sucesso.</p>}

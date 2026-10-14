@@ -1,12 +1,18 @@
 import { Transform } from 'class-transformer';
 import {
   IsDateString,
+  IsIn,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
   Matches,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
+
+import { SISU_MODALITIES } from '../../cutoffs/sisu-modality';
 
 const emptyToNull = ({ value }: { value: unknown }) =>
   typeof value === 'string' && value.trim() === '' ? null : value;
@@ -58,4 +64,55 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(500)
   bio?: string | null;
+
+  @IsOptional()
+  @IsIn(['FUNDAMENTAL_II', 'ENSINO_MEDIO', 'CURSINHO', 'SUPERIOR', 'OUTRO'])
+  educationLevel?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  schoolYear?: number | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  schoolName?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  desiredCourse?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  targetUniversity?: string | null;
+
+  /** Modalidade de concorrência no Sisu: escolhe qual nota de corte vira a
+   *  meta do aluno. Vazio volta para ampla concorrência. */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsIn(SISU_MODALITIES)
+  sisuModality?: string | null;
+
+  @IsOptional()
+  @IsIn(['MANHA', 'TARDE', 'NOITE', 'FLEXIVEL'])
+  preferredStudyPeriod?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(180)
+  studySessionMinutes?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  weeklyStudyDays?: number | null;
 }

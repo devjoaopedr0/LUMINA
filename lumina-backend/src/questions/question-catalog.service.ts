@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from './question-access.service';
 import { QuestionsRepository } from './questions.repository';
 import { SubjectsRepository } from './subjects.repository';
@@ -20,6 +21,7 @@ import { PaginatedQuestionsDto } from './dto/question-response.dto';
 @Injectable()
 export class QuestionCatalogService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly questionAccessService: QuestionAccessService,
     private readonly subjectsRepository: SubjectsRepository,
     private readonly examsRepository: ExamsRepository,
@@ -131,6 +133,96 @@ export class QuestionCatalogService {
       page,
       totalPages: Math.ceil(total / limit),
       limit,
+    };
+  }
+
+  /** Provas antigas completas (PDF/páginas/gabarito) — item 19. Só as
+   * publicadas aparecem para o aluno; rascunho/arquivada não têm fluxo de
+   * autoria ainda (nenhuma tela de edição existe), então por ora ficam
+   * simplesmente fora da listagem em vez de meio-visíveis. */
+  async listExamPapers(userId: string) {
+    await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
+    return this.prisma.examPaper.findMany({
+      where: { status: 'PUBLISHED' },
+      include: { exam: { select: { id: true, name: true } } },
+      orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async getExamPaper(userId: string, paperId: string) {
+    await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
+    const paper = await this.prisma.examPaper.findFirst({
+      where: { id: paperId, status: 'PUBLISHED' },
+      include: { exam: { select: { id: true, name: true } } },
+    });
+    if (!paper) throw new NotFoundException('Prova não encontrada.');
+    return paper;
+  }
+
+  async getExamPaperPages(userId: string, paperId: string) {
+    await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
+    await this.assertPublishedExamPaper(paperId);
+    return this.prisma.examPaperPage.findMany({
+      where: { paperId },
+      orderBy: { pageNumber: 'asc' },
+    });
+  }
+
+  async getExamPaperQuestions(userId: string, paperId: string) {
+    await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
+    await this.assertPublishedExamPaper(paperId);
+    const rows = await this.prisma.examPaperQuestion.findMany({
+      where: { paperId },
+      include: { question: { select: { subject: true } } },
+      orderBy: { number: 'asc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      number: row.number,
+      pageNumber: row.pageNumber,
+      boundsJson: row.boundsJson,
+      area: row.area,
+      subject: row.question.subject,
+    }));
+  }
+
+  private async assertPublishedExamPaper(paperId: string): Promise<void> {
+    const paper = await this.prisma.examPaper.findUnique({ where: { id: paperId } });
+    if (!paper || paper.status !== 'PUBLISHED') {
+      throw new NotFoundException('Prova não encontrada.');
+    }
+  }
+
+  /** Quantas questões a edição comparada repete da edição base. Só faz
+   * sentido dentro do mesmo vestibular: ENEM 2023 x FUVEST 2023 não tem
+   * nenhuma relação, e o número misleadaria o aluno. */
+  async compareExamPapers(userId: string, baseId: string, compareId: string) {
+    await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
+    if (baseId === compareId) throw new BadRequestException('Escolha duas edições diferentes.');
+
+    const [base, compare] = await Promise.all([
+      this.prisma.examPaper.findFirst({ where: { id: baseId, status: 'PUBLISHED' } }),
+      this.prisma.examPaper.findFirst({ where: { id: compareId, status: 'PUBLISHED' } }),
+    ]);
+    if (!base || !compare) throw new NotFoundException('Prova não encontrada.');
+    if (base.examId !== compare.examId) {
+      throw new BadRequestException('Só é possível comparar edições do mesmo vestibular.');
+    }
+
+    const [baseRows, compareRows] = await Promise.all([
+      this.prisma.examPaperQuestion.findMany({ where: { paperId: baseId }, select: { questionId: true } }),
+      this.prisma.examPaperQuestion.findMany({ where: { paperId: compareId }, select: { questionId: true } }),
+    ]);
+    const baseIds = new Set(baseRows.map((row) => row.questionId));
+    const compareIds = new Set(compareRows.map((row) => row.questionId));
+    const repeated = [...compareIds].filter((questionId) => baseIds.has(questionId)).length;
+    const union = new Set([...baseIds, ...compareIds]).size;
+    return {
+      base: { id: base.id, year: base.year },
+      compare: { id: compare.id, year: compare.year },
+      repeatedCount: repeated,
+      newCount: compareIds.size - repeated,
+      similarityScore: union === 0 ? 0 : Math.round((repeated / union) * 100),
     };
   }
 }

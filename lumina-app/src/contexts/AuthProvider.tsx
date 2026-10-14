@@ -1,38 +1,19 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { AuthContext, type AuthContextValue, type SignupData } from './AuthContext';
 import {
   apiLogin,
+  apiLogoutAll,
   apiMe,
   apiRegister,
   apiResendVerification,
   apiSetPassword,
   apiVerifyEmail,
   apiUpdateProfile,
+  onSessionExpired,
   type UpdateProfilePayload,
   type ApiUser,
 } from "@/lib/api";
-import { clearTokens, getAccessToken, setTokens } from "@/lib/auth";
-
-export interface SignupData {
-  firstName: string;
-  lastName: string;
-  username: string;
-  email: string;
-  password: string;
-}
-
-interface AuthContextValue {
-  user: ApiUser | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<ApiUser>;
-  signup: (data: SignupData) => Promise<ApiUser>;
-  setPassword: (password: string) => Promise<ApiUser>;
-  verifyEmail: (code: string) => Promise<ApiUser>;
-  resendVerification: () => Promise<void>;
-  updateProfile: (data: UpdateProfilePayload) => Promise<ApiUser>;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import { ACCESS_TOKEN_KEY, clearTokens, getAccessToken, setTokens } from "@/lib/auth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
@@ -48,6 +29,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => clearTokens())
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    function syncSession(event: StorageEvent) {
+      if (event.storageArea !== localStorage || event.key !== ACCESS_TOKEN_KEY) return;
+      if (!event.newValue) {
+        setUser(null);
+        return;
+      }
+      setLoading(true);
+      apiMe(event.newValue)
+        .then(setUser)
+        .catch(() => {
+          clearTokens();
+          setUser(null);
+        })
+        .finally(() => setLoading(false));
+    }
+    window.addEventListener("storage", syncSession);
+    return () => window.removeEventListener("storage", syncSession);
+  }, []);
+
+  useEffect(() => {
+    // Dispara quando um refresh de token falha de vez (refresh token também
+    // expirado/inválido) — sem isso, `user` continuava preenchido mesmo com
+    // a sessão morta, e o app seguia parecendo "logado" enquanto toda
+    // chamada autenticada voltava um 401. Zerar `user` aqui já basta: o
+    // ProtectedRoute redireciona pra /login sozinho.
+    return onSessionExpired(() => setUser(null));
   }, []);
 
   async function login(email: string, password: string) {
@@ -95,6 +105,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
+  async function logoutAll() {
+    const token = getAccessToken();
+    await apiLogoutAll(token ?? '');
+    logout();
+  }
+
   const value: AuthContextValue = {
     user,
     loading,
@@ -105,13 +121,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resendVerification,
     updateProfile,
     logout,
+    logoutAll,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth deve ser usado dentro de um AuthProvider");
-  return ctx;
-}

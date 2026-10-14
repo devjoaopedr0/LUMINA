@@ -26,6 +26,9 @@ export class UsersService {
     if (dto.lastName) data.lastName = dto.lastName.trim();
     if (dto.username) data.username = dto.username.trim().toLowerCase();
     if (dto.bio) data.bio = dto.bio.trim();
+    if (dto.schoolName) data.schoolName = dto.schoolName.trim();
+    if (dto.desiredCourse) data.desiredCourse = dto.desiredCourse.trim();
+    if (dto.targetUniversity) data.targetUniversity = dto.targetUniversity.trim();
     if (dto.birthDate) data.birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
 
     try {
@@ -46,6 +49,8 @@ export class UsersService {
   toPublicUser(user: UserWithProfile): UserResponseDto {
     return new UserResponseDto({
       id: user.id,
+      accountType: user.accountType,
+      teacherSubject: user.teacherProfile?.subject ?? null,
       email: user.email,
       emailVerified: user.emailVerified,
       status: user.status,
@@ -59,6 +64,15 @@ export class UsersService {
       phone: user.profile?.phone ?? null,
       birthDate: user.profile?.birthDate ?? null,
       bio: user.profile?.bio ?? null,
+      educationLevel: user.profile?.educationLevel ?? null,
+      schoolYear: user.profile?.schoolYear ?? null,
+      schoolName: user.profile?.schoolName ?? null,
+      desiredCourse: user.profile?.desiredCourse ?? null,
+      targetUniversity: user.profile?.targetUniversity ?? null,
+      sisuModality: user.profile?.sisuModality ?? null,
+      preferredStudyPeriod: user.profile?.preferredStudyPeriod ?? null,
+      studySessionMinutes: user.profile?.studySessionMinutes ?? null,
+      weeklyStudyDays: user.profile?.weeklyStudyDays ?? null,
     });
   }
 }

@@ -11,6 +11,13 @@ import { Exclude, Expose } from 'class-transformer';
 @Exclude()
 export class UserResponseDto {
   @Expose()
+  @ApiProperty({ enum: ['STUDENT_INDEPENDENT', 'STUDENT_INSTITUTION', 'TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'] })
+  accountType: string;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  teacherSubject: string | null;
+  @Expose()
   @ApiProperty()
   id: string;
 
@@ -68,6 +75,42 @@ export class UserResponseDto {
   @Expose()
   @ApiProperty({ nullable: true })
   bio: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  educationLevel: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  schoolYear: number | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  schoolName: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  desiredCourse: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  targetUniversity: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true, description: 'Modalidade de concorrência no Sisu (AC, LB_PPI...)' })
+  sisuModality: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  preferredStudyPeriod: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  studySessionMinutes: number | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  weeklyStudyDays: number | null;
 
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);

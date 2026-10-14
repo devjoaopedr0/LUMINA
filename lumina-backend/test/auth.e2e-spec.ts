@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -71,6 +72,7 @@ describe('Auth (e2e)', () => {
     expect(res.body.accessToken).toBeDefined();
     expect(res.body.refreshToken).toBeDefined();
     expect(res.body.user.email).toBe(registerPayload.email);
+    expect(res.body.user.accountType).toBe('STUDENT_INDEPENDENT');
     expect(res.body.user.username).toBe(registerPayload.username);
     expect(res.body.user.passwordHash).toBeUndefined();
     expect(res.body.user.password).toBeUndefined();
@@ -79,6 +81,35 @@ describe('Auth (e2e)', () => {
   it('POST /auth/register com e-mail duplicado retorna 409', async () => {
     const res = await request(app.getHttpServer()).post('/auth/register').send(registerPayload);
     expect(res.status).toBe(409);
+  });
+
+  it('POST /auth/register com dados institucionais cria a conta do responsável como DIRECTOR e a instituição', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        firstName: 'Paulo',
+        lastName: 'Diretor',
+        username: 'paulo.diretor',
+        email: 'diretor.instituicao@exemplo.com',
+        password: 'SenhaForte123',
+        institution: { name: 'Instituto Exemplo', email: 'instituto.exemplo@contato.com' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.accountType).toBe('DIRECTOR');
+  });
+
+  it('POST /auth/register rejeita cadastro institucional combinado com accountType (400)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        ...registerPayload,
+        username: 'responsavel.invalido',
+        email: 'responsavel.invalido@exemplo.com',
+        accountType: 'STUDENT_INDEPENDENT',
+        institution: { name: 'Escola', email: 'escola@exemplo.com' },
+      });
+    expect(res.status).toBe(400);
   });
 
   it('POST /auth/register rejeita payload com e-mail malformado (400)', async () => {
@@ -145,6 +176,14 @@ describe('Auth (e2e)', () => {
         phone: '+55 (11) 99999-9999',
         birthDate: '2004-05-12',
         bio: '  Estudante focada no ENEM.  ',
+        educationLevel: 'ENSINO_MEDIO',
+        schoolYear: 3,
+        schoolName: '  Escola Exemplo  ',
+        desiredCourse: '  Medicina  ',
+        targetUniversity: '  UFC  ',
+        preferredStudyPeriod: 'NOITE',
+        studySessionMinutes: 50,
+        weeklyStudyDays: 5,
       });
 
     expect(res.status).toBe(200);
@@ -152,6 +191,17 @@ describe('Auth (e2e)', () => {
     expect(res.body.username).toBe('mariana.oliveira');
     expect(res.body.birthDate).toContain('2004-05-12');
     expect(res.body.bio).toBe('Estudante focada no ENEM.');
+    expect(res.body.educationLevel).toBe('ENSINO_MEDIO');
+    expect(res.body.schoolYear).toBe(3);
+    expect(res.body.schoolName).toBe('Escola Exemplo');
+    expect(res.body.desiredCourse).toBe('Medicina');
+    expect(res.body.targetUniversity).toBe('UFC');
+    expect(res.body.preferredStudyPeriod).toBe('NOITE');
+    expect(res.body.studySessionMinutes).toBe(50);
+    expect(res.body.weeklyStudyDays).toBe(5);
+    const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${login.body.accessToken}`);
+    expect(me.body.schoolName).toBe('Escola Exemplo');
+    expect(me.body.desiredCourse).toBe('Medicina');
     expect(res.body.passwordHash).toBeUndefined();
   });
 
@@ -171,6 +221,14 @@ describe('Auth (e2e)', () => {
       .set('Authorization', `Bearer ${login.body.accessToken}`)
       .send({ isAdmin: true });
     expect(extraField.status).toBe(400);
+
+    const invalidAcademic = await request(app.getHttpServer())
+      .patch('/users/me/profile')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ educationLevel: 'DOUTORADO', schoolYear: 10 });
+    expect(invalidAcademic.status).toBe(400);
+    const invalidPreferences = await request(app.getHttpServer()).patch('/users/me/profile').set('Authorization', `Bearer ${login.body.accessToken}`).send({ preferredStudyPeriod: 'MADRUGADA', studySessionMinutes: 5, weeklyStudyDays: 8 });
+    expect(invalidPreferences.status).toBe(400);
   });
 
   it('GET /auth/me com token inválido retorna 401', async () => {
@@ -187,6 +245,45 @@ describe('Auth (e2e)', () => {
     expect(res.status).toBe(401);
   });
 
+  it('POST /auth/refresh troca um refresh token válido por um novo par de tokens', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: login.body.refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+    expect(res.body.user.email).toBe(registerPayload.email);
+
+    // O novo access token precisa funcionar de verdade em rota protegida.
+    const me = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${res.body.accessToken}`);
+    expect(me.status).toBe(200);
+  });
+
+  it('POST /auth/refresh com token inválido retorna 401', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: 'token-invalido' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /auth/refresh com o access token (secret errado) retorna 401', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: registerPayload.email, password: registerPayload.password });
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: login.body.accessToken });
+    expect(res.status).toBe(401);
+  });
+
   it('POST /auth/set-password numa conta que já tem senha retorna 409', async () => {
     const login = await request(app.getHttpServer())
       .post('/auth/login')
@@ -198,5 +295,118 @@ describe('Auth (e2e)', () => {
       .send({ password: 'OutraSenhaForte123' });
 
     expect(res.status).toBe(409);
+  });
+
+  it('cadastra professor e impede autoatribuição de perfis privilegiados', async () => {
+    const teacher = await request(app.getHttpServer()).post('/auth/register').send({
+      ...registerPayload,
+      email: 'professora@exemplo.com',
+      username: 'professora.teste',
+      accountType: 'TEACHER',
+      teacherSubject: 'Matemática',
+    });
+    expect(teacher.status).toBe(201);
+    expect(teacher.body.user.accountType).toBe('TEACHER');
+    expect(teacher.body.user.teacherSubject).toBe('Matemática');
+
+    const privileged = await request(app.getHttpServer()).post('/auth/register').send({
+      ...registerPayload,
+      email: 'admin.teste@exemplo.com',
+      username: 'admin.teste.publico',
+      accountType: 'ADMIN',
+    });
+    expect(privileged.status).toBe(400);
+
+    const teacherWithoutSubject = await request(app.getHttpServer()).post('/auth/register').send({
+      ...registerPayload,
+      email: 'professor.sem.materia@exemplo.com',
+      username: 'professor.sem.materia',
+      accountType: 'TEACHER',
+    });
+    expect(teacherWithoutSubject.status).toBe(400);
+  });
+
+  it('salva, consulta e limpa o vestibular-alvo da conta', async () => {
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email: registerPayload.email, password: registerPayload.password });
+    const authorization = `Bearer ${login.body.accessToken}`;
+    const saved = await request(app.getHttpServer()).post('/user/vestibular').set('Authorization', authorization).send({ customName: 'ENEM', targetDate: '2027-11-07' });
+    expect(saved.status).toBe(201);
+    const read = await request(app.getHttpServer()).get('/user/vestibular').set('Authorization', authorization);
+    expect(read.body.customName).toBe('ENEM');
+    const cleared = await request(app.getHttpServer()).post('/user/vestibular').set('Authorization', authorization).send({ customName: null });
+    expect(cleared.status).toBe(201);
+    expect(cleared.body.customName).toBeNull();
+    expect(cleared.body.targetDate).toBeNull();
+  });
+
+  it('POST /auth/logout-all invalida access e refresh tokens antigos e permite novo login', async () => {
+    const account = { ...registerPayload, email: 'sessoes@exemplo.com', username: 'sessoes.teste' };
+    const first = await request(app.getHttpServer()).post('/auth/register').send(account);
+    expect(first.status).toBe(201);
+
+    const logout = await request(app.getHttpServer()).post('/auth/logout-all')
+      .set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(logout.status).toBe(204);
+
+    const oldAccess = await request(app.getHttpServer()).get('/auth/me')
+      .set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(oldAccess.status).toBe(401);
+
+    const oldRefresh = await request(app.getHttpServer()).post('/auth/refresh')
+      .send({ refreshToken: first.body.refreshToken });
+    expect(oldRefresh.status).toBe(401);
+
+    const second = await request(app.getHttpServer()).post('/auth/login')
+      .send({ email: account.email, password: account.password });
+    expect(second.status).toBe(200);
+    const newAccess = await request(app.getHttpServer()).get('/auth/me')
+      .set('Authorization', `Bearer ${second.body.accessToken}`);
+    expect(newAccess.status).toBe(200);
+  });
+
+  it('lista sessões e encerra apenas a sessão escolhida', async () => {
+    const account = { ...registerPayload, email: 'individual@exemplo.com', username: 'individual.teste' };
+    const first = await request(app.getHttpServer()).post('/auth/register').send(account);
+    const second = await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password });
+    const listed = await request(app.getHttpServer()).get('/auth/sessions').set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body).toHaveLength(2);
+    const current = listed.body.find((session: { current: boolean }) => session.current);
+    expect(current).toBeDefined();
+    expect((await request(app.getHttpServer()).delete(`/auth/sessions/${current.id}`).set('Authorization', `Bearer ${first.body.accessToken}`)).status).toBe(204);
+    expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${first.body.accessToken}`)).status).toBe(401);
+    expect((await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: first.body.refreshToken })).status).toBe(401);
+    expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${second.body.accessToken}`)).status).toBe(200);
+  });
+
+  it('troca a senha, exige a atual e revoga todas as sessões', async () => {
+    const account = { ...registerPayload, email: 'troca.senha@exemplo.com', username: 'troca.senha' };
+    const first = await request(app.getHttpServer()).post('/auth/register').send(account);
+    const second = await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password });
+    const wrong = await request(app.getHttpServer()).post('/auth/change-password')
+      .set('Authorization', `Bearer ${first.body.accessToken}`)
+      .send({ currentPassword: 'SenhaErrada', newPassword: 'NovaSenhaForte456' });
+    expect(wrong.status).toBe(401);
+    const changed = await request(app.getHttpServer()).post('/auth/change-password')
+      .set('Authorization', `Bearer ${first.body.accessToken}`)
+      .send({ currentPassword: account.password, newPassword: 'NovaSenhaForte456' });
+    expect(changed.status).toBe(204);
+    expect((await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${second.body.accessToken}`)).status).toBe(401);
+    expect((await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: account.password })).status).toBe(401);
+    expect((await request(app.getHttpServer()).post('/auth/login').send({ email: account.email, password: 'NovaSenhaForte456' })).status).toBe(200);
+  });
+
+  it('expõe cargo e permissões efetivas e protege a listagem de cargos por RBAC', async () => {
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email: registerPayload.email, password: registerPayload.password });
+    const authorization = `Bearer ${login.body.accessToken}`;
+    const access = await request(app.getHttpServer()).get('/workspaces/me/access').set('Authorization', authorization);
+    expect(access.status).toBe(200);
+    expect(access.body[0].role.name).toBe('Owner');
+    expect(access.body[0].permissions).toEqual(['*']);
+    const roles = await request(app.getHttpServer()).get(`/workspaces/${access.body[0].workspace.id}/roles`).set('Authorization', authorization);
+    expect(roles.status).toBe(200);
+    expect(roles.body.some((role: { name: string }) => role.name === 'Owner')).toBe(true);
+    const denied = await request(app.getHttpServer()).get(`/workspaces/${randomUUID()}/roles`).set('Authorization', authorization);
+    expect(denied.status).toBe(403);
   });
 });

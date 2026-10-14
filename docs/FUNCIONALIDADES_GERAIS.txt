@@ -1,0 +1,611 @@
+1. 1. Autenticação e conta
+   -  Cadastro de usuário
+   -  Login com e-mail e senha
+   -  Login com Google
+   -  Recuperação de senha
+   -  Verificação de e-mail
+   -  Logout
+   -  Logout de todos os dispositivos
+   -  Gerenciamento de sessões
+   -  Perfil do usuário
+   -  Foto de perfil
+   -  Dados acadêmicos
+   -  Preferências de estudo
+   -  Configurações da conta
+   -  Tipos de conta:
+     -  aluno independente
+     -  aluno vinculado a instituição
+     -  professor
+     -  coordenador
+     -  diretor
+     -  administrador
+2. 2. Controle de acesso
+   -  Permissões por cargo
+   -  RBAC
+   -  Controle de acesso por instituição
+   -  Controle de acesso por turma
+   -  Controle de acesso por aluno
+   -  Painéis diferentes para cada perfil
+3. 3. Painel do aluno
+   -  Visão geral de desempenho
+   -  Notas recentes
+   -  Progresso por matéria
+   -  Progresso por assunto
+   -  Progresso por habilidade
+   -  Metas
+   -  Cronograma
+   -  Atividades pendentes
+   -  Próximos simulados
+   -  Recomendações personalizadas
+   -  Histórico de estudos
+   -  Histórico de questões
+   -  Histórico de simulados
+   -  Histórico de redações
+   -  Tempo de estudo
+   -  Sequência de dias estudando
+4. 4. Painel do professor
+   -  Visualização das turmas
+   -  Lista de alunos
+   -  Desempenho individual
+   -  Desempenho geral da turma
+   -  Relatórios
+   -  Criação de atividades
+   -  Criação de listas
+   -  Criação de provas
+   -  Correção
+   -  Acompanhamento em tempo real
+   -  Alertas pedagógicos
+   -  Identificação de alunos com dificuldade
+   -  Identificação de conteúdos com baixo desempenho
+5. 5. Painel do coordenador [CONCLUÍDA EM 20/09/2026]
+   -  Visão geral das turmas
+   -  Comparação entre turmas
+   -  Acompanhamento dos professores
+   -  Desempenho por disciplina
+   -  Relatórios pedagógicos
+   -  Indicadores da instituição
+   -  Gestão de períodos letivos
+6. 6. Painel do diretor [CONCLUÍDA EM 20/09/2026]
+   -  Indicadores gerais da instituição
+   -  Desempenho acadêmico
+   -  Evolução das turmas
+   -  Relatórios consolidados
+   -  Gestão de usuários
+   -  Gestão de professores e coordenadores
+   -  Visão estratégica da instituição
+7. 7. Gestão de instituições [CONCLUÍDA EM 20/09/2026]
+   -  Cadastro de instituição
+   -  Gerenciamento de alunos
+   -  Gerenciamento de professores
+   -  Coordenadores
+   -  Diretores
+   -  Turmas
+   -  Períodos
+   -  Ano letivo
+   -  Convites para entrada na instituição
+   -  Código de acesso à turma
+   -  Transferência entre turmas
+8. 8. Gestão de turmas [INTEGRADA E VALIDADA VIA API EM 23/09/2026 — VALIDAÇÃO VISUAL NO NAVEGADOR PENDENTE]
+   -  Criar turma
+   -  Editar turma
+   -  Arquivar turma
+   -  Vincular aluno
+   -  Vincular professor
+   -  Vincular disciplina
+   -  Organização por período
+   -  Organização por ano
+   -  Histórico da turma
+9. 9. Banco de questões [INTEGRADA E VALIDADA VIA API EM 23/09/2026 — VALIDAÇÃO VISUAL NO NAVEGADOR PENDENTE]
+   -  Questões internas
+   -  Questões de vestibulares
+   -  Questões do ENEM
+   -  Questões da UECE
+   -  Questões de outras provas
+   -  Filtro por:
+     -  disciplina
+     -  assunto
+     -  subassunto
+     -  habilidade
+     -  dificuldade
+     -  ano
+     -  prova
+     -  banca
+   -  Pesquisa por palavra-chave
+   -  Favoritar questão
+   -  Histórico de resolução
+   -  Gabarito
+   -  Explicação
+   -  Estatísticas de acerto
+   -  Questões semelhantes
+10. 10. Busca de questões na web [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026]
+    -  LuminIA pesquisa questões públicas na internet
+    -  Busca por conteúdo
+    -  Busca por vestibular
+    -  Busca por dificuldade
+    -  Busca por assunto
+    -  Identificação da fonte
+    -  Link para a fonte original
+    -  Classificação automática da questão
+    -  Possibilidade de salvar no banco interno
+    -  Respeito a direitos autorais e condições de uso
+11. 11. Resolução de questões [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITEM "PEDIR AJUDA À LUMINIA" (DEPENDE DO BACKEND DE IA) PENDENTE; SUBITEM "ADICIONAR AO CADERNO DE ERROS" ENTREGUE NO ITEM 12]
+    -  Responder dentro da plataforma
+    -  Correção automática
+    -  Feedback imediato
+    -  Explicação da resposta correta
+    -  Explicação das alternativas erradas
+    -  Marcar questão para revisar
+    -  Adicionar ao caderno de erros
+    -  Pedir ajuda à LuminIA
+    -  Pedir dica sem ver a resposta
+    -  Resolver questão semelhante
+12. 12. Caderno de erros [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026]
+    -  Salvar automaticamente questões erradas
+    -  Organizar por matéria
+    -  Organizar por assunto
+    -  Registrar motivo do erro
+    -  Registrar dificuldade  [FONTE ÚNICA: A DIFICULDADE DA PRÓPRIA QUESTÃO - NO CADERNO ELA É RECORTE, NÃO ESCOLHA DO ALUNO]
+    -  Criar revisão futura
+    -  Reapresentar a questão
+    -  Mostrar evolução após repetição
+    -  Adicionar observações pessoais
+13. 13. Classificação do motivo do erro [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITEM "SUGERIDA PELA LUMINIA" DEPENDE DO BACKEND DE IA]
+    -  Falta de conteúdo
+    -  Erro de interpretação
+    -  Erro de cálculo
+    -  Falta de atenção
+    -  Chute
+    -  Tempo insuficiente
+    -  Confusão entre conceitos
+    -  Classificação manual ou sugerida pela LuminIA  [HOJE MANUAL; A SUGESTÃO AUTOMÁTICA DEPENDE DO BACKEND DE IA]
+14. 14. Simulados
+    -  Criar simulado
+    -  Simulados completos
+    -  Simulados por matéria
+    -  Simulados por área
+    -  Simulados personalizados
+    -  Simulados com questões aleatórias
+    -  Cronômetro
+    -  Correção automática
+    -  Nota
+    -  Percentual de acerto
+    -  Histórico
+    -  Comparação entre simulados
+15. 15. Modo prova real
+    -  Interface sem dicas
+    -  Tempo limitado
+    -  Número de questões semelhante à prova
+    -  Separação por áreas
+    -  Simulação do ENEM
+    -  Resultado liberado somente ao final
+    -  Relatório de estratégia de prova
+16. 16. Simulado adaptativo [INTEGRADA EM 26/09/2026 - ALGORITMO IRT SIMPLIFICADO]
+    -  Dificuldade muda conforme desempenho
+    -  Questões mais fáceis ou difíceis automaticamente
+    -  Identificação do nível real do aluno
+    -  Avaliação por habilidade
+    -  Diagnóstico rápido
+17. 17. Scanner de gabarito
+    -  Foto do cartão-resposta
+    -  Upload de imagem
+    -  Identificação das alternativas marcadas
+    -  Correção automática
+    -  Associação com aluno
+    -  Associação com prova
+    -  Resultado imediato
+    -  Relatórios por questão
+    -  Relatórios por turma
+18. 18. Scanner de questões [INTEGRADA EM 26/09/2026 - OCR SIMULADO, CLASSIFICAÇÃO E LUMINIA; WORKER REAL + UI DE REVISÃO PENDENTES]
+    -  Fotografar questão impressa
+    -  Reconhecimento do texto
+    -  Identificação automática da disciplina
+    -  Identificação do assunto
+    -  Explicação pela LuminIA
+    -  Buscar questões semelhantes
+    -  Adicionar ao caderno de estudos
+19. 19. Provas anteriores [INTEGRADA EM 27/09/2026 - MIGRAÇÃO E MODELOS; UI PENDENTE]
+    -  ENEM
+    -  Vestibulares
+    -  UECE
+    -  Filtro por ano
+    -  Filtro por área
+    -  Resolver online
+    -  Gabarito
+    -  Histórico
+    -  Estatísticas
+20. 20. Redação [INTEGRADA EM 27/09/2026 - CORREÇÃO POR COMPETÊNCIAS, VERSIONAMENTO, FEEDBACK; UI PENDENTE]
+    -  Enviar redação
+    -  Digitar redação na plataforma
+    -  Upload de foto
+    -  Histórico de redações
+    -  Nota
+    -  Correção por competência
+    -  Feedback
+    -  Sugestões de melhoria
+    -  Correção assistida por IA
+    -  Evolução das notas
+    -  Banco de temas
+    -  Repertórios sugeridos
+    -  Treino de introdução
+    -  Treino de desenvolvimento
+    -  Treino de conclusão
+    -  Treino de projeto de texto
+21. 21. Caderno de fórmulas
+    -  Fórmulas organizadas por disciplina (Matemática, Física, Química, Biologia)
+    -  Fórmulas organizadas por assunto/tópico
+    -  Busca por nome da fórmula ou palavra-chave
+    -  Visualização com LaTeX renderizado
+    -  Adicionar anotações pessoais a cada fórmula
+    -  Marcar fórmulas como favoritas/dominadas
+    -  Filtrar por disciplina/assunto
+    -  Exportar para PDF para impressão
+    -  Sincronização com caderno de erros (fórmulas relacionadas a erros)
+22. 22. Caderno de repertórios
+    -  Repertórios socioculturais organizados por tema (ex.: tecnologia, meio ambiente, saúde, política)
+    -  Cada repertório com: título, resumo, palavras-chave, fonte, ano
+    -  Busca por tema, palavra-chave ou ano
+    -  Marcar repertórios como estudados/dominados
+    -  Associação automática com temas de redação do ENEM
+    -  Sugestão de repertórios baseada no tema da redação em escrita
+    -  Contador de repertórios por tema
+    -  Exportar para PDF
+23. 23. Modelos de redação nota mil para estudo
+    -  Redações oficiais nota 1000 do ENEM (2009-presente) com tema, texto e competências
+    -  Redações nota 1000 de vestibulares (FUVEST, UNICAMP, etc.)
+    -  Análise por competência (C1 a C5) com nota individual
+    -  Destaque para elementos estruturais: tese, argumentos, conectivos, proposta de intervenção
+    -  Filtro por ano, tema, vestibular
+    -  Comparação lado a lado: redação do aluno vs modelo nota mil
+    -  Análise automática: "O que a nota mil tem que a sua não tem?" (por competência)
+    -  Download do PDF original oficial
+24. 24. LuminIA — explicação de conteúdos
+    -  Explicar qualquer conteúdo escolar
+    -  Explicação resumida
+    -  Explicação completa
+    -  Passo a passo
+    -  Explicação para iniciantes
+    -  Revisão rápida
+    -  Exemplos
+    -  Analogias
+    -  Exercícios após a explicação
+    -  Ajustar nível da explicação ao aluno
+22. 22. LuminIA — explicação de questões
+    -  Identificar o que a questão cobra
+    -  Identificar conteúdo necessário
+    -  Explicar como pensar
+    -  Resolver passo a passo
+    -  Explicar alternativa correta
+    -  Explicar alternativas incorretas
+    -  Dar dica antes da resposta
+    -  Criar questão semelhante
+23. 23. LuminIA — modo socrático
+    -  Não entregar imediatamente a resposta
+    -  Fazer perguntas
+    -  Dar pistas progressivas
+    -  Identificar onde o aluno travou
+    -  Conduzir até a solução
+24. 24. LuminIA — recomendação de videoaulas
+    -  Pesquisar vídeos no YouTube
+    -  Identificar vídeos relacionados ao conteúdo perguntado
+    -  Mostrar título
+    -  Canal
+    -  Duração
+    -  Tema
+    -  Nível
+    -  Link do vídeo
+    -  Explicar por que recomenda aquele vídeo
+    -  Recomendar de acordo com dificuldade do aluno
+25. 25. LuminIA — busca na web
+    -  Pesquisar conteúdos educacionais
+    -  Encontrar questões
+    -  Encontrar materiais
+    -  Encontrar fontes confiáveis
+    -  Mostrar fonte original
+    -  Fazer pesquisa contextual baseada na dúvida
+26. 26. LuminIA — assistente de estudos
+    -  Tirar dúvidas
+    -  Explicar conteúdos
+    -  Gerar resumos
+    -  Criar mapas mentais
+    -  Criar flashcards
+    -  Criar perguntas
+    -  Recomendar assuntos
+    -  Criar planos de estudo
+    -  Identificar lacunas
+    -  Recomendar revisões
+    -  Recomendar questões
+    -  Recomendar videoaulas
+27. 27. LuminIA com contexto do aluno
+    -  Utilizar histórico de erros
+    -  Utilizar progresso
+    -  Utilizar simulados
+    -  Utilizar metas
+    -  Utilizar matérias com dificuldade
+    -  Identificar pré-requisitos ausentes
+    -  Personalizar respostas
+    -  Personalizar recomendações
+28. 28. Diagnóstico inicial
+    -  Teste inicial
+    -  Avaliação por matéria
+    -  Avaliação por habilidade
+    -  Identificação de pontos fortes
+    -  Identificação de pontos fracos
+    -  Geração automática do primeiro plano de estudo
+29. 29. Trilhas adaptativas
+    -  Caminho de estudos personalizado
+    -  Alteração automática conforme desempenho
+    -  Reforço de pré-requisitos
+    -  Mudança de dificuldade
+    -  Próxima atividade sugerida automaticamente
+30. 30. Mapa de domínio
+    -  Mostrar domínio por matéria
+    -  Assunto
+    -  Subassunto
+    -  Habilidade
+    -  Estados como:
+      -  dominado
+      -  em progresso
+      -  atenção
+      -  crítico
+    -  Mapa de calor
+31. 31. Revisão espaçada
+    -  Agendar revisão automaticamente
+    -  Recalcular próxima revisão conforme desempenho
+    -  Integrar questões
+    -  Integrar flashcards
+    -  Integrar caderno de erros
+    -  Notificar quando for hora de revisar
+32. 32. Flashcards
+    -  Criar manualmente
+    -  Criar com IA
+    -  Criar a partir de PDF
+    -  Criar a partir de conteúdo
+    -  Criar a partir de erros
+    -  Revisão espaçada
+    -  Histórico de domínio
+33. 33. Cronograma de estudos
+    -  Criar cronograma manual
+    -  Cronograma automático
+    -  Planejamento semanal
+    -  Planejamento diário
+    -  Horários
+    -  Disciplinas
+    -  Metas
+    -  Tarefas
+    -  Reorganização automática
+    -  Ajuste com IA
+34. 34. Agenda
+    -  Provas
+    -  Simulados
+    -  Trabalhos
+    -  Atividades
+    -  Revisões
+    -  Eventos
+    -  Compromissos
+    -  Lembretes
+35. 35. Modo revisão de véspera
+    -  Conteúdos prioritários
+    -  Conteúdos não dominados
+    -  Questões mais importantes
+    -  Caderno de erros
+    -  Flashcards
+    -  Revisões rápidas
+    -  Recomendações automáticas
+36. 36. Estratégia de prova
+    -  Tempo médio por questão
+    -  Tempo por matéria
+    -  Questões demoradas
+    -  Questões respondidas rapidamente
+    -  Questões abandonadas
+    -  Chutes
+    -  Relação tempo x acerto
+    -  Sugestões de estratégia
+37. 37. Gerador de listas
+    -  Lista personalizada
+    -  Escolher quantidade
+    -  Matéria
+    -  Assunto
+    -  Dificuldade
+    -  Prova
+    -  Ano
+    -  Basear lista nas dificuldades do aluno
+    -  Professor gerar lista para turma
+38. 38. Gerador de provas
+    -  Seleção automática de questões
+    -  Quantidade
+    -  Disciplina
+    -  Dificuldade
+    -  Habilidades
+    -  Assuntos
+    -  Gabarito
+    -  Versões diferentes da mesma prova
+39. 39. Analytics do aluno
+    -  Percentual de acertos
+    -  Evolução
+    -  Tempo de estudo
+    -  Tempo por questão
+    -  Matérias fortes
+    -  Matérias fracas
+    -  Assuntos críticos
+    -  Desempenho por habilidade
+    -  Histórico
+40. 40. Analytics de professores
+    -  Desempenho da turma
+    -  Média por questão
+    -  Questões mais erradas
+    -  Conteúdos críticos
+    -  Evolução
+    -  Participação
+    -  Tempo de estudo
+    -  Alunos em risco
+41. 41. Alertas pedagógicos
+    -  Queda de desempenho
+    -  Muitos erros seguidos
+    -  Falta de atividade
+    -  Conteúdo com dificuldade coletiva
+    -  Aluno há muitos dias sem estudar
+    -  Meta atrasada
+    -  Recomendação de intervenção
+42. 42. Plano automático de recuperação
+    -  Detectar dificuldade
+    -  Escolher conteúdo de reforço
+    -  Recomendar videoaula
+    -  Aplicar questões fáceis
+    -  Evoluir dificuldade
+    -  Agendar revisão
+    -  Reavaliar domínio
+43. 43. Comparação de desempenho
+    -  Comparar aluno consigo mesmo
+    -  Comparar períodos
+    -  Comparar turmas
+    -  Comparação com média da turma
+    -  Sem expor notas individuais de outros alunos
+44. 44. Gamificação
+    -  XP
+    -  Níveis
+    -  Sequência de estudos
+    -  Conquistas
+    -  Missões
+    -  Desafios semanais
+    -  Metas
+    -  Medalhas
+45. 45. Conquistas
+    -  Quantidade de questões
+    -  Dias consecutivos
+    -  Domínio de conteúdo
+    -  Evolução
+    -  Nota em redação
+    -  Simulados concluídos
+46. 46. Desafios entre turmas
+    -  Competições de questões
+    -  Rankings opcionais
+    -  Desafios de estudo
+    -  Metas coletivas
+    -  Sem exposição obrigatória de notas
+47. 47. Sala de estudo
+    -  Sessões coletivas
+    -  Professor acompanha em tempo real
+    -  Lista de questões ao vivo
+    -  Simulado coletivo
+    -  Progresso dos participantes
+48. 48. Central de materiais
+    -  PDFs
+    -  Slides
+    -  Apostilas
+    -  Links
+    -  Vídeos
+    -  Listas
+    -  Organização por turma
+    -  Organização por matéria
+    -  Organização por assunto
+49. 49. IA sobre materiais da instituição
+    -  Professor envia material
+    -  LuminIA usa aquele material como referência
+    -  Responde com base no conteúdo da aula
+    -  Busca trechos específicos
+    -  Explica partes do material
+    -  Gera questões a partir dele
+50. 50. Busca inteligente nos materiais
+    -  Pesquisar conteúdo
+    -  Localizar trecho em PDF
+    -  Encontrar aula
+    -  Encontrar tópico
+    -  Perguntar “onde o professor explicou X?”
+51. 51. Notificações
+    -  Nova atividade
+    -  Prova próxima
+    -  Simulado
+    -  Revisão pendente
+    -  Meta
+    -  Aviso da instituição
+    -  Feedback de redação
+    -  Nova nota
+    -  Recomendação da LuminIA
+52. 52. Sistema de metas
+    -  Meta de questões
+    -  Meta de tempo
+    -  Meta de nota
+    -  Meta de redação
+    -  Meta semanal
+    -  Meta mensal
+    -  Acompanhamento visual
+    -  Recompensas
+53. 53. Painel dos responsáveis
+    -  Opcional para instituições
+    -  Evolução
+    -  Frequência de estudo
+    -  Metas
+    -  Comunicados
+    -  Informações acadêmicas permitidas
+54. 54. PWA e modo offline
+    -  Instalar como aplicativo
+    -  Resolver listas offline
+    -  Flashcards offline
+    -  Revisões offline
+    -  Sincronização ao reconectar
+55. 55. Pagamentos
+    -  Plano gratuito
+    -  Plano individual
+    -  Plano premium
+    -  Plano institucional
+    -  Integração com gateway
+    -  Mercado Pago ou equivalente
+    -  Histórico de pagamento
+    -  Assinaturas
+56. 56. Administração da plataforma
+    -  Usuários
+    -  Instituições
+    -  Professores
+    -  Questões
+    -  Conteúdos
+    -  Planos
+    -  Assinaturas
+    -  Relatórios
+    -  Logs
+    -  Moderação
+57. 57. Segurança
+    -  Autenticação segura
+    -  Refresh token
+    -  Controle de sessões
+    -  Rate limiting
+    -  Guards no NestJS
+    -  Controle por cargo
+    -  Proteção contra IDOR
+    -  Validação de DTO
+    -  Proteção contra mass assignment
+    -  Proteção contra XSS
+    -  Proteção contra CSRF
+    -  CORS configurado
+    -  Helmet
+    -  Logs de auditoria
+    -  PostgreSQL privado
+    -  Backups
+    -  Criptografia
+    -  Proteção de dados pessoais
+    -  LGPD
+58. 58. Auditoria
+    -  Login
+    -  Alteração de senha
+    -  Alteração de cargo
+    -  Criação de instituição
+    -  Exclusão de dados
+    -  Exportação
+    -  Operações administrativas
+    -  Histórico de ações
+59. 59. Relatórios
+    -  Relatório individual
+    -  Relatório de turma
+    -  Relatório de matéria
+    -  Relatório institucional
+    -  Exportação em PDF
+    -  Exportação de dados
+    -  Relatórios periódicos
+60. 60. Futuras integrações
+    -  Google Calendar
+    -  Google Classroom
+    -  YouTube
+    -  APIs educacionais
+    -  Sistemas escolares
+    -  Plataformas de pagamento
+    -  Notificações push
+    -  E-mail

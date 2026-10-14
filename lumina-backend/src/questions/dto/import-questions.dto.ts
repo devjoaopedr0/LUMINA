@@ -36,6 +36,15 @@ export class ImportQuestionOptionDto {
   @IsOptional()
   @IsBoolean()
   correct?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Por que esta alternativa está errada. Exibida ao aluno só depois que ele responde (nunca antes, para não revelar o gabarito).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  explanation?: string;
 }
 
 export class ImportQuestionDto {

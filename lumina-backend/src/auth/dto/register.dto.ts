@@ -5,9 +5,29 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  IsIn,
+  IsOptional,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreateInstitutionDto } from '../../institutions/institutions.dto';
 
 export class RegisterDto {
+  @ApiProperty({ required: false, type: CreateInstitutionDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateInstitutionDto)
+  institution?: CreateInstitutionDto;
+  @ApiProperty({ required: false, enum: ['STUDENT_INDEPENDENT', 'TEACHER'] })
+  @IsOptional()
+  @IsIn(['STUDENT_INDEPENDENT', 'TEACHER'])
+  accountType?: 'STUDENT_INDEPENDENT' | 'TEACHER';
+
+  @ApiProperty({ required: false, description: 'Matéria lecionada. Preencher apenas ao cadastrar uma conta de professor.' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['Língua Portuguesa', 'Literatura', 'Redação', 'Matemática', 'Física', 'Química', 'Biologia', 'História', 'Geografia', 'Filosofia', 'Sociologia', 'Inglês', 'Espanhol'])
+  teacherSubject?: string;
   @ApiProperty({ example: 'Maria Silva', description: 'Nome do usuário' })
   @IsString({ message: 'first_name deve ser um texto.' })
   @MinLength(2, { message: 'first_name deve ter pelo menos 2 caracteres.' })

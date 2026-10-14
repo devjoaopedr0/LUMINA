@@ -55,8 +55,12 @@ export function toNormalizedQuestion(external: ExternalQuestion): NormalizedQues
     alternatives: external.options.map((option: ExternalQuestionOption, index: number) => ({
       text: option.text.trim(),
       isCorrect: correctIndex === index,
+      // A explicação do distrator é opcional e só aparece depois que o aluno
+      // responde; por isso ela não pode "corrigir" a alternativa marcada.
+      explanation: option.explanation?.trim() || null,
     })),
     explanation: external.explanation?.trim() || null,
     imageUrl: external.imageUrl?.trim() || null,
+    sourcePdf: external.sourcePdf,
   };
 }

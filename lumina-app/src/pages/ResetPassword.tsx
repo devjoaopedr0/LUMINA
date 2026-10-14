@@ -3,7 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { Input } from "@/components/ui/Input";
-import { Button, buttonVariants } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import { ApiError, apiResetPassword } from "@/lib/api";
 
