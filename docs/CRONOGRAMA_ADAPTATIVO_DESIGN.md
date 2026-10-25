@@ -512,7 +512,7 @@ de uso, em fases que só valem quando há dado suficiente:
 | Fase | O que calibra | Com que dado | Estado |
 | --- | --- | --- | --- |
 | **C1** | Dificuldade de cada questão na nota estilo TRI | Primeira resposta de cada aluno (avulsas e simulados) | Implementada |
-| **C2** | Duração de cada tipo de atividade | Cronômetro (`study_time_logs`) e `time_spent` das tentativas × minutos agendados | A fazer |
+| **C2** | Duração de cada tipo de atividade | Tempo ativo medido na tarefa e duração do simulado × minutos agendados | Implementada |
 | **C3** | Régua de cada área (piso, média, teto) em `enem-tri.ts` | Notas mínimas, médias e máximas divulgadas pelo INEP | A fazer (pesquisa) |
 | **C4** | Pesos da prioridade (§4) | Ganho de domínio depois de cada tarefa, por termo da prioridade | Depende de alunos reais usando por semanas |
 
@@ -531,6 +531,23 @@ b da questão (`bOffset`), usado na nota de todo simulado e na nota estimada.
   resultado traz `suggestedDifficulty` — base para revisar a classificação.
 - Calculado para o banco inteiro e guardado em memória por uma hora
   (`QuestionCalibrationService`); com muito mais respostas, vira tabela.
+
+**C2 — duração no ritmo do aluno** (`schedules/activity-durations.ts`). Antes
+não havia tempo medido por tarefa: o cronômetro mede por matéria e a rota de
+tempo por tarefa não era usada. Agora a prática e o resumo de teoria medem o
+tempo ativo (só com a aba visível, `useTaskActiveTime`) e o registram na tarefa
+ao fechar; no simulado vale do início ao envio.
+
+- Por tipo de atividade, a mediana da razão medido/agendado das tarefas
+  concluídas nos últimos 60 dias ajusta a duração padrão. Precisa de 4 tarefas
+  medidas do tipo; o ajuste é encolhido (n / (n + 4)), fica entre 75% e 150%
+  da padrão e em múltiplos de 5 minutos.
+- Medições de menos de 20% ou mais de 3x o agendado ficam de fora (abriu e
+  fechou, ou esqueceu aberto).
+- O tempo registrado na tarefa entra também nas horas estudadas do progresso,
+  que soma só tempo registrado. Quem usar o cronômetro da matéria ao mesmo
+  tempo conta duas vezes.
+- Revisão e Redação ainda não têm tela que meça tempo: ficam na duração padrão.
 
 ## 14. Design visual (seção 19)
 

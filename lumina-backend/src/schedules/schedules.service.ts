@@ -8,6 +8,7 @@ import { computeSchedulePhase, type SchedulePhase } from "./schedule-phase";
 import { ESSAY_SUBJECT_CODE } from "./study-areas";
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from "./study-subject-question-bank-map";
 import { Db } from "./domain/types";
+import { personalDurations, type ActivityDurations } from "./activity-durations";
 import { PRACTICE_WINDOW_HOURS, summarizePractice } from "./schedule-practice";
 import type {
   CreateStudyScheduleDto,
@@ -88,6 +89,8 @@ const REPLACEABLE_TASK_WHERE: Prisma.StudyTaskWhereInput = {
 /** Gerar um dia faz mais de uma dezena de consultas; o limite padrão de 5s
  *  da transação interativa não comporta um banco remoto. */
 const PLAN_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
+/** Até quanto tempo para trás as tarefas medidas contam no ritmo do aluno. */
+const DURATION_WINDOW_DAYS = 60;
 
 export interface ReplanPreview {
   date: string;
@@ -458,6 +461,30 @@ export class SchedulesService {
     );
   }
 
+  /**
+   * Duração de cada tipo de atividade no ritmo do aluno (calibração C2, ver
+   * activity-durations.ts), pelas tarefas concluídas que têm tempo medido: o
+   * tempo ativo registrado na tarefa ou, no simulado, do início ao envio.
+   */
+  private async activityDurations(tx: Db, scheduleId: string, date: Date): Promise<ActivityDurations> {
+    const since = new Date(date.getTime() - DURATION_WINDOW_DAYS * 86_400_000);
+    const tasks = await this.repo.findMeasuredTasks(tx, scheduleId, since);
+    return personalDurations(
+      tasks.flatMap((task) => {
+        const logged = task.timeLogs.reduce((sum, log) => sum + log.durationMinutes, 0);
+        const submission = task.simulation?.submissions[0];
+        const actualMinutes = logged > 0
+          ? logged
+          : submission?.startedAt
+            ? Math.round((submission.submittedAt.getTime() - submission.startedAt.getTime()) / 60_000)
+            : 0;
+        return actualMinutes > 0
+          ? [{ activityType: task.activityType, scheduledMinutes: task.scheduledMinutes, actualMinutes }]
+          : [];
+      }),
+    );
+  }
+
   /** Etapa de redação que cai nesta sessão, se a redação da semana for nela
    *  (fase 5, §9). O dia é escolhido entre os que ainda dá para planejar. */
   private async essayFor(
@@ -532,6 +559,7 @@ export class SchedulesService {
           if (t.subjectId) minutes[t.subjectId] = (minutes[t.subjectId] ?? 0) + t.scheduledMinutes;
           return minutes;
         }, {}),
+        durations: await this.activityDurations(tx, schedule.id, session.date),
       },
       schedule.userId,
       schedule.scheduleSubjects.map((ss) => ({

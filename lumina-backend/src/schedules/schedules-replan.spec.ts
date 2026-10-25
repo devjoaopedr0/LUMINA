@@ -70,6 +70,7 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
       createSessions: vi.fn(),
       upsertProgress: vi.fn((_tx, _id, data) => data),
       timeLogsForSchedule: vi.fn().mockResolvedValue([]),
+      findMeasuredTasks: vi.fn().mockResolvedValue([]),
     };
     generator = { buildTasksForSession: vi.fn().mockResolvedValue([]) };
     service = new SchedulesService(repo as SchedulesRepository, generator as never, {} as never);

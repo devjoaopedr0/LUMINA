@@ -3,6 +3,7 @@ import { Loader2, Play, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { type StudyTask, type StudyTaskLesson, type TopicLevel, ApiError, apiGetTaskLesson } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import { useTaskActiveTime } from "@/hooks/useTaskActiveTime";
 
 interface TaskLessonProps {
   task: StudyTask;
@@ -73,6 +74,7 @@ function LessonContent({ content }: { content: string }) {
  * hora (leva alguns segundos); depois abre direto.
  */
 export function TaskLesson({ task, onClose, onPractice }: TaskLessonProps) {
+  useTaskActiveTime(task.id);
   const [lesson, setLesson] = useState<StudyTaskLesson | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
