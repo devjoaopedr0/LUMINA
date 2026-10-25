@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { StudyActivityType, StudyTaskStatus, type Prisma } from "@prisma/client";
 import { SchedulesRepository } from "./schedules.repository";
 import { ScheduleGeneratorService } from "./schedule-generator.service";
@@ -9,6 +9,7 @@ import { ESSAY_SUBJECT_CODE } from "./study-areas";
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from "./study-subject-question-bank-map";
 import { Db } from "./domain/types";
 import { personalDurations, type ActivityDurations } from "./activity-durations";
+import { PriorityCalibrationService } from "./priority-calibration.service";
 import { PRACTICE_WINDOW_HOURS, summarizePractice } from "./schedule-practice";
 import type {
   CreateStudyScheduleDto,
@@ -119,6 +120,8 @@ export class SchedulesService {
     private readonly repo: SchedulesRepository,
     private readonly generator: ScheduleGeneratorService,
     private readonly topicMastery: TopicMasteryService,
+    // Opcional: sem ela (testes de unidade), a prioridade usa os pesos padrão.
+    @Optional() private readonly priorityCalibration?: PriorityCalibrationService,
   ) {}
 
   async findStudySubjects() {
@@ -560,6 +563,7 @@ export class SchedulesService {
           return minutes;
         }, {}),
         durations: await this.activityDurations(tx, schedule.id, session.date),
+        priorityWeights: await this.priorityCalibration?.weights(),
       },
       schedule.userId,
       schedule.scheduleSubjects.map((ss) => ({

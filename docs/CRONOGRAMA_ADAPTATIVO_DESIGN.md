@@ -512,7 +512,7 @@ de uso, em fases que só valem quando há dado suficiente:
 | **C1** | Dificuldade de cada questão na nota estilo TRI | Primeira resposta de cada aluno (avulsas e simulados) | Implementada |
 | **C2** | Duração de cada tipo de atividade | Tempo ativo medido na tarefa e duração do simulado × minutos agendados | Implementada |
 | **C3** | Régua de cada área e forma da curva acertos → nota em `enem-tri.ts` | ENEM 2025: notas mínima e máxima por área e nota por número de acertos (microdados) | Implementada |
-| **C4** | Pesos da prioridade (§4) | Ganho de domínio depois de cada tarefa, por termo da prioridade | Depende de alunos reais usando por semanas |
+| **C4** | Pesos de aprendizado da prioridade (§4) | Ganho de domínio nos 7 dias depois de cada tarefa, pelo estado do tópico antes dela | Implementada (só age com 10 alunos e 200 tarefas) |
 
 **C1 — dificuldade pelo acerto real** (`questions/question-calibration.ts`). O
 acerto de primeira de cada questão é comparado com o das outras questões do
@@ -568,6 +568,35 @@ acerta pouco e baixa demais a quem acerta muito: 15/45 em Matemática dava 638
   microdados, não do relatório do INEP direto. O teste
   `reproduz a relação acertos → nota do ENEM 2025` falha se a régua se afastar
   mais de 30 pontos desses pontos. A cada edição nova, refazer o ajuste.
+
+**C4 — pesos da prioridade pelo ganho de domínio**
+(`schedules/priority-calibration.ts`). Dos cinco termos da prioridade, dois
+dizem o que vale estudar (incidência e objetivo do aluno) e ficam fixos: não
+se medem pelo aprendizado. Os outros três (baixo domínio, nunca estudado, tempo
+parado) apostam em onde estudar rende mais, e isso dá para conferir.
+
+- Amostra: tarefa de Teoria, Questões ou Simulado concluída, de qualquer
+  aluno, nos últimos 180 dias. Revisão e Redação ficam de fora: entram pela
+  revisão espaçada e pela rotina semanal, não pela prioridade.
+- O estado de antes vem de `topic_mastery_history` (a última linha antes do
+  dia da conclusão: domínio, se já tinha estudado, dias parado) e o ganho é o
+  domínio da última linha até 7 dias depois menos o de antes. Não precisa
+  guardar nada na tarefa. Tarefas de antes de 13/10/2026 ficam de fora: antes
+  da tabela não há como reconstruir o estado.
+- Para cada termo, a correlação com o ganho; negativa vira zero. Os 0,65 dos
+  três são redivididos na proporção das correlações, então a prioridade fica
+  na mesma escala.
+- Só com 10 alunos e 200 tarefas; encolhido (n / (n + 200)) em direção ao
+  padrão, cada peso entre metade e uma vez e meia o padrão (a soma volta a
+  0,65 por um fator comum achado por bisseção, sem furar os limites). Termo
+  sem variação nas amostras ou nenhuma correlação positiva: pesos padrão.
+- Calculado para todos e guardado em memória por uma hora
+  (`PriorityCalibrationService`); o gerador recebe os pesos em
+  `priorityWeights`. Com a base de hoje (conta demo), nada muda.
+- Limite: é correlação, não efeito causal. Tópico com domínio baixo tem mais
+  espaço para subir, e o termo de baixo domínio sai favorecido por isso. É a
+  direção que se quer (estudar onde há mais a ganhar), mas o número não diz
+  quanto a tarefa CAUSOU do ganho.
 
 ## 14. Design visual (seção 19)
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, StudyActivityType, StudyArea, StudyTaskStatus, TopicMasteryStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import type { ActivityDurations } from './activity-durations';
+import type { PriorityWeights } from './priority-calibration';
 import { Db } from './domain/types';
 import type { EssayStep } from './schedule-essay';
 import { PHASE_MIX, type SchedulePhase } from './schedule-phase';
@@ -39,6 +40,9 @@ export interface SessionForGeneration {
   /** Duração de cada tipo de atividade no ritmo do aluno (calibração C2).
    *  Ausente = as durações padrão. */
   durations?: ActivityDurations;
+  /** Pesos da prioridade calibrados pelo ganho de domínio (calibração C4).
+   *  Ausente = os pesos padrão. */
+  priorityWeights?: PriorityWeights;
 }
 
 /** Janela (em dias, para trás e para frente) em que um tópico já CONCLUÍDO
@@ -330,7 +334,7 @@ export class ScheduleGeneratorService {
           maxTargetHoursInSchedule: maxTargetHours,
           inPriorityArea: inPriorityArea(studySubject),
           now: session.date,
-        });
+        }, session.priorityWeights);
         return {
           topic,
           studySubject,
