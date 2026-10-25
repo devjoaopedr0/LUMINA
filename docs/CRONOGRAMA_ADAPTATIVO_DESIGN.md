@@ -503,6 +503,35 @@ atualização de `TopicMastery` (resposta de questão, simulado, tarefa concluí
   não depende dessa tabela: é recalculada pelas respostas, que têm data, então
   vale também para as semanas anteriores ao recurso.
 
+### Calibração (pendência depois das fases 1–5)
+
+Os pesos da prioridade, as durações das atividades, a régua da nota e a
+dificuldade das questões são estimativas. A calibração troca o chute pelo dado
+de uso, em fases que só valem quando há dado suficiente:
+
+| Fase | O que calibra | Com que dado | Estado |
+| --- | --- | --- | --- |
+| **C1** | Dificuldade de cada questão na nota estilo TRI | Primeira resposta de cada aluno (avulsas e simulados) | Implementada |
+| **C2** | Duração de cada tipo de atividade | Cronômetro (`study_time_logs`) e `time_spent` das tentativas × minutos agendados | A fazer |
+| **C3** | Régua de cada área (piso, média, teto) em `enem-tri.ts` | Notas mínimas, médias e máximas divulgadas pelo INEP | A fazer (pesquisa) |
+| **C4** | Pesos da prioridade (§4) | Ganho de domínio depois de cada tarefa, por termo da prioridade | Depende de alunos reais usando por semanas |
+
+**C1 — dificuldade pelo acerto real** (`questions/question-calibration.ts`). O
+acerto de primeira de cada questão é comparado com o das outras questões do
+mesmo nível na mesma área, já descontado o chute; a diferença vira um ajuste no
+b da questão (`bOffset`), usado na nota de todo simulado e na nota estimada.
+
+- É calibração relativa ao banco: o nível cadastrado continua sendo a âncora da
+  escala, porque os alunos do app não são a população do ENEM.
+- Só a partir de 5 alunos diferentes na questão e 30 respostas nas outras do
+  nível. Com um aluno só, a calibração seria o desempenho dele rebaixando a
+  própria nota — então, com a base de hoje (conta demo), nada muda.
+- O ajuste é encolhido (n / (n + 20)) e não passa de um nível para cima ou
+  para baixo. Quando ele leva a questão para mais perto de outro nível, o
+  resultado traz `suggestedDifficulty` — base para revisar a classificação.
+- Calculado para o banco inteiro e guardado em memória por uma hora
+  (`QuestionCalibrationService`); com muito mais respostas, vira tabela.
+
 ## 14. Design visual (seção 19)
 
 Sem mudança de arquitetura — é o design system que a Lumina já usa

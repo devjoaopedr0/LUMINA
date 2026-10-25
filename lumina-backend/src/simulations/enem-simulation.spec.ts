@@ -42,6 +42,7 @@ describe('EnemSimulationService', () => {
   let prisma: any;
   let simulations: any;
   let service: EnemSimulationService;
+  let calibration: any;
   const question = (id: string, subject: string) => ({
     id, subject, subjectRef: { name: subject },
     alternatives: [1, 2, 3, 4].map((position) => ({ position, isCorrect: position === 1 })),
@@ -67,7 +68,8 @@ describe('EnemSimulationService', () => {
       getBankWorkspace: vi.fn().mockResolvedValue({ id: 'bank' }),
     };
     simulations = { create: vi.fn().mockResolvedValue({ id: 'simulation' }) };
-    service = new EnemSimulationService(prisma, access, simulations);
+    calibration = { offsets: vi.fn().mockResolvedValue(new Map()) };
+    service = new EnemSimulationService(prisma, access, simulations, calibration);
   });
 
   it('2º dia: 45 de Natureza e 45 de Matemática, com o tempo oficial e a área em cada questão', async () => {
@@ -135,5 +137,22 @@ describe('EnemSimulationService', () => {
 
     prisma.simulationSubmission.findUnique.mockResolvedValue(null);
     expect(await service.triForSubmission(userId, 'outro')).toBeNull();
+  });
+
+  it('a nota usa a dificuldade calibrada pelo acerto dos alunos', async () => {
+    const items = Array.from({ length: 10 }, (_, i) => ({ position: i + 1, correctPosition: 1, questionId: `q${i}`, subject: 'História', area: null, alternatives: [{}, {}, {}, {}] }));
+    prisma.simulationSubmission.findUnique.mockResolvedValue({
+      answers: items.map((item) => ({ position: item.position, selectedPosition: item.position <= 5 ? 1 : 2 })),
+      simulation: { enemDay: null, items },
+    });
+    prisma.question.findMany.mockResolvedValue(items.map((item) => ({ id: item.questionId, difficulty: 'MEDIA' })));
+    const plain = (await service.triForSubmission(userId, 'simulation'))!.areas[0].score;
+
+    // As 5 que ele errou se revelaram mais difíceis do que o nível dizia:
+    // errar questão difícil custa menos.
+    calibration.offsets.mockResolvedValue(new Map(['q5', 'q6', 'q7', 'q8', 'q9'].map((id) => [id, 0.8])));
+    const calibrated = (await service.triForSubmission(userId, 'simulation'))!.areas[0].score;
+    expect(calibration.offsets).toHaveBeenCalledWith(items.map((item) => item.questionId));
+    expect(calibrated).toBeGreaterThan(plain);
   });
 });

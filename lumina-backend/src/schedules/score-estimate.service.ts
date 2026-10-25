@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EssayCorrectionStatus, QuestionDifficulty, StudyArea } from '@prisma/client';
 import { CutoffsService } from '../cutoffs/cutoffs.service';
 import { PrismaService } from '../database/prisma.service';
+import { QuestionCalibrationService } from '../questions/question-calibration.service';
 import { buildScoreEstimate, type AreaAnswer, type ScoreEstimate } from './score-estimate';
 import { STUDY_AREA_LABEL, areaOfSubjectName } from './study-areas';
 
@@ -23,6 +24,8 @@ interface Answer {
   area: StudyArea;
   difficulty: QuestionDifficulty;
   alternatives?: number;
+  /** Ajuste de dificuldade pelo acerto real dos alunos. */
+  bOffset?: number;
 }
 
 interface EstimateData {
@@ -50,6 +53,7 @@ export class ScoreEstimateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cutoffs: CutoffsService,
+    private readonly calibration: QuestionCalibrationService,
   ) {}
 
   /**
@@ -108,6 +112,7 @@ export class ScoreEstimateService {
         isCorrect: answer.isCorrect,
         difficulty: answer.difficulty,
         alternatives: answer.alternatives,
+        bOffset: answer.bOffset,
       });
     }
     return buildScoreEstimate({
@@ -175,6 +180,7 @@ export class ScoreEstimateService {
         })
       : [];
     const questionById = new Map(questions.map((question) => [question.id, question]));
+    const offsets = await this.calibration.offsets(questionIds);
 
     const answers: Answer[] = [];
     for (const answer of raw) {
@@ -187,6 +193,7 @@ export class ScoreEstimateService {
         area,
         difficulty: question.difficulty ?? QuestionDifficulty.MEDIA,
         alternatives: question._count?.alternatives || undefined,
+        bOffset: offsets.get(answer.questionId),
       });
     }
     answers.sort((a, b) => a.at.getTime() - b.at.getTime());

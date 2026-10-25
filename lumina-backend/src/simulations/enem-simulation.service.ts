@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { QuestionDifficulty, StudyArea } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
+import { QuestionCalibrationService } from '../questions/question-calibration.service';
 import { triScore, type TriItem } from '../schedules/enem-tri';
 import { STUDY_AREA_LABEL, areaOfSubjectName, subjectNamesOfArea } from '../schedules/study-areas';
 import {
@@ -41,6 +42,7 @@ export class EnemSimulationService {
     private readonly prisma: PrismaService,
     private readonly access: QuestionAccessService,
     private readonly simulations: SimulationsService,
+    private readonly calibration: QuestionCalibrationService,
   ) {}
 
   /**
@@ -144,6 +146,7 @@ export class EnemSimulationService {
       ? await this.prisma.question.findMany({ where: { id: { in: questionIds } }, select: { id: true, difficulty: true } })
       : [];
     const difficultyById = new Map(questions.map((question) => [question.id, question.difficulty]));
+    const offsets = await this.calibration.offsets(questionIds);
     const chosen = new Map(
       (submission.answers as { position: number; selectedPosition: number }[]).map((a) => [a.position, a.selectedPosition]),
     );
@@ -158,6 +161,7 @@ export class EnemSimulationService {
         isCorrect: chosen.get(item.position) === item.correctPosition,
         difficulty: (item.questionId && difficultyById.get(item.questionId)) || QuestionDifficulty.MEDIA,
         alternatives: Array.isArray(item.alternatives) ? item.alternatives.length : undefined,
+        bOffset: item.questionId ? offsets.get(item.questionId) : undefined,
       });
       byArea.set(area, list);
     }

@@ -35,6 +35,8 @@ export interface AreaAnswer {
   difficulty: QuestionDifficulty;
   /** Número de alternativas da questão (acerto no chute). */
   alternatives?: number;
+  /** Ajuste de dificuldade pelo acerto real dos alunos. */
+  bOffset?: number;
 }
 
 export interface AreaEstimate {

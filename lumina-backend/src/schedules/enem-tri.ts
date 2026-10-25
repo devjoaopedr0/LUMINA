@@ -27,7 +27,7 @@ import { QuestionDifficulty, StudyArea } from '@prisma/client';
  * que θ = 0 é o candidato médio — e o candidato médio acerta bem menos da
  * metade da prova. Por isso até a questão "fácil" fica em b = 0.
  */
-const DIFFICULTY_B: Record<QuestionDifficulty, number> = { FACIL: 0, MEDIA: 1, DIFICIL: 2 };
+export const DIFFICULTY_B: Record<QuestionDifficulty, number> = { FACIL: 0, MEDIA: 1, DIFICIL: 2 };
 /**
  * Ajuste por área: as provas de Natureza e Matemática são mais difíceis para
  * o candidato médio (ele acerta menos questões nelas), então o mesmo número de
@@ -36,8 +36,8 @@ const DIFFICULTY_B: Record<QuestionDifficulty, number> = { FACIL: 0, MEDIA: 1, D
  */
 const AREA_B_SHIFT: Record<StudyArea, number> = { LINGUAGENS: 0, HUMANAS: 0.1, NATUREZA: 0.5, MATEMATICA: 0.6 };
 /** Discriminação (parâmetro a) — igual para todas, por falta de calibração. */
-const DISCRIMINATION = 1.1;
-const SCALING = 1.7;
+export const DISCRIMINATION = 1.1;
+export const SCALING = 1.7;
 const DEFAULT_ALTERNATIVES = 5;
 
 /**
@@ -64,11 +64,13 @@ export interface TriItem {
   difficulty: QuestionDifficulty;
   /** Número de alternativas da questão (define o acerto no chute). */
   alternatives?: number;
+  /** Ajuste do b pelo acerto real dos alunos (questions/question-calibration.ts). */
+  bOffset?: number;
 }
 
 function probability(theta: number, item: TriItem, area: StudyArea): number {
   const guess = 1 / (item.alternatives && item.alternatives > 1 ? item.alternatives : DEFAULT_ALTERNATIVES);
-  const b = DIFFICULTY_B[item.difficulty] + AREA_B_SHIFT[area];
+  const b = DIFFICULTY_B[item.difficulty] + AREA_B_SHIFT[area] + (item.bOffset ?? 0);
   return guess + (1 - guess) / (1 + Math.exp(-SCALING * DISCRIMINATION * (theta - b)));
 }
 

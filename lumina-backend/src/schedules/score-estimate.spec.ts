@@ -8,6 +8,8 @@ const answers = (correct: number, wrong: number, difficulty = 'MEDIA'): AreaAnsw
   ...Array.from({ length: correct }, () => ({ isCorrect: true, difficulty }) as AreaAnswer),
   ...Array.from({ length: wrong }, () => ({ isCorrect: false, difficulty }) as AreaAnswer),
 ];
+/** Sem respostas de outros alunos suficientes: nenhuma questão ajustada. */
+const noCalibration: any = { offsets: vi.fn().mockResolvedValue(new Map()) };
 const target = { score: 731.3, course: 'MEDICINA', university: 'UFC', year: 2026 };
 
 describe('estimativa de nota por área', () => {
@@ -124,7 +126,7 @@ describe('ScoreEstimateService', () => {
     };
     const cutoffs: any = { targetForUser: vi.fn().mockResolvedValue({ status: 'MISSING_PROFILE', targetScore: null }) };
 
-    const estimate = await new ScoreEstimateService(prisma, cutoffs).forUser('user');
+    const estimate = await new ScoreEstimateService(prisma, cutoffs, noCalibration).forUser('user');
     const math = estimate.areas.find((area) => area.area === 'MATEMATICA')!;
     expect(math).toMatchObject({ answered: 10, correct: 9, missing: 0 });
     expect(math.estimate).toBe(triScore('MATEMATICA', answers(9, 1)).score);
@@ -158,7 +160,7 @@ describe('ScoreEstimateService', () => {
     };
     const cutoffs: any = { targetForUser: vi.fn().mockResolvedValue({ status: 'MISSING_PROFILE', targetScore: null }) };
 
-    const history = await new ScoreEstimateService(prisma, cutoffs).history('user', 8);
+    const history = await new ScoreEstimateService(prisma, cutoffs, noCalibration).history('user', 8);
     expect(history).toHaveLength(8);
     // Semanas em ordem, de domingo a sábado.
     expect(new Date(`${history[0].weekStart}T00:00:00Z`).getUTCDay()).toBe(0);
