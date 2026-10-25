@@ -454,11 +454,9 @@ o mesmo número de acertos coerentes. O que NÃO é igual ao ENEM, e a tela avis
 - Os parâmetros das questões não são calibrados em pré-teste: a dificuldade vem
   do nível cadastrado (fácil, média, difícil), a discriminação é a mesma para
   todas e o acerto no chute é 1/número de alternativas.
-- A régua (piso, média e teto de cada área) e o ajuste de dificuldade por área
-  foram escolhidos para a relação acertos → nota ficar parecida com a das
-  edições recentes (30/45 em Matemática dá cerca de 770; em Linguagens, cerca de
-  630). São valores de memória, não validados contra notas reais: conferir com
-  os dados do INEP e ajustar em `enem-tri.ts`.
+- A régua de cada área e o ajuste de dificuldade por área foram ajustados aos
+  dados do ENEM 2025 (calibração C3, abaixo): 30/45 em Matemática dá cerca de
+  760 (no ENEM, 767); em Linguagens, cerca de 605 (no ENEM, 601).
 
 O que entra na estimativa:
 
@@ -513,7 +511,7 @@ de uso, em fases que só valem quando há dado suficiente:
 | --- | --- | --- | --- |
 | **C1** | Dificuldade de cada questão na nota estilo TRI | Primeira resposta de cada aluno (avulsas e simulados) | Implementada |
 | **C2** | Duração de cada tipo de atividade | Tempo ativo medido na tarefa e duração do simulado × minutos agendados | Implementada |
-| **C3** | Régua de cada área (piso, média, teto) em `enem-tri.ts` | Notas mínimas, médias e máximas divulgadas pelo INEP | A fazer (pesquisa) |
+| **C3** | Régua de cada área e forma da curva acertos → nota em `enem-tri.ts` | ENEM 2025: notas mínima e máxima por área e nota por número de acertos (microdados) | Implementada |
 | **C4** | Pesos da prioridade (§4) | Ganho de domínio depois de cada tarefa, por termo da prioridade | Depende de alunos reais usando por semanas |
 
 **C1 — dificuldade pelo acerto real** (`questions/question-calibration.ts`). O
@@ -548,6 +546,28 @@ ao fechar; no simulado vale do início ao envio.
   que soma só tempo registrado. Quem usar o cronômetro da matéria ao mesmo
   tempo conta duas vezes.
 - Revisão e Redação ainda não têm tela que meça tempo: ficam na duração padrão.
+
+**C3 — régua da nota pelo ENEM 2025** (`schedules/enem-tri.ts`). A régua
+anterior (piso, média e teto escritos de memória) dava nota alta demais a quem
+acerta pouco e baixa demais a quem acerta muito: 15/45 em Matemática dava 638
+(no ENEM 2025, 553) e gabaritar Humanas, 794 (856).
+
+- Dados: notas mínima e máxima de cada área no ENEM 2025 e a nota média por
+  número de acertos dos microdados de 2025 (Matemática: 15, 20, 30, 40 e 44
+  acertos; Linguagens: 15, 30 e 45; Humanas: 25 e 45; Natureza: só 43). Para
+  comparar: 2023 e 2024 tiveram pisos e tetos parecidos (Matemática 320–959 e
+  334–962) e médias perto de 530, 520, 496 e 530.
+- Ajuste: numa prova de 45 (11 fáceis, 25 médias, 9 difíceis, acertando
+  primeiro as mais fáceis), busca da discriminação (0,6 a 1,4; ficou 0,8), do
+  deslocamento de dificuldade e de uma régua linear (centro + inclinação·θ,
+  limitada ao piso e ao teto) por área, por mínimos quadrados.
+- Erro médio do ajuste: 11 pontos em Matemática, 5 em Linguagens, menos de 1
+  em Humanas. Natureza só tinha dois pontos: o deslocamento dela é o de
+  Matemática, então ela é a menos confiável.
+- Os números de 2025 vêm de sites de educação que citam o INEP e os
+  microdados, não do relatório do INEP direto. O teste
+  `reproduz a relação acertos → nota do ENEM 2025` falha se a régua se afastar
+  mais de 30 pontos desses pontos. A cada edição nova, refazer o ajuste.
 
 ## 14. Design visual (seção 19)
 

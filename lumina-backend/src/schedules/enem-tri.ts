@@ -18,8 +18,17 @@ import { QuestionDifficulty, StudyArea } from '@prisma/client';
  *  2. a proficiência θ do aluno é estimada por EAP (média da distribuição a
  *     posteriori, com priori normal padrão) — funciona mesmo com tudo certo
  *     ou tudo errado, onde a máxima verossimilhança não tem solução;
- *  3. θ vira nota na régua da área (ENEM_SCALE): θ = 0 é a média da área e
- *     θ = ±3 são o teto e o piso que a prova costuma ter.
+ *  3. θ vira nota pela régua da área (ENEM_SCALE): nota = centro +
+ *     inclinação·θ, limitada ao piso e ao teto que a prova teve.
+ *
+ * Calibração (C3 — docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md, "Calibração"): a
+ * discriminação, o deslocamento de dificuldade e a régua de cada área foram
+ * ajustados para a relação acertos → nota de uma prova de 45 questões
+ * (11 fáceis, 25 médias, 9 difíceis, acertando primeiro as mais fáceis) bater
+ * com a do ENEM 2025: notas por número de acertos dos microdados e as notas
+ * mínima e máxima de cada área. Erro médio do ajuste: 11 pontos em Matemática,
+ * 5 em Linguagens, menos de 1 em Humanas. Natureza só tinha mínima e máxima: o
+ * deslocamento dela é o de Matemática. Refazer o ajuste a cada edição nova.
  */
 
 /**
@@ -29,27 +38,29 @@ import { QuestionDifficulty, StudyArea } from '@prisma/client';
  */
 export const DIFFICULTY_B: Record<QuestionDifficulty, number> = { FACIL: 0, MEDIA: 1, DIFICIL: 2 };
 /**
- * Ajuste por área: as provas de Natureza e Matemática são mais difíceis para
- * o candidato médio (ele acerta menos questões nelas), então o mesmo número de
- * acertos vale mais nota. Valores escolhidos para a relação acertos → nota
- * ficar parecida com a das edições recentes; não são calibração oficial.
+ * Deslocamento de dificuldade por área: muda a FORMA da curva acertos → nota
+ * (onde ela sobe mais rápido). Ajustado aos dados do ENEM 2025 junto com a
+ * régua; sozinho, não quer dizer que uma área é mais fácil que a outra.
  */
-const AREA_B_SHIFT: Record<StudyArea, number> = { LINGUAGENS: 0, HUMANAS: 0.1, NATUREZA: 0.5, MATEMATICA: 0.6 };
-/** Discriminação (parâmetro a) — igual para todas, por falta de calibração. */
-export const DISCRIMINATION = 1.1;
+const AREA_B_SHIFT: Record<StudyArea, number> = { LINGUAGENS: -0.65, HUMANAS: -0.6, NATUREZA: -0.2, MATEMATICA: -0.2 };
+/** Discriminação (parâmetro a) — igual para todas; 0,8 foi o que melhor
+ *  reproduziu o ENEM 2025 (testados 0,6 a 1,4). */
+export const DISCRIMINATION = 0.8;
 export const SCALING = 1.7;
 const DEFAULT_ALTERNATIVES = 5;
 
 /**
- * Régua de cada área: piso, média e teto aproximados das edições recentes do
- * ENEM (o INEP divulga a cada ano; variam alguns pontos). Conferir e ajustar
- * quando sair edição nova.
+ * Régua de cada área: nota = center + slope·θ, entre min e max — as notas
+ * mínima e máxima da área no ENEM 2025. `center` é a nota de θ = 0, que não é
+ * a média nacional (a média de 2025 ficou perto de 530 em Linguagens e
+ * Matemática, 517 em Humanas e 495 em Natureza): é só o ponto em que a reta
+ * ajustada corta θ = 0.
  */
-export const ENEM_SCALE: Record<StudyArea, { min: number; mean: number; max: number }> = {
-  LINGUAGENS: { min: 290, mean: 520, max: 820 },
-  HUMANAS: { min: 290, mean: 520, max: 820 },
-  NATUREZA: { min: 315, mean: 495, max: 870 },
-  MATEMATICA: { min: 320, mean: 530, max: 960 },
+export const ENEM_SCALE: Record<StudyArea, { min: number; center: number; slope: number; max: number }> = {
+  LINGUAGENS: { min: 309, center: 542, slope: 100, max: 795 },
+  HUMANAS: { min: 321, center: 574, slope: 112, max: 856 },
+  NATUREZA: { min: 309, center: 557, slope: 122, max: 859 },
+  MATEMATICA: { min: 313, center: 605, slope: 146, max: 980 },
 };
 
 const THETA_LIMIT = 3;
@@ -94,12 +105,10 @@ export function estimateTheta(area: StudyArea, items: TriItem[]): { theta: numbe
   return { theta, sd: Math.sqrt(variance) };
 }
 
-/** θ na régua da área: 0 é a média; +3 o teto; −3 o piso. */
+/** θ na régua da área, entre o piso e o teto que a prova teve. */
 export function thetaToScore(area: StudyArea, theta: number): number {
-  const { min, mean, max } = ENEM_SCALE[area];
-  const clamped = Math.max(-THETA_LIMIT, Math.min(THETA_LIMIT, theta));
-  const perTheta = clamped >= 0 ? (max - mean) / THETA_LIMIT : (mean - min) / THETA_LIMIT;
-  return Math.round(mean + clamped * perTheta);
+  const { min, center, slope, max } = ENEM_SCALE[area];
+  return Math.round(Math.max(min, Math.min(max, center + slope * theta)));
 }
 
 export interface TriScore {
