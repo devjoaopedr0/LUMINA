@@ -1,6 +1,6 @@
 import { API_URL } from "@/lib/config";
 import { clearTokens, getRefreshToken, setTokens } from "@/lib/auth";
-import { createApiClient } from "@/lib/api-client-core";
+import { ApiError, createApiClient } from "@/lib/api-client-core";
 
 export { ApiError } from "@/lib/api-client-core";
 
@@ -69,6 +69,69 @@ export const apiEssayThemeCreate = (token: string, title: string): Promise<Essay
 export const apiEssaySave = (token: string, id: string, data: { title: string; theme: string; content: string; version: number }): Promise<Essay> => request(`/essays/${id}`, { method: 'PUT', headers: essayHeaders(token), body: JSON.stringify(data) });
 export const apiEssayRevisions = (token: string, id: string, page = 1): Promise<EssayPage<EssayRevisionSummary>> => request(`/essays/${id}/revisions?page=${page}`, { headers: essayHeaders(token) });
 export const apiEssayRevision = (token: string, id: string, version: number): Promise<EssayRevision> => request(`/essays/${id}/revisions/${version}`, { headers: essayHeaders(token) });
+
+// ---- Scanner de redação e correção pelas competências do Enem ----
+export type EssayScanStatus = 'PROCESSING' | 'READY' | 'CONFIRMED' | 'FAILED';
+export interface EssayScanLine { number: number; text: string; paragraphStart: boolean; illegibleWords: number }
+export interface EssayScan {
+  id: string;
+  status: EssayScanStatus;
+  theme: string;
+  title: string | null;
+  text: string | null;
+  lines: EssayScanLine[] | null;
+  lineCount: number | null;
+  illegibleWords: number | null;
+  confidence: number | null;
+  model: string | null;
+  warnings: string[];
+  errorMessage: string | null;
+  essayId: string | null;
+  pages: { index: number; mimeType: string; sizeBytes: number }[];
+  createdAt: string;
+  updatedAt: string;
+}
+export type EssayCorrectionStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+export interface EssayCompetencyResult {
+  competency: 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+  score: number;
+  level: string;
+  justification: string | null;
+  evidence: string[];
+  citations: { id: string; title: string; citation: string }[];
+}
+export interface EssayCorrection {
+  essayId: string;
+  status: EssayCorrectionStatus | null;
+  outdated?: boolean;
+  totalScore?: number | null;
+  confidence?: number | null;
+  generalFeedback?: string | null;
+  annulment?: { code: string; explanation: string; citation: string } | null;
+  errorMessage?: string | null;
+  method?: 'dois-avaliadores' | 'tres-avaliadores' | 'modelo-estatistico' | 'regra' | null;
+  calibrated?: boolean;
+  discrepancy?: { total: number; maxCompetency: number; thirdEvaluator: boolean } | null;
+  evaluators?: { evaluator: string; model: string | null; total: number }[];
+  analysis?: { lines: number; linesSource: 'ocr' | 'estimativa'; words: number; paragraphs: number; warnings: string[] } | null;
+  competencies?: EssayCompetencyResult[];
+  updatedAt?: string;
+}
+export const apiEssayScanCreate = (token: string, pages: string[], theme: string): Promise<{ id: string; status: EssayScanStatus }> =>
+  request('/essay-scans', { method: 'POST', headers: essayHeaders(token), body: JSON.stringify({ pages, theme }) });
+export const apiEssayScan = (token: string, id: string): Promise<EssayScan> => request(`/essay-scans/${id}`, { headers: essayHeaders(token) });
+export const apiEssayScanRetry = (token: string, id: string): Promise<{ id: string; status: EssayScanStatus }> => request(`/essay-scans/${id}/retry`, { method: 'POST', headers: essayHeaders(token) });
+export const apiEssayScanConfirm = (token: string, id: string, data: { text: string; theme: string; title?: string }): Promise<{ essayId: string; correction: EssayCorrection }> =>
+  request(`/essay-scans/${id}/confirm`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayScanDeleteImages = (token: string, id: string): Promise<{ deletedPages: number }> => request(`/essay-scans/${id}/pages`, { method: 'DELETE', headers: essayHeaders(token) });
+/** A página é binária (JPEG): busca fora do cliente JSON e devolve um object URL. */
+export async function apiEssayScanPageUrl(token: string, id: string, index: number): Promise<string> {
+  const response = await fetch(`${API_URL}/essay-scans/${id}/pages/${index}`, { headers: essayHeaders(token) });
+  if (!response.ok) throw new ApiError(response.status, 'Não foi possível carregar a foto.');
+  return URL.createObjectURL(await response.blob());
+}
+export const apiEssayCorrectionRequest = (token: string, essayId: string): Promise<EssayCorrection> => request(`/essays/${essayId}/correction`, { method: 'POST', headers: essayHeaders(token) });
+export const apiEssayCorrection = (token: string, essayId: string): Promise<EssayCorrection> => request(`/essays/${essayId}/correction`, { headers: essayHeaders(token) });
 
 export interface MathSummary { total: number; correct: number; accuracy: number; averageMs: number }
 export interface MathAttempt { left: number; right: number; operation: string; answer: number; submitted: number | null; correct: boolean; elapsedMs: number; level: number }
@@ -1945,91 +2008,96 @@ export const apiCompareExamPapers = (token: string, baseId: string, compareId: s
   request(`/exam-papers/compare?baseId=${baseId}&compareId=${compareId}`, { headers: authHeaders(token) });
 
 // =============================================================================
-// Scanner de gabarito (item 17)
+// Scanner de cartão-resposta (item 17) — leitura óptica real (OMR)
 // =============================================================================
 
-export interface AnswerSheetTemplateResponseDto {
-  id: string;
-  name: string;
-  description: string | null;
-  /** Marcadores de canto indexados por nome: { topLeft: { x, y }, ... }. */
-  markersJson: Record<string, { x: number; y: number }>;
-  /** Bolhas indexadas pelo número da questão: { "1": [{ position, x, y, radius }] }. */
-  layoutJson: Record<string, { position: number; x: number; y: number; radius: number }[]>;
-  expectedWidth: number | null;
-  expectedHeight: number | null;
-  createdAt: string;
-  updatedAt: string;
+export interface SheetLayout {
+  version: 2;
+  page: { width: number; height: number };
+  fiducials: { x: number; y: number }[];
+  fiducialSize: number;
+  codeCells: { x: number; y: number; size: number }[];
+  questions: { number: number; label: { x: number; y: number }; bubbles: { position: number; x: number; y: number; r: number }[] }[];
+  header: { x: number; y: number; width: number; height: number };
 }
-
-export interface AnswerSheetProcessingResponseDto {
-  id: string;
-  uploadId: string;
-  detectedAnswers: Record<string, number>;
-  confidenceJson: Record<string, number>;
-  warningsJson: string[];
-  totalQuestions: number;
-  answeredCount: number;
-  lowConfidenceCount: number;
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
-  errorMessage: string | null;
-  startedAt: string;
-  finishedAt: string | null;
+export interface PrintableSheets {
+  simulation: { id: string; title: string; className: string | null; questionCount: number };
+  layout: SheetLayout;
+  sheets: { code: number; bits: boolean[]; studentId: string | null; studentName: string | null }[];
 }
-
-export interface AnswerSheetUploadResponseDto {
+export type AnswerSheetQuestionStatus = 'OK' | 'BLANK' | 'MULTIPLE' | 'AMBIGUOUS';
+export interface AnswerSheetQuestion {
+  number: number;
+  selected: number | null;
+  status: AnswerSheetQuestionStatus;
+  confidence: number;
+  fills: number[];
+  box: { x: number; y: number; width: number; height: number };
+  /** Centro e raio (px) de cada bolha na imagem da folha. */
+  bubbles: { x: number; y: number; r: number }[];
+}
+export interface AnswerSheetScan {
   id: string;
-  templateId: string;
-  simulationId: string | null;
-  studentId: string;
-  fileUrl: string;
-  metaJson: { width: number; height: number; mimeType?: string; sizeBytes: number };
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'NEEDS_REVIEW';
+  simulation: { id: string; title: string } | null;
+  studentId: string;
+  studentName: string | null;
+  scannedByMe: boolean;
+  sheetCode: number | null;
+  batchId: string | null;
+  page: number | null;
+  hasImage: boolean;
+  image: { width: number | null; height: number | null };
+  questions: AnswerSheetQuestion[];
+  answers: Record<string, number>;
+  /** Questões que o corretor mudou em relação à leitura. */
+  adjusted: number[];
+  warnings: string[];
+  message: string | null;
+  reviewCount: number;
+  /** `finalizedAt`: lançamento final — domínio por tópico aplicado e folha travada. */
+  result: { correct: number; total: number; reviewed: boolean; finalizedAt: string | null } | null;
   createdAt: string;
-  updatedAt: string;
-  template?: AnswerSheetTemplateResponseDto;
-  processing?: AnswerSheetProcessingResponseDto | null;
 }
-
-export function apiListAnswerSheetTemplates(token: string): Promise<AnswerSheetTemplateResponseDto[]> {
-  return request('/simulations/answer-sheets/templates', { headers: authHeaders(token) });
+export interface AnswerSheetScanSummary {
+  id: string;
+  status: AnswerSheetScan['status'];
+  createdAt: string;
+  simulation: { id: string; title: string } | null;
+  studentName: string;
+  batchId: string | null;
+  page: number | null;
+  reviewCount: number;
+  result: { correct: number; total: number; finalizedAt: string | null } | null;
 }
-
-export function apiCreateAnswerSheetTemplate(
-  token: string,
-  dto: { name: string; description?: string | null; markers: { name: string; x: number; y: number }[]; layout: { questionNumber: number; bubbles: { position: number; x: number; y: number; radius: number }[] }[] }
-): Promise<AnswerSheetTemplateResponseDto> {
-  return request('/simulations/answer-sheets/templates', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+export const apiAnswerSheetPrepare = (token: string, simulationId: string, studentIds?: string[]): Promise<PrintableSheets> =>
+  request(`/answer-sheets/simulations/${simulationId}/sheets`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(studentIds?.length ? { studentIds } : {}) });
+export interface AnswerSheetBatchResult {
+  batchId: string;
+  pages: number;
+  results: { page: number; scan: AnswerSheetScan | null; error: string | null }[];
 }
-
-export function apiAnswerSheetUploadUrl(
-  token: string,
-  dto: { templateId: string; simulationId?: string; contentType: string }
-): Promise<{ uploadUrl: string; uploadId: string; key: string; expiresIn: number }> {
-  return request('/simulations/answer-sheets/upload-url', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+/** Envia o PDF das folhas (data URL application/pdf). */
+export const apiAnswerSheetScan = (token: string, body: { pdf: string; simulationId?: string }): Promise<AnswerSheetBatchResult> =>
+  request('/answer-sheets/scan', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(body) });
+export const apiAnswerSheetFinalize = (token: string, id: string): Promise<AnswerSheetScan> =>
+  request(`/answer-sheets/scans/${id}/finalize`, { method: 'POST', headers: authHeaders(token) });
+export const apiAnswerSheetFinalizeBatch = (token: string, batchId: string): Promise<{ finalized: number; notPosted: number }> =>
+  request(`/answer-sheets/batches/${batchId}/finalize`, { method: 'POST', headers: authHeaders(token) });
+export const apiAnswerSheetConfirmBatch = (token: string, batchId: string): Promise<{ confirmed: number; pending: number }> =>
+  request(`/answer-sheets/batches/${batchId}/confirm`, { method: 'POST', headers: authHeaders(token) });
+export async function apiAnswerSheetBatchPdfUrl(token: string, batchId: string): Promise<string> {
+  const response = await fetch(`${API_URL}/answer-sheets/batches/${batchId}/pdf`, { headers: authHeaders(token) });
+  if (!response.ok) throw new ApiError(response.status, 'Não foi possível baixar o PDF.');
+  return URL.createObjectURL(await response.blob());
 }
-
-export function apiAnswerSheetCompleteUpload(
-  token: string,
-  id: string,
-  dto: { fileUrl: string; width: number; height: number; sizeBytes: number }
-): Promise<{ status: string }> {
-  return request(`/simulations/answer-sheets/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
-}
-
-export function apiListAnswerSheetUploads(token: string, simulationId?: string): Promise<AnswerSheetUploadResponseDto[]> {
-  const qs = simulationId ? `?simulationId=${encodeURIComponent(simulationId)}` : '';
-  return request(`/simulations/answer-sheets/uploads${qs}`, { headers: authHeaders(token) });
-}
-
-export function apiGetAnswerSheetProcessing(token: string, id: string): Promise<AnswerSheetProcessingResponseDto> {
-  return request(`/simulations/answer-sheets/processing/${id}`, { headers: authHeaders(token) });
-}
-
-export function apiAnswerSheetReview(
-  token: string,
-  id: string,
-  dto: { finalAnswers: Record<number, number> }
-): Promise<{ updated: true }> {
-  return request(`/simulations/answer-sheets/processing/${id}/review`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+export const apiAnswerSheetScans = (token: string, simulationId?: string): Promise<AnswerSheetScanSummary[]> =>
+  request(`/answer-sheets/scans${simulationId ? `?simulationId=${simulationId}` : ''}`, { headers: authHeaders(token) });
+export const apiAnswerSheetScanGet = (token: string, id: string): Promise<AnswerSheetScan> => request(`/answer-sheets/scans/${id}`, { headers: authHeaders(token) });
+export const apiAnswerSheetReview = (token: string, id: string, answers: { number: number; selected: number }[]): Promise<AnswerSheetScan> =>
+  request(`/answer-sheets/scans/${id}/review`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers }) });
+export async function apiAnswerSheetImageUrl(token: string, id: string): Promise<string> {
+  const response = await fetch(`${API_URL}/answer-sheets/scans/${id}/image`, { headers: authHeaders(token) });
+  if (!response.ok) throw new ApiError(response.status, 'Não foi possível carregar a imagem da folha.');
+  return URL.createObjectURL(await response.blob());
 }

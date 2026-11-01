@@ -16,13 +16,17 @@
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "mcp:redacao": "node dist/essay-correction/mcp/stdio.js",
+    "essay:train": "node dist/essay-correction/eval/train.js",
+    "essay:eval": "node dist/essay-correction/eval/evaluate-llm.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.28",
@@ -43,7 +47,8 @@
     "prisma": "^7.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.28",

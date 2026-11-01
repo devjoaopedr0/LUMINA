@@ -1,622 +1,433 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowLeft, Camera, CheckCheck, Download, FileImage, FileText, Loader2, Lock, Plus, Printer, ScanLine, Trash2, Wand2 } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { CornerEditor } from '@/components/essays/CornerEditor';
+import { AnswerSheetConference } from '@/components/answer-sheets/AnswerSheetConference';
+import { needsReview } from '@/lib/answer-sheet';
 import { getAccessToken } from '@/lib/auth';
 import {
-  apiAnswerSheetReview,
-  apiAnswerSheetUploadUrl,
-  apiAnswerSheetCompleteUpload,
-  apiCreateAnswerSheetTemplate,
-  apiListAnswerSheetTemplates,
-  apiListAnswerSheetUploads,
+  apiAnswerSheetBatchPdfUrl,
+  apiAnswerSheetConfirmBatch,
+  apiAnswerSheetFinalizeBatch,
+  apiAnswerSheetScan,
+  apiAnswerSheetScanGet,
+  apiAnswerSheetScans,
   apiSimulations,
-  type AnswerSheetTemplateResponseDto,
-  type AnswerSheetUploadResponseDto,
+  ApiError,
+  type AnswerSheetBatchResult,
+  type AnswerSheetScan,
+  type AnswerSheetScanSummary,
+  type SimulationSummary,
 } from '@/lib/api';
+import { detectDocument, enhanceDocument, outputSize, rotate90, warpPerspective, type Quad, type RasterImage } from '@/lib/doc-scanner';
+import { fileToRaster, nextFrame, rasterToCanvas, rasterToGrayPage, videoToRaster } from '@/lib/doc-scanner-canvas';
+import { buildPdf, bytesToBase64, type GrayPage } from '@/lib/pdf-writer';
 
-const token = () => getAccessToken() ?? '';
+type Step = 'choose' | 'camera' | 'corners' | 'pages' | 'sending' | 'batch' | 'conference';
+const MAX_PAGES = 60;
 
-const STATUS_STYLE: Record<string, string> = {
-  PENDING: 'bg-graphite-100 text-graphite-700',
-  PROCESSING: 'bg-primary-100 text-primary-700',
-  COMPLETED: 'bg-success-100 text-success-700',
-  FAILED: 'bg-red-100 text-red-700',
-  NEEDS_REVIEW: 'bg-amber-100 text-amber-700',
-};
+interface DigitizedPage {
+  id: number;
+  gray: GrayPage;
+  thumb: string;
+}
 
-const STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Pendente',
-  PROCESSING: 'Processando',
-  COMPLETED: 'Concluído',
-  FAILED: 'Falhou',
-  NEEDS_REVIEW: 'Revisar',
-};
-
-const statusStyle = (status: string) => STATUS_STYLE[status] ?? STATUS_STYLE.PENDING;
-const statusLabel = (status: string) => STATUS_LABEL[status] ?? status;
-
-type Marker = { name: string; x: number; y: number };
-type Tab = 'scan' | 'templates' | 'history';
-
-const MARKER_PRESETS = [
-  { name: 'topLeft', label: 'Superior esquerdo' },
-  { name: 'topRight', label: 'Superior direito' },
-  { name: 'bottomLeft', label: 'Inferior esquerdo' },
-  { name: 'bottomRight', label: 'Inferior direito' },
-];
+function downloadBlob(url: string, name: string) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+}
 
 export function AnswerSheetScanner() {
-  const [tab, setTab] = useState<Tab>('scan');
-  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState<Step>('choose');
+  const [simulations, setSimulations] = useState<SimulationSummary[]>([]);
+  const [simulationId, setSimulationId] = useState('');
+  const [history, setHistory] = useState<AnswerSheetScanSummary[]>([]);
+  const [photo, setPhoto] = useState<RasterImage | null>(null);
+  const [quad, setQuad] = useState<Quad | null>(null);
+  const [autoFound, setAutoFound] = useState(true);
+  const [pages, setPages] = useState<DigitizedPage[]>([]);
+  const [batch, setBatch] = useState<AnswerSheetBatchResult | null>(null);
+  const [scan, setScan] = useState<AnswerSheetScan | null>(null);
+  const [notice, setNotice] = useState('');
+  const [confirmFinalAll, setConfirmFinalAll] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [working, setWorking] = useState('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const pdfRef = useRef<HTMLInputElement | null>(null);
+  const pageSeq = useRef(0);
 
-  const [templates, setTemplates] = useState<AnswerSheetTemplateResponseDto[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [simulations, setSimulations] = useState<{ id: string; title: string }[]>([]);
-  const [selectedSimulationId, setSelectedSimulationId] = useState('');
-
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  const [upload, setUpload] = useState<AnswerSheetUploadResponseDto | null>(null);
-  const [reviewAnswers, setReviewAnswers] = useState<Record<number, string>>({});
-  const [history, setHistory] = useState<AnswerSheetUploadResponseDto[]>([]);
-
-  const [templateName, setTemplateName] = useState('');
-  const [templateDesc, setTemplateDesc] = useState('');
-  const [markers, setMarkers] = useState<Marker[]>(
-    MARKER_PRESETS.map((preset, index) => ({
-      name: preset.name,
-      x: index % 2 === 0 ? 0.1 : 0.9,
-      y: index < 2 ? 0.1 : 0.9,
-    })),
-  );
-
-  useEffect(() => {
-    void loadTemplates();
-    void loadSimulations();
+  const loadHistory = useCallback(() => {
+    apiAnswerSheetScans(getAccessToken() ?? '').then(setHistory).catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    if (tab === 'history') void loadHistory();
-  }, [tab]);
+    let active = true;
+    apiSimulations(getAccessToken() ?? '').then((rows) => { if (active) setSimulations(rows); }).catch(() => { if (active) setError('Não foi possível carregar seus simulados.'); });
+    loadHistory();
+    return () => { active = false; };
+  }, [loadHistory]);
 
-  async function loadTemplates() {
-    try {
-      setTemplates(await apiListAnswerSheetTemplates(token()));
-    } catch {
-      setError('Não foi possível carregar os templates.');
-    }
-  }
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }, []);
+  useEffect(() => stopCamera, [stopCamera]);
 
-  async function loadSimulations() {
-    try {
-      // A lista de simulados é opcional no scanner: se falhar, o cartão segue
-      // sendo lido sem vínculo. Não pode, porém, jogar o 404 no console.
-      setSimulations((await apiSimulations(token())).map(({ id, title }) => ({ id, title })));
-    } catch {
-      /* sem vínculo de simulado o scanner continua utilizável */
-    }
-  }
-
-  async function loadHistory() {
-    try {
-      setHistory(await apiListAnswerSheetUploads(token()));
-    } catch {
-      setError('Não foi possível carregar o histórico.');
-    }
-  }
-
-  function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
-    const selected = event.target.files?.[0];
-    if (!selected) return;
-    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(selected.type)) {
-      setError('Formato não suportado. Use JPEG, PNG ou PDF.');
+  async function openCamera() {
+    setError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Este navegador não dá acesso à câmera aqui. Use "Escolher foto" — no celular ele também abre a câmera.');
       return;
     }
-    if (selected.size > 10 * 1024 * 1024) {
-      setError('Arquivo muito grande (máximo 10 MB).');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+      streamRef.current = stream;
+      setStep('camera');
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play();
+        }
+      });
+    } catch {
+      setError('Não foi possível abrir a câmera. Você pode escolher uma foto do aparelho.');
+    }
+  }
+
+  async function loadPhoto(raster: RasterImage) {
+    setWorking('Procurando a folha…');
+    await nextFrame();
+    const detection = detectDocument(raster);
+    setPhoto(raster);
+    setQuad(detection.quad);
+    setAutoFound(detection.found);
+    setWorking('');
+    setStep('corners');
+  }
+
+  async function onPhotoFile(file: File | undefined) {
+    if (!file) return;
+    setError('');
+    try {
+      setWorking('Abrindo a foto…');
+      await loadPhoto(await fileToRaster(file));
+    } catch (e) {
+      setWorking('');
+      setError(e instanceof Error ? e.message : 'Não foi possível abrir a foto.');
+    }
+  }
+
+  /** Recorta, endireita e uniformiza a luz da foto e põe a página no PDF. */
+  async function addPage(rotate = false) {
+    if (!photo || !quad) return;
+    if (pages.length >= MAX_PAGES) {
+      setError(`O PDF pode ter até ${MAX_PAGES} folhas.`);
       return;
     }
-    setFile(selected);
-    setPreviewUrl(URL.createObjectURL(selected));
-    setError('');
-    setSuccess('');
-  }
-
-  function clearFile() {
-    setFile(null);
-    setPreviewUrl(null);
-    const input = document.getElementById('answer-sheet-file') as HTMLInputElement | null;
-    if (input) input.value = '';
-  }
-
-  async function startUpload() {
-    if (!file) { setError('Selecione um arquivo.'); return; }
-    if (!selectedTemplateId) { setError('Selecione o template do cartão-resposta.'); return; }
-    setUploading(true);
-    setError('');
-    setSuccess('');
+    setWorking('Digitalizando a folha…');
+    await nextFrame();
     try {
-      const { uploadId, key } = await apiAnswerSheetUploadUrl(token(), {
-        templateId: selectedTemplateId,
-        ...(selectedSimulationId ? { simulationId: selectedSimulationId } : {}),
-        contentType: file.type,
-      });
-
-      await apiAnswerSheetCompleteUpload(token(), key, {
-        fileUrl: previewUrl ?? (await readAsDataUrl(file)),
-        width: 1920,
-        height: 1080,
-        sizeBytes: file.size,
-      });
-
-      setSuccess('Upload enviado. O processamento começou.');
-      clearFile();
-      setUpload(await loadUpload(uploadId));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no upload.');
+      let flat = warpPerspective(photo, quad, outputSize(quad, 1600));
+      if (rotate) flat = rotate90(flat);
+      const page = enhanceDocument(flat, 'gray');
+      const gray = rasterToGrayPage(page, 1100);
+      const thumbCanvas = rasterToCanvas(page);
+      const thumb = document.createElement('canvas');
+      thumb.width = 220;
+      thumb.height = Math.round((page.height * 220) / page.width);
+      thumb.getContext('2d')!.drawImage(thumbCanvas, 0, 0, thumb.width, thumb.height);
+      setPages((list) => [...list, { id: ++pageSeq.current, gray, thumb: thumb.toDataURL('image/jpeg', 0.7) }]);
+      setPhoto(null);
+      setQuad(null);
+      setStep('pages');
+    } catch {
+      setError('Os cantos não formam uma folha. Ajuste-os e tente de novo.');
     } finally {
-      setUploading(false);
+      setWorking('');
     }
   }
 
-  /** Busca o upload pelo id: a listagem já vem com o processamento aninhado,
-   * e é ela que traz `status: NEEDS_REVIEW` quando alguma bolha ficou com
-   * confiança baixa. */
-  async function loadUpload(uploadId: string): Promise<AnswerSheetUploadResponseDto | null> {
-    const found = (await apiListAnswerSheetUploads(token())).find((item) => item.id === uploadId);
-    return found ?? null;
+  async function makePdf(): Promise<Uint8Array> {
+    setWorking(`Gerando o PDF (${pages.length} ${pages.length === 1 ? 'folha' : 'folhas'})…`);
+    await nextFrame();
+    return buildPdf(pages.map((p) => p.gray));
   }
 
-  function readAsDataUrl(selected: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
-      reader.readAsDataURL(selected);
-    });
-  }
-
-  async function handleReview() {
-    if (!processing) return;
-    const finalAnswers: Record<number, number> = {};
-    for (const [question, answer] of Object.entries(reviewAnswers)) {
-      if (answer) finalAnswers[Number(question)] = Number(answer);
-    }
-    setBusy(true);
-    setError('');
-    setSuccess('');
+  async function downloadLocalPdf() {
     try {
-      await apiAnswerSheetReview(token(), processing.id, { finalAnswers });
-      setSuccess('Revisão salva e submissão registrada no simulado.');
-      setUpload(null);
-      setReviewAnswers({});
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar a revisão.');
+      const pdf = await makePdf();
+      const url = URL.createObjectURL(new Blob([pdf as BlobPart], { type: 'application/pdf' }));
+      downloadBlob(url, 'cartoes-resposta.pdf');
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
     } finally {
-      setBusy(false);
+      setWorking('');
     }
   }
 
-  async function handleCreateTemplate() {
-    if (!templateName.trim()) { setError('Informe o nome do template.'); return; }
-    if (markers.some((marker) => !Number.isFinite(marker.x) || !Number.isFinite(marker.y))) {
-      setError('Coordenadas de marcador inválidas.');
+  async function sendPdf(dataUrl: string) {
+    setStep('sending');
+    setError('');
+    setWorking('Lendo as folhas do PDF…');
+    try {
+      const result = await apiAnswerSheetScan(getAccessToken() ?? '', { pdf: dataUrl, simulationId: simulationId || undefined });
+      setBatch(result);
+      setPages([]);
+      setStep('batch');
+      loadHistory();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível enviar o PDF. Verifique a conexão e tente de novo.');
+      setStep(pages.length ? 'pages' : 'choose');
+    } finally {
+      setWorking('');
+    }
+  }
+
+  async function sendPages() {
+    try {
+      const pdf = await makePdf();
+      await sendPdf(`data:application/pdf;base64,${bytesToBase64(pdf)}`);
+    } catch (e) {
+      setWorking('');
+      setError(e instanceof Error ? e.message : 'Não foi possível gerar o PDF.');
+    }
+  }
+
+  async function onPdfFile(file: File | undefined) {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Escolha um arquivo PDF.');
       return;
     }
-    setBusy(true);
-    setError('');
-    setSuccess('');
+    if (file.size > 25 * 1024 * 1024) {
+      setError('O PDF pode ter no máximo 25 MB.');
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await sendPdf(`data:application/pdf;base64,${bytesToBase64(bytes)}`);
+  }
+
+  async function confirmAll() {
+    if (!batch) return;
+    setWorking('Lançando as notas sem pendências…');
     try {
-      await apiCreateAnswerSheetTemplate(token(), {
-        name: templateName.trim(),
-        description: templateDesc.trim() || null,
-        markers,
-        layout: [],
-      });
-      setSuccess('Template criado.');
-      setTemplateName('');
-      setTemplateDesc('');
-      await loadTemplates();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao criar o template.');
+      const { confirmed, pending } = await apiAnswerSheetConfirmBatch(getAccessToken() ?? '', batch.batchId);
+      const refreshed = await Promise.all(batch.results.map(async (r) => (r.scan ? { ...r, scan: await apiAnswerSheetScanGet(getAccessToken() ?? '', r.scan.id) } : r)));
+      setBatch({ ...batch, results: refreshed });
+      setNotice(`${confirmed} ${confirmed === 1 ? 'nota lançada' : 'notas lançadas'}${pending ? `; ${pending} ${pending === 1 ? 'folha ainda precisa' : 'folhas ainda precisam'} de conferência` : ''}.`);
+      loadHistory();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível lançar as notas.');
     } finally {
-      setBusy(false);
+      setWorking('');
     }
   }
 
-  const processing = upload?.processing ?? null;
-  // `NEEDS_REVIEW` é o status do upload: o processing em si só vai a
-  // PROCESSING/COMPLETED/FAILED, e o upload é quem pede a conferência.
-  const needsReview = upload?.status === 'NEEDS_REVIEW';
-  const detected = (processing?.detectedAnswers ?? {}) as Record<string, number>;
-  const confidence = (processing?.confidenceJson ?? {}) as Record<string, number>;
-  const warnings = processing?.warningsJson ?? [];
+  async function finalizeAll() {
+    if (!batch) return;
+    setWorking('Finalizando as correções lançadas…');
+    try {
+      const { finalized, notPosted } = await apiAnswerSheetFinalizeBatch(getAccessToken() ?? '', batch.batchId);
+      const refreshed = await Promise.all(batch.results.map(async (r) => (r.scan ? { ...r, scan: await apiAnswerSheetScanGet(getAccessToken() ?? '', r.scan.id) } : r)));
+      setBatch({ ...batch, results: refreshed });
+      const rest = notPosted ? `; ${notPosted} ${notPosted === 1 ? 'folha ainda não tem' : 'folhas ainda não têm'} nota lançada` : '';
+      setNotice(`${finalized} ${finalized === 1 ? 'correção finalizada' : 'correções finalizadas'} — domínio por tópico atualizado${rest}.`);
+      loadHistory();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível finalizar.');
+    } finally {
+      setWorking('');
+    }
+  }
+
+  async function downloadBatchPdf(batchId: string) {
+    try {
+      const url = await apiAnswerSheetBatchPdfUrl(getAccessToken() ?? '', batchId);
+      downloadBlob(url, `cartoes-${batchId.slice(0, 8)}.pdf`);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      setError('Não foi possível baixar o PDF.');
+    }
+  }
+
+  async function openScan(id: string) {
+    setError('');
+    try {
+      setScan(await apiAnswerSheetScanGet(getAccessToken() ?? '', id));
+      setStep('conference');
+    } catch {
+      setError('Não foi possível abrir esta leitura.');
+    }
+  }
+
+  function onConferenceSaved(updated: AnswerSheetScan) {
+    setScan(updated);
+    setBatch((b) => (b ? { ...b, results: b.results.map((r) => (r.scan?.id === updated.id ? { ...r, scan: updated } : r)) } : b));
+    setNotice(updated.result ? `Nota lançada: ${updated.result.correct}/${updated.result.total} acertos.` : updated.message ?? 'Conferência salva.');
+    loadHistory();
+  }
+
+  const statusLabel = (s: AnswerSheetScan) =>
+    s.status === 'COMPLETED' ? (s.result ? `${s.result.finalizedAt ? 'finalizada' : 'nota lançada (domínio pendente)'} · ${s.result.correct}/${s.result.total}` : 'conferida') : s.questions.some(needsReview) ? `${s.questions.filter(needsReview).length} para conferir` : 'pronta para lançar';
 
   return (
-    <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="print:hidden">
-          <Link to="/app" className="text-sm font-semibold">← Voltar à visão geral</Link>
-        </div>
-        <h1 className="mt-6 text-3xl font-bold">Scanner de Gabarito</h1>
-        <p className="mt-2 text-sm text-graphite-500">
-          Envie a foto do cartão-resposta: o sistema detecta as marcações, sinaliza as respostas de
-          baixa confiança para você revisar e registra a entrega no simulado.
-        </p>
+    <main className="min-h-screen bg-surface-card px-4 py-8 text-graphite sm:px-8">
+      <div className="mx-auto max-w-6xl">
+        <Link to="/app" className="inline-flex items-center gap-2 text-sm font-semibold"><ArrowLeft size={16} />Voltar à visão geral</Link>
+        <header className="my-6">
+          <p className="flex items-center gap-2 text-primary-700"><ScanLine size={20} />Correção por captura</p>
+          <h1 className="mt-2 text-3xl font-bold">Scanner de cartão-resposta</h1>
+          <p className="mt-2 text-graphite-500">Fotografe os cartões: cada foto vira uma página de PDF, a Lumina lê as marcações e você confere — e ajusta qualquer bolha — antes de lançar a nota.</p>
+        </header>
 
-        {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
-        {success && <p role="status" className="my-4 rounded-lg bg-success-50 p-3 text-success-700">{success}</p>}
+        {/* Sempre montados: os botões de várias etapas abrem estes seletores. */}
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="sr-only" aria-label="Escolher foto do cartão-resposta" onChange={(e) => { void onPhotoFile(e.target.files?.[0]); e.target.value = ''; }} />
+        <input ref={pdfRef} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Enviar PDF de cartões-resposta" onChange={(e) => { void onPdfFile(e.target.files?.[0]); e.target.value = ''; }} />
+        {error ? <div role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+        {notice ? <div role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+        {working ? <p role="status" className="mb-4 flex items-center gap-2 text-sm text-graphite-500"><Loader2 size={16} className="animate-spin" />{working}</p> : null}
 
-        <div className="mt-6 border-b border-surface-line">
-          <nav className="flex gap-4" role="tablist">
-            {(['scan', 'templates', 'history'] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                role="tab"
-                aria-selected={tab === item}
-                onClick={() => setTab(item)}
-                className={`border-b-2 pb-3 font-medium ${tab === item ? 'border-primary-500 text-primary-700' : 'border-transparent text-graphite-400'}`}
-              >
-                {item === 'scan' ? 'Escanear' : item === 'templates' ? 'Templates' : 'Histórico'}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {tab === 'scan' && (
-          <>
-            <section className="mt-6 rounded-xl border bg-white p-5">
-              <h2 className="font-bold">Template do cartão-resposta</h2>
-              <p className="mt-1 text-sm text-graphite-400">
-                Escolha o template compatível com o cartão que você fotografou.
-              </p>
-              {templates.length === 0 ? (
-                <p className="mt-4 text-sm text-graphite-400">
-                  Nenhum template cadastrado. Crie um na aba <strong>Templates</strong>.
-                </p>
-              ) : (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {templates.map((template) => (
-                    <label
-                      key={template.id}
-                      className={`cursor-pointer rounded-lg border-2 p-3 ${selectedTemplateId === template.id ? 'border-primary-500 bg-primary-50' : 'border-graphite-200 hover:border-primary-300'}`}
-                    >
-                      <input
-                        type="radio"
-                        name="answer-sheet-template"
-                        className="sr-only"
-                        checked={selectedTemplateId === template.id}
-                        onChange={() => setSelectedTemplateId(template.id)}
-                      />
-                      <p className="font-medium">{template.name}</p>
-                      <p className="text-sm text-graphite-400">{template.description ?? 'Sem descrição'}</p>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {templates.length > 0 && (
-              <section className="mt-6 rounded-xl border bg-white p-5">
-                <h2 className="font-bold">Simulado vinculado (opcional)</h2>
-                <p className="mt-1 text-sm text-graphite-400">
-                  Com um simulado selecionado, a entrega é criada automaticamente ao concluir a leitura.
-                </p>
-                <select
-                  aria-label="Simulado vinculado"
-                  value={selectedSimulationId}
-                  onChange={(event) => setSelectedSimulationId(event.target.value)}
-                  className="mt-3 w-full max-w-md rounded-lg border p-2"
-                >
-                  <option value="">Nenhum (apenas leitura do cartão)</option>
-                  {simulations.map((simulation) => (
-                    <option key={simulation.id} value={simulation.id}>{simulation.title}</option>
-                  ))}
-                </select>
-              </section>
-            )}
-
-            {templates.length > 0 && (
-              <section className="mt-6 rounded-xl border bg-white p-5">
-                <h2 className="font-bold">Enviar o cartão-resposta</h2>
-                <div className="mt-4 sm:col-span-2">
-                  <input
-                    id="answer-sheet-file"
-                    type="file"
-                    accept="image/jpeg,image/png,application/pdf"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="answer-sheet-file"
-                    className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 ${previewUrl ? 'border-primary-300 bg-primary-50' : 'border-graphite-200'}`}
-                  >
-                    {previewUrl ? (
-                      <>
-                        <img src={previewUrl} alt="Pré-visualização do cartão" className="max-h-64 rounded-lg border" />
-                        <p className="text-sm text-graphite-500">Clique para trocar o arquivo</p>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium">Clique para selecionar a foto do cartão</span>
-                        <p className="text-sm text-graphite-400">JPEG, PNG ou PDF · máximo 10 MB</p>
-                      </>
-                    )}
-                  </label>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={startUpload}
-                    disabled={uploading || !file || !selectedTemplateId}
-                    className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50"
-                  >
-                    {uploading ? 'Enviando...' : 'Enviar e processar'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearFile}
-                    className="rounded-lg border px-5 py-3 font-semibold text-graphite"
-                  >
-                    Limpar seleção
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {upload && (
-              <section className="mt-6 rounded-xl border bg-white p-5" role="status" aria-live="polite">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-xl font-bold">Resultado da leitura</h2>
-                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusStyle(upload.status)}`}>
-                    {statusLabel(upload.status)}
-                  </span>
-                </div>
-
-                {processing?.status === 'PROCESSING' && (
-                  <p className="text-graphite-500">Processando as marcações. Atualize a página em alguns segundos para ver o resultado.</p>
-                )}
-
-                {processing?.status === 'FAILED' && (
-                  <div className="rounded-lg bg-red-50 p-3 text-red-700">
-                    <p className="font-semibold">Não foi possível ler o cartão</p>
-                    <p className="mt-1 text-sm">{processing.errorMessage ?? 'Erro não informado.'}</p>
-                  </div>
-                )}
-
-                {processing?.status === 'COMPLETED' && (
-                  <>
-                    <div className="mb-4 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-lg bg-surface-card p-3">
-                        <p className="text-xs text-graphite-400">Questões no gabarito</p>
-                        <p className="font-medium">{processing.totalQuestions}</p>
-                      </div>
-                      <div className="rounded-lg bg-surface-card p-3">
-                        <p className="text-xs text-graphite-400">Respondidas</p>
-                        <p className="font-medium">{processing.answeredCount}</p>
-                      </div>
-                      <div className="rounded-lg bg-surface-card p-3">
-                        <p className="text-xs text-graphite-400">Baixa confiança</p>
-                        <p className="font-medium">{processing.lowConfidenceCount}</p>
-                      </div>
-                    </div>
-
-                    {warnings.length > 0 && (
-                      <div className="mb-4 rounded-lg bg-amber-50 p-3">
-                        <p className="font-semibold text-amber-700">Pontos que precisam de atenção</p>
-                        <ul className="mt-1 space-y-1 text-sm text-amber-800">
-                          {warnings.map((warning, index) => <li key={index}>• {warning}</li>)}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="mb-4">
-                      <h3 className="mb-2 font-semibold">Respostas detectadas</h3>
-                      {Object.keys(detected).length === 0 ? (
-                        <p className="text-sm text-graphite-400">Nenhuma marcação foi reconhecida.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {Object.entries(detected).map(([question, answer]) => {
-                            const score = confidence[question];
-                            return (
-                              <div key={question} className="flex flex-wrap items-center gap-3 rounded-lg bg-surface-card p-3">
-                                <span className="w-10 font-mono text-graphite-500">Q{question}</span>
-                                <span className="font-medium">
-                                  Alternativa {String.fromCharCode(64 + answer)}
-                                </span>
-                                {typeof score === 'number' && (
-                                  <span className="rounded bg-primary-100 px-2 py-0.5 text-xs text-primary-700">
-                                    Confiança {Math.round(score * 100)}%
-                                  </span>
-                                )}
-                                {needsReview && (
-                                  <select
-                                    aria-label={`Alternativa da questão ${question}`}
-                                    value={reviewAnswers[Number(question)] ?? String(answer)}
-                                    onChange={(event) =>
-                                      setReviewAnswers({ ...reviewAnswers, [Number(question)]: event.target.value })
-                                    }
-                                    className="ml-auto w-24 rounded-lg border p-1 text-sm"
-                                  >
-                                    {[1, 2, 3, 4, 5].map((position) => (
-                                      <option key={position} value={position}>
-                                        {String.fromCharCode(64 + position)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {needsReview && (
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={handleReview}
-                          disabled={busy}
-                          className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50"
-                        >
-                          Salvar revisão e submeter
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setUpload(null); setReviewAnswers({}); }}
-                          className="rounded-lg border px-5 py-3 font-semibold text-graphite"
-                        >
-                          Descartar
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </section>
-            )}
-          </>
-        )}
-
-        {tab === 'templates' && (
-          <>
-            <section className="mt-6 rounded-xl border bg-white p-5">
-              <h2 className="font-bold">Novo template</h2>
-              <p className="mt-1 text-sm text-graphite-400">
-                Informe os quatro marcadores de canto em coordenadas normalizadas (0 a 1).
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <input
-                  aria-label="Nome do template"
-                  value={templateName}
-                  onChange={(event) => setTemplateName(event.target.value)}
-                  placeholder="Nome do template"
-                  className="rounded-lg border p-2"
-                />
-                <input
-                  aria-label="Descrição do template"
-                  value={templateDesc}
-                  onChange={(event) => setTemplateDesc(event.target.value)}
-                  placeholder="Descrição (opcional)"
-                  className="rounded-lg border p-2"
-                />
+        {step === 'choose' ? (
+          <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+            <Card className="bg-white">
+              <label htmlFor="sheet-simulation" className="block text-sm font-semibold">Simulado (opcional)</label>
+              <select id="sheet-simulation" value={simulationId} onChange={(e) => setSimulationId(e.target.value)} className="mt-2 h-12 w-full rounded-xl border border-surface-line px-3">
+                <option value="">Identificar pelo código impresso em cada folha</option>
+                {simulations.map((s) => <option key={s.id} value={s.id}>{s.title} · {s.questionCount} questões{s.className ? ` · ${s.className}` : ''}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-graphite-400">Cada cartão da Lumina tem um código que diz de qual simulado e de qual aluno ele é — dá para fotografar a turma inteira num PDF só.</p>
+              {simulationId ? <Link to={`/app/gabarito-scanner/imprimir/${simulationId}`} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary-700"><Printer size={16} />Imprimir os cartões deste simulado</Link> : null}
+              <ul className="mt-5 space-y-1 text-sm text-graphite-500">
+                <li>• Folha inteira na foto, com os quatro quadrados pretos dos cantos.</li>
+                <li>• Luz uniforme, sem a sombra do celular; folha lisa sobre a mesa.</li>
+              </ul>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button onClick={() => void openCamera()}><Camera size={18} />Fotografar cartões</Button>
+                <Button variant="outline" onClick={() => fileRef.current?.click()}><FileImage size={18} />Escolher foto</Button>
+                <Button variant="ghost" onClick={() => pdfRef.current?.click()}><FileText size={18} />Enviar PDF pronto</Button>
               </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                {markers.map((marker, index) => {
-                  const preset = MARKER_PRESETS[index];
-                  return (
-                    <fieldset key={marker.name} className="rounded-lg bg-surface-card p-3">
-                      <legend className="px-1 text-xs font-medium text-graphite-500">{preset.label}</legend>
-                      <label className="mt-2 flex items-center gap-2 text-xs">
-                        <span>X</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          max={1}
-                          value={marker.x}
-                          onChange={(event) => {
-                            const next = [...markers];
-                            next[index] = { ...marker, x: Number(event.target.value) };
-                            setMarkers(next);
-                          }}
-                          className="w-full rounded-lg border p-1"
-                        />
-                      </label>
-                      <label className="mt-1 flex items-center gap-2 text-xs">
-                        <span>Y</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          max={1}
-                          value={marker.y}
-                          onChange={(event) => {
-                            const next = [...markers];
-                            next[index] = { ...marker, y: Number(event.target.value) };
-                            setMarkers(next);
-                          }}
-                          className="w-full rounded-lg border p-1"
-                        />
-                      </label>
-                    </fieldset>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={handleCreateTemplate}
-                  disabled={busy || !templateName.trim()}
-                  className="rounded-lg bg-graphite px-5 py-2 text-white disabled:opacity-50"
-                >
-                  {busy ? 'Salvando...' : 'Criar template'}
-                </button>
-              </div>
-            </section>
-
-            <section className="mt-6 rounded-xl border bg-white p-5">
-              <h2 className="font-bold">Templates cadastrados</h2>
-              {templates.length === 0 ? (
-                <p className="mt-3 text-sm text-graphite-400">Nenhum template ainda.</p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {templates.map((template) => (
-                    <li key={template.id} className="border-b pb-3 last:border-0">
-                      <p className="font-medium">{template.name}</p>
-                      <p className="text-sm text-graphite-400">{template.description ?? 'Sem descrição'}</p>
+              {pages.length ? <Button variant="outline" className="mt-4" onClick={() => setStep('pages')}>Voltar ao PDF em montagem ({pages.length})</Button> : null}
+            </Card>
+            <Card className="bg-white">
+              <h2 className="font-semibold">Leituras recentes</h2>
+              {history.length ? (
+                <ul className="mt-3 space-y-2">
+                  {history.map((h) => (
+                    <li key={h.id}>
+                      <button type="button" onClick={() => void openScan(h.id)} className="w-full rounded-xl border border-surface-line p-3 text-left text-sm hover:border-primary">
+                        <span className="block font-semibold">{h.simulation?.title ?? 'Simulado'}</span>
+                        <span className="block text-xs text-graphite-500">{h.studentName}{h.page ? ` · pág. ${h.page}` : ''} · {h.result ? `${h.result.correct}/${h.result.total} acertos${h.result.finalizedAt ? ' · finalizada' : ' · a finalizar'}` : h.status === 'NEEDS_REVIEW' ? (h.reviewCount ? `${h.reviewCount} para conferir` : 'aguardando confirmação') : 'sem nota'}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
-              )}
-            </section>
-          </>
-        )}
+              ) : <p className="mt-2 text-sm text-graphite-400">Nenhum cartão lido ainda.</p>}
+            </Card>
+          </div>
+        ) : null}
 
-        {tab === 'history' && (
-          <section className="mt-6 rounded-xl border bg-white p-5">
-            <h2 className="font-bold">Histórico de digitalizações</h2>
-            {history.length === 0 ? (
-              <p className="mt-3 text-sm text-graphite-400">Nenhuma digitalização ainda.</p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {history.map((upload) => {
-                  const uploadProcessing = upload.processing;
-                  const status = uploadProcessing?.status ?? upload.status;
-                  return (
-                    <li key={upload.id} className="border-b pb-3 last:border-0">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="font-medium">
-                            {upload.simulationId ? 'Cartão de simulado' : 'Leitura avulsa'}
-                          </p>
-                          <p className="text-sm text-graphite-400">
-                            {new Date(upload.createdAt).toLocaleString('pt-BR')}
-                          </p>
-                        </div>
-                        <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusStyle(status)}`}>
-                          {statusLabel(status)}
-                        </span>
-                      </div>
-                      {uploadProcessing && (
-                        <p className="mt-1 text-sm text-graphite-500">
-                          {uploadProcessing.answeredCount} de {uploadProcessing.totalQuestions} respostas detectadas
-                          {uploadProcessing.lowConfidenceCount > 0 && `, ${uploadProcessing.lowConfidenceCount} para revisar`}
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        )}
+        {step === 'camera' ? (
+          <Card className="bg-white">
+            <div className="relative mx-auto max-w-xl overflow-hidden rounded-xl bg-black">
+              <video ref={videoRef} playsInline muted className="block w-full" aria-label="Visualização da câmera" />
+              <div className="pointer-events-none absolute inset-[5%] rounded-lg border-2 border-dashed border-primary/80" aria-hidden="true" />
+            </div>
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <Button onClick={() => { if (videoRef.current) { const r = videoToRaster(videoRef.current); stopCamera(); void loadPhoto(r); } }}><Camera size={18} />Tirar foto</Button>
+              <Button variant="outline" onClick={() => { stopCamera(); setStep(pages.length ? 'pages' : 'choose'); }}>Cancelar</Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {step === 'corners' && photo && quad ? (
+          <Card className="bg-white">
+            <p className="mb-3 text-sm text-graphite-600">{autoFound ? 'Achamos a folha. Confira os cantos.' : 'Arraste os cantos até as pontas da folha.'} O alinhamento fino é feito pelos quadrados pretos.</p>
+            <CornerEditor image={photo} quad={quad} onChange={setQuad} />
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <Button onClick={() => void addPage()}><Wand2 size={18} />Digitalizar e pôr no PDF</Button>
+              <Button variant="outline" onClick={() => void addPage(true)}>Girar 90° e pôr no PDF</Button>
+              <Button variant="ghost" onClick={() => { setPhoto(null); setStep(pages.length ? 'pages' : 'choose'); }}>Descartar foto</Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {step === 'pages' ? (
+          <Card className="bg-white">
+            <h2 className="font-semibold">PDF em montagem · {pages.length} {pages.length === 1 ? 'folha' : 'folhas'}</h2>
+            <p className="text-sm text-graphite-500">Fotografe todos os cartões que quiser corrigir. Cada um vira uma página do PDF.</p>
+            <ol className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              {pages.map((p, i) => (
+                <li key={p.id} className="relative rounded-lg border border-surface-line bg-surface-card p-1">
+                  <img src={p.thumb} alt={`Página ${i + 1}`} className="w-full rounded" />
+                  <span className="absolute left-2 top-2 rounded bg-graphite px-1.5 text-xs text-white">{i + 1}</span>
+                  <button type="button" onClick={() => setPages((list) => list.filter((x) => x.id !== p.id))} className="absolute right-2 top-2 rounded bg-white/90 p-1 text-red-700" aria-label={`Remover página ${i + 1}`}><Trash2 size={14} /></button>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button disabled={!pages.length || Boolean(working)} onClick={() => void sendPages()}><ScanLine size={18} />Gerar PDF e corrigir</Button>
+              <Button variant="outline" onClick={() => void openCamera()}><Plus size={18} />Fotografar outra folha</Button>
+              <Button variant="outline" onClick={() => fileRef.current?.click()}><FileImage size={18} />Outra foto do aparelho</Button>
+              <Button variant="ghost" disabled={!pages.length || Boolean(working)} onClick={() => void downloadLocalPdf()}><Download size={18} />Baixar o PDF</Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {step === 'sending' ? <Card className="bg-white" role="status"><p className="flex items-center gap-2"><Loader2 size={18} className="animate-spin" />Lendo as folhas do PDF…</p></Card> : null}
+
+        {step === 'batch' && batch ? (
+          <Card className="bg-white">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold">PDF lido · {batch.pages} {batch.pages === 1 ? 'folha' : 'folhas'}</h2>
+                <p className="text-sm text-graphite-500">Nenhuma nota foi lançada ainda: confira cada folha (e ajuste o que precisar) ou lance de uma vez as que não têm dúvida.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => void confirmAll()} disabled={Boolean(working)}><CheckCheck size={18} />Lançar as sem pendências</Button>
+                <Button variant="outline" onClick={() => setConfirmFinalAll(true)} disabled={Boolean(working) || !batch.results.some((r) => r.scan?.result && !r.scan.result.finalizedAt)}><Lock size={18} />Finalizar as lançadas</Button>
+                <Button variant="outline" onClick={() => void downloadBatchPdf(batch.batchId)}><Download size={18} />Baixar o PDF</Button>
+              </div>
+            </div>
+            {confirmFinalAll ? (
+              <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                <p>Finalizar aplica o domínio por tópico de cada aluno com as respostas lançadas e trava essas folhas. As que ainda não têm nota ficam como estão. Não dá para desfazer.</p>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" disabled={Boolean(working)} onClick={() => { setConfirmFinalAll(false); void finalizeAll(); }}>Finalizar agora</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmFinalAll(false)}>Cancelar</Button>
+                </div>
+              </div>
+            ) : null}
+            <ul className="mt-5 divide-y divide-surface-line">
+              {batch.results.map((r) => (
+                <li key={r.page} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div>
+                    <p className="font-semibold">Página {r.page}{r.scan ? ` · ${r.scan.studentName ?? 'aluno'}` : ''}</p>
+                    <p className={`text-sm ${r.error ? 'text-red-700' : 'text-graphite-500'}`}>{r.error ?? `${r.scan!.simulation?.title ?? ''} · ${statusLabel(r.scan!)}`}</p>
+                  </div>
+                  {r.scan ? <Button variant="outline" size="sm" onClick={() => { setScan(r.scan); setStep('conference'); }}>{r.scan.status === 'COMPLETED' ? 'Ver / corrigir' : 'Conferir'}</Button> : null}
+                </li>
+              ))}
+            </ul>
+            <Button variant="ghost" className="mt-3" onClick={() => { setBatch(null); setStep('choose'); setNotice(''); }}>Corrigir outros cartões</Button>
+          </Card>
+        ) : null}
+
+        {step === 'conference' && scan ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-graphite-500">{scan.simulation?.title} · <strong>{scan.studentName ?? 'aluno'}</strong>{scan.page ? ` · página ${scan.page} do PDF` : ''}{scan.sheetCode ? ` · folha nº ${scan.sheetCode}` : ''}</p>
+              <Button variant="ghost" size="sm" onClick={() => setStep(batch ? 'batch' : 'choose')}><ArrowLeft size={14} />{batch ? 'Voltar ao PDF' : 'Voltar'}</Button>
+            </div>
+            {scan.message ? <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-800">{scan.message}</p> : null}
+            {scan.warnings.length ? <ul className="space-y-1 text-sm text-amber-800">{scan.warnings.map((w) => <li key={w}>• {w}</li>)}</ul> : null}
+            <AnswerSheetConference scan={scan} onSaved={onConferenceSaved} />
+          </div>
+        ) : null}
       </div>
     </main>
   );

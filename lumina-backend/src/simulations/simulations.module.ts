@@ -8,7 +8,8 @@ import { SchedulesModule } from '../schedules/schedules.module';
 import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateEnemSimulationDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
-import { AnswerSheetService } from './answer-sheet.service';
+import { AnswerSheetScanService } from './omr/answer-sheet-scan.service';
+import { AnswerSheetController } from './omr/answer-sheet.controller';
 import { QuestionScanService } from './question-scan.service';
 import { TaskSimulationService } from './task-simulation.service';
 import { EnemSimulationService } from './enem-simulation.service';
@@ -21,7 +22,6 @@ export class SimulationsController {
   constructor(
     private readonly service: SimulationsService,
     private readonly adaptiveService: AdaptiveSimulationService,
-    private readonly answerSheetService: AnswerSheetService,
     private readonly questionScanService: QuestionScanService,
     private readonly taskSimulation: TaskSimulationService,
     private readonly enem: EnemSimulationService,
@@ -75,18 +75,7 @@ export class SimulationsController {
   @Get('adaptive/:id/summary') adaptiveSummary(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.adaptiveService.summary(id); }
   @Get('adaptive') adaptiveList(@CurrentUser() user: UserWithProfile) { return this.adaptiveService.list(user.id); }
 
-  // Answer Sheet Scanner endpoints (item 17)
-  @Post('answer-sheets/templates') createTemplate(@CurrentUser() user: UserWithProfile, @Body() dto: any) { return this.answerSheetService.createTemplate(user.id, dto); }
-  @Get('answer-sheets/templates') listTemplates(@CurrentUser() user: UserWithProfile) { return this.answerSheetService.listTemplates(user.id); }
-  @Get('answer-sheets/templates/:id') getTemplate(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.getTemplate(user.id, id); }
-  @Delete('answer-sheets/templates/:id') deleteTemplate(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.deleteTemplate(user.id, id); }
-
-  @Post('answer-sheets/upload-url') presignedUpload(@CurrentUser() user: UserWithProfile, @Body() dto: any) { return this.answerSheetService.createPresignedUpload(user.id, dto); }
-  @Post('answer-sheets/upload/:id/complete') completeUpload(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { fileUrl: string; width: number; height: number; sizeBytes: number }) { return this.answerSheetService.completeUpload(id, dto.fileUrl, { width: dto.width, height: dto.height, sizeBytes: dto.sizeBytes }); }
-  @Get('answer-sheets/uploads') listUploads(@CurrentUser() user: UserWithProfile, @Query('simulationId') simulationId?: string) { return this.answerSheetService.listUploads(user.id, simulationId); }
-  @Get('answer-sheets/processing/:id') getProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.answerSheetService.getProcessing(user.id, id); }
-  @Post('answer-sheets/processing/:id/review') reviewProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { finalAnswers: Record<number, number> }) { return this.answerSheetService.reviewProcessing(user.id, id, dto.finalAnswers); }
-  @Get('answer-sheets/stats') getStats(@CurrentUser() user: UserWithProfile) { return this.answerSheetService.getStats(user.id); }
+  // Scanner de cartão-resposta (item 17): ver omr/answer-sheet.controller.ts (rota /answer-sheets).
 
   // Question Scanner endpoints (item 18)
   @Post('question-scans/upload-url') questionScanPresignedUpload(@CurrentUser() user: UserWithProfile, @Body() dto: { contentType: string }) { return this.questionScanService.createPresignedUpload(user.id, dto); }
@@ -99,5 +88,5 @@ export class SimulationsController {
   @Post('question-scans/processing/:id/save-question') saveQuestionScanAsQuestion(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveAsQuestion(user.id, id, dto); }
   @Post('question-scans/processing/:id/save-error-notebook') saveQuestionScanToErrorNotebook(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveToErrorNotebook(user.id, id, dto); }
 }
-@Module({ imports: [QuestionsModule, SchedulesModule], controllers: [SimulationsController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
+@Module({ imports: [QuestionsModule, SchedulesModule], controllers: [SimulationsController, AnswerSheetController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetScanService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
 export class SimulationsModule {}

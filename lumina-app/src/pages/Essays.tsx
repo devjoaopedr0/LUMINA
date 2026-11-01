@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FilePenLine, Plus } from 'lucide-react';
+import { ArrowLeft, FilePenLine, Plus, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EssayEditor } from '@/components/essays/EssayEditor';
@@ -46,7 +46,7 @@ export function Essays() {
   if (essay && user) return <EssayEditor key={`${essay.id}:${user.id}`} initial={essay} userId={user.id} />;
   return <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8"><div className="mx-auto max-w-5xl">
     <Link to="/app" className="inline-flex items-center gap-2 text-sm font-semibold"><ArrowLeft size={16} />Voltar à visão geral</Link>
-    <header className="my-8 flex flex-wrap items-end justify-between gap-4"><div><p className="flex items-center gap-2 text-primary-700"><FilePenLine size={20} />Prática de escrita</p><h1 className="mt-3 text-3xl font-bold">Minhas redações</h1><p className="mt-3 text-graphite-500">Escreva no seu ritmo, escolha um tema e acompanhe suas versões.</p></div>{!id ? <Button onClick={() => void create()} disabled={loading}><Plus size={18} />Nova redação</Button> : null}</header>
+    <header className="my-8 flex flex-wrap items-end justify-between gap-4"><div><p className="flex items-center gap-2 text-primary-700"><FilePenLine size={20} />Prática de escrita</p><h1 className="mt-3 text-3xl font-bold">Minhas redações</h1><p className="mt-3 text-graphite-500">Escreva no seu ritmo, escolha um tema e acompanhe suas versões.</p></div>{!id ? <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigate('/app/redacoes/scanner')}><ScanLine size={18} />Corrigir por foto</Button><Button onClick={() => void create()} disabled={loading}><Plus size={18} />Nova redação</Button></div> : null}</header>
     {error ? <div role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-red-700"><p>{error}</p><Button variant="outline" className="mt-3" onClick={() => setReload(value => value + 1)}>Tentar novamente</Button></div> : null}
     {loading ? <p role="status">Carregando redações…</p> : null}
     {list ? <>

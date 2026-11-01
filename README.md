@@ -33,3 +33,5 @@ Cada projeto também pode ser rodado isoladamente (`npm run dev` dentro dele, ou
 - [Chat LuminIA e guia de integração](docs/AI_CHAT.md)
 - [Status funcional do produto](STATUS_FUNCIONAL.md)
 - [Funcionalidades gerais e ordem de implementação](docs/FUNCIONALIDADES_GERAIS.txt)
+- [Correção de redação por foto (scanner, RAG e MCP)](docs/CORRECAO_REDACAO_SCANNER.md)
+- [Scanner de cartão-resposta (leitura óptica)](docs/SCANNER_GABARITO.md)

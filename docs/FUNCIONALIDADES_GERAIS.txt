@@ -185,7 +185,7 @@
     -  Identificação do nível real do aluno
     -  Avaliação por habilidade
     -  Diagnóstico rápido
-17. 17. Scanner de gabarito
+17. 17. Scanner de gabarito [OMR REAL INTEGRADO EM 31/10/2026 - CARTÃO PRÓPRIO COM CÓDIGO, REVISÃO DAS DUVIDOSAS E NOTA NO SIMULADO; TESTE COM IMPRESSÃO REAL PENDENTE]
     -  Foto do cartão-resposta
     -  Upload de imagem
     -  Identificação das alternativas marcadas
@@ -213,7 +213,7 @@
     -  Gabarito
     -  Histórico
     -  Estatísticas
-20. 20. Redação [INTEGRADA EM 27/09/2026 - CORREÇÃO POR COMPETÊNCIAS, VERSIONAMENTO, FEEDBACK; UI PENDENTE]
+20. 20. Redação [CORREÇÃO POR FOTO E TEXTO COM IA (RAG + MCP) EM 31/10/2026 - VER docs/CORRECAO_REDACAO_SCANNER.md]
     -  Enviar redação
     -  Digitar redação na plataforma
     -  Upload de foto

@@ -10,78 +10,82 @@ datasource db {
 /// UserProfile, separada para manter esta tabela enxuta e não expor
 /// password_hash junto de dados exibíveis publicamente.
 model User {
-  id                     String                  @id @default(uuid()) @db.Uuid
-  email                  String                  @unique
-  passwordHash           String?                 @map("password_hash")
-  emailVerified          Boolean                 @default(false) @map("email_verified")
-  status                 UserStatus              @default(ACTIVE)
-  accountType            AccountType             @default(STUDENT_INDEPENDENT) @map("account_type")
-  lastLogin              DateTime?               @map("last_login")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt @map("updated_at")
-  deletedAt              DateTime?               @map("deleted_at")
-  googleId               String?                 @unique @map("google_id")
-  sessionVersion         Int                     @default(0) @map("session_version")
+  id                     String                      @id @default(uuid()) @db.Uuid
+  email                  String                      @unique
+  passwordHash           String?                     @map("password_hash")
+  emailVerified          Boolean                     @default(false) @map("email_verified")
+  status                 UserStatus                  @default(ACTIVE)
+  accountType            AccountType                 @default(STUDENT_INDEPENDENT) @map("account_type")
+  lastLogin              DateTime?                   @map("last_login")
+  createdAt              DateTime                    @default(now()) @map("created_at")
+  updatedAt              DateTime                    @updatedAt @map("updated_at")
+  deletedAt              DateTime?                   @map("deleted_at")
+  googleId               String?                     @unique @map("google_id")
+  sessionVersion         Int                         @default(0) @map("session_version")
   authSessions           AuthSession[]
-   classMemberships       ClassMember[]
-   classesTeaching        ClassTeacher[]
-   coordinatedClasses     Class[]                 @relation("ClassCoordinator")
-   createdClasses         Class[]                 @relation("ClassCreatedBy")
-   emailVerificationCodes EmailVerificationCode[]
-   passwordResetTokens    PasswordResetToken[]
-   questionAttempts       QuestionAttempt[]
-   createdQuestions       Question[]              @relation("QuestionCreatedBy")
-   profile                UserProfile?
-   questionProgress       UserQuestionProgress[]
-   errorNotebook          ErrorNotebookEntry[]
-   workspaceMembers       WorkspaceMember[]
-   studySchedule          StudySchedule?
-   studyTimeLogs          StudyTimeLog[]
-   topicMasteries         TopicMastery[]
-   topicMasteryHistory    TopicMasteryHistory[]
-   selectedVestibular     UserVestibular?
-   mentalMathSessions     MentalMathSession[]
-   essays                 Essay[]
-   teacherProfile         TeacherProfile?
+  classMemberships       ClassMember[]
+  classesTeaching        ClassTeacher[]
+  coordinatedClasses     Class[]                     @relation("ClassCoordinator")
+  createdClasses         Class[]                     @relation("ClassCreatedBy")
+  emailVerificationCodes EmailVerificationCode[]
+  passwordResetTokens    PasswordResetToken[]
+  questionAttempts       QuestionAttempt[]
+  createdQuestions       Question[]                  @relation("QuestionCreatedBy")
+  profile                UserProfile?
+  questionProgress       UserQuestionProgress[]
+  errorNotebook          ErrorNotebookEntry[]
+  workspaceMembers       WorkspaceMember[]
+  studySchedule          StudySchedule?
+  studyTimeLogs          StudyTimeLog[]
+  topicMasteries         TopicMastery[]
+  topicMasteryHistory    TopicMasteryHistory[]
+  selectedVestibular     UserVestibular?
+  mentalMathSessions     MentalMathSession[]
+  essays                 Essay[]
+  essayScans             EssayScan[]
+  teacherProfile         TeacherProfile?
   authoredEssayThemes    EssayTheme[]
-  createdSimulations       Simulation[]
-  simulationSubmissions    SimulationSubmission[]
-  adaptiveSessions         AdaptiveSimulationSession[]
-  adaptiveSteps            AdaptiveSimulationStep[]
-  answerSheetUploads       AnswerSheetUpload[]
-  answerSheetSubmissions   AnswerSheetSubmission[]
-  answerSheetReviews       AnswerSheetSubmission[] @relation("AnswerSheetReview")
-  questionScanUploads      QuestionScanUpload[]
-  questionScanResults      QuestionScanResult[]
-  essayFeedbacks           EssayFeedback[] @relation("EssayFeedbackAuthor")
-  formulas                  Formula[]
-  repertoires               Repertoire[]
+  createdSimulations     Simulation[]
+  simulationSubmissions  SimulationSubmission[]
+  adaptiveSessions       AdaptiveSimulationSession[]
+  adaptiveSteps          AdaptiveSimulationStep[]
+  answerSheetUploads     AnswerSheetUpload[]
+  answerSheetSubmissions AnswerSheetSubmission[]
+  answerSheetReviews     AnswerSheetSubmission[]     @relation("AnswerSheetReview")
+  answerSheetScans       AnswerSheetUpload[]         @relation("AnswerSheetScanner")
+  answerSheetCodes       AnswerSheetCode[]
+  answerSheetBatches     AnswerSheetBatch[]
+  questionScanUploads    QuestionScanUpload[]
+  questionScanResults    QuestionScanResult[]
+  essayFeedbacks         EssayFeedback[]             @relation("EssayFeedbackAuthor")
+  formulas               Formula[]
+  repertoires            Repertoire[]
 
   @@map("users")
 }
 
 model AuthSession {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  createdAt DateTime  @default(now()) @map("created_at")
-  lastUsedAt DateTime @default(now()) @map("last_used_at")
-  revokedAt DateTime? @map("revoked_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime  @default(now()) @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
   @@map("auth_sessions")
 }
 
 model MentalMathSession {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  mode       String
-  dailyKey   String?  @map("daily_key")
-  state      Json
-  version    Int      @default(0)
-  completed  Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  mode      String
+  dailyKey  String?  @map("daily_key")
+  state     Json
+  version   Int      @default(0)
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dailyKey])
   @@index([userId, createdAt])
@@ -89,20 +93,21 @@ model MentalMathSession {
 }
 
 model Essay {
-  id              String   @id @default(uuid()) @db.Uuid
-  userId          String   @map("user_id") @db.Uuid
-  title           String   @default("") @db.VarChar(160)
-  theme           String   @default("") @db.VarChar(300)
-  content         String   @default("")
-  version         Int      @default(0)
-  wordCount       Int      @default(0) @map("word_count")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  revisions       EssayRevision[]
-  correction      EssayCorrection?
-  versions        EssayVersion[]
-  feedbacks       EssayFeedback[]
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  title      String           @default("") @db.VarChar(160)
+  theme      String           @default("") @db.VarChar(300)
+  content    String           @default("")
+  version    Int              @default(0)
+  wordCount  Int              @default(0) @map("word_count")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions  EssayRevision[]
+  correction EssayCorrection?
+  versions   EssayVersion[]
+  feedbacks  EssayFeedback[]
+  scans      EssayScan[]
 
   @@index([userId, updatedAt])
   @@map("essays")
@@ -133,14 +138,14 @@ model TeacherProfile {
 }
 
 model EssayTheme {
-  id         String   @id @default(uuid()) @db.Uuid
-  title      String   @db.VarChar(300)
-  exam       String   @db.VarChar(60)
-  year       Int?
-  sourceUrl  String?  @map("source_url") @db.VarChar(2048)
-  createdBy  String?  @map("created_by") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  creator    User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String   @db.VarChar(300)
+  exam      String   @db.VarChar(60)
+  year      Int?
+  sourceUrl String?  @map("source_url") @db.VarChar(2048)
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  creator   User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([exam, year])
   @@map("essay_themes")
@@ -152,20 +157,28 @@ model EssayTheme {
 /// que teria reaproveitar Essay (redação privada de outro usuário) para
 /// compor esta biblioteca.
 model EssayModel {
-  id              String   @id @default(uuid()) @db.Uuid
-  year            Int
-  exam            String   @db.VarChar(60)
-  theme           String   @db.VarChar(300)
-  text            String
-  /** Nota por competência: { C1: 200, C2: 200, C3: 200, C4: 200, C5: 200 }. */
-  competenciesJson Json    @map("competencies_json")
-  /** Nota total (soma das competências, máx 1000). */
-  totalScore      Int      @map("total_score")
-  /** PDF oficial da redação, quando disponível para download. */
-  pdfUrl          String?  @map("pdf_url") @db.VarChar(2048)
-  /** Trechos em destaque por competência: { C1: "...", C2: "...", ... }. */
-  highlightsJson  Json?    @map("highlights_json")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid()) @db.Uuid
+  year             Int
+  exam             String   @db.VarChar(60)
+  theme            String   @db.VarChar(300)
+  text             String
+  /**
+   * Nota por competência: { C1: 200, C2: 200, C3: 200, C4: 200, C5: 200 }.
+   */
+  competenciesJson Json     @map("competencies_json")
+  /**
+   * Nota total (soma das competências, máx 1000).
+   */
+  totalScore       Int      @map("total_score")
+  /**
+   * PDF oficial da redação, quando disponível para download.
+   */
+  pdfUrl           String?  @map("pdf_url") @db.VarChar(2048)
+  /**
+   * Trechos em destaque por competência: { C1: "...", C2: "...", ... }.
+   */
+  highlightsJson   Json?    @map("highlights_json")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   @@index([exam, year])
   @@map("essay_models")
@@ -266,29 +279,29 @@ model EmailVerificationCode {
 /// dashboard); os demais campos ficam disponíveis para preenchimento
 /// progressivo do perfil e por isso são opcionais.
 model UserProfile {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @unique @map("user_id") @db.Uuid
-  firstName String    @map("first_name")
-  lastName  String?   @map("last_name")
-  username  String?   @unique
-  avatarUrl String?   @map("avatar_url")
-  phone     String?
-  birthDate DateTime? @map("birth_date") @db.Date
-  bio       String?
-  educationLevel String? @map("education_level") @db.VarChar(30)
-  schoolYear Int? @map("school_year")
-  schoolName String? @map("school_name") @db.VarChar(120)
-  desiredCourse String? @map("desired_course") @db.VarChar(120)
-  targetUniversity String? @map("target_university") @db.VarChar(120)
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @unique @map("user_id") @db.Uuid
+  firstName            String    @map("first_name")
+  lastName             String?   @map("last_name")
+  username             String?   @unique
+  avatarUrl            String?   @map("avatar_url")
+  phone                String?
+  birthDate            DateTime? @map("birth_date") @db.Date
+  bio                  String?
+  educationLevel       String?   @map("education_level") @db.VarChar(30)
+  schoolYear           Int?      @map("school_year")
+  schoolName           String?   @map("school_name") @db.VarChar(120)
+  desiredCourse        String?   @map("desired_course") @db.VarChar(120)
+  targetUniversity     String?   @map("target_university") @db.VarChar(120)
   /// Modalidade de concorrência do aluno no Sisu (AC, LB_PPI, LI_EP...) —
   /// escolhe qual nota de corte vira a meta dele. Nulo = ampla concorrência.
-  sisuModality String? @map("sisu_modality") @db.VarChar(10)
-  preferredStudyPeriod String? @map("preferred_study_period") @db.VarChar(20)
-  studySessionMinutes Int? @map("study_session_minutes")
-  weeklyStudyDays Int? @map("weekly_study_days")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sisuModality         String?   @map("sisu_modality") @db.VarChar(10)
+  preferredStudyPeriod String?   @map("preferred_study_period") @db.VarChar(20)
+  studySessionMinutes  Int?      @map("study_session_minutes")
+  weeklyStudyDays      Int?      @map("weekly_study_days")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
 }
@@ -530,13 +543,13 @@ model ClassTeacher {
 /// para exibição sem join. subjects é o primeiro nível de classificação
 /// (ex: Matemática) — alimenta filtros e as futuras análises da LuminIA.
 model Subject {
-  id        String     @id @default(uuid()) @db.Uuid
-  name      String     @unique
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  questions Question[] @relation("QuestionSubject")
-  topics    Topic[]    @relation("TopicSubject")
-  classes   Class[]
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String         @unique
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  questions      Question[]     @relation("QuestionSubject")
+  topics         Topic[]        @relation("TopicSubject")
+  classes        Class[]
   topicMasteries TopicMastery[]
 
   @@map("subjects")
@@ -545,13 +558,13 @@ model Subject {
 /// Assunto dentro de uma disciplina (ex: "Funções exponenciais" dentro de
 /// Matemática). Segundo nível de classificação das questões.
 model Topic {
-  id        String     @id @default(uuid()) @db.Uuid
-  subjectId String     @map("subject_id") @db.Uuid
-  name      String
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  questions Question[] @relation("QuestionTopic")
-  subject   Subject    @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  id             String                @id @default(uuid()) @db.Uuid
+  subjectId      String                @map("subject_id") @db.Uuid
+  name           String
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  questions      Question[]            @relation("QuestionTopic")
+  subject        Subject               @relation("TopicSubject", fields: [subjectId], references: [id], onDelete: Cascade)
   topicMasteries TopicMastery[]
   masteryHistory TopicMasteryHistory[]
   studyTasks     StudyTask[]
@@ -585,26 +598,26 @@ model TopicLesson {
 /// peça que falta hoje para o cronograma priorizar por desempenho real em
 /// vez de só distribuir horas-alvo proporcionalmente.
 model TopicMastery {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  subjectId String   @map("subject_id") @db.Uuid
-  topicId   String   @map("topic_id") @db.Uuid
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @map("user_id") @db.Uuid
+  subjectId          String             @map("subject_id") @db.Uuid
+  topicId            String             @map("topic_id") @db.Uuid
   /// 0-100, ver fórmula no design doc §3 (peso maior para tentativas
   /// recentes — desempenho antigo não deve segurar a nota para sempre).
-  masteryScore    Int                @default(0) @map("mastery_score")
-  attempts        Int                @default(0)
-  correctAttempts Int                @default(0) @map("correct_attempts")
+  masteryScore       Int                @default(0) @map("mastery_score")
+  attempts           Int                @default(0)
+  correctAttempts    Int                @default(0) @map("correct_attempts")
   /// Acertos seguidos — mesma lógica do caderno de erros
   /// (ERROR_NOTEBOOK_MASTERED_STREAK), aqui aplicada ao domínio do tópico.
-  correctStreak Int @default(0) @map("correct_streak")
-  status        TopicMasteryStatus @default(NAO_ESTUDADO)
-  lastStudiedAt DateTime? @map("last_studied_at")
+  correctStreak      Int                @default(0) @map("correct_streak")
+  status             TopicMasteryStatus @default(NAO_ESTUDADO)
+  lastStudiedAt      DateTime?          @map("last_studied_at")
   /// Próxima revisão espaçada — mesma semântica de
   /// ErrorNotebookEntry.reviewScheduledAt (comparação por dia, meia-noite UTC).
-  nextReviewAt       DateTime? @map("next_review_at")
-  reviewIntervalDays Int       @default(1) @map("review_interval_days")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  nextReviewAt       DateTime?          @map("next_review_at")
+  reviewIntervalDays Int                @default(1) @map("review_interval_days")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
@@ -621,16 +634,16 @@ model TopicMastery {
 /// TopicMastery guarda só o estado atual; é daqui que sai "quanto subiu na
 /// semana" no resumo semanal.
 model TopicMasteryHistory {
-  id             String             @id @default(uuid()) @db.Uuid
-  userId         String             @map("user_id") @db.Uuid
-  topicId        String             @map("topic_id") @db.Uuid
-  day            DateTime           @db.Date
-  masteryScore   Int                @map("mastery_score")
-  status         TopicMasteryStatus
-  attempts       Int                @default(0)
-  correctAttempts Int               @default(0) @map("correct_attempts")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
+  id              String             @id @default(uuid()) @db.Uuid
+  userId          String             @map("user_id") @db.Uuid
+  topicId         String             @map("topic_id") @db.Uuid
+  day             DateTime           @db.Date
+  masteryScore    Int                @map("mastery_score")
+  status          TopicMasteryStatus
+  attempts        Int                @default(0)
+  correctAttempts Int                @default(0) @map("correct_attempts")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
@@ -651,17 +664,17 @@ enum TopicMasteryStatus {
 /// Prova/concurso estruturado (ex: ENEM 2023). Questões podem ou não vir de
 /// uma prova; questões autorais costumam ter examId nulo.
 model Exam {
-  id          String     @id @default(uuid()) @db.Uuid
-  name        String
-  year        Int?
-  institution String?
-  description String?
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  questions   Question[] @relation("QuestionExam")
-  userVestibulares    UserVestibular[]
-  adaptiveSessions    AdaptiveSimulationSession[]
-  papers        ExamPaper[]
+  id               String                      @id @default(uuid()) @db.Uuid
+  name             String
+  year             Int?
+  institution      String?
+  description      String?
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+  questions        Question[]                  @relation("QuestionExam")
+  userVestibulares UserVestibular[]
+  adaptiveSessions AdaptiveSimulationSession[]
+  papers           ExamPaper[]
 
   @@index([name, year])
   @@map("exams")
@@ -676,40 +689,40 @@ model Exam {
 /// `metadata` (JSON) reserva espaço para futura geração por IA (modelo,
 /// versão de prompt, confiança) e embeddings (pgvector) sem remodelar o banco.
 model Question {
-  id           String                 @id @default(uuid()) @db.Uuid
-  workspaceId  String                 @map("workspace_id") @db.Uuid
-  subject      String
-  topic        String
-  difficulty   QuestionDifficulty
-  exam         String
-  year         Int?
-  examNumber   Int?                   @map("exam_number")
-  stem         String
-  createdAt    DateTime               @default(now()) @map("created_at")
-  updatedAt    DateTime               @updatedAt @map("updated_at")
-  contentHash  String?                @map("content_hash")
-  createdBy    String?                @map("created_by") @db.Uuid
-  examId       String?                @map("exam_id") @db.Uuid
-  explanation  String?
-  imageUrl     String?                @map("image_url")
-  metadata     Json?
-  sourceId     String?                @map("source_id")
-  sourceName   String                 @default("Lumina") @map("source_name")
-  sourceType   QuestionSourceType     @default(OFFICIAL) @map("source_type")
-  subjectId    String?                @map("subject_id") @db.Uuid
-  topicId      String?                @map("topic_id") @db.Uuid
-  alternatives QuestionAlternative[]
-  simulationItems SimulationItem[]
-  attempts     QuestionAttempt[]
-  creator      User?                  @relation("QuestionCreatedBy", fields: [createdBy], references: [id])
-  examRef      Exam?                  @relation("QuestionExam", fields: [examId], references: [id])
-  subjectRef   Subject?               @relation("QuestionSubject", fields: [subjectId], references: [id])
-  topicRef     Topic?                 @relation("QuestionTopic", fields: [topicId], references: [id])
-  workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  progress         UserQuestionProgress[]
-  errorNotebook    ErrorNotebookEntry[]
-  adaptiveSteps    AdaptiveSimulationStep[]
-  scanResults      QuestionScanResult[]
+  id                 String                   @id @default(uuid()) @db.Uuid
+  workspaceId        String                   @map("workspace_id") @db.Uuid
+  subject            String
+  topic              String
+  difficulty         QuestionDifficulty
+  exam               String
+  year               Int?
+  examNumber         Int?                     @map("exam_number")
+  stem               String
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  contentHash        String?                  @map("content_hash")
+  createdBy          String?                  @map("created_by") @db.Uuid
+  examId             String?                  @map("exam_id") @db.Uuid
+  explanation        String?
+  imageUrl           String?                  @map("image_url")
+  metadata           Json?
+  sourceId           String?                  @map("source_id")
+  sourceName         String                   @default("Lumina") @map("source_name")
+  sourceType         QuestionSourceType       @default(OFFICIAL) @map("source_type")
+  subjectId          String?                  @map("subject_id") @db.Uuid
+  topicId            String?                  @map("topic_id") @db.Uuid
+  alternatives       QuestionAlternative[]
+  simulationItems    SimulationItem[]
+  attempts           QuestionAttempt[]
+  creator            User?                    @relation("QuestionCreatedBy", fields: [createdBy], references: [id])
+  examRef            Exam?                    @relation("QuestionExam", fields: [examId], references: [id])
+  subjectRef         Subject?                 @relation("QuestionSubject", fields: [subjectId], references: [id])
+  topicRef           Topic?                   @relation("QuestionTopic", fields: [topicId], references: [id])
+  workspace          Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  progress           UserQuestionProgress[]
+  errorNotebook      ErrorNotebookEntry[]
+  adaptiveSteps      AdaptiveSimulationStep[]
+  scanResults        QuestionScanResult[]
   examPaperQuestions ExamPaperQuestion[]
 
   @@index([workspaceId])
@@ -728,51 +741,57 @@ model Question {
 /// 4, 5) exibida como A, B, C, D, E no frontend. Apenas uma alternativa por
 /// questão deve ter is_correct = true (regra validada no service).
 model QuestionAlternative {
-  id         String   @id @default(uuid()) @db.Uuid
-  questionId String   @map("question_id") @db.Uuid
-  text       String
-  position   Int
-  isCorrect  Boolean  @default(false) @map("is_correct")
+  id          String   @id @default(uuid()) @db.Uuid
+  questionId  String   @map("question_id") @db.Uuid
+  text        String
+  position    Int
+  isCorrect   Boolean  @default(false) @map("is_correct")
   /// Por que esta alternativa está errada. Texto do autor da questão, exibido
   /// ao aluno **só depois** que ele responde (no resultado da tentativa) — antes
   /// disso revelaria o gabarito. Nulo quando a questão não detalha o distrator.
   explanation String?
-  createdAt  DateTime @default(now()) @map("created_at")
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([questionId])
   @@map("question_alternatives")
 }
 
 model Simulation {
-  id             String         @id @default(uuid()) @db.Uuid
-  title          String         @db.VarChar(160)
-  createdBy      String         @map("created_by") @db.Uuid
-  classId        String?        @map("class_id") @db.Uuid
-  workspaceId    String         @map("workspace_id") @db.Uuid
-  assessmentType AssessmentType @default(SIMULATION) @map("assessment_type")
-  dueAt          DateTime?      @map("due_at")
-  /** Duração do simulado em minutos (opcional). Quando definido, o cronômetro
-   *  roda na resolução e o envio automático ocorre no fim do tempo. */
-  durationMinutes Int?          @map("duration_minutes")
-  /** Modo "prova real": cronômetro obrigatório, sem dicas, resultado só ao final. */
-  isRealExam     Boolean        @default(false) @map("is_real_exam")
+  id                     String                  @id @default(uuid()) @db.Uuid
+  title                  String                  @db.VarChar(160)
+  createdBy              String                  @map("created_by") @db.Uuid
+  classId                String?                 @map("class_id") @db.Uuid
+  workspaceId            String                  @map("workspace_id") @db.Uuid
+  assessmentType         AssessmentType          @default(SIMULATION) @map("assessment_type")
+  dueAt                  DateTime?               @map("due_at")
+  /**
+   * Duração do simulado em minutos (opcional). Quando definido, o cronômetro
+   * roda na resolução e o envio automático ocorre no fim do tempo.
+   */
+  durationMinutes        Int?                    @map("duration_minutes")
+  /**
+   * Modo "prova real": cronômetro obrigatório, sem dicas, resultado só ao final.
+   */
+  isRealExam             Boolean                 @default(false) @map("is_real_exam")
   /// Simulado modelo ENEM: 1 ou 2 = o dia de prova que ele reproduz (90
   /// questões, 45 por área). Nulo nos simulados comuns.
-  enemDay        Int?           @map("enem_day")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  creator        User           @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  class          Class?         @relation(fields: [classId], references: [id], onDelete: SetNull)
-  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  items          SimulationItem[]
+  enemDay                Int?                    @map("enem_day")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  creator                User                    @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  class                  Class?                  @relation(fields: [classId], references: [id], onDelete: SetNull)
+  workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items                  SimulationItem[]
   /// Tarefas do cronograma que este simulado conclui ao ser enviado.
-  studyTasks     StudyTask[]
-  submissions           SimulationSubmission[]
-  answerSheetUploads    AnswerSheetUpload[]
+  studyTasks             StudyTask[]
+  submissions            SimulationSubmission[]
+  answerSheetUploads     AnswerSheetUpload[]
   answerSheetSubmissions AnswerSheetSubmission[]
-  /** Cartão-resposta gerado automaticamente na criação (opcional, só para
-   *  professor/coordenador/diretor) — ver AnswerSheetTemplate.simulationId. */
-  answerSheetTemplate   AnswerSheetTemplate?
+  /**
+   * Cartão-resposta gerado automaticamente na criação (opcional, só para
+   * professor/coordenador/diretor) — ver AnswerSheetTemplate.simulationId.
+   */
+  answerSheetTemplate    AnswerSheetTemplate?
 
   @@index([createdBy, createdAt])
   @@index([classId])
@@ -781,17 +800,19 @@ model Simulation {
 }
 
 model SimulationSubmission {
-  id           String   @id @default(uuid()) @db.Uuid
-  simulationId String   @map("simulation_id") @db.Uuid
-  userId       String   @map("user_id") @db.Uuid
+  id           String     @id @default(uuid()) @db.Uuid
+  simulationId String     @map("simulation_id") @db.Uuid
+  userId       String     @map("user_id") @db.Uuid
   answers      Json
-  /** Quando o aluno iniciou a resolução (para cronômetro e modo prova real). */
-  startedAt    DateTime? @default(now()) @map("started_at")
+  /**
+   * Quando o aluno iniciou a resolução (para cronômetro e modo prova real).
+   */
+  startedAt    DateTime?  @default(now()) @map("started_at")
   correct      Int
   total        Int
-  submittedAt  DateTime @default(now()) @map("submitted_at")
+  submittedAt  DateTime   @default(now()) @map("submitted_at")
   simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
-  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([simulationId, userId])
   @@index([userId, submittedAt])
@@ -799,18 +820,20 @@ model SimulationSubmission {
 }
 
 model SimulationItem {
-  id               String   @id @default(uuid()) @db.Uuid
-  simulationId     String   @map("simulation_id") @db.Uuid
-  questionId       String?  @map("question_id") @db.Uuid
-  position         Int
-  stem             String
-  alternatives     Json
-  correctPosition  Int      @map("correct_position")
-  subject          String
-  /** Área do conhecimento (ex.: "Matemática e suas Tecnologias", "Ciências da Natureza") — usado no modo prova real estilo ENEM. */
-  area             String?  @db.VarChar(80)
-  simulation       Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
-  question         Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  id              String     @id @default(uuid()) @db.Uuid
+  simulationId    String     @map("simulation_id") @db.Uuid
+  questionId      String?    @map("question_id") @db.Uuid
+  position        Int
+  stem            String
+  alternatives    Json
+  correctPosition Int        @map("correct_position")
+  subject         String
+  /**
+   * Área do conhecimento (ex.: "Matemática e suas Tecnologias", "Ciências da Natureza") — usado no modo prova real estilo ENEM.
+   */
+  area            String?    @db.VarChar(80)
+  simulation      Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  question        Question?  @relation(fields: [questionId], references: [id], onDelete: SetNull)
 
   @@unique([simulationId, position])
   @@map("simulation_items")
@@ -898,29 +921,29 @@ enum ErrorNotebookStatus {
 /// A dificuldade é a da questão (fonte única), mostrada e filtrada pela
 /// interface a partir daqui.
 model ErrorNotebookEntry {
-  id                 String              @id @default(uuid()) @db.Uuid
-  userId             String              @map("user_id") @db.Uuid
-  questionId         String              @map("question_id") @db.Uuid
-  reason             ErrorReason?
+  id                String               @id @default(uuid()) @db.Uuid
+  userId            String               @map("user_id") @db.Uuid
+  questionId        String               @map("question_id") @db.Uuid
+  reason            ErrorReason?
   /// Observação pessoal do aluno ("refiz o cálculo e errei o sinal").
-  notes              String?
-  status             ErrorNotebookStatus @default(ABERTA)
+  notes             String?
+  status            ErrorNotebookStatus  @default(ABERTA)
   /// Quantas vezes o aluno errou esta questão desde que ela entrou no caderno.
-  wrongAttempts      Int                 @default(1) @map("wrong_attempts")
+  wrongAttempts     Int                  @default(1) @map("wrong_attempts")
   /// Acertos seguidos desde o último erro (evolução da retomada).
-  correctStreak      Int                 @default(0) @map("correct_streak")
+  correctStreak     Int                  @default(0) @map("correct_streak")
   /// Linha do tempo em caracteres: "E" = erro, "A" = acerto. Truncada em 40.
-  evolution          String              @default("")
+  evolution         String               @default("")
   /// Revisão combinada pelo aluno (o item "criar revisão futura").
-  reviewScheduledAt  DateTime?           @map("review_scheduled_at")
-  firstWrongAt       DateTime            @default(now()) @map("first_wrong_at")
-  lastWrongAt        DateTime            @default(now()) @map("last_wrong_at")
-  resolvedAt         DateTime?           @map("resolved_at")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
-  question           Question            @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scanResults        QuestionScanResult[]
+  reviewScheduledAt DateTime?            @map("review_scheduled_at")
+  firstWrongAt      DateTime             @default(now()) @map("first_wrong_at")
+  lastWrongAt       DateTime             @default(now()) @map("last_wrong_at")
+  resolvedAt        DateTime?            @map("resolved_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  question          Question             @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanResults       QuestionScanResult[]
 
   @@unique([userId, questionId])
   @@index([userId, status])
@@ -1041,31 +1064,31 @@ enum StudyEssayFrequency {
 /// (um por usuário via userId unique). Contém a data de início/término,
 /// os dias da semana disponíveis e a duração diária planejada.
 model StudySchedule {
-  id              String               @id @default(uuid()) @db.Uuid
-  userId          String               @unique @map("user_id") @db.Uuid
-  startDate       DateTime             @map("start_date") @db.Date
-  endDate         DateTime             @map("end_date") @db.Date
-  studyDays       Json                 @map("study_days")
-  dailyMinutes    Int                  @map("daily_minutes")
-  objective       String?
+  id               String                    @id @default(uuid()) @db.Uuid
+  userId           String                    @unique @map("user_id") @db.Uuid
+  startDate        DateTime                  @map("start_date") @db.Date
+  endDate          DateTime                  @map("end_date") @db.Date
+  studyDays        Json                      @map("study_days")
+  dailyMinutes     Int                       @map("daily_minutes")
+  objective        String?
   /// Onboarding (fase 5, §11): curso que o aluno quer e as áreas que ele
   /// quer priorizar (até três). Ambos opcionais.
-  targetCourse    String?              @map("target_course")
-  priorityAreas   StudyArea[]          @default([]) @map("priority_areas")
+  targetCourse     String?                   @map("target_course")
+  priorityAreas    StudyArea[]               @default([]) @map("priority_areas")
   /// Tópicos (Topic.id) que o aluno tirou do próprio cronograma: o gerador
   /// não os agenda e eles não contam nos indicadores de domínio.
-  excludedTopicIds String[]            @default([]) @map("excluded_topic_ids") @db.Uuid
+  excludedTopicIds String[]                  @default([]) @map("excluded_topic_ids") @db.Uuid
   /// Rotina de redação (§9). Nulo com Redação no plano = semanal.
-  essayFrequency  StudyEssayFrequency? @map("essay_frequency")
-  status          StudyScheduleStatus  @default(ACTIVE)
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
-  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  essayFrequency   StudyEssayFrequency?      @map("essay_frequency")
+  status           StudyScheduleStatus       @default(ACTIVE)
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  user             User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   scheduleSubjects StudyScheduleSubject[]
-  dayMinutes      StudyScheduleDayMinutes[]
-  sessions        StudySession[]
-  tasks           StudyTask[]
-  progress        StudyProgress?
+  dayMinutes       StudyScheduleDayMinutes[]
+  sessions         StudySession[]
+  tasks            StudyTask[]
+  progress         StudyProgress?
 
   @@index([userId])
   @@map("study_schedules")
@@ -1075,12 +1098,12 @@ model StudySchedule {
 /// Catálogo fixo (12 matérias) separado de Subject (classificação de
 /// questões) — Redação, por exemplo, não tem questões mas é estudável.
 model StudySubject {
-  id               String   @id @default(uuid()) @db.Uuid
-  name             String   @unique
-  code             String   @unique @map("code")
-  displayOrder     Int      @default(99) @map("display_order")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id               String                 @id @default(uuid()) @db.Uuid
+  name             String                 @unique
+  code             String                 @unique @map("code")
+  displayOrder     Int                    @default(99) @map("display_order")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
   scheduleSubjects StudyScheduleSubject[]
   sessionSubjects  StudySessionSubject[]
   tasks            StudyTask[]
@@ -1092,12 +1115,12 @@ model StudySubject {
 /// Associação between StudySchedule e StudySubject: quais disciplinas
 /// o aluno escolheu estudar e quantas horas pretende dedicar a cada uma.
 model StudyScheduleSubject {
-  id          String    @id @default(uuid()) @db.Uuid
-  scheduleId  String    @map("schedule_id") @db.Uuid
-  subjectId   String    @map("subject_id") @db.Uuid
-  targetHours Float     @map("target_hours")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  subject     StudySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  id          String        @id @default(uuid()) @db.Uuid
+  scheduleId  String        @map("schedule_id") @db.Uuid
+  subjectId   String        @map("subject_id") @db.Uuid
+  targetHours Float         @map("target_hours")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  subject     StudySubject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   schedule    StudySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
   @@unique([scheduleId, subjectId])
@@ -1134,18 +1157,18 @@ model StudySession {
   sessionSubjects  StudySessionSubject[]
   tasks            StudyTask[]
 
-  @@index([scheduleId, date])
   @@unique([scheduleId, date])
+  @@index([scheduleId, date])
   @@map("study_sessions")
 }
 
 /// Disciplinas alocadas a uma sessão de estudo (quantos minutos por matéria
 /// no dia). Tabela de junção entre StudySession e StudySubject.
 model StudySessionSubject {
-  id               String    @id @default(uuid()) @db.Uuid
-  sessionId        String    @map("session_id") @db.Uuid
-  subjectId        String    @map("subject_id") @db.Uuid
-  estimatedMinutes Int       @default(0) @map("estimated_minutes")
+  id               String       @id @default(uuid()) @db.Uuid
+  sessionId        String       @map("session_id") @db.Uuid
+  subjectId        String       @map("subject_id") @db.Uuid
+  estimatedMinutes Int          @default(0) @map("estimated_minutes")
   session          StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   subject          StudySubject @relation(fields: [subjectId], references: [id])
 
@@ -1158,38 +1181,38 @@ model StudySessionSubject {
 /// Tarefa de estudo individual — pode ser auto-gerada (baseada em tópicos
 /// do banco) ou criada manualmente pelo aluno.
 model StudyTask {
-  id              String          @id @default(uuid()) @db.Uuid
-  scheduleId      String          @map("schedule_id") @db.Uuid
-  sessionId       String          @map("session_id") @db.Uuid
-  subjectId       String?         @map("subject_id") @db.Uuid
+  id               String            @id @default(uuid()) @db.Uuid
+  scheduleId       String            @map("schedule_id") @db.Uuid
+  sessionId        String            @map("session_id") @db.Uuid
+  subjectId        String?           @map("subject_id") @db.Uuid
   /// Aponta para o catálogo de questões (Topic), não para StudySubject — é
   /// de lá que vem TopicMastery (cronograma adaptativo, fase 2, ver
   /// docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md §2). Nulo em tarefas sem tópico
   /// específico (redação, revisão geral, tarefa manual do aluno).
-  topicId         String?           @map("topic_id") @db.Uuid
+  topicId          String?           @map("topic_id") @db.Uuid
   /// Tipo da atividade (fase 2, §5-6) — antes disso só existia "estudar a
   /// matéria"; agora cada bloco tem um verbo (teoria, questões, revisão...).
-  activityType    StudyActivityType @default(QUESTOES) @map("activity_type")
-  title           String
-  description     String?
-  status          StudyTaskStatus @default(PENDING)
-  scheduledMinutes Int            @default(0) @map("scheduled_minutes")
-  completedAt     DateTime?       @map("completed_at")
+  activityType     StudyActivityType @default(QUESTOES) @map("activity_type")
+  title            String
+  description      String?
+  status           StudyTaskStatus   @default(PENDING)
+  scheduledMinutes Int               @default(0) @map("scheduled_minutes")
+  completedAt      DateTime?         @map("completed_at")
   /// Resultado do bloco de questões quando a tarefa foi concluída pela
   /// prática: respondidas e acertos. Nulo = concluída à mão.
-  practiceAnswered Int?           @map("practice_answered")
-  practiceCorrect  Int?           @map("practice_correct")
+  practiceAnswered Int?              @map("practice_answered")
+  practiceCorrect  Int?              @map("practice_correct")
   /// Simulado montado para a tarefa de "Simulado"; enviá-lo conclui a tarefa.
-  simulationId    String?         @map("simulation_id") @db.Uuid
-  notes           String?
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  schedule        StudySchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  session         StudySession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  subject         StudySubject?   @relation(fields: [subjectId], references: [id])
-  topic           Topic?          @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  simulation      Simulation?     @relation(fields: [simulationId], references: [id], onDelete: SetNull)
-  timeLogs        StudyTimeLog[]
+  simulationId     String?           @map("simulation_id") @db.Uuid
+  notes            String?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  schedule         StudySchedule     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  session          StudySession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  subject          StudySubject?     @relation(fields: [subjectId], references: [id])
+  topic            Topic?            @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  simulation       Simulation?       @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+  timeLogs         StudyTimeLog[]
 
   @@index([scheduleId])
   @@index([sessionId])
@@ -1214,17 +1237,17 @@ enum StudyActivityType {
 /// um aluno pode estudar uma matéria do cronograma num dia sem sessão
 /// (domingo, feriado, revisão avulsa) e ainda assim querer registrar o tempo.
 model StudyTimeLog {
-  id             String       @id @default(uuid()) @db.Uuid
-  taskId         String?      @map("task_id") @db.Uuid
-  subjectId      String?      @map("subject_id") @db.Uuid
-  userId         String       @map("user_id") @db.Uuid
-  startTime      DateTime     @map("start_time")
-  endTime        DateTime     @map("end_time")
-  durationMinutes Int         @map("duration_minutes")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  task           StudyTask?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  subject        StudySubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid()) @db.Uuid
+  taskId          String?       @map("task_id") @db.Uuid
+  subjectId       String?       @map("subject_id") @db.Uuid
+  userId          String        @map("user_id") @db.Uuid
+  startTime       DateTime      @map("start_time")
+  endTime         DateTime      @map("end_time")
+  durationMinutes Int           @map("duration_minutes")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  task            StudyTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  subject         StudySubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
   @@index([subjectId])
@@ -1235,16 +1258,16 @@ model StudyTimeLog {
 /// Progresso agregado do aluno no seu cronograma — usado na tela de
 /// acompanhamento (percentual concluído, horas estudadas, streak).
 model StudyProgress {
-  id                String    @id @default(uuid()) @db.Uuid
-  scheduleId        String    @unique @map("schedule_id") @db.Uuid
-  completedMinutes  Int       @default(0) @map("completed_minutes")
-  totalScheduledMinutes Int   @default(0) @map("total_scheduled_minutes")
-  streakDays        Int       @default(0) @map("streak_days")
-  lastStudyDate     DateTime? @map("last_study_date") @db.Date
-  completedTasks    Int       @default(0) @map("completed_tasks")
-  totalTasks        Int       @default(0) @map("total_tasks")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  schedule          StudySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  id                    String        @id @default(uuid()) @db.Uuid
+  scheduleId            String        @unique @map("schedule_id") @db.Uuid
+  completedMinutes      Int           @default(0) @map("completed_minutes")
+  totalScheduledMinutes Int           @default(0) @map("total_scheduled_minutes")
+  streakDays            Int           @default(0) @map("streak_days")
+  lastStudyDate         DateTime?     @map("last_study_date") @db.Date
+  completedTasks        Int           @default(0) @map("completed_tasks")
+  totalTasks            Int           @default(0) @map("total_tasks")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  schedule              StudySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
   @@map("study_progress")
 }
@@ -1252,15 +1275,15 @@ model StudyProgress {
 /// Vestibular escolhido pelo aluno no onboarding. Referência ao nome do
 /// exam (ex: "ENEM") para contextualizar o cronograma.
 model UserVestibular {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @unique @map("user_id") @db.Uuid
-  examId    String?   @map("exam_id") @db.Uuid
-  customName String?  @map("custom_name")  // ex: "ENEM 2025" se for custom
-  targetDate DateTime? @map("target_date") @db.Date  // data da prova
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  exam      Exam?     @relation(fields: [examId], references: [id])
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @unique @map("user_id") @db.Uuid
+  examId     String?   @map("exam_id") @db.Uuid
+  customName String?   @map("custom_name") // ex: "ENEM 2025" se for custom
+  targetDate DateTime? @map("target_date") @db.Date // data da prova
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  exam       Exam?     @relation(fields: [examId], references: [id])
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_vestibulares")
 }
@@ -1277,19 +1300,25 @@ enum AssessmentType {
 /// conforme o desempenho do aluno. Cada passo escolhe a próxima questão
 /// baseada no histórico de acertos/erros por habilidade.
 model AdaptiveSimulationSession {
-  id               String                 @id @default(uuid()) @db.Uuid
-  userId           String                 @map("user_id") @db.Uuid
-  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /** Exame alvo (ENEM, FUVEST, etc.) — define o catálogo de habilidades. */
-  examId           String?                @map("exam_id") @db.Uuid
-  exam             Exam?                  @relation(fields: [examId], references: [id])
-  status           AdaptiveSessionStatus  @default(IN_PROGRESS)
-  /** Estimativa atual do nível do aluno (0.0 a 1.0, estilo IRT simplificado). */
-  estimatedAbility Float                  @default(0.5) @map("estimated_ability")
-  /** Habilidades avaliadas até agora: JSON { habilidade: { correct, total, ability } }. */
-  skills           Json                   @default("{}")
-  startedAt        DateTime               @default(now()) @map("started_at")
-  finishedAt       DateTime?              @map("finished_at")
+  id               String                   @id @default(uuid()) @db.Uuid
+  userId           String                   @map("user_id") @db.Uuid
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /**
+   * Exame alvo (ENEM, FUVEST, etc.) — define o catálogo de habilidades.
+   */
+  examId           String?                  @map("exam_id") @db.Uuid
+  exam             Exam?                    @relation(fields: [examId], references: [id])
+  status           AdaptiveSessionStatus    @default(IN_PROGRESS)
+  /**
+   * Estimativa atual do nível do aluno (0.0 a 1.0, estilo IRT simplificado).
+   */
+  estimatedAbility Float                    @default(0.5) @map("estimated_ability")
+  /**
+   * Habilidades avaliadas até agora: JSON { habilidade: { correct, total, ability } }.
+   */
+  skills           Json                     @default("{}")
+  startedAt        DateTime                 @default(now()) @map("started_at")
+  finishedAt       DateTime?                @map("finished_at")
   steps            AdaptiveSimulationStep[]
 
   @@index([userId, status])
@@ -1299,27 +1328,37 @@ model AdaptiveSimulationSession {
 /// Cada passo do simulado adaptativo: a questão apresentada, a resposta e o
 /// efeito na estimativa de habilidade.
 model AdaptiveSimulationStep {
-  id                     String   @id @default(uuid()) @db.Uuid
-  sessionId              String   @map("session_id") @db.Uuid
-  session                AdaptiveSimulationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  userId                 String   @map("user_id") @db.Uuid
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  questionId             String   @map("question_id") @db.Uuid
-  question               Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  /** Dificuldade da questão no momento da apresentação (FACIL/MEDIA/DIFICIL). */
-  difficulty             QuestionDifficulty
-  /** Habilidade principal testada (ex.: "Funções exponenciais"). */
-  skill                  String
-  /** Sub-habilidade mais granular (opcional). */
-  subSkill               String?  @map("sub_skill")
-  selectedPosition       Int      @map("selected_position")
-  isCorrect              Boolean  @map("is_correct")
-  /** Estimativa de habilidade ANTES desta questão. */
-  abilityBefore          Float    @map("ability_before")
-  /** Estimativa de habilidade DEPOIS desta questão. */
-  abilityAfter           Float    @map("ability_after")
-  timeSpentSeconds       Int?     @map("time_spent_seconds")
-  createdAt              DateTime @default(now()) @map("created_at")
+  id               String                    @id @default(uuid()) @db.Uuid
+  sessionId        String                    @map("session_id") @db.Uuid
+  session          AdaptiveSimulationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId           String                    @map("user_id") @db.Uuid
+  user             User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId       String                    @map("question_id") @db.Uuid
+  question         Question                  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /**
+   * Dificuldade da questão no momento da apresentação (FACIL/MEDIA/DIFICIL).
+   */
+  difficulty       QuestionDifficulty
+  /**
+   * Habilidade principal testada (ex.: "Funções exponenciais").
+   */
+  skill            String
+  /**
+   * Sub-habilidade mais granular (opcional).
+   */
+  subSkill         String?                   @map("sub_skill")
+  selectedPosition Int                       @map("selected_position")
+  isCorrect        Boolean                   @map("is_correct")
+  /**
+   * Estimativa de habilidade ANTES desta questão.
+   */
+  abilityBefore    Float                     @map("ability_before")
+  /**
+   * Estimativa de habilidade DEPOIS desta questão.
+   */
+  abilityAfter     Float                     @map("ability_after")
+  timeSpentSeconds Int?                      @map("time_spent_seconds")
+  createdAt        DateTime                  @default(now()) @map("created_at")
 
   @@index([sessionId, createdAt])
   @@index([userId, createdAt])
@@ -1329,48 +1368,75 @@ model AdaptiveSimulationStep {
 /// Modelo de gabarito (template) para folha de respostas.
 /// Define a posição dos marcadores de referência e das bolhas de resposta.
 model AnswerSheetTemplate {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @db.VarChar(120)
-  description String?  @db.Text
-  /** JSON com coordenadas normalizadas (0-1) dos 4 marcadores de canto para alinhamento:
-   *  { topLeft: {x,y}, topRight: {x,y}, bottomLeft: {x,y}, bottomRight: {x,y} } */
-  markersJson Json
-  /** JSON com layout das bolhas por questão:
-   *  [{ questionNumber: 1, bubbles: [{ position: 1, x, y, radius }, ...] }, ...] */
-  layoutJson  Json
-  /** Dimensões esperadas da imagem (px) para validação rápida. */
+  id             String              @id @default(uuid()) @db.Uuid
+  name           String              @db.VarChar(120)
+  description    String?             @db.Text
+  /**
+   * JSON com coordenadas normalizadas (0-1) dos 4 marcadores de canto para alinhamento:
+   * { topLeft: {x,y}, topRight: {x,y}, bottomLeft: {x,y}, bottomRight: {x,y} }
+   */
+  markersJson    Json
+  /**
+   * JSON com layout das bolhas por questão:
+   * [{ questionNumber: 1, bubbles: [{ position: 1, x, y, radius }, ...] }, ...]
+   */
+  layoutJson     Json
+  /**
+   * Dimensões esperadas da imagem (px) para validação rápida.
+   */
   expectedWidth  Int?
   expectedHeight Int?
-  /** Preenchido só quando o template foi gerado automaticamente na criação de
-   *  um simulado (item professor/coordenador/diretor) — nulo nos templates
-   *  reutilizáveis criados manualmente pelo scanner de cartão-resposta. */
-  simulationId   String?     @unique @map("simulation_id") @db.Uuid
-  simulation     Simulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  /**
+   * Preenchido só quando o template foi gerado automaticamente na criação de
+   * um simulado (item professor/coordenador/diretor) — nulo nos templates
+   * reutilizáveis criados manualmente pelo scanner de cartão-resposta.
+   */
+  simulationId   String?             @unique @map("simulation_id") @db.Uuid
+  simulation     Simulation?         @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
   uploads        AnswerSheetUpload[]
+  codes          AnswerSheetCode[]
 
   @@map("answer_sheet_templates")
 }
 
 /// Upload de imagem de cartão-resposta pelo aluno/professor.
 model AnswerSheetUpload {
-  id           String   @id @default(uuid()) @db.Uuid
-  templateId   String   @map("template_id") @db.Uuid
-  template     AnswerSheetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  simulationId String?  @map("simulation_id") @db.Uuid
-  simulation   Simulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
-  studentId    String   @map("student_id") @db.Uuid
-  student      User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  /** URL do arquivo original (storage). */
+  id           String                 @id @default(uuid()) @db.Uuid
+  templateId   String                 @map("template_id") @db.Uuid
+  template     AnswerSheetTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  simulationId String?                @map("simulation_id") @db.Uuid
+  simulation   Simulation?            @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+  studentId    String                 @map("student_id") @db.Uuid
+  student      User                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  /**
+   * URL do arquivo original (storage).
+   */
   fileUrl      String
-  /** Metadados da imagem: { width, height, mimeType, sizeBytes }. */
+  /**
+   * Metadados da imagem: { width, height, mimeType, sizeBytes }.
+   */
   metaJson     Json
-  status       AnswerSheetStatus @default(PENDING)
-  /** Processamento associado (1:1 quando concluído). */
+  status       AnswerSheetStatus      @default(PENDING)
+  /// Quem fotografou (o próprio aluno ou o professor que escaneou a folha dele).
+  scannedById  String?                @map("scanned_by_id") @db.Uuid
+  scannedBy    User?                  @relation("AnswerSheetScanner", fields: [scannedById], references: [id], onDelete: SetNull)
+  /// Código lido na faixa do cartão (AnswerSheetCode.code).
+  sheetCode    Int?                   @map("sheet_code")
+  /// PDF de onde a folha veio (várias folhas podem vir no mesmo PDF).
+  batchId      String?                @map("batch_id") @db.Uuid
+  batch        AnswerSheetBatch?      @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  pageIndex    Int?                   @map("page_index")
+  /// Página digitalizada no aparelho (JPEG), para a revisão e a auditoria.
+  image        Bytes?
+  imageMime    String?                @map("image_mime") @db.VarChar(40)
+  /**
+   * Processamento associado (1:1 quando concluído).
+   */
   processing   AnswerSheetProcessing?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
 
   @@index([simulationId, studentId])
   @@index([studentId, createdAt])
@@ -1379,47 +1445,70 @@ model AnswerSheetUpload {
 
 /// Resultado do processamento OCR de um cartão-resposta.
 model AnswerSheetProcessing {
-  id          String   @id @default(uuid()) @db.Uuid
-  uploadId    String   @unique @map("upload_id") @db.Uuid
-  upload      AnswerSheetUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
-  submission  AnswerSheetSubmission?
-  /** Respostas detectadas: { questionNumber: selectedPosition (1-5) }. */
-  detectedAnswers Json
-  /** Confiança por questão: { questionNumber: 0.0-1.0 }. */
-  confidenceJson  Json
-  /** Alertas: bolhas não marcadas, múltiplas marcas, baixa confiança. */
-  warningsJson    Json
-  /** Total de questões do gabarito. */
-  totalQuestions  Int
-  /** Quantas questões tiveram resposta detectada. */
-  answeredCount   Int
-  /** Quantas questões têm confiança baixa (< 0.7). */
+  id                 String                      @id @default(uuid()) @db.Uuid
+  uploadId           String                      @unique @map("upload_id") @db.Uuid
+  upload             AnswerSheetUpload           @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  submission         AnswerSheetSubmission?
+  /**
+   * Respostas detectadas: { questionNumber: selectedPosition (1-5) }.
+   */
+  detectedAnswers    Json
+  /**
+   * Confiança por questão: { questionNumber: 0.0-1.0 }.
+   */
+  confidenceJson     Json
+  /**
+   * Alertas: bolhas não marcadas, múltiplas marcas, baixa confiança.
+   */
+  warningsJson       Json
+  /**
+   * Total de questões do gabarito.
+   */
+  totalQuestions     Int
+  /**
+   * Quantas questões tiveram resposta detectada.
+   */
+  answeredCount      Int
+  /**
+   * Quantas questões têm confiança baixa (< 0.7).
+   */
   lowConfidenceCount Int
-  status          AnswerSheetProcessingStatus @default(PROCESSING)
-  errorMessage    String?
-  startedAt       DateTime  @default(now()) @map("started_at")
-  finishedAt      DateTime? @map("finished_at")
+  /// Leitura por questão: [{ number, selected, status, confidence, fills, box }].
+  detailsJson        Json?                       @map("details_json")
+  /// Limiar de marcação adotado na folha (OMR).
+  threshold          Float?
+  /// Questões que o corretor mudou em relação à leitura (auditoria).
+  adjustedJson       Json?                       @map("adjusted_json")
+  status             AnswerSheetProcessingStatus @default(PROCESSING)
+  errorMessage       String?
+  startedAt          DateTime                    @default(now()) @map("started_at")
+  finishedAt         DateTime?                   @map("finished_at")
 
   @@map("answer_sheet_processings")
 }
 
 /// Submissão de simulado via cartão-resposta físico (link com SimulationSubmission).
 model AnswerSheetSubmission {
-  id                   String   @id @default(uuid()) @db.Uuid
-  processingId         String   @unique @map("processing_id") @db.Uuid
-  processing           AnswerSheetProcessing @relation(fields: [processingId], references: [id], onDelete: Cascade)
-  simulationId         String   @map("simulation_id") @db.Uuid
-  simulation           Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
-  studentId            String   @map("student_id") @db.Uuid
-  student              User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  /** Respostas finais após revisão humana (se houver). */
-  finalAnswers         Json
-  correct              Int
-  total                Int
-  submittedAt          DateTime @default(now()) @map("submitted_at")
-  reviewedBy           String?  @map("reviewed_by") @db.Uuid
-  reviewer             User?    @relation("AnswerSheetReview", fields: [reviewedBy], references: [id])
-  reviewedAt           DateTime? @map("reviewed_at")
+  id           String                @id @default(uuid()) @db.Uuid
+  processingId String                @unique @map("processing_id") @db.Uuid
+  processing   AnswerSheetProcessing @relation(fields: [processingId], references: [id], onDelete: Cascade)
+  simulationId String                @map("simulation_id") @db.Uuid
+  simulation   Simulation            @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  studentId    String                @map("student_id") @db.Uuid
+  student      User                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  /**
+   * Respostas finais após revisão humana (se houver).
+   */
+  finalAnswers Json
+  correct      Int
+  total        Int
+  submittedAt  DateTime              @default(now()) @map("submitted_at")
+  reviewedBy   String?               @map("reviewed_by") @db.Uuid
+  reviewer     User?                 @relation("AnswerSheetReview", fields: [reviewedBy], references: [id])
+  reviewedAt   DateTime?             @map("reviewed_at")
+  /// Lançamento final: quando o domínio por tópico foi aplicado com as
+  /// respostas definitivas. Depois disso a folha não aceita mais ajuste.
+  finalizedAt  DateTime?             @map("finalized_at")
 
   @@index([simulationId, studentId])
   @@index([studentId, submittedAt])
@@ -1448,18 +1537,24 @@ enum AdaptiveSessionStatus {
 
 /// Upload de imagem de questão impressa (item 18 do inventário).
 model QuestionScanUpload {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @map("user_id") @db.Uuid
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /** URL do arquivo original (storage). */
-  fileUrl      String
-  /** Metadados da imagem: { width, height, mimeType, sizeBytes }. */
-  metaJson     Json
-  status       QuestionScanStatus @default(PENDING)
-  /** Processamento associado (1:1 quando concluído). */
-  processing   QuestionScanProcessing?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id         String                  @id @default(uuid()) @db.Uuid
+  userId     String                  @map("user_id") @db.Uuid
+  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /**
+   * URL do arquivo original (storage).
+   */
+  fileUrl    String
+  /**
+   * Metadados da imagem: { width, height, mimeType, sizeBytes }.
+   */
+  metaJson   Json
+  status     QuestionScanStatus      @default(PENDING)
+  /**
+   * Processamento associado (1:1 quando concluído).
+   */
+  processing QuestionScanProcessing?
+  createdAt  DateTime                @default(now()) @map("created_at")
+  updatedAt  DateTime                @updatedAt @map("updated_at")
 
   @@index([userId, createdAt])
   @@map("question_scan_uploads")
@@ -1467,55 +1562,77 @@ model QuestionScanUpload {
 
 /// Resultado do processamento OCR/IA de uma questão.
 model QuestionScanProcessing {
-  id              String   @id @default(uuid()) @db.Uuid
-  uploadId        String   @unique @map("upload_id") @db.Uuid
-  upload          QuestionScanUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
-  /** Texto extraído do enunciado (OCR). */
-  stemText        String?
-  /** Alternativas extraídas: [{ position: 1, text: "..." }, ...]. */
+  id               String                       @id @default(uuid()) @db.Uuid
+  uploadId         String                       @unique @map("upload_id") @db.Uuid
+  upload           QuestionScanUpload           @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  /**
+   * Texto extraído do enunciado (OCR).
+   */
+  stemText         String?
+  /**
+   * Alternativas extraídas: [{ position: 1, text: "..." }, ...].
+   */
   alternativesJson Json?
-  /** Disciplina identificada (ex.: "Matemática", "Física"). */
-  subject         String?
-  /** Assunto identificado (ex.: "Funções exponenciais", "Termodinâmica"). */
-  topic           String?
-  /** Dificuldade estimada. */
-  difficulty      QuestionDifficulty?
-  /** Explicação gerada pela LuminIA (por alternativa ou geral). */
-  explanationJson Json?
-  /** Confiança global do processamento (0.0-1.0). */
-  confidence      Float?
-  /** Alertas: texto cortado, alternativas incompletas, baixa confiança OCR. */
-  warningsJson    Json?
-  status          QuestionScanProcessingStatus @default(PROCESSING)
-  errorMessage    String?
-  startedAt       DateTime  @default(now()) @map("started_at")
-  finishedAt      DateTime? @map("finished_at")
-  result          QuestionScanResult?
+  /**
+   * Disciplina identificada (ex.: "Matemática", "Física").
+   */
+  subject          String?
+  /**
+   * Assunto identificado (ex.: "Funções exponenciais", "Termodinâmica").
+   */
+  topic            String?
+  /**
+   * Dificuldade estimada.
+   */
+  difficulty       QuestionDifficulty?
+  /**
+   * Explicação gerada pela LuminIA (por alternativa ou geral).
+   */
+  explanationJson  Json?
+  /**
+   * Confiança global do processamento (0.0-1.0).
+   */
+  confidence       Float?
+  /**
+   * Alertas: texto cortado, alternativas incompletas, baixa confiança OCR.
+   */
+  warningsJson     Json?
+  status           QuestionScanProcessingStatus @default(PROCESSING)
+  errorMessage     String?
+  startedAt        DateTime                     @default(now()) @map("started_at")
+  finishedAt       DateTime?                    @map("finished_at")
+  result           QuestionScanResult?
 
   @@map("question_scan_processings")
 }
 
 /// Questão salva a partir do scanner — pode virar questão do banco ou entrar no caderno de erros.
 model QuestionScanResult {
-  id                  String   @id @default(uuid()) @db.Uuid
-  processingId        String   @unique @map("processing_id") @db.Uuid
-  processing          QuestionScanProcessing @relation(fields: [processingId], references: [id], onDelete: Cascade)
-  userId              String   @map("user_id") @db.Uuid
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /** Se virou questão oficial do banco. */
-  questionId          String?  @map("question_id") @db.Uuid
-  question            Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
-  /** Se entrou no caderno de erros. */
-  errorNotebookEntryId String?  @map("error_notebook_entry_id") @db.Uuid
-  errorNotebookEntry  ErrorNotebookEntry? @relation(fields: [errorNotebookEntryId], references: [id], onDelete: SetNull)
-  /** Dados finais salvos (pode ter sido editado pelo usuário). */
-  finalStem           String
-  finalAlternatives   Json
-  finalSubject        String
-  finalTopic          String
-  finalDifficulty     QuestionDifficulty
-  finalExplanation    Json?
-  savedAt             DateTime @default(now()) @map("saved_at")
+  id                   String                 @id @default(uuid()) @db.Uuid
+  processingId         String                 @unique @map("processing_id") @db.Uuid
+  processing           QuestionScanProcessing @relation(fields: [processingId], references: [id], onDelete: Cascade)
+  userId               String                 @map("user_id") @db.Uuid
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /**
+   * Se virou questão oficial do banco.
+   */
+  questionId           String?                @map("question_id") @db.Uuid
+  question             Question?              @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  /**
+   * Se entrou no caderno de erros.
+   */
+  errorNotebookEntryId String?                @map("error_notebook_entry_id") @db.Uuid
+  errorNotebookEntry   ErrorNotebookEntry?    @relation(fields: [errorNotebookEntryId], references: [id], onDelete: SetNull)
+  /**
+   * Dados finais salvos (pode ter sido editado pelo usuário).
+   */
+  finalStem            String
+  finalAlternatives    Json
+  finalSubject         String
+  finalTopic           String
+  finalDifficulty      QuestionDifficulty
+  finalExplanation     Json?
+  savedAt              DateTime               @default(now()) @map("saved_at")
 
   @@index([userId, savedAt])
   @@map("question_scan_results")
@@ -1541,26 +1658,36 @@ enum QuestionScanProcessingStatus {
 /// Edição de uma prova (ex.: ENEM 2023, FUVEST 2024). Uma prova pode ter
 /// várias edições (anos). Contém metadados, PDF/imagens e gabarito oficial.
 model ExamPaper {
-  id              String        @id @default(uuid()) @db.Uuid
-  examId          String        @map("exam_id") @db.Uuid
-  exam            Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
-  year            Int
-  /** PDF completo da prova (storage URL). */
-  pdfUrl          String?
-  /** Imagens das páginas (storage URLs). */
-  pageImagesJson  Json?
-  /** Metadados: { totalPages, hasGabarito, hasCaderno, sourceUrl }. */
-  metadataJson    Json?
-  /** Gabarito oficial: { questionNumber: correctPosition }. */
-  gabaritoJson    Json?
-  /** Caderno de questões (separado do gabarito). */
-  cadernoJson     Json?
-  status          ExamPaperStatus @default(DRAFT)
-  publishedAt     DateTime?     @map("published_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  pages           ExamPaperPage[]
-  questions       ExamPaperQuestion[]
+  id                 String                @id @default(uuid()) @db.Uuid
+  examId             String                @map("exam_id") @db.Uuid
+  exam               Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  year               Int
+  /**
+   * PDF completo da prova (storage URL).
+   */
+  pdfUrl             String?
+  /**
+   * Imagens das páginas (storage URLs).
+   */
+  pageImagesJson     Json?
+  /**
+   * Metadados: { totalPages, hasGabarito, hasCaderno, sourceUrl }.
+   */
+  metadataJson       Json?
+  /**
+   * Gabarito oficial: { questionNumber: correctPosition }.
+   */
+  gabaritoJson       Json?
+  /**
+   * Caderno de questões (separado do gabarito).
+   */
+  cadernoJson        Json?
+  status             ExamPaperStatus       @default(DRAFT)
+  publishedAt        DateTime?             @map("published_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  pages              ExamPaperPage[]
+  questions          ExamPaperQuestion[]
   baseComparisons    ExamPaperComparison[] @relation("ComparisonBase")
   compareComparisons ExamPaperComparison[] @relation("ComparisonCompare")
 
@@ -1571,17 +1698,23 @@ model ExamPaper {
 
 /// Página individual de uma prova (para navegação e zoom).
 model ExamPaperPage {
-  id            String   @id @default(uuid()) @db.Uuid
-  paperId       String   @map("paper_id") @db.Uuid
-  paper         ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  pageNumber    Int
-  /** URL da imagem da página (storage). */
-  imageUrl      String
-  /** Dimensões: { width, height }. */
+  id             String    @id @default(uuid()) @db.Uuid
+  paperId        String    @map("paper_id") @db.Uuid
+  paper          ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  pageNumber     Int
+  /**
+   * URL da imagem da página (storage).
+   */
+  imageUrl       String
+  /**
+   * Dimensões: { width, height }.
+   */
   dimensionsJson Json?
-  /** OCR/text extraído da página (para busca). */
-  textContent   String?
-  createdAt     DateTime @default(now()) @map("created_at")
+  /**
+   * OCR/text extraído da página (para busca).
+   */
+  textContent    String?
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   @@unique([paperId, pageNumber])
   @@index([paperId])
@@ -1590,20 +1723,28 @@ model ExamPaperPage {
 
 /// Mapeamento de questões para posições nas páginas da prova.
 model ExamPaperQuestion {
-  id            String   @id @default(uuid()) @db.Uuid
-  paperId       String   @map("paper_id") @db.Uuid
-  paper         ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  questionId    String   @map("question_id") @db.Uuid
-  question      Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  /** Número da questão na prova (1, 2, 3...). */
-  number        Int
-  /** Página onde a questão aparece. */
-  pageNumber    Int
-  /** Coordenadas normalizadas (0-1) da questão na página: { x, y, width, height }. */
-  boundsJson    Json?
-  /** Área do conhecimento (ex.: "Matemática e suas Tecnologias"). */
-  area          String?
-  createdAt     DateTime @default(now()) @map("created_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  paperId    String    @map("paper_id") @db.Uuid
+  paper      ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  questionId String    @map("question_id") @db.Uuid
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /**
+   * Número da questão na prova (1, 2, 3...).
+   */
+  number     Int
+  /**
+   * Página onde a questão aparece.
+   */
+  pageNumber Int
+  /**
+   * Coordenadas normalizadas (0-1) da questão na página: { x, y, width, height }.
+   */
+  boundsJson Json?
+  /**
+   * Área do conhecimento (ex.: "Matemática e suas Tecnologias").
+   */
+  area       String?
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@unique([paperId, number])
   @@index([paperId, pageNumber])
@@ -1612,17 +1753,21 @@ model ExamPaperQuestion {
 
 /// Comparação entre edições da mesma prova (ex.: ENEM 2022 vs 2023).
 model ExamPaperComparison {
-  id              String   @id @default(uuid()) @db.Uuid
-  basePaperId     String   @map("base_paper_id") @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  basePaperId     String    @map("base_paper_id") @db.Uuid
   basePaper       ExamPaper @relation("ComparisonBase", fields: [basePaperId], references: [id], onDelete: Cascade)
-  comparePaperId  String   @map("compare_paper_id") @db.Uuid
+  comparePaperId  String    @map("compare_paper_id") @db.Uuid
   comparePaper    ExamPaper @relation("ComparisonCompare", fields: [comparePaperId], references: [id], onDelete: Cascade)
-  /** Tipo: SIMILAR_QUESTIONS, DIFFICULTY_SHIFT, TOPIC_CHANGE, NEW_TOPICS. */
+  /**
+   * Tipo: SIMILAR_QUESTIONS, DIFFICULTY_SHIFT, TOPIC_CHANGE, NEW_TOPICS.
+   */
   type            String
-  /** Detalhes da comparação (JSON). */
+  /**
+   * Detalhes da comparação (JSON).
+   */
   detailsJson     Json
-  similarityScore Float?  @map("similarity_score")
-  createdAt       DateTime @default(now()) @map("created_at")
+  similarityScore Float?    @map("similarity_score")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   @@unique([basePaperId, comparePaperId])
   @@index([basePaperId])
@@ -1642,44 +1787,74 @@ enum ExamPaperStatus {
 
 /// Correção de uma redação por competências (ENEM: C1 a C5).
 model EssayCorrection {
-  id              String   @id @default(uuid()) @db.Uuid
-  essayId         String   @unique @map("essay_id") @db.Uuid
-  essay           Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
-  /** Correção por competência (C1 a C5): { C1: 200, C2: 180, C3: 160, C4: 140, C5: 120 }. */
+  id               String                  @id @default(uuid()) @db.Uuid
+  essayId          String                  @unique @map("essay_id") @db.Uuid
+  essay            Essay                   @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  /**
+   * Correção por competência (C1 a C5): { C1: 200, C2: 180, C3: 160, C4: 140, C5: 120 }.
+   */
   competenciesJson Json
-  /** Nota total (soma das competências, máx 1000). */
-  totalScore      Int
-  /** Status da correção. */
-  status          EssayCorrectionStatus @default(PENDING)
-  /** Corretor (IA ou professor). */
-  correctedBy     String?  @map("corrected_by")
-  /** Correção feita por IA. */
-  isAiCorrection  Boolean  @default(false) @map("is_ai_correction")
-  /** Confiança da correção (0-1). */
-  confidence      Float?
-  /** Comentários gerais. */
-  generalFeedback String?  @map("general_feedback")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  details         EssayCorrectionDetail[]
+  /**
+   * Nota total (soma das competências, máx 1000).
+   */
+  totalScore       Int
+  /**
+   * Status da correção.
+   */
+  status           EssayCorrectionStatus   @default(PENDING)
+  /**
+   * Corretor (IA ou professor).
+   */
+  correctedBy      String?                 @map("corrected_by")
+  /**
+   * Correção feita por IA.
+   */
+  isAiCorrection   Boolean                 @default(false) @map("is_ai_correction")
+  /**
+   * Confiança da correção (0-1).
+   */
+  confidence       Float?
+  /**
+   * Comentários gerais.
+   */
+  generalFeedback  String?                 @map("general_feedback")
+  /// Anulação (nota zero total): { code, explanation, citation }.
+  annulmentJson    Json?                   @map("annulment_json")
+  /// Auditoria: avaliadores, discrepância, chamadas às ferramentas MCP,
+  /// análise do texto e modelos usados. Permite refazer o raciocínio da nota.
+  auditJson        Json?                   @map("audit_json")
+  /// Versão da redação que foi corrigida (Essay.version naquele momento).
+  essayVersion     Int?                    @map("essay_version")
+  errorMessage     String?                 @map("error_message")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  details          EssayCorrectionDetail[]
 
   @@map("essay_corrections")
 }
 
 /// Detalhe por competência com justificativa.
 model EssayCorrectionDetail {
-  id              String   @id @default(uuid()) @db.Uuid
-  correctionId    String   @map("correction_id") @db.Uuid
-  correction      EssayCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
-  /** Competência: C1, C2, C3, C4, C5. */
-  competency      String
-  /** Nota da competência (0-200). */
-  score           Int
-  /** Justificativa da nota. */
-  justification   String?
-  /** Exemplos de trechos da redação que fundamentam a nota. */
-  evidenceJson    Json?
-  createdAt       DateTime @default(now()) @map("created_at")
+  id            String          @id @default(uuid()) @db.Uuid
+  correctionId  String          @map("correction_id") @db.Uuid
+  correction    EssayCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+  /**
+   * Competência: C1, C2, C3, C4, C5.
+   */
+  competency    String
+  /**
+   * Nota da competência (0-200).
+   */
+  score         Int
+  /**
+   * Justificativa da nota.
+   */
+  justification String?
+  /**
+   * Exemplos de trechos da redação que fundamentam a nota.
+   */
+  evidenceJson  Json?
+  createdAt     DateTime        @default(now()) @map("created_at")
 
   @@unique([correctionId, competency])
   @@index([correctionId])
@@ -1688,14 +1863,14 @@ model EssayCorrectionDetail {
 
 /// Versão de uma redação (histórico de edições).
 model EssayVersion {
-  id          String   @id @default(uuid()) @db.Uuid
-  essayId     String   @map("essay_id") @db.Uuid
-  essay       Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
-  version     Int
-  content     String
-  wordCount   Int      @map("word_count")
-  createdAt   DateTime @default(now()) @map("created_at")
-  createdBy   String   @map("created_by") @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
+  essayId   String   @map("essay_id") @db.Uuid
+  essay     Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  version   Int
+  content   String
+  wordCount Int      @map("word_count")
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by") @db.Uuid
 
   @@unique([essayId, version])
   @@index([essayId])
@@ -1704,19 +1879,27 @@ model EssayVersion {
 
 /// Feedback (IA ou professor) sobre uma redação.
 model EssayFeedback {
-  id            String   @id @default(uuid()) @db.Uuid
-  essayId       String   @map("essay_id") @db.Uuid
-  essay         Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
-  /** Tipo: AI_SUGGESTION, TEACHER_COMMENT, PEER_REVIEW. */
-  type          String
-  /** Autor do feedback (se professor/peer). */
-  authorId      String?  @map("author_id") @db.Uuid
-  author        User?    @relation("EssayFeedbackAuthor", fields: [authorId], references: [id])
-  /** Conteúdo do feedback. */
-  content       String
-  /** Referência a trecho específico (opcional). */
-  anchorJson    Json?
-  createdAt     DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  essayId    String   @map("essay_id") @db.Uuid
+  essay      Essay    @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  /**
+   * Tipo: AI_SUGGESTION, TEACHER_COMMENT, PEER_REVIEW.
+   */
+  type       String
+  /**
+   * Autor do feedback (se professor/peer).
+   */
+  authorId   String?  @map("author_id") @db.Uuid
+  author     User?    @relation("EssayFeedbackAuthor", fields: [authorId], references: [id])
+  /**
+   * Conteúdo do feedback.
+   */
+  content    String
+  /**
+   * Referência a trecho específico (opcional).
+   */
+  anchorJson Json?
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([essayId, createdAt])
   @@map("essay_feedbacks")
@@ -1727,4 +1910,92 @@ enum EssayCorrectionStatus {
   IN_PROGRESS
   COMPLETED
   FAILED
+}
+
+/// Redação fotografada: a foto digitalizada no aparelho (recorte, perspectiva
+/// e realce estilo CamScanner) e a transcrição lida por modelo de visão. A
+/// transcrição volta para o aluno conferir antes de virar Essay e ir para a
+/// correção — a foto e o texto reconhecido ficam vinculados (scan → essay).
+model EssayScan {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Redação criada ao confirmar a transcrição.
+  essayId         String?         @map("essay_id") @db.Uuid
+  essay           Essay?          @relation(fields: [essayId], references: [id], onDelete: SetNull)
+  theme           String          @default("") @db.VarChar(300)
+  status          EssayScanStatus @default(PROCESSING)
+  /// Transcrição por linha: [{ number, text, paragraphStart, illegibleWords }].
+  linesJson       Json?           @map("lines_json")
+  transcribedText String?         @map("transcribed_text")
+  title           String?         @db.VarChar(160)
+  lineCount       Int?            @map("line_count")
+  illegibleWords  Int?            @map("illegible_words")
+  ocrConfidence   Float?          @map("ocr_confidence")
+  ocrModel        String?         @map("ocr_model") @db.VarChar(300)
+  warningsJson    Json?           @map("warnings_json")
+  errorMessage    String?         @map("error_message")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  pages           EssayScanPage[]
+
+  @@index([userId, createdAt])
+  @@map("essay_scans")
+}
+
+/// Página digitalizada (JPEG já processado no aparelho). Separada do scan para
+/// a listagem não carregar imagem e para o aluno poder apagar as fotos sem
+/// perder o texto.
+model EssayScanPage {
+  id        String    @id @default(uuid()) @db.Uuid
+  scanId    String    @map("scan_id") @db.Uuid
+  scan      EssayScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  index     Int
+  mimeType  String    @map("mime_type") @db.VarChar(40)
+  sizeBytes Int       @map("size_bytes")
+  image     Bytes
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@unique([scanId, index])
+  @@map("essay_scan_pages")
+}
+
+enum EssayScanStatus {
+  PROCESSING
+  READY
+  CONFIRMED
+  FAILED
+}
+
+/// Código impresso na faixa do cartão-resposta (20 bits): identifica o
+/// simulado (pelo template) e, na folha personalizada, o aluno. Assim o
+/// professor escaneia a folha de qualquer aluno sem dizer de quem é.
+model AnswerSheetCode {
+  code       Int                 @id
+  templateId String              @map("template_id") @db.Uuid
+  template   AnswerSheetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Aluno da folha personalizada; nulo = folha genérica (vale para quem escanear).
+  studentId  String?             @map("student_id") @db.Uuid
+  student    User?               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy  String              @map("created_by") @db.Uuid
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  @@index([templateId, studentId])
+  @@map("answer_sheet_codes")
+}
+
+/// PDF enviado ao scanner de cartão-resposta (uma folha por página). Guardado
+/// para auditoria e para o corretor baixar; cada página vira uma leitura.
+model AnswerSheetBatch {
+  id          String              @id @default(uuid()) @db.Uuid
+  scannedById String              @map("scanned_by_id") @db.Uuid
+  scannedBy   User                @relation(fields: [scannedById], references: [id], onDelete: Cascade)
+  pdf         Bytes
+  pages       Int
+  sizeBytes   Int                 @map("size_bytes")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  uploads     AnswerSheetUpload[]
+
+  @@index([scannedById, createdAt])
+  @@map("answer_sheet_batches")
 }

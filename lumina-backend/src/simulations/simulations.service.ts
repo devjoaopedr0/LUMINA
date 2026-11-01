@@ -1,50 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { assertInstitutionClassMember } from '../workspaces/class-membership-policy';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
 import { TopicMasteryService } from '../questions/topic-mastery.service';
-import { AnswerSheetService } from './answer-sheet.service';
+import { upsertSheetTemplate } from './omr/sheet-template';
 import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 
 /** Papéis com vínculo de instituição além de aluno — só eles podem pedir o
  *  cartão-resposta automático na criação do simulado (item pedido pelo
  *  usuário: "opcional e ligado somente às instituições"). */
 const INSTITUTION_STAFF_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR'];
-
-/** Gera markers de canto + layout de bolhas (coordenadas normalizadas 0-1)
- *  para o AnswerSheetTemplate de um simulado recém-criado — uma bolha por
- *  alternativa de cada questão, na mesma ordem/posição da prova. A OCR do
- *  scanner é simulada (não lê pixels de verdade), então a exigência aqui é
- *  estrutural: uma linha por questão, com o número certo de bolhas. */
-function buildAutoAnswerSheetLayout(items: { position: number; alternatives: unknown }[]) {
-  const markers = [
-    { name: 'topLeft', x: 0.04, y: 0.04 },
-    { name: 'topRight', x: 0.96, y: 0.04 },
-    { name: 'bottomLeft', x: 0.04, y: 0.96 },
-    { name: 'bottomRight', x: 0.96, y: 0.96 },
-  ];
-  const columns = items.length > 30 ? 2 : 1;
-  const perColumn = Math.ceil(items.length / columns) || 1;
-  const top = 0.1;
-  const bottom = 0.05;
-  const rowHeight = (1 - top - bottom) / perColumn;
-  const layout = items.map((item, index) => {
-    const column = Math.floor(index / perColumn);
-    const rowInColumn = index % perColumn;
-    const y = top + rowInColumn * rowHeight + rowHeight / 2;
-    const alternativesCount = Array.isArray(item.alternatives) ? item.alternatives.length : 5;
-    const baseX = column === 0 ? 0.15 : 0.6;
-    const bubbles = Array.from({ length: alternativesCount }, (_, i) => ({
-      position: i + 1,
-      x: baseX + i * 0.06,
-      y,
-      radius: 0.008,
-    }));
-    return { questionNumber: item.position, bubbles };
-  });
-  return { markers, layout };
-}
 
 /** Corrigir um simulado longo mexe no domínio de dezenas de tópicos: precisa
  *  de mais que os 5 s padrão de uma transação. */
@@ -55,7 +22,6 @@ export class SimulationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: QuestionAccessService,
-    private readonly answerSheetService: AnswerSheetService,
     private readonly topicMasteryService: TopicMasteryService,
   ) {}
 
@@ -470,16 +436,7 @@ export class SimulationsService {
 
     let answerSheetTemplate: { id: string } | null = null;
     if (generateAnswerSheet && accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(accountType)) {
-      const { markers, layout } = buildAutoAnswerSheetLayout(row.items);
-      answerSheetTemplate = await this.answerSheetService.createTemplate(userId, {
-        name: `Gabarito — ${row.title}`,
-        description: `Cartão-resposta gerado automaticamente para o simulado "${row.title}".`,
-        markers,
-        layout,
-        expectedWidth: 1240,
-        expectedHeight: 1754,
-        simulationId: row.id,
-      });
+      answerSheetTemplate = (await upsertSheetTemplate(this.prisma, row)).template;
     }
     return this.publicSimulation({ ...row, answerSheetTemplate });
   }
@@ -496,7 +453,12 @@ export class SimulationsService {
     return this.publicSimulation(row, includeAnswers);
   }
 
-  async submit(userId: string, id: string, answers: SimulationAnswerDto[]) {
+  /**
+   * `allowBlank`: o cartão-resposta físico pode ter questão em branco ou anulada (0), que conta como erro.
+   * `deferMastery`: não mexe no domínio por tópico agora — o cartão-resposta só o aplica no lançamento
+   * final (registerSimulationMastery), depois da última correção do corretor.
+   */
+  async submit(userId: string, id: string, answers: SimulationAnswerDto[], options: { allowBlank?: boolean; deferMastery?: boolean } = {}) {
     const simulation = await this.prisma.simulation.findUnique({
       where: { id }, include: { items: { orderBy: { position: 'asc' } }, class: { select: { members: { where: { userId }, select: { id: true } }, teachers: { where: { userId }, select: { id: true } } } } },
     });
@@ -507,7 +469,7 @@ export class SimulationsService {
       const choice = byPosition.get(item.position);
       const alternatives = item.alternatives as { position: number }[];
       // No modelo ENEM a questão pode ficar em branco (0): conta como erro.
-      if (choice === 0 && simulation.enemDay) continue;
+      if (choice === 0 && (simulation.enemDay || options.allowBlank)) continue;
       if (!choice || !alternatives.some(a => a.position === choice)) throw new BadRequestException(`Resposta inválida para a questão ${item.position}.`);
     }
     const correct = simulation.items.filter(item => byPosition.get(item.position) === item.correctPosition).length;
@@ -524,26 +486,51 @@ export class SimulationsService {
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.simulationSubmission.create({ data: { id: randomUUID(), simulationId: id, userId, answers: answers.map(a => ({ position: a.position, selectedPosition: a.selectedPosition })), correct, total: simulation.items.length, startedAt: new Date() } });
-        // Uma atualização de domínio por tópico, com as respostas dele na
-        // ordem da prova — não uma por questão (ver registerAttempts).
-        const byTopic = new Map<string, { subjectId: string | null; topicId: string | null; results: boolean[] }>();
-        for (const item of simulation.items) {
-          if (!item.questionId) continue;
-          const question = questionById.get(item.questionId);
-          if (!question?.topicId) continue;
-          const entry = byTopic.get(question.topicId) ?? { subjectId: question.subjectId, topicId: question.topicId, results: [] };
-          entry.results.push(byPosition.get(item.position) === item.correctPosition);
-          byTopic.set(question.topicId, entry);
-        }
-        for (const entry of byTopic.values()) {
-          await this.topicMasteryService.registerAttempts(userId, entry.subjectId, entry.topicId, entry.results, tx);
-        }
+        if (!options.deferMastery) await this.applyMastery(userId, simulation.items, questionById, byPosition, tx);
       }, SUBMIT_TX_OPTIONS);
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') throw new ConflictException('Este simulado já foi enviado.');
       throw error;
     }
     return this.submission(userId, id);
+  }
+
+  /**
+   * Uma atualização de domínio por tópico, com as respostas dele na ordem da
+   * prova — não uma por questão (ver registerAttempts).
+   */
+  private async applyMastery(
+    userId: string,
+    items: { position: number; questionId: string | null; correctPosition: number }[],
+    questionById: Map<string, { subjectId: string | null; topicId: string | null }>,
+    byPosition: Map<number, number>,
+    tx: Prisma.TransactionClient,
+  ) {
+    const byTopic = new Map<string, { subjectId: string | null; topicId: string | null; results: boolean[] }>();
+    for (const item of items) {
+      if (!item.questionId) continue;
+      const question = questionById.get(item.questionId);
+      if (!question?.topicId) continue;
+      const entry = byTopic.get(question.topicId) ?? { subjectId: question.subjectId, topicId: question.topicId, results: [] };
+      entry.results.push(byPosition.get(item.position) === item.correctPosition);
+      byTopic.set(question.topicId, entry);
+    }
+    for (const entry of byTopic.values()) {
+      await this.topicMasteryService.registerAttempts(userId, entry.subjectId, entry.topicId, entry.results, tx);
+    }
+  }
+
+  /**
+   * Domínio por tópico de um simulado com as respostas finais — usado pelo
+   * cartão-resposta no lançamento final, depois da última correção. `tx`
+   * permite marcar a folha como finalizada na mesma transação.
+   */
+  async registerSimulationMastery(userId: string, simulationId: string, answers: { position: number; selectedPosition: number }[], tx: Prisma.TransactionClient) {
+    const items = await tx.simulationItem.findMany({ where: { simulationId }, select: { position: true, questionId: true, correctPosition: true } });
+    const questionIds = items.map(item => item.questionId).filter((qid): qid is string => !!qid);
+    const questions = questionIds.length ? await tx.question.findMany({ where: { id: { in: questionIds } }, select: { id: true, subjectId: true, topicId: true } }) : [];
+    const byPosition = new Map(answers.map(a => [a.position, a.selectedPosition]));
+    await this.applyMastery(userId, items, new Map(questions.map(q => [q.id, q])), byPosition, tx);
   }
 
   async submission(userId: string, id: string) {

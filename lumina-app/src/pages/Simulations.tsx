@@ -340,11 +340,9 @@ export function Simulations() {
         <div className="my-5 flex flex-wrap items-center gap-3 print:hidden">
           <button onClick={() => { stopTimer(); setParams({}); }} className="rounded-lg border px-4 py-2">Voltar aos simulados</button>
           <button onClick={() => window.print()} className="rounded-lg bg-graphite px-4 py-2 text-white">Imprimir prova e cartão</button>
-          {simulation.answerSheetTemplateId && (
-            <Link to="/app/gabarito-scanner" className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary">
-              Cartão-resposta pronto para leitura →
-            </Link>
-          )}
+          <Link to={`/app/gabarito-scanner/imprimir/${simulation.id}`} className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary">
+            Imprimir cartão-resposta (leitura por foto) →
+          </Link>
           {showTimer && (
             <div className={`ml-auto flex items-center gap-2 px-3 py-1 rounded-lg font-mono text-lg ${isRealExamMode ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-primary-50 text-primary-700 border border-primary-200'}`}>
               <span className="sr-only">Tempo restante</span>

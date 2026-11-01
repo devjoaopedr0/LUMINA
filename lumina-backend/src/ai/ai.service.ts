@@ -5,7 +5,7 @@ import { humanizeReasons, luminiaSystemPrompt } from './luminia-persona';
 
 interface ProviderMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[];
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
@@ -15,7 +15,26 @@ const DEFAULT_MAX_TOKENS = 800;
 interface GenerationOptions {
   maxTokens?: number;
   timeoutMs?: number;
+  /** Padrão 0.8 (conversa). Correção pede valor baixo, para ser estável. */
+  temperature?: number;
+  /** Imagem (data URL) anexada à mensagem do usuário — leitura por visão. */
+  imageDataUrl?: string;
+  /** Modelos a tentar, em ordem, no lugar de AI_MODEL + AI_FALLBACK_MODELS. */
+  models?: string[];
 }
+
+/** Resultado de uma geração fora da conversa, com o modelo que respondeu. */
+export interface GenerationResult {
+  text: string;
+  model: string;
+}
+
+/** Modelos com entrada de imagem usados quando AI_VISION_MODELS não está definido. */
+const DEFAULT_OPENROUTER_VISION_MODELS = [
+  'google/gemma-4-31b-it:free',
+  'nvidia/nemotron-3.5-super-vl:free',
+  'google/gemma-4-26b-a4b-it:free',
+];
 
 @Injectable()
 export class AiService {
@@ -49,15 +68,17 @@ export class AiService {
 
     const provider = this.config.get<string>('AI_PROVIDER')?.toLowerCase() || 'mock';
 
+    // O chat devolve só a mensagem: o modelo que respondeu é detalhe interno.
+    const only = async (call: Promise<AiChatResponseDto>) => ({ message: (await call).message });
     switch (provider) {
       case 'openai':
-        return this.callOpenAI(message, history, context, systemPrompt);
+        return only(this.callOpenAI(message, history, context, systemPrompt));
       case 'openrouter':
-        return this.callOpenRouter(message, history, context, systemPrompt);
+        return only(this.callOpenRouter(message, history, context, systemPrompt));
       case 'anthropic':
-        return this.callAnthropic(message, history, context, systemPrompt);
+        return only(this.callAnthropic(message, history, context, systemPrompt));
       case 'groq':
-        return this.callGroq(message, history, context, systemPrompt);
+        return only(this.callGroq(message, history, context, systemPrompt));
       case 'mock':
       default:
         return this.mockResponse(message, history, context);
@@ -91,6 +112,54 @@ export class AiService {
       default:
         return null;
     }
+  }
+
+  /**
+   * Geração para tarefas estruturadas (correção de redação, leitura de foto).
+   * Diferente de `generateText`: aceita imagem, temperatura própria e devolve
+   * qual modelo respondeu — a correção guarda isso para auditoria. Com
+   * imagem, usa só modelos com entrada de imagem (`AI_VISION_MODELS`).
+   * Devolve null sem provedor configurado (AI_PROVIDER=mock).
+   */
+  async generateStructured(params: {
+    system: string;
+    prompt: string;
+    imageDataUrl?: string;
+    maxTokens?: number;
+    timeoutMs?: number;
+    temperature?: number;
+    /** Modelos próprios da tarefa (ex.: AI_ESSAY_MODELS); vazio = cadeia padrão. */
+    models?: string[];
+  }): Promise<GenerationResult | null> {
+    const provider = this.config.get<string>('AI_PROVIDER')?.toLowerCase() || 'mock';
+    const message: AiChatMessageDto = { role: 'user', content: params.prompt };
+    const options: GenerationOptions = {
+      maxTokens: params.maxTokens,
+      timeoutMs: params.timeoutMs,
+      temperature: params.temperature,
+      imageDataUrl: params.imageDataUrl,
+      models: params.models?.length ? params.models : undefined,
+    };
+    const vision = Boolean(params.imageDataUrl);
+    let result: AiChatResponseDto & { model?: string };
+    switch (provider) {
+      case 'openai':
+        result = await this.callOpenAI(message, [], undefined, params.system, options, vision);
+        break;
+      case 'openrouter':
+        result = await this.callOpenRouter(message, [], undefined, params.system, options, vision);
+        break;
+      case 'anthropic':
+        result = await this.callAnthropic(message, [], undefined, params.system, options);
+        break;
+      case 'groq':
+        if (vision) return null;
+        result = await this.callGroq(message, [], undefined, params.system, options);
+        break;
+      default:
+        return null;
+    }
+    return { text: result.message, model: result.model ?? provider };
   }
 
   /**
@@ -154,12 +223,15 @@ export class AiService {
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
     options: GenerationOptions = {},
-  ): Promise<AiChatResponseDto> {
+    vision = false,
+  ): Promise<AiChatResponseDto & { model?: string }> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
       throw new BadRequestException('OPENAI_API_KEY não configurada no ambiente.');
     }
-    const model = this.config.get<string>('AI_MODEL') || this.config.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
+    const model = vision
+      ? this.listFromEnv('AI_VISION_MODELS')[0] || 'gpt-4o-mini'
+      : this.config.get<string>('AI_MODEL') || this.config.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
     return this.chatCompletion({
       url: 'https://api.openai.com/v1/chat/completions',
       apiKey,
@@ -187,7 +259,8 @@ export class AiService {
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
     options: GenerationOptions = {},
-  ): Promise<AiChatResponseDto> {
+    vision = false,
+  ): Promise<AiChatResponseDto & { model?: string }> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
       throw new BadRequestException('OPENAI_API_KEY não configurada no ambiente.');
@@ -196,15 +269,18 @@ export class AiService {
       this.config.get<string>('OPENAI_BASE_URL')?.replace(/\/+$/, '') ??
       'https://openrouter.ai/api/v1';
     const primary = this.config.get<string>('AI_MODEL') || 'openrouter/free';
-    const fallbacks = (this.config.get<string>('AI_FALLBACK_MODELS') ?? '')
-      .split(',')
-      .map((name) => name.trim())
-      .filter(Boolean);
+    const fallbacks = this.listFromEnv('AI_FALLBACK_MODELS');
+    const visionModels = this.listFromEnv('AI_VISION_MODELS');
+    const models = vision
+      ? visionModels.length
+        ? visionModels
+        : DEFAULT_OPENROUTER_VISION_MODELS
+      : options.models ?? [primary, ...fallbacks];
 
     return this.chatCompletion({
       url: `${baseUrl}/chat/completions`,
       apiKey,
-      models: [primary, ...fallbacks],
+      models,
       providerName: 'OpenRouter',
       message,
       history,
@@ -241,12 +317,18 @@ export class AiService {
     headers: Record<string, string>;
     /** Campos do corpo que só este provedor entende. */
     extraBody?: Record<string, unknown>;
-  }): Promise<AiChatResponseDto> {
+  }): Promise<AiChatResponseDto & { model?: string }> {
+    const userContent: ProviderMessage['content'] = params.options.imageDataUrl
+      ? [
+          { type: 'text', text: params.message.content },
+          { type: 'image_url', image_url: { url: params.options.imageDataUrl } },
+        ]
+      : params.message.content;
     const messages: ProviderMessage[] = [
       { role: 'system', content: params.systemPrompt },
       ...(params.context ? [{ role: 'system' as const, content: params.context }] : []),
       ...params.history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: params.message.content },
+      { role: 'user', content: userContent },
     ];
 
     let lastError = 'nenhuma tentativa executada';
@@ -262,7 +344,7 @@ export class AiService {
           body: JSON.stringify({
             model,
             messages,
-            temperature: 0.8,
+            temperature: params.options.temperature ?? 0.8,
             max_tokens: params.options.maxTokens ?? DEFAULT_MAX_TOKENS,
             ...params.extraBody,
           }),
@@ -286,7 +368,7 @@ export class AiService {
         };
         const content = data.choices?.[0]?.message?.content?.trim();
         if (content) {
-          return { message: content };
+          return { message: content, model };
         }
 
         // Resposta 200 sem texto: o modelo gastou o orçamento com raciocínio
@@ -315,7 +397,7 @@ export class AiService {
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
     options: GenerationOptions = {},
-  ): Promise<AiChatResponseDto> {
+  ): Promise<AiChatResponseDto & { model?: string }> {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     const model = this.config.get<string>('ANTHROPIC_MODEL') || 'claude-3-haiku-20240307';
 
@@ -323,9 +405,16 @@ export class AiService {
       throw new BadRequestException('ANTHROPIC_API_KEY não configurada no ambiente.');
     }
 
+    const image = options.imageDataUrl?.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+    const userContent = image
+      ? [
+          { type: 'image', source: { type: 'base64', media_type: image[1], data: image[2] } },
+          { type: 'text', text: message.content },
+        ]
+      : message.content;
     const messages = [
       ...history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message.content },
+      { role: 'user', content: userContent },
     ];
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -339,7 +428,7 @@ export class AiService {
       body: JSON.stringify({
         model,
         max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
-        temperature: 0.7,
+        temperature: options.temperature ?? 0.7,
         system: context ? `${systemPrompt}\n\n${context}` : systemPrompt,
         messages,
       }),
@@ -354,7 +443,15 @@ export class AiService {
       content: { text: string }[];
     };
 
-    return { message: data.content[0]?.text?.trim() ?? 'Sem resposta.' };
+    return { message: data.content[0]?.text?.trim() ?? 'Sem resposta.', model };
+  }
+
+  /** Lista separada por vírgula vinda do ambiente (ex.: AI_FALLBACK_MODELS). */
+  private listFromEnv(key: string): string[] {
+    return (this.config.get<string>(key) ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
   }
 
   /** Tempo máximo de espera por UMA chamada ao provedor (`AI_TIMEOUT_MS`). */
@@ -372,7 +469,7 @@ export class AiService {
     context?: string,
     systemPrompt = luminiaSystemPrompt(),
     options: GenerationOptions = {},
-  ): Promise<AiChatResponseDto> {
+  ): Promise<AiChatResponseDto & { model?: string }> {
     const apiKey = this.config.get<string>('GROQ_API_KEY');
     if (!apiKey) {
       throw new BadRequestException('GROQ_API_KEY não configurada no ambiente.');

@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import {
-  ArrowRight, BookOpenCheck, Bookmark, CalendarDays, CheckCircle2, ChevronRight,
-  Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb,
-  LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X,
-} from "lucide-react";
+import { ArrowRight, BookOpenCheck, Bookmark, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -23,6 +19,7 @@ const NAV_ITEMS = [
   { to: "/app/turmas", label: "Turmas", icon: School },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
+  { to: "/app/redacoes/scanner", label: "Corrigir redação por foto", icon: ScanLine },
   { to: "/app/redacoes/modelos", label: "Modelos nota mil", icon: Award },
   { to: "/app/question-scanner", label: "Scanner de questões", icon: Sparkles },
   { to: "/app/gabarito-scanner", label: "Scanner de gabarito", icon: FileText },
