@@ -454,11 +454,9 @@ o mesmo número de acertos coerentes. O que NÃO é igual ao ENEM, e a tela avis
 - Os parâmetros das questões não são calibrados em pré-teste: a dificuldade vem
   do nível cadastrado (fácil, média, difícil), a discriminação é a mesma para
   todas e o acerto no chute é 1/número de alternativas.
-- A régua (piso, média e teto de cada área) e o ajuste de dificuldade por área
-  foram escolhidos para a relação acertos → nota ficar parecida com a das
-  edições recentes (30/45 em Matemática dá cerca de 770; em Linguagens, cerca de
-  630). São valores de memória, não validados contra notas reais: conferir com
-  os dados do INEP e ajustar em `enem-tri.ts`.
+- A régua de cada área e o ajuste de dificuldade por área foram ajustados aos
+  dados do ENEM 2025 (calibração C3, abaixo): 30/45 em Matemática dá cerca de
+  760 (no ENEM, 767); em Linguagens, cerca de 605 (no ENEM, 601).
 
 O que entra na estimativa:
 
@@ -502,6 +500,103 @@ atualização de `TopicMastery` (resposta de questão, simulado, tarefa concluí
 - A evolução da nota estimada (`GET study/score-estimate/history`, 8 semanas)
   não depende dessa tabela: é recalculada pelas respostas, que têm data, então
   vale também para as semanas anteriores ao recurso.
+
+### Calibração (pendência depois das fases 1–5)
+
+Os pesos da prioridade, as durações das atividades, a régua da nota e a
+dificuldade das questões são estimativas. A calibração troca o chute pelo dado
+de uso, em fases que só valem quando há dado suficiente:
+
+| Fase | O que calibra | Com que dado | Estado |
+| --- | --- | --- | --- |
+| **C1** | Dificuldade de cada questão na nota estilo TRI | Primeira resposta de cada aluno (avulsas e simulados) | Implementada |
+| **C2** | Duração de cada tipo de atividade | Tempo ativo medido na tarefa e duração do simulado × minutos agendados | Implementada |
+| **C3** | Régua de cada área e forma da curva acertos → nota em `enem-tri.ts` | ENEM 2025: notas mínima e máxima por área e nota por número de acertos (microdados) | Implementada |
+| **C4** | Pesos de aprendizado da prioridade (§4) | Ganho de domínio nos 7 dias depois de cada tarefa, pelo estado do tópico antes dela | Implementada (só age com 10 alunos e 200 tarefas) |
+
+**C1 — dificuldade pelo acerto real** (`questions/question-calibration.ts`). O
+acerto de primeira de cada questão é comparado com o das outras questões do
+mesmo nível na mesma área, já descontado o chute; a diferença vira um ajuste no
+b da questão (`bOffset`), usado na nota de todo simulado e na nota estimada.
+
+- É calibração relativa ao banco: o nível cadastrado continua sendo a âncora da
+  escala, porque os alunos do app não são a população do ENEM.
+- Só a partir de 5 alunos diferentes na questão e 30 respostas nas outras do
+  nível. Com um aluno só, a calibração seria o desempenho dele rebaixando a
+  própria nota — então, com a base de hoje (conta demo), nada muda.
+- O ajuste é encolhido (n / (n + 20)) e não passa de um nível para cima ou
+  para baixo. Quando ele leva a questão para mais perto de outro nível, o
+  resultado traz `suggestedDifficulty` — base para revisar a classificação.
+- Calculado para o banco inteiro e guardado em memória por uma hora
+  (`QuestionCalibrationService`); com muito mais respostas, vira tabela.
+
+**C2 — duração no ritmo do aluno** (`schedules/activity-durations.ts`). Antes
+não havia tempo medido por tarefa: o cronômetro mede por matéria e a rota de
+tempo por tarefa não era usada. Agora a prática e o resumo de teoria medem o
+tempo ativo (só com a aba visível, `useTaskActiveTime`) e o registram na tarefa
+ao fechar; no simulado vale do início ao envio.
+
+- Por tipo de atividade, a mediana da razão medido/agendado das tarefas
+  concluídas nos últimos 60 dias ajusta a duração padrão. Precisa de 4 tarefas
+  medidas do tipo; o ajuste é encolhido (n / (n + 4)), fica entre 75% e 150%
+  da padrão e em múltiplos de 5 minutos.
+- Medições de menos de 20% ou mais de 3x o agendado ficam de fora (abriu e
+  fechou, ou esqueceu aberto).
+- O tempo registrado na tarefa entra também nas horas estudadas do progresso,
+  que soma só tempo registrado. Quem usar o cronômetro da matéria ao mesmo
+  tempo conta duas vezes.
+- Revisão e Redação ainda não têm tela que meça tempo: ficam na duração padrão.
+
+**C3 — régua da nota pelo ENEM 2025** (`schedules/enem-tri.ts`). A régua
+anterior (piso, média e teto escritos de memória) dava nota alta demais a quem
+acerta pouco e baixa demais a quem acerta muito: 15/45 em Matemática dava 638
+(no ENEM 2025, 553) e gabaritar Humanas, 794 (856).
+
+- Dados: notas mínima e máxima de cada área no ENEM 2025 e a nota média por
+  número de acertos dos microdados de 2025 (Matemática: 15, 20, 30, 40 e 44
+  acertos; Linguagens: 15, 30 e 45; Humanas: 25 e 45; Natureza: só 43). Para
+  comparar: 2023 e 2024 tiveram pisos e tetos parecidos (Matemática 320–959 e
+  334–962) e médias perto de 530, 520, 496 e 530.
+- Ajuste: numa prova de 45 (11 fáceis, 25 médias, 9 difíceis, acertando
+  primeiro as mais fáceis), busca da discriminação (0,6 a 1,4; ficou 0,8), do
+  deslocamento de dificuldade e de uma régua linear (centro + inclinação·θ,
+  limitada ao piso e ao teto) por área, por mínimos quadrados.
+- Erro médio do ajuste: 11 pontos em Matemática, 5 em Linguagens, menos de 1
+  em Humanas. Natureza só tinha dois pontos: o deslocamento dela é o de
+  Matemática, então ela é a menos confiável.
+- Os números de 2025 vêm de sites de educação que citam o INEP e os
+  microdados, não do relatório do INEP direto. O teste
+  `reproduz a relação acertos → nota do ENEM 2025` falha se a régua se afastar
+  mais de 30 pontos desses pontos. A cada edição nova, refazer o ajuste.
+
+**C4 — pesos da prioridade pelo ganho de domínio**
+(`schedules/priority-calibration.ts`). Dos cinco termos da prioridade, dois
+dizem o que vale estudar (incidência e objetivo do aluno) e ficam fixos: não
+se medem pelo aprendizado. Os outros três (baixo domínio, nunca estudado, tempo
+parado) apostam em onde estudar rende mais, e isso dá para conferir.
+
+- Amostra: tarefa de Teoria, Questões ou Simulado concluída, de qualquer
+  aluno, nos últimos 180 dias. Revisão e Redação ficam de fora: entram pela
+  revisão espaçada e pela rotina semanal, não pela prioridade.
+- O estado de antes vem de `topic_mastery_history` (a última linha antes do
+  dia da conclusão: domínio, se já tinha estudado, dias parado) e o ganho é o
+  domínio da última linha até 7 dias depois menos o de antes. Não precisa
+  guardar nada na tarefa. Tarefas de antes de 13/10/2026 ficam de fora: antes
+  da tabela não há como reconstruir o estado.
+- Para cada termo, a correlação com o ganho; negativa vira zero. Os 0,65 dos
+  três são redivididos na proporção das correlações, então a prioridade fica
+  na mesma escala.
+- Só com 10 alunos e 200 tarefas; encolhido (n / (n + 200)) em direção ao
+  padrão, cada peso entre metade e uma vez e meia o padrão (a soma volta a
+  0,65 por um fator comum achado por bisseção, sem furar os limites). Termo
+  sem variação nas amostras ou nenhuma correlação positiva: pesos padrão.
+- Calculado para todos e guardado em memória por uma hora
+  (`PriorityCalibrationService`); o gerador recebe os pesos em
+  `priorityWeights`. Com a base de hoje (conta demo), nada muda.
+- Limite: é correlação, não efeito causal. Tópico com domínio baixo tem mais
+  espaço para subir, e o termo de baixo domínio sai favorecido por isso. É a
+  direção que se quer (estudar onde há mais a ganhar), mas o número não diz
+  quanto a tarefa CAUSOU do ganho.
 
 ## 14. Design visual (seção 19)
 

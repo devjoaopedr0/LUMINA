@@ -237,6 +237,20 @@ export class SchedulesRepository {
     });
   }
 
+  /** Tarefas concluídas desde `since`, com o tempo medido nelas: o registrado
+   *  na própria tarefa e, na de simulado, o início e o envio do simulado. */
+  findMeasuredTasks(tx: Db, scheduleId: string, since: Date) {
+    return tx.studyTask.findMany({
+      where: { scheduleId, status: StudyTaskStatus.DONE, completedAt: { gte: since } },
+      select: {
+        activityType: true,
+        scheduledMinutes: true,
+        timeLogs: { select: { durationMinutes: true } },
+        simulation: { select: { submissions: { select: { startedAt: true, submittedAt: true } } } },
+      },
+    });
+  }
+
   async findProgressByScheduleId(scheduleId: string) {
     return this.prisma.studyProgress.findUnique({ where: { scheduleId } });
   }

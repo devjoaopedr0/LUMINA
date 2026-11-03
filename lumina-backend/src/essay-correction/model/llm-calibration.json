@@ -1,0 +1,145 @@
+{
+  "version": 2,
+  "promptVersion": "v2-competencia",
+  "byModel": {
+    "gemini:gemini-3.5-flash-lite": {
+      "perCompetency": {
+        "C1": {
+          "type": "identity"
+        },
+        "C2": {
+          "type": "isotonic",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              40,
+              67.4
+            ],
+            [
+              80,
+              97.8
+            ],
+            [
+              120,
+              125.5
+            ],
+            [
+              160,
+              150
+            ],
+            [
+              200,
+              200
+            ]
+          ]
+        },
+        "C3": {
+          "type": "identity"
+        },
+        "C4": {
+          "type": "identity"
+        },
+        "C5": {
+          "type": "identity"
+        }
+      },
+      "fittedAt": "2026-11-01T19:34:33.280Z",
+      "sampleSize": 81,
+      "selection": {
+        "C1": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 35.6,
+            "linear": 37.5,
+            "isotonic": 33.6
+          },
+          "n": 81,
+          "rejectedForExtremes": []
+        },
+        "C2": {
+          "fn": {
+            "type": "isotonic",
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                40,
+                67.4
+              ],
+              [
+                80,
+                97.8
+              ],
+              [
+                120,
+                125.5
+              ],
+              [
+                160,
+                150
+              ],
+              [
+                200,
+                200
+              ]
+            ]
+          },
+          "loo": {
+            "identity": 32.6,
+            "linear": 29.6,
+            "isotonic": 29.6
+          },
+          "n": 81,
+          "rejectedForExtremes": [
+            "linear"
+          ]
+        },
+        "C3": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 34.1,
+            "linear": 43.5,
+            "isotonic": 41.5
+          },
+          "n": 81,
+          "rejectedForExtremes": []
+        },
+        "C4": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 44,
+            "linear": 44,
+            "isotonic": 44
+          },
+          "n": 81,
+          "rejectedForExtremes": []
+        },
+        "C5": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 33.6,
+            "linear": 37,
+            "isotonic": 28.6
+          },
+          "n": 81,
+          "rejectedForExtremes": [
+            "isotonic"
+          ]
+        }
+      }
+    }
+  }
+}

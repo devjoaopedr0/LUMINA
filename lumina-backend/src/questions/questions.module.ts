@@ -9,6 +9,7 @@ import { QuestionValidator } from './import/question-validator';
 import { ExamsRepository } from './exams.repository';
 import { QuestionAccessService } from './question-access.service';
 import { QuestionAttemptsRepository } from './question-attempts.repository';
+import { QuestionCalibrationService } from './question-calibration.service';
 import { QuestionCatalogService } from './question-catalog.service';
 import { QuestionCatalogController } from './question-catalog.controller';
 import { QuestionPerformanceService } from './question-performance.service';
@@ -47,6 +48,7 @@ import {
     QuestionTextSearchRepository,
     ErrorNotebookService,
     TopicMasteryService,
+    QuestionCalibrationService,
   ],
   providers: [
     QuestionsService,
@@ -61,6 +63,7 @@ import {
     ExamsRepository,
     QuestionAccessService,
     QuestionCatalogService,
+    QuestionCalibrationService,
     QuestionPerformanceService,
     QuestionValidator,
     QuestionDeduplicator,

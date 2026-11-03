@@ -11,6 +11,7 @@ import {
   apiGetTaskPractice,
 } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import { useTaskActiveTime } from "@/hooks/useTaskActiveTime";
 
 interface TaskPracticeProps {
   task: StudyTask;
@@ -33,6 +34,7 @@ function resultMessage(correct: number, answered: number): string {
  * marcar "Concluir" à mão.
  */
 export function TaskPractice({ task, onClose, onCompleted }: TaskPracticeProps) {
+  useTaskActiveTime(task.id);
   const [practice, setPractice] = useState<StudyTaskPractice | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);

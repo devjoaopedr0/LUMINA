@@ -1,5 +1,6 @@
 import { TopicMasteryStatus, StudyActivityType } from '@prisma/client';
 import type { SchedulePhase } from './schedule-phase';
+import { DEFAULT_PRIORITY_WEIGHTS, type PriorityWeights } from './priority-calibration';
 
 /**
  * Prioridade de conteúdo (cronograma adaptativo, fase 2 — ver
@@ -9,7 +10,8 @@ import type { SchedulePhase } from './schedule-phase';
  * vez de 15), corrigido aqui.
  *
  * Os pesos são "chutes iniciais, calibráveis depois" (nota do próprio
- * design doc) — não há dado de uso real ainda para calibrar.
+ * design doc); os de aprendizado são calibrados pelo ganho de domínio quando
+ * há alunos suficientes (calibração C4, priority-calibration.ts).
  */
 export interface TopicPriorityInput {
   /** 0-100; null quando o tópico nunca foi estudado (NAO_ESTUDADO). */
@@ -72,14 +74,19 @@ export function topicPriorityTerms(input: TopicPriorityInput): TopicPriorityTerm
   };
 }
 
-export function computeTopicPriority(input: TopicPriorityInput): number {
+/** `weights` padrão são os chutes do design; a calibração C4
+ *  (priority-calibration.ts) redivide os pesos de aprendizado pelo ganho real. */
+export function computeTopicPriority(
+  input: TopicPriorityInput,
+  weights: PriorityWeights = DEFAULT_PRIORITY_WEIGHTS,
+): number {
   const terms = topicPriorityTerms(input);
   return (
-    0.35 * terms.baixoDominio +
-    0.25 * terms.incidencia +
-    0.15 * (terms.naoEstudado ? 100 : 0) +
-    0.15 * terms.recencia +
-    0.10 * terms.pesoObjetivo
+    weights.baixoDominio * terms.baixoDominio +
+    weights.incidencia * terms.incidencia +
+    weights.naoEstudado * (terms.naoEstudado ? 100 : 0) +
+    weights.recencia * terms.recencia +
+    weights.pesoObjetivo * terms.pesoObjetivo
   );
 }
 

@@ -96,6 +96,26 @@ describe('ScheduleGeneratorService.buildTasksForSession', () => {
     expect(tasks[1]).toMatchObject({ topicId: 'topic-geometria', activityType: 'TEORIA' });
   });
 
+  it('as tarefas seguem a duração no ritmo do aluno quando ela vem na sessão', async () => {
+    const db: any = {
+      subject: { findUnique: vi.fn().mockResolvedValue({ id: 'qb-math', name: 'Matemática' }) },
+      topic: { findMany: vi.fn().mockResolvedValue([
+        { id: 'topic-funcoes', subjectId: 'qb-math', name: 'Funções' },
+        { id: 'topic-geometria', subjectId: 'qb-math', name: 'Geometria' },
+      ]) },
+      topicMastery: { findMany: vi.fn().mockResolvedValue([
+        { topicId: 'topic-funcoes', masteryScore: 90, status: TopicMasteryStatus.DOMINADO, lastStudiedAt: new Date('2026-09-20'), nextReviewAt: new Date('2026-09-29') },
+      ]) },
+      studyTask: { findMany: vi.fn().mockResolvedValue([]) },
+      question: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const durations = { TEORIA: 55, QUESTOES: 40, REVISAO: 15, SIMULADO: 60, REDACAO: 45 };
+    const service = new ScheduleGeneratorService({} as never);
+    const tasks = await service.buildTasksForSession({ ...session, scheduledMinutes: 120, durations }, userId, [mathStudySubject()], db);
+    expect(tasks[0]).toMatchObject({ activityType: 'REVISAO', scheduledMinutes: 15 });
+    expect(tasks[1]).toMatchObject({ activityType: 'TEORIA', scheduledMinutes: 55 });
+  });
+
   it('tópico com mais questões no banco (maior incidência) vem antes na fila', async () => {
     const db: any = {
       subject: { findUnique: vi.fn().mockResolvedValue({ id: 'qb-math', name: 'Matemática' }) },

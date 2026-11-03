@@ -1,5 +1,60 @@
 # Status funcional da Lumina
 
+## Atualização de 01/11/2026 — Correção de redação por competência, calibração funcional e cota mensal
+
+- **Por competência:** cada avaliador avalia as cinco competências em chamadas separadas, com a grade, os trechos da cartilha e os sinais só daquela competência. O terceiro avaliador reavalia só as competências que divergiram. Cada competência traz "como melhorar", que aparece na tela.
+- **Calibração funcional por competência e por modelo:** identidade, reta ou isotônica, escolhida por validação cruzada, com ganho mínimo de 3 pontos e preservação dos extremos (0 e 200).
+- **Resultado** (flash-lite, 30 redações de temas inéditos): concordância pela regra do Inep de 36,7% → 46,7%, erro médio 149 → 129, nota mil do Inep 1000/880/920 (antes 1000/800/760). C4 continua fraca.
+- **Vários provedores:** `AI_ESSAY_MODELS`/`AI_VISION_MODELS` aceitam `gemini:`, `groq:`, `openrouter:` e `openai:` numa mesma lista, com fallback entre eles. Há limitador por minuto por modelo (`AI_RPM_LIMITS`) e espera curta quando o provedor manda aguardar (429).
+- **Cota:** 4 correções por IA por aluno por mês (`ESSAY_CORRECTION_MONTHLY_LIMIT`). Falha ou nota sem IA devolve o crédito. Contador e bloqueio no editor e no scanner. `GET /essay-corrections/quota`.
+- Migration `20261101120000_essay_correction_monthly_quota` (só adição). **Ainda não aplicada no banco.**
+- Testes: backend com 742 (todos passando); app com os checks de sempre.
+- **Pendente:** aplicar a migration; definir no `.env` `AI_ESSAY_MODELS`/`AI_VISION_MODELS` com o flash-lite; ampliar a calibração (cota de 500/dia); melhorar C2/C4; validar com fotos reais.
+
+## Atualização de 31/10/2026 — Cartão-resposta: domínio por tópico só no lançamento final
+
+- Lançar e corrigir a nota pelo cartão-resposta não mexem mais no domínio por tópico. Ele é aplicado uma única vez, com as respostas definitivas, quando o corretor finaliza a correção. A finalização trava a folha.
+- Verificado contra o banco: lançar e corrigir mantiveram o domínio; finalizar somou só as respostas finais; finalizar de novo não duplicou; ajustar depois foi recusado.
+- Migration `20261031233000_answer_sheet_finalize` (folhas antigas marcadas como finalizadas). Testes: backend com 724.
+
+## Atualização de 31/10/2026 — Cartão-resposta: foto → PDF e conferência com ajuste de qualquer bolha
+
+- **Foto → PDF:** cada foto digitalizada vira uma página A4 de um PDF gerado no navegador. É esse PDF que o servidor lê, e ele aceita várias folhas por envio (a turma inteira). O PDF fica guardado e pode ser baixado.
+- **Conferência obrigatória:** nenhuma nota é lançada sem confirmação. O corretor vê a folha com cada bolha marcada por cima e pode ajustar qualquer questão, inclusive uma bolha pintada que a leitura não identificou. Também pode corrigir a nota depois de lançada.
+- "Lançar as sem pendências" lança de uma vez as folhas sem dúvida.
+- Migrations `20261031230000_answer_sheet_pdf` e `20261031231000_answer_sheet_adjusted` (só adições).
+- Testes: backend com 721; app com o novo `pdf-writer.check.ts`.
+- Ponta a ponta no navegador: PDF de 2 páginas, ajuste, lançamento e correção posterior conferidos com o gabarito.
+
+## Atualização de 31/10/2026 — Scanner de cartão-resposta com leitura óptica real (item 17)
+
+O scanner de gabarito deixou de ser simulado (antes escolhia respostas aleatórias). Agora tem:
+
+- cartão-resposta da Lumina para imprimir, com marcadores nos cantos e um código que identifica o simulado e o aluno;
+- digitalização no app, reaproveitando a do scanner de redação;
+- leitura óptica determinística no servidor, com limiar por folha e confiança por questão;
+- revisão das questões duvidosas com o recorte da foto;
+- nota lançada no simulado pelo mesmo caminho do envio online.
+
+Os endpoints antigos tinham falhas de permissão e foram removidos. Detalhes: [docs/SCANNER_GABARITO.md](docs/SCANNER_GABARITO.md).
+
+- Migration `20261031220000_answer_sheet_omr` (só adições).
+- Testes: backend com 717 (eram 708), incluindo OMR sintético (perspectiva, folha de cabeça para baixo, 90 questões, branco, dupla marcação, lápis e rasura).
+- Ponta a ponta no navegador, com o banco real: impressão → marcação → foto → leitura → revisão → nota, conferida com o gabarito oficial.
+- **Pendente:** teste com impressão real e marcações à mão em 2–3 celulares.
+
+## Atualização de 31/10/2026 — Correção de redação por foto (scanner + IA com RAG e MCP)
+
+O aluno fotografa a folha, o app digitaliza no estilo CamScanner (cantos, perspectiva, remoção de sombra, filtros, até 2 páginas), a LuminIA lê a letra sem corrigir os erros, o aluno confere o texto e a redação é corrigida pelas cinco competências do Enem. Os critérios vêm da cartilha 2025 do Inep, servidos à IA por um RAG próprio através de um servidor MCP próprio (`lumina-redacao`). A correção segue o processo do Inep: dois avaliadores e um terceiro na discrepância. O editor de redação digitada ganhou o botão **Corrigir com a LuminIA**, que usa a mesma correção.
+
+- Detalhes, arquitetura, API, configuração e resultados da validação: [docs/CORRECAO_REDACAO_SCANNER.md](docs/CORRECAO_REDACAO_SCANNER.md).
+- Treino e validação com o Essay-BR (6.577 redações avaliadas) e com as redações nota mil da cartilha.
+  - Modelo estatístico: concordância pela regra do Inep de 52,8% (média: 29,9%).
+  - IA: correlação de 0,88 no total, mas com compressão de escala (erro médio 123–135). Precisa de mais dados de calibração.
+- Migration `20261031200000_essay_scanner_correction` (só adições).
+- Testes: backend 708 (eram 678); app com o novo `doc-scanner.check.ts`.
+- **Pendente:** validar com fotos reais de alunos; ampliar a calibração; plano pago ou outro provedor para fugir da cota diária dos modelos gratuitos; definir `AI_ESSAY_MODELS` no `.env`.
+
 ## Atualização de 26/09/2026 — funcionalidade 11: Resolução de questões (explicação por alternativa, marcar para revisar e dicas)
 
 Entrega vertical fechada em 7 de 10 subitens do inventário. Os três primeiros (responder na plataforma, correção automática, feedback imediato) já existiam desde o item 9; o "gabarito comentado" (explicação da resposta correta) também. Esta entrega acrescenta os três que faltavam, menos dois que dependem de outras entregas.

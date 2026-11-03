@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, StudyActivityType, StudyArea, StudyTaskStatus, TopicMasteryStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type { ActivityDurations } from './activity-durations';
+import type { PriorityWeights } from './priority-calibration';
 import { Db } from './domain/types';
 import type { EssayStep } from './schedule-essay';
 import { PHASE_MIX, type SchedulePhase } from './schedule-phase';
@@ -35,6 +37,12 @@ export interface SessionForGeneration {
   /** Quanto cada matéria (StudySubject.id) já tem no dia pelas tarefas que
    *  ficam — conta como tempo recebido na hora de revezar as matérias. */
   occupiedBySubject?: Record<string, number>;
+  /** Duração de cada tipo de atividade no ritmo do aluno (calibração C2).
+   *  Ausente = as durações padrão. */
+  durations?: ActivityDurations;
+  /** Pesos da prioridade calibrados pelo ganho de domínio (calibração C4).
+   *  Ausente = os pesos padrão. */
+  priorityWeights?: PriorityWeights;
 }
 
 /** Janela (em dias, para trás e para frente) em que um tópico já CONCLUÍDO
@@ -87,12 +95,13 @@ export class ScheduleGeneratorService {
   ): Promise<Prisma.StudyTaskCreateManyInput[]> {
     let remainingMinutes = session.scheduledMinutes - (session.occupiedMinutes ?? 0);
     if (scheduleSubjects.length === 0 || remainingMinutes <= 0) return [];
+    const durations = session.durations ?? ACTIVITY_DURATION_MINUTES;
 
     const tasks: Prisma.StudyTaskCreateManyInput[] = [];
 
     const essaySubject = scheduleSubjects.find((s) => s.subject.code === ESSAY_SUBJECT_CODE);
     if (session.essay && essaySubject) {
-      const duration = Math.min(remainingMinutes, ACTIVITY_DURATION_MINUTES.REDACAO);
+      const duration = Math.min(remainingMinutes, durations.REDACAO);
       tasks.push({
         scheduleId: session.scheduleId,
         sessionId: session.id,
@@ -208,7 +217,7 @@ export class ScheduleGeneratorService {
     ) as Record<StudyActivityType, number>;
     // Uma revisão vencida sempre cabe, mesmo quando a fatia da fase é menor
     // que uma revisão inteira (dia curto na fase de base).
-    typeBudget.REVISAO = Math.max(typeBudget.REVISAO, ACTIVITY_DURATION_MINUTES.REVISAO);
+    typeBudget.REVISAO = Math.max(typeBudget.REVISAO, durations.REVISAO);
 
     const qbSubjectIds = covered.map((c) => c.qbSubjectId);
     const [allTopics, masteries, questionRows, nearbyTasks] = await Promise.all([
@@ -284,7 +293,7 @@ export class ScheduleGeneratorService {
       const topic = topics.find((t) => t.id === mastery.topicId);
       const studySubject = topic && studySubjectByQbId.get(topic.subjectId);
       if (!topic || !studySubject) continue;
-      const duration = Math.min(remainingMinutes, ACTIVITY_DURATION_MINUTES.REVISAO);
+      const duration = Math.min(remainingMinutes, durations.REVISAO);
       tasks.push({
         scheduleId: session.scheduleId,
         sessionId: session.id,
@@ -325,7 +334,7 @@ export class ScheduleGeneratorService {
           maxTargetHoursInSchedule: maxTargetHours,
           inPriorityArea: inPriorityArea(studySubject),
           now: session.date,
-        });
+        }, session.priorityWeights);
         return {
           topic,
           studySubject,
@@ -350,7 +359,7 @@ export class ScheduleGeneratorService {
 
     const pushTopicTask = (candidate: (typeof candidates)[number], limit: number) => {
       const { activityType } = candidate;
-      const duration = Math.min(limit, ACTIVITY_DURATION_MINUTES[activityType]);
+      const duration = Math.min(limit, durations[activityType]);
       tasks.push({
         scheduleId: session.scheduleId,
         sessionId: session.id,
