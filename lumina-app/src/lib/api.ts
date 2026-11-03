@@ -681,6 +681,9 @@ export const apiCreateCoordinatorPeriod = (token: string, data: { name: string; 
 export const apiUpdateCoordinatorPeriod = (token: string, id: string, active: boolean): Promise<AcademicPeriod> => request(`/simulations/coordinator/periods/${id}`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ active }) });
 export const apiCreateSimulationClass = (token: string, name: string): Promise<SimulationClass> => request('/simulations/classes', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ name }) });
 export const apiJoinSimulationClass = (token: string, joinCode: string): Promise<SimulationClass> => request('/simulations/classes/join', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ joinCode }) });
+/** Link de convite da turma (quem gerencia). Aluno independente só entra por ele. */
+export const apiClassInviteLink = (token: string, classId: string): Promise<{ token: string; expiresAt: string }> => request(`/simulations/classes/${classId}/invite-link`, { headers: authHeaders(token) });
+export const apiAcceptClassInvite = (token: string, inviteToken: string): Promise<SimulationClass> => request('/simulations/classes/invite/accept', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ token: inviteToken }) });
 
 export interface ClassDetail {
   id: string; name: string; description: string | null; archived: boolean; canManage: boolean;
@@ -2034,13 +2037,35 @@ export interface SheetLayout {
   fiducials: { x: number; y: number }[];
   fiducialSize: number;
   codeCells: { x: number; y: number; size: number }[];
-  questions: { number: number; label: { x: number; y: number }; bubbles: { position: number; x: number; y: number; r: number }[] }[];
+  questions: { number: number; displayNumber?: number; label: { x: number; y: number }; bubbles: { position: number; x: number; y: number; r: number }[] }[];
   header: { x: number; y: number; width: number; height: number };
+  options?: SheetOptions;
+  sections?: SheetSection[];
+  gridColumns?: { x: number; y: number; width: number; height: number; rowLines: number[] }[];
+  notes?: string[];
 }
+/** O que o gestor escolhe para o cartão-resposta. */
+export interface SheetOptions {
+  showInstitution: boolean;
+  institutionName: string | null;
+  instructions: string[];
+  phrase: string | null;
+  bookletColors: string[];
+  foreignLanguage: boolean;
+  firstQuestionNumber: number;
+}
+export type SheetSection =
+  | { kind: 'boxes'; key: 'institution' | 'student'; label: string; x: number; y: number; cell: number; columns: number; rows: number }
+  | { kind: 'text'; key: 'institution'; label: string; text: string; x: number; y: number; width: number; height: number }
+  | { kind: 'instructions'; title: string; lines: string[]; x: number; y: number; width: number; height: number; lineHeight: number }
+  | { kind: 'phrase'; title: string; text: string; x: number; y: number; width: number; height: number }
+  | { kind: 'choices'; key: 'booklet' | 'language'; title: string; choices: { label: string; x: number; y: number; r: number }[]; x: number; y: number; width: number; height: number };
 export interface PrintableSheets {
   simulation: { id: string; title: string; className: string | null; questionCount: number };
   layout: SheetLayout;
   sheets: { code: number; bits: boolean[]; studentId: string | null; studentName: string | null }[];
+  /** Gestor (professor/coordenação/direção) personaliza; `locked` = já há folhas lidas. */
+  customization?: { canCustomize: boolean; locked: boolean; legacy: boolean; options: SheetOptions; notes: string[] };
 }
 export type AnswerSheetQuestionStatus = 'OK' | 'BLANK' | 'MULTIPLE' | 'AMBIGUOUS';
 export interface AnswerSheetQuestion {
@@ -2089,6 +2114,8 @@ export interface AnswerSheetScanSummary {
 }
 export const apiAnswerSheetPrepare = (token: string, simulationId: string, studentIds?: string[]): Promise<PrintableSheets> =>
   request(`/answer-sheets/simulations/${simulationId}/sheets`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(studentIds?.length ? { studentIds } : {}) });
+export const apiAnswerSheetSaveOptions = (token: string, simulationId: string, options: SheetOptions): Promise<PrintableSheets> =>
+  request(`/answer-sheets/simulations/${simulationId}/options`, { method: 'PUT', headers: authHeaders(token), body: JSON.stringify(options) });
 export interface AnswerSheetBatchResult {
   batchId: string;
   pages: number;
@@ -2118,3 +2145,65 @@ export async function apiAnswerSheetImageUrl(token: string, id: string): Promise
   if (!response.ok) throw new ApiError(response.status, 'Não foi possível carregar a imagem da folha.');
   return URL.createObjectURL(await response.blob());
 }
+
+// ---------------------------------------------------------------- Gabarito Inteligente
+
+export type AnswerKeyOrigin = 'OFFICIAL' | 'TEACHER' | 'AI_SUGGESTED' | 'COMMUNITY';
+export type AnswerKeyStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+export type AnswerKeyCheckStatus = 'CORRECT' | 'WRONG' | 'BLANK' | 'PENDING' | 'ANNULLED';
+export interface AnswerKeyExam { id: string; name: string; year: number | null; institution: string | null }
+export interface AnswerKeySummary {
+  id: string;
+  exam: AnswerKeyExam;
+  application: string;
+  day: number | null;
+  bookletColor: string | null;
+  area: string | null;
+  origin: AnswerKeyOrigin;
+  official: boolean;
+  status: AnswerKeyStatus;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  publishedAt: string | null;
+  version: number;
+  correctionNote: string | null;
+  questionCount: number;
+  author: string | null;
+  mine: boolean;
+  updatedAt: string;
+}
+export interface AnswerKeyItem { number: number; language: string; area: string | null; validated: boolean; answer?: number | null; justification?: string | null; questionId?: string | null }
+export interface AnswerKeyDetail extends AnswerKeySummary { needsLanguage: boolean; numbers: number[]; items: AnswerKeyItem[] }
+export interface AnswerKeyAreaResult { area: string; correct: number; wrong: number; blank: number; scored: number; percent: number }
+export interface AnswerKeyCheckResult {
+  id: string;
+  createdAt: string;
+  answerKey: AnswerKeySummary;
+  outdated: boolean;
+  questions: { number: number; area: string | null; selected: number | null; answer: number | null; status: AnswerKeyCheckStatus }[];
+  correct: number; wrong: number; blank: number; pending: number; annulled: number; total: number; answered: number; percent: number;
+  byArea: AnswerKeyAreaResult[];
+}
+export interface AnswerKeyPerformance {
+  checks: number; correct: number; wrong: number; blank: number; percent: number;
+  byArea: AnswerKeyAreaResult[];
+  history: { id: string; createdAt: string; answerKey: AnswerKeySummary; correct: number; wrong: number; blank: number; pending: number; total: number; percent: number; outdated: boolean }[];
+  difficultQuestions: { checkId: string; answerKeyId: string; label: string; number: number; area: string | null; selected: number | null; answer: number | null; misses: number }[];
+}
+export interface CreateAnswerKeyPayload {
+  examId?: string; examName?: string; examYear?: number; application?: string; day?: number | null; bookletColor?: string | null;
+  origin: AnswerKeyOrigin; sourceName?: string; sourceUrl?: string; publishedAt?: string; publish?: boolean;
+  items: { number: number; answer: number | null; language?: string }[];
+}
+
+export const apiAnswerKeys = (token: string, filters: { examId?: string; year?: number; day?: number } = {}): Promise<AnswerKeySummary[]> => {
+  const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]));
+  return request(`/answer-keys${q.size ? `?${q}` : ''}`, { headers: authHeaders(token) });
+};
+export const apiAnswerKeyExams = (token: string): Promise<AnswerKeyExam[]> => request('/answer-keys/exams', { headers: authHeaders(token) });
+export const apiAnswerKey = (token: string, id: string, withAnswers = false): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}${withAnswers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
+export const apiCreateAnswerKey = (token: string, payload: CreateAnswerKeyPayload): Promise<AnswerKeyDetail> => request('/answer-keys', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiSetAnswerKeyStatus = (token: string, id: string, status: AnswerKeyStatus): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
+export const apiCheckAnswerKey = (token: string, id: string, answers: Record<string, number | null>, language?: string | null): Promise<AnswerKeyCheckResult> => request(`/answer-keys/${id}/checks`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers, language: language ?? undefined, inputMode: 'MANUAL' }) });
+export const apiAnswerKeyCheck = (token: string, checkId: string): Promise<AnswerKeyCheckResult> => request(`/answer-keys/checks/${checkId}`, { headers: authHeaders(token) });
+export const apiAnswerKeyPerformance = (token: string): Promise<AnswerKeyPerformance> => request('/answer-keys/performance', { headers: authHeaders(token) });

@@ -26,6 +26,8 @@ import { EssayScanner } from "@/pages/EssayScanner";
 import { AnswerSheetPrint } from "@/pages/AnswerSheetPrint";
 import { AnswerSheetScanner } from "@/pages/AnswerSheetScanner";
 import { Classes } from "@/pages/Classes";
+import { ClassInvite } from "@/pages/ClassInvite";
+import { SmartAnswerKey } from "@/pages/SmartAnswerKey";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
@@ -33,6 +35,8 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
+        <Route path="/app/gabarito-inteligente" element={<ProtectedRoute><SmartAnswerKey /></ProtectedRoute>} />
+        <Route path="/app/turmas/convite/:token" element={<ProtectedRoute><ClassInvite /></ProtectedRoute>} />
         <Route path="/app/simulados" element={<ProtectedRoute><Simulations /></ProtectedRoute>} />
         <Route path="/app/simulados/adaptativo" element={<ProtectedRoute><AdaptiveSimulation /></ProtectedRoute>} />
         <Route path="/app/question-scanner" element={<ProtectedRoute><QuestionScanner /></ProtectedRoute>} />

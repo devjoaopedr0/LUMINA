@@ -1,7 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -12,6 +12,29 @@ export class PrepareSheetsDto {
   @ApiPropertyOptional({ description: 'Alunos da turma para folhas personalizadas (padrão: todos). Só professor/autor.', type: [String] })
   @IsOptional() @IsArray() @ArrayMaxSize(500) @IsUUID('4', { each: true })
   studentIds?: string[];
+}
+
+export class SheetOptionsDto {
+  @ApiProperty({ description: 'Mostra o campo da instituição de ensino.' })
+  @IsBoolean() showInstitution: boolean;
+
+  @ApiPropertyOptional({ description: 'Nome impresso da instituição; vazio = quadrados para preencher à mão.', nullable: true })
+  @IsOptional() @IsString() @MaxLength(90) institutionName: string | null;
+
+  @ApiProperty({ description: 'Instruções ao aluno (vazio = sem o quadro).', type: [String] })
+  @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(240, { each: true }) instructions: string[];
+
+  @ApiPropertyOptional({ description: 'Frase para transcrever (nulo = sem o quadro).', nullable: true })
+  @IsOptional() @IsString() @MaxLength(120) phrase: string | null;
+
+  @ApiProperty({ description: 'Cores do caderno de questões (vazio = sem o quadro).', type: [String] })
+  @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) @MaxLength(14, { each: true }) bookletColors: string[];
+
+  @ApiProperty({ description: 'Quadro da língua estrangeira (inglês/espanhol).' })
+  @IsBoolean() foreignLanguage: boolean;
+
+  @ApiProperty({ description: 'Número da primeira questão impressa (ex.: 91 no 2º dia do Enem).' })
+  @IsInt() @Min(1) @Max(999) firstQuestionNumber: number;
 }
 
 export class ScanAnswerSheetDto {
@@ -45,7 +68,20 @@ export class AnswerSheetController {
 
   @Post('simulations/:simulationId/sheets')
   prepare(@CurrentUser() user: UserWithProfile, @Param('simulationId', ParseUUIDPipe) simulationId: string, @Body() dto: PrepareSheetsDto) {
-    return this.service.prepareSheets(user.id, simulationId, dto.studentIds);
+    return this.service.prepareSheets(user.id, simulationId, dto.studentIds, user.accountType);
+  }
+
+  @Put('simulations/:simulationId/options')
+  saveOptions(@CurrentUser() user: UserWithProfile, @Param('simulationId', ParseUUIDPipe) simulationId: string, @Body() dto: SheetOptionsDto) {
+    return this.service.saveSheetOptions(user.id, user.accountType, simulationId, {
+      showInstitution: dto.showInstitution,
+      institutionName: dto.institutionName?.trim() || null,
+      instructions: dto.instructions.map((line) => line.trim()).filter(Boolean),
+      phrase: dto.phrase?.trim() || null,
+      bookletColors: dto.bookletColors.map((color) => color.trim()).filter(Boolean),
+      foreignLanguage: dto.foreignLanguage,
+      firstQuestionNumber: dto.firstQuestionNumber,
+    });
   }
 
   @Post('scan')

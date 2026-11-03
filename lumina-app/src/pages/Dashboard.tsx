@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { ArrowRight, BookOpenCheck, Bookmark, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Bookmark, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiEssays, apiGetDailySession, apiGetErrorNotebookSummary, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiGetReviewQuestions, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type ErrorNotebookSummary, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
+import { apiSimulationClasses, apiEssays, apiGetDailySession, apiGetErrorNotebookSummary, apiGetProgress, apiGetQuestionPerformance, apiGetQuestionProgress, apiGetReviewQuestions, apiSimulations, apiTeacherDashboard, apiCoordinatorDashboard, apiDirectorDashboard, apiUpdateDirectorMember, apiCoordinatorPeriods, apiCreateCoordinatorPeriod, apiUpdateCoordinatorPeriod, apiPendingInvite, apiAcceptInvite, apiCreateInstitutionInvite, apiListInstitutionInvites, apiRevokeInstitutionInvite, type AcademicPeriod, type ApiUser, type ErrorNotebookSummary, type EssaySummary, type InstitutionInvite, type PendingInvite, type PerformanceBreakdown, type ProgressEvolutionPoint, type QuestionProgressItem, type SimulationSummary, type StudyProgressSummary, type StudySchedule, type StudySession, type TeacherDashboard, type CoordinatorDashboard, type DirectorDashboard } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { formatCalendarDate, localDateKey } from "@/lib/utils";
 
@@ -16,12 +16,13 @@ const NAV_ITEMS = [
   { to: "/app/caderno-de-erros", label: "Caderno de erros", icon: NotebookPen },
   { to: "/app/busca-web", label: "Buscar questões na web", icon: Globe },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
-  { to: "/app/turmas", label: "Turmas", icon: School },
+  { to: "/app/turmas", label: "Turmas", icon: School, onlyWithClasses: true },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
   { to: "/app/redacoes/scanner", label: "Corrigir redação por foto", icon: ScanLine },
   { to: "/app/redacoes/modelos", label: "Modelos nota mil", icon: Award },
   { to: "/app/question-scanner", label: "Scanner de questões", icon: Sparkles },
+  { to: "/app/gabarito-inteligente", label: "Gabarito Inteligente", icon: ClipboardCheck },
   { to: "/app/gabarito-scanner", label: "Scanner de gabarito", icon: FileText },
   { to: "/app/provas-antigas", label: "Provas anteriores", icon: History },
   { to: "/app/caderno-formulas", label: "Caderno de fórmulas", icon: Lightbulb },
@@ -45,6 +46,15 @@ function formatMinutes(minutes: number) {
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useAuth();
+  // Aluno independente só vê "Turmas" se entrou em alguma pelo link de convite.
+  const independent = user?.accountType === "STUDENT_INDEPENDENT";
+  const [hasClasses, setHasClasses] = useState(false);
+  useEffect(() => {
+    if (!independent) return;
+    let active = true;
+    apiSimulationClasses(getAccessToken() ?? "").then(rows => { if (active) setHasClasses(rows.length > 0); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [independent]);
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}` || "LU";
   return (
     <>
@@ -57,7 +67,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         <nav className="flex-1 px-4 py-7" aria-label="Navegação principal">
           <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">Estudos</p>
           <div className="mt-3 space-y-1.5">
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+            {NAV_ITEMS.filter(item => !(item.onlyWithClasses && independent && !hasClasses)).map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} onClick={onClose} className={({ isActive }) => `group flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition ${isActive ? "bg-primary text-graphite" : "text-white/65 hover:bg-white/10 hover:text-white"}`}>
                 <Icon className="h-[18px] w-[18px]" /><span>{label}</span><ChevronRight className="ml-auto h-4 w-4 opacity-40 transition group-hover:translate-x-0.5" />
               </NavLink>

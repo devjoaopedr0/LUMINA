@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GrayImage, homography, LOW_CONFIDENCE, OmrError, project, readSheet } from './omr';
-import { buildSheetLayout, CODE_BITS, decodeSheetCode, encodeSheetCode, MAX_SHEET_CODE, SheetLayout } from './sheet-layout';
+import { buildSheetLayout, CODE_BITS, decodeSheetCode, defaultSheetOptions, encodeSheetCode, MAX_SHEET_CODE, SheetLayout } from './sheet-layout';
 
 /** Tinta de cada marca: 1 = caneta preta cheia; 0.35 = lápis fraco. */
 type Marks = Record<number, { position: number; ink: number }[]>;
@@ -236,5 +236,93 @@ describe('PDF do cartão-resposta', () => {
     expect(needsReview({ ...base, status: 'MULTIPLE', confidence: 0.9 })).toBe(false);
     expect(needsReview({ ...base, status: 'MULTIPLE', confidence: 0.5 })).toBe(true);
     expect(needsReview({ ...base, status: 'AMBIGUOUS', confidence: 0.9 })).toBe(true);
+  });
+});
+
+/** Desenha também o cabeçalho e as molduras do layout configurável (o que a impressão põe além das bolhas). */
+function renderFullPage(layout: SheetLayout, code: number, marks: Marks, pxPerMm = 6): GrayImage {
+  const img = renderPage(layout, code, marks, pxPerMm);
+  const { width, height, data } = img;
+  const dark = (x: number, y: number, v: number) => {
+    const xi = Math.round(x * pxPerMm);
+    const yi = Math.round(y * pxPerMm);
+    if (xi >= 0 && yi >= 0 && xi < width && yi < height) data[yi * width + xi] = Math.min(data[yi * width + xi], v);
+  };
+  const hLine = (x: number, y: number, w: number, v = 80) => { for (let t = 0; t <= w * pxPerMm; t++) dark(x + t / pxPerMm, y, v); };
+  const vLine = (x: number, y: number, h: number, v = 80) => { for (let t = 0; t <= h * pxPerMm; t++) dark(x, y + t / pxPerMm, v); };
+  const frame = (x: number, y: number, w: number, h: number) => { hLine(x, y, w); hLine(x, y + h, w); vLine(x, y, h); vLine(x + w, y, h); };
+  const block = (x: number, y: number, w: number, h: number, v: number) => { for (let yy = 0; yy <= h * pxPerMm; yy++) for (let xx = 0; xx <= w * pxPerMm; xx++) dark(x + xx / pxPerMm, y + yy / pxPerMm, v); };
+  block(22, 11, 70, 6, 40); // título em negrito
+  for (const s of layout.sections ?? []) {
+    if (s.kind === 'boxes') for (let r = 0; r < s.rows; r++) for (let c = 0; c < s.columns; c++) frame(s.x + c * s.cell, s.y + 4.5 + r * s.cell, s.cell, s.cell);
+    else {
+      frame(s.x, s.y, s.width, s.height);
+      block(s.x, s.y, s.width, 5, 225); // faixa cinza do título
+    }
+    if (s.kind === 'choices') s.choices.forEach((ch, i) => block(ch.x - ch.r, ch.y - ch.r, ch.r * 2, ch.r * 2, i === 0 ? 30 : 200));
+  }
+  for (const c of layout.gridColumns ?? []) {
+    frame(c.x, c.y, c.width, c.height);
+    block(c.x, c.y, c.width, 5.5, 225);
+    for (const y of c.rowLines) hLine(c.x, y, c.width, 150);
+  }
+  return img;
+}
+
+describe('Cartão configurável pelo gestor', () => {
+  it('2º dia do Enem: numeração 91–180, cabeçalho completo e linhas com folga', () => {
+    const layout = buildSheetLayout(Array.from({ length: 90 }, () => 5), defaultSheetOptions({ enemDay: 2 }));
+    expect(layout.questions[0].displayNumber).toBe(91);
+    expect(layout.questions[89].displayNumber).toBe(180);
+    expect(layout.questions[0].number).toBe(1);
+    expect(layout.sections?.map((s) => s.kind)).toEqual(['boxes', 'boxes', 'instructions', 'phrase']);
+    expect(layout.notes).toEqual([]);
+    expect(layout.gridColumns).toHaveLength(4);
+    const rowGap = layout.questions[1].label.y - layout.questions[0].label.y;
+    expect(rowGap).toBeGreaterThanOrEqual(5.2);
+  });
+
+  it('1º dia: quadro da língua estrangeira; cor do caderno só quando o gestor pede', () => {
+    const day1 = buildSheetLayout(Array.from({ length: 90 }, () => 5), defaultSheetOptions({ enemDay: 1 }));
+    expect(day1.sections?.filter((s) => s.kind === 'choices').map((s) => s.kind === 'choices' && s.key)).toEqual(['language']);
+    const both = buildSheetLayout(Array.from({ length: 45 }, () => 5), { ...defaultSheetOptions({ enemDay: 1 }), bookletColors: ['Azul', 'Amarelo', 'Branco', 'Rosa'] });
+    const keys = both.sections?.filter((s) => s.kind === 'choices').map((s) => s.kind === 'choices' && s.key);
+    expect(keys).toEqual(['booklet', 'language']);
+  });
+
+  it('adaptativo: com muitas questões, tira seções do cabeçalho e avisa', () => {
+    const layout = buildSheetLayout(Array.from({ length: 180 }, () => 5), { ...defaultSheetOptions({ enemDay: 1 }), bookletColors: ['Azul', 'Rosa'] });
+    expect(layout.notes?.length).toBeGreaterThan(0);
+    expect(layout.sections?.some((s) => s.kind === 'instructions')).toBe(false);
+    expect(layout.sections?.some((s) => s.kind === 'boxes' && s.key === 'student')).toBe(true);
+    const last = layout.questions[179];
+    expect(last.label.y).toBeLessThan(layout.fiducials[2].y - layout.fiducialSize / 2);
+  });
+
+  it('o gestor pode desligar tudo, menos o nome do aluno', () => {
+    const layout = buildSheetLayout([5, 5, 5], { showInstitution: false, institutionName: null, instructions: [], phrase: null, bookletColors: [], foreignLanguage: false, firstQuestionNumber: 1 });
+    expect(layout.sections?.map((s) => s.kind === 'boxes' && s.key)).toEqual(['student']);
+  });
+
+  it('instituição com nome impresso em vez de quadrados', () => {
+    const layout = buildSheetLayout([5, 5], { ...defaultSheetOptions(), institutionName: 'Colégio Exemplo' });
+    expect(layout.sections?.[0]).toMatchObject({ kind: 'text', text: 'Colégio Exemplo' });
+  });
+
+  it('código e marcadores no mesmo lugar em qualquer configuração (a leitura acha o código antes do layout)', () => {
+    const probe = buildSheetLayout([2]);
+    const custom = buildSheetLayout(Array.from({ length: 90 }, () => 5), { ...defaultSheetOptions({ enemDay: 1 }), bookletColors: ['Azul', 'Rosa'] });
+    expect(custom.codeCells).toEqual(probe.codeCells);
+    expect(custom.fiducials).toEqual(probe.fiducials);
+  });
+
+  it('lê o cartão completo do Enem (cabeçalho, molduras e bolha de língua marcada) sem erro', () => {
+    const layout = buildSheetLayout(Array.from({ length: 90 }, () => 5), { ...defaultSheetOptions({ enemDay: 1 }), bookletColors: ['Azul', 'Amarelo', 'Rosa'] });
+    const marks: Marks = {};
+    for (let n = 1; n <= 90; n++) if (n % 9 !== 0) marks[n] = [{ position: ((n * 3) % 5) + 1, ink: 0.95 }];
+    const reading = readSheet(photograph(renderFullPage(layout, 4242, marks), [10, -8, -9, 7, 12, 10, -7, 11]), layout);
+    expect(reading.code).toBe(4242);
+    const wrong = reading.questions.filter((q) => (q.number % 9 === 0 ? q.status !== 'BLANK' : q.selected !== ((q.number * 3) % 5) + 1));
+    expect(wrong.map((q) => `${q.number}:${q.status}:${q.fills.join('/')}`)).toEqual([]);
   });
 });
