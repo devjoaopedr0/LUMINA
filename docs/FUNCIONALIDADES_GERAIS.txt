@@ -476,13 +476,13 @@
     -  Evolução
     -  Nota em redação
     -  Simulados concluídos
-46. 46. Desafios entre turmas
+46. 46. Desafios entre turmas [PLANEJADO — DESAFIOS ENTRE GRUPOS DE AMIGOS FICAM NO ITEM 61, LUMINA GROUPS]
     -  Competições de questões
     -  Rankings opcionais
     -  Desafios de estudo
     -  Metas coletivas
     -  Sem exposição obrigatória de notas
-47. 47. Sala de estudo
+47. 47. Sala de estudo [PLANEJADO — VERSÃO INSTITUCIONAL (TURMA); A SALA SOCIAL DE AMIGOS É O ITEM 61, E AS DUAS PODEM DIVIDIR O MOTOR DE PRESENÇA]
     -  Sessões coletivas
     -  Professor acompanha em tempo real
     -  Lista de questões ao vivo
@@ -543,7 +543,7 @@
     -  Flashcards offline
     -  Revisões offline
     -  Sincronização ao reconectar
-55. 55. Pagamentos
+55. 55. Pagamentos [PLANEJADO — O MESMO PROVEDOR DEVE ATENDER AS ASSINATURAS E O SPLIT DO MARKETPLACE (ITEM 62); A LANDING JÁ CITA PLANOS FREE/PREMIUM]
     -  Plano gratuito
     -  Plano individual
     -  Plano premium
@@ -609,3 +609,34 @@
     -  Plataformas de pagamento
     -  Notificações push
     -  E-mail
+61. 61. Lumina Groups — grupos e salas coletivas de estudo [PLANEJADO — FASE 2; VER docs/LUMINA_GROUPS.md]
+    -  Criar grupos privados (nome, descrição, imagem, propósito)
+    -  Convite por código e por link; aceitar ou recusar
+    -  Papéis no grupo: dono, administrador, moderador, membro
+    -  Remover participantes, sair, excluir (conforme o papel)
+    -  Privacidade e regras de participação
+    -  Metas coletivas
+    -  Perfil de estudo no grupo com controle do que é compartilhado
+    -  Cronômetro e sessões (iniciar, pausar, finalizar, matéria)
+    -  Tempo com fonte única no StudyTimeLog (sem duplicar com cronograma e estatísticas)
+    -  Salas coletivas com presença e cronômetros em tempo real
+    -  Rankings opcionais (constância como padrão), com opt-out
+    -  Desafios, conquistas, medalhas, eventos, desafios entre grupos
+    -  Notificações e avisos
+    -  Chat (fase posterior, com moderação)
+    -  Separado das turmas institucionais
+    -  Regras para menores de idade
+62. 62. Lumina Marketplace — mercado educacional [FUTURO — FASE 4; VER docs/LUMINA_MARKETPLACE.md]
+    -  Perfil de vendedor (professor, produtor de conteúdo, instituição) com verificação
+    -  Vendedor é vínculo adicional da mesma conta, não conta separada
+    -  Cursos completos, aulas avulsas, pacotes, mentorias, materiais digitais
+    -  Produtos Lumina: simulados exclusivos, bancos de questões autorais, planos de estudo
+    -  Criação de cursos com módulos, aulas, vídeos, PDFs e atividades
+    -  Catálogo, busca, filtros, vitrines e página do produto
+    -  Compra, matrícula, biblioteca do aluno e progresso
+    -  Cupons, promoções, reembolso e histórico de pagamentos
+    -  Painel do vendedor (vendas, receitas, alunos, avaliações, saques)
+    -  Comissão (hipótese de 10% a 20%, a validar) com split no provedor de pagamentos
+    -  Avaliações com compra verificada, denúncias e moderação
+    -  Recomendações da LuminIA transparentes e sem viés comercial
+    -  Nenhum dado de cartão armazenado na Lumina

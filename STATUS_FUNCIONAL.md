@@ -1,5 +1,20 @@
 # Status funcional da Lumina
 
+> **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
+
+## Atualização de 03/11/2026 — Documentação da visão do ecossistema (só documentação)
+
+- Novos documentos: [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md) (visão, modelo de negócio, camadas transversais, roadmap em 5 fases, riscos e decisões pendentes), [docs/LUMINA_GROUPS.md](docs/LUMINA_GROUPS.md) (grupos e salas coletivas de estudo) e [docs/LUMINA_MARKETPLACE.md](docs/LUMINA_MARKETPLACE.md) (mercado educacional).
+- **Lumina Groups: Planejado (Fase 2). Lumina Marketplace: Futuro (Fase 4).** Nenhum código, tabela ou endpoint dessas frentes foi criado.
+- Esta seção de status recodificou o texto corrompido das entregas de 27/09/2026 (itens 19 e 20) e marcou como desatualizada a lista "Não iniciado".
+
+## Atualização de 03/11/2026 — Em andamento (sem commit)
+
+- **Cartão-resposta configurável pelo gestor:** cabeçalho no estilo do cartão do Enem (instituição, nome em quadrados, instruções, frase, cor do caderno, língua) que se adapta ao número de questões; numeração 91–180 no 2º dia; trava depois da primeira folha lida. Testes de layout e de leitura passando. Status: **em andamento** (sem commit).
+- **Turma por link de convite:** aluno independente não entra por código, só pelo link assinado que o professor gera. Status: **em andamento** (sem commit).
+- **Gabarito Inteligente (fase 1):** gabarito oficial (só administrador, com fonte e data) e de professor; seleção da prova, grade de respostas com revisão antes de corrigir, resultado com cores e por área, histórico e painel de desempenho (sem conversão para TRI). Página `/app/gabarito-inteligente` e item no menu. Testes: backend com 762 (11 novos). Migration `20261103150000_answer_keys` criada e **não aplicada**; interface sem validação no navegador. Detalhes: [docs/GABARITO_INTELIGENTE.md](docs/GABARITO_INTELIGENTE.md). Status: **em andamento**.
+
+
 ## Atualização de 01/11/2026 — Correção de redação por competência, calibração funcional e cota mensal
 
 - **Por competência:** cada avaliador avalia as cinco competências em chamadas separadas, com a grade, os trechos da cartilha e os sinais só daquela competência. O terceiro avaliador reavalia só as competências que divergiram. Cada competência traz "como melhorar", que aparece na tela.
@@ -196,6 +211,8 @@ Entrega vertical do item 18 do inventário. Scanner de questões impressas: foto
 
 ## Não iniciado
 
+> **Desatualizado (nota de 03/11/2026):** esta lista é de 26/09/2026. Provas antigas (item 19), redação com correção por competências (item 20), parte da LuminIA conversacional e o scanner de cartão-resposta foram entregues depois (ver as entradas acima). O estado atual está em [docs/ROADMAP_ECOSSISTEMA.md §2](docs/ROADMAP_ECOSSISTEMA.md). Lista mantida como registro histórico.
+
 - Provas antigas (item 19): ENEM, vestibulares, UECE, filtro por ano/área, resolver online, gabarito, histórico, estatísticas
 - Redação (item 20): enviar/digitar/foto, salvamento automático, contagem palavras, correção por competências ENEM, feedback, evolução
 - LuminIA conversacional (itens 21-24): explicação de conteúdos, explicação de questões, modo socrático, recomendação de videoaulas
@@ -226,33 +243,34 @@ Os três fluxos de correção por captura/texto devem compartilhar uma esteira d
 11. Integrar LuminIA conversacional, notificações, gamificação e pagamentos após os fluxos centrais estarem maduros.
 
 Cada item deve ser entregue verticalmente: migração/schema, regras de autorização, API, interface, testes e observabilidade.
-## AtualizaÃ§Ã£o de 27/09/2026 â€” item 19: Provas antigas
 
-Entrega vertical do item 19 do inventÃ¡rio. ExperiÃªncia completa de provas antigas: ENEM, vestibulares, UECE com PDF/imagens, gabarito oficial, caderno de questÃµes, navegaÃ§Ã£o por pÃ¡ginas, comparaÃ§Ã£o entre ediÃ§Ãµes.
+## Atualização de 27/09/2026 — item 19: Provas antigas
 
-- **MigraÃ§Ã£o** 20260927011239_add_past_exams:
-  - exam_papers: ediÃ§Ã£o de prova (ex.: ENEM 2023) com PDF, imagens das pÃ¡ginas, metadados, gabarito, caderno
-  - exam_paper_pages: pÃ¡ginas individuais com imagem, dimensÃµes, OCR
-  - exam_paper_questions: mapeamento questÃ£o â†’ nÃºmero na prova, pÃ¡gina, coordenadas, Ã¡rea
-  - exam_paper_comparisons: comparaÃ§Ã£o entre ediÃ§Ãµes (questÃµes similares, mudanÃ§a de dificuldade, novos tÃ³picos)
+Entrega vertical do item 19 do inventário. Experiência completa de provas antigas: ENEM, vestibulares, UECE com PDF/imagens, gabarito oficial, caderno de questões, navegação por páginas, comparação entre edições.
+
+- **Migração** 20260927011239_add_past_exams:
+  - exam_papers: edição de prova (ex.: ENEM 2023) com PDF, imagens das páginas, metadados, gabarito, caderno
+  - exam_paper_pages: páginas individuais com imagem, dimensões, OCR
+  - exam_paper_questions: mapeamento questão → número na prova, página, coordenadas, área
+  - exam_paper_comparisons: comparação entre edições (questões similares, mudança de dificuldade, novos tópicos)
   - Enum ExamPaperStatus (DRAFT, PUBLISHED, ARCHIVED)
-  - RelaÃ§Ãµes: Exam.papers, ExamPaper.pages/questions/comparisons, Question.examPaperQuestions
+  - Relações: Exam.papers, ExamPaper.pages/questions/comparisons, Question.examPaperQuestions
 
-- **PrÃ³ximos passos**: UI de navegaÃ§Ã£o da prova (PDF viewer, paginaÃ§Ã£o), busca por questÃ£o dentro da prova, importaÃ§Ã£o em lote de PDFs oficiais, geraÃ§Ã£o automÃ¡tica de comparaÃ§Ãµes.
+- **Próximos passos**: UI de navegação da prova (PDF viewer, paginação), busca por questão dentro da prova, importação em lote de PDFs oficiais, geração automática de comparações.
 
-## AtualizaÃ§Ã£o de 27/09/2026 â€” item 20: RedaÃ§Ã£o
+## Atualização de 27/09/2026 — item 20: Redação
 
-Entrega vertical do item 20 do inventÃ¡rio. CorreÃ§Ã£o de redaÃ§Ã£o por competÃªncias ENEM (C1 a C5), versionamento, feedback IA/professor, sugestÃµes de melhoria.
+Entrega vertical do item 20 do inventário. Correção de redação por competências ENEM (C1 a C5), versionamento, feedback IA/professor, sugestões de melhoria.
 
-- **MigraÃ§Ã£o** 20260927011239_add_past_exams (mesma migraÃ§Ã£o):
-  - essay_corrections: correÃ§Ã£o por competÃªncias (C1-C5), nota total, status, corretor (IA/professor), confianÃ§a, feedback geral
-  - essay_correction_details: detalhe por competÃªncia (C1-C5) com nota, justificativa, evidÃªncias
-  - essay_versions: versionamento automÃ¡tico a cada salvamento (conteÃºdo, contagem de palavras)
+- **Migração** 20260927011239_add_past_exams (mesma migração):
+  - essay_corrections: correção por competências (C1-C5), nota total, status, corretor (IA/professor), confiança, feedback geral
+  - essay_correction_details: detalhe por competência (C1-C5) com nota, justificativa, evidências
+  - essay_versions: versionamento automático a cada salvamento (conteúdo, contagem de palavras)
   - essay_feedbacks: feedbacks tipados (AI_SUGGESTION, TEACHER_COMMENT, PEER_REVIEW) com ancoragem a trecho
   - Enum EssayCorrectionStatus (PENDING, IN_PROGRESS, COMPLETED, FAILED)
-  - RelaÃ§Ãµes: Essay.correction/versions/feedbacks, User.essayFeedbacks
+  - Relações: Essay.correction/versions/feedbacks, User.essayFeedbacks
 
-- **PrÃ³ximos passos**: UI do editor de redaÃ§Ã£o (contador de palavras, salvamento automÃ¡tico), integraÃ§Ã£o com IA para correÃ§Ã£o automÃ¡tica por competÃªncias, UI de revisÃ£o do professor, relatÃ³rio de evoluÃ§Ã£o por competÃªncia ao longo do tempo.
+- **Próximos passos**: UI do editor de redação (contador de palavras, salvamento automático), integração com IA para correção automática por competências, UI de revisão do professor, relatório de evolução por competência ao longo do tempo.
 
 ## Atualização de 27/09/2026 — itens 21, 22 e 23 (cadernos e modelos de redação)
 
