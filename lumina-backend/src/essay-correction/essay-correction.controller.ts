@@ -97,3 +97,17 @@ export class EssayCorrectionController {
     return this.service.getCorrection(user.id, id);
   }
 }
+
+@ApiTags('essays')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('essay-corrections')
+export class EssayCorrectionQuotaController {
+  constructor(private readonly service: EssayCorrectionService) {}
+
+  /** Correções por IA do mês: limite, usadas, restantes e quando renova. */
+  @Get('quota')
+  quota(@CurrentUser() user: UserWithProfile) {
+    return this.service.getQuota(user.id);
+  }
+}

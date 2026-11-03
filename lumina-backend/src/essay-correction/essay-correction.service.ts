@@ -11,23 +11,37 @@ import { EssayCorrectionStatus, EssayScanStatus, Prisma } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../database/prisma.service';
 import { countWords } from '../essays/essays.dto';
-import { EssayGradeResult, EssayGrader, LlmCalibration } from './grading/essay-grader';
+import { EssayGradeResult, EssayGrader, GRADER_PROMPT_VERSION, LlmCalibration } from './grading/essay-grader';
 import { FeatureModelWeights } from './grading/feature-model';
 import { EssayMcpClient } from './mcp/essay-mcp-client';
 import featureModelJson from './model/feature-model.json';
 import calibrationJson from './model/llm-calibration.json';
 import { transcribeEssayPages } from './ocr/essay-ocr';
+import { buildQuota, CorrectionQuota, monthlyCorrectionLimit, periodStart, quotaExceededMessage, quotaPeriod } from './quota/correction-quota';
 
 const MAX_PAGES = 2;
 const MAX_PAGE_BYTES = 3 * 1024 * 1024;
-/** Correções por aluno em 24 h — cada uma custa 2 a 3 chamadas ao modelo. */
-const DAILY_CORRECTION_LIMIT = 15;
+/**
+ * Leituras de foto por mês, por correção da cota: cada leitura custa uma
+ * chamada de visão por página, e o aluno pode refazer a foto algumas vezes.
+ */
+const SCANS_PER_CORRECTION = 3;
+/** Métodos em que a nota saiu sem chamar a IA: o crédito da cota volta. */
+const NO_AI_METHODS = new Set(['modelo-estatistico', 'regra']);
+
+/** O aluno estourou a cota do mês: 429 com a cota no corpo, para a tela mostrar. */
+export class CorrectionQuotaExceededException extends HttpException {
+  constructor(readonly quota: CorrectionQuota) {
+    super({ statusCode: HttpStatus.TOO_MANY_REQUESTS, message: quotaExceededMessage(quota), quota }, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
 /** Processamento parado há mais que isto foi interrompido (ex.: reinício). */
-const STALE_AFTER_MS = 6 * 60 * 1000;
+// A correção por competência faz 10 a 15 chamadas (5 em paralelo por avaliador).
+const STALE_AFTER_MS = 10 * 60 * 1000;
 const CORRECTION_TIMEOUT_MS = 120_000;
 
 const featureModel = (featureModelJson as { trained?: boolean }).trained === false ? null : (featureModelJson as unknown as FeatureModelWeights);
-const calibration = calibrationJson as LlmCalibration;
+const calibration = calibrationJson as unknown as LlmCalibration;
 
 /** Modelos da correção (AI_ESSAY_MODELS, separados por vírgula); vazio = cadeia padrão do AiService. */
 export function essayModels(): string[] {
@@ -66,6 +80,13 @@ export class EssayCorrectionService {
   async createScan(userId: string, data: { pages: string[]; theme?: string }) {
     if (!data.pages.length || data.pages.length > MAX_PAGES) throw new BadRequestException(`Envie de 1 a ${MAX_PAGES} páginas.`);
     const decoded = data.pages.map(decodeImage);
+    // Sem correção sobrando no mês, a leitura só gastaria chamada de visão.
+    const quota = await this.getQuota(userId);
+    if (quota.remaining <= 0) throw new CorrectionQuotaExceededException(quota);
+    const scansThisMonth = await this.prisma.essayScan.count({ where: { userId, createdAt: { gte: periodStart(quota.period) } } });
+    if (scansThisMonth >= quota.limit * SCANS_PER_CORRECTION) {
+      throw new HttpException(`Limite de ${quota.limit * SCANS_PER_CORRECTION} fotos lidas por mês atingido. Você ainda pode digitar a redação e pedir a correção.`, HttpStatus.TOO_MANY_REQUESTS);
+    }
     const scan = await this.prisma.essayScan.create({
       data: {
         userId,
@@ -206,11 +227,32 @@ export class EssayCorrectionService {
     // Linhas e confiança do OCR só valem se o texto não foi reescrito: se o
     // aluno mudou muito, a contagem de linhas da foto deixa de ser a do texto.
     const ocrStillValid = scan.transcribedText ? countWords(scan.transcribedText) > 0 && Math.abs(countWords(text) - countWords(scan.transcribedText)) / countWords(scan.transcribedText) < 0.25 : false;
-    const correction = await this.requestCorrection(userId, essay.id, {
-      ocrLines: ocrStillValid ? scan.lineCount ?? undefined : undefined,
-      ocrConfidence: ocrStillValid ? scan.ocrConfidence ?? undefined : undefined,
-    });
-    return { essayId: essay.id, correction };
+    try {
+      const correction = await this.requestCorrection(userId, essay.id, {
+        ocrLines: ocrStillValid ? scan.lineCount ?? undefined : undefined,
+        ocrConfidence: ocrStillValid ? scan.ocrConfidence ?? undefined : undefined,
+      });
+      return { essayId: essay.id, correction };
+    } catch (error) {
+      // A cota acabou entre a foto e a confirmação: a redação fica salva (o
+      // aluno não perde o texto) e pode ser corrigida quando a cota renovar.
+      if (error instanceof CorrectionQuotaExceededException) {
+        return { essayId: essay.id, correction: { essayId: essay.id, status: null }, quota: error.quota, quotaMessage: quotaExceededMessage(error.quota) };
+      }
+      throw error;
+    }
+  }
+
+  // ------------------------------------------------------------------ quota
+
+  async getQuota(userId: string, period = quotaPeriod()): Promise<CorrectionQuota> {
+    const used = await this.prisma.essayCorrectionUsage.count({ where: { userId, period, refundedAt: null } });
+    return buildQuota(monthlyCorrectionLimit(), used, period);
+  }
+
+  /** Devolve o crédito de uma correção que não usou a IA. */
+  private async refund(usageId: string) {
+    await this.prisma.essayCorrectionUsage.updateMany({ where: { id: usageId, refundedAt: null }, data: { refundedAt: new Date() } }).catch(() => undefined);
   }
 
   // ------------------------------------------------------------- correction
@@ -225,19 +267,28 @@ export class EssayCorrectionService {
     if (essay.correction?.status === EssayCorrectionStatus.COMPLETED && essay.correction.essayVersion === essay.version) {
       return this.getCorrection(userId, essayId);
     }
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recent = await this.prisma.essayCorrection.count({ where: { essay: { userId }, isAiCorrection: true, updatedAt: { gte: since } } });
-    if (recent >= DAILY_CORRECTION_LIMIT) {
-      throw new HttpException(`Limite de ${DAILY_CORRECTION_LIMIT} correções em 24 horas atingido. Tente novamente amanhã.`, HttpStatus.TOO_MANY_REQUESTS);
-    }
-    const base = { status: EssayCorrectionStatus.IN_PROGRESS, isAiCorrection: true, correctedBy: 'luminia', essayVersion: essay.version, errorMessage: null };
-    await this.prisma.essayCorrection.upsert({
-      where: { essayId },
-      create: { essayId, competenciesJson: {}, totalScore: 0, ...base },
-      update: base,
+    // Reserva do crédito e início da correção numa transação com trava por
+    // aluno: dois cliques (ou duas abas) ao mesmo tempo não passam juntos do
+    // limite nem disparam duas correções da mesma redação.
+    const period = quotaPeriod();
+    const limit = monthlyCorrectionLimit();
+    const usageId = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`essay-quota:${userId}`}))`;
+      const current = await tx.essayCorrection.findUnique({ where: { essayId }, select: { status: true, updatedAt: true } });
+      if (current?.status === EssayCorrectionStatus.IN_PROGRESS && Date.now() - current.updatedAt.getTime() < STALE_AFTER_MS) return null;
+      const used = await tx.essayCorrectionUsage.count({ where: { userId, period, refundedAt: null } });
+      if (used >= limit) throw new CorrectionQuotaExceededException(buildQuota(limit, used, period));
+      const usage = await tx.essayCorrectionUsage.create({ data: { userId, essayId, period }, select: { id: true } });
+      const base = { status: EssayCorrectionStatus.IN_PROGRESS, isAiCorrection: true, correctedBy: 'luminia', essayVersion: essay.version, errorMessage: null };
+      await tx.essayCorrection.upsert({
+        where: { essayId },
+        create: { essayId, competenciesJson: {}, totalScore: 0, ...base },
+        update: base,
+      });
+      return usage.id;
     });
-    void this.runCorrection(essayId, essay.content, essay.theme, ocr);
-    return this.getCorrection(userId, essayId);
+    if (usageId) void this.runCorrection(essayId, essay.content, essay.theme, ocr, usageId);
+    return { ...(await this.getCorrection(userId, essayId)), quota: await this.getQuota(userId, period) };
   }
 
   /** Correção completa — usada também pela ferramenta MCP `corrigir_redacao`. */
@@ -248,6 +299,7 @@ export class EssayCorrectionService {
         tools,
         featureModel,
         calibration,
+        concurrency: Number(process.env.ESSAY_COMPETENCY_CONCURRENCY) || undefined,
         llm: ({ system, prompt, temperature, maxTokens }) =>
           this.ai.generateStructured({ system, prompt, temperature, maxTokens, timeoutMs: CORRECTION_TIMEOUT_MS, models: essayModels() }),
       });
@@ -257,9 +309,10 @@ export class EssayCorrectionService {
     }
   }
 
-  private async runCorrection(essayId: string, text: string, theme: string, ocr: { ocrLines?: number; ocrConfidence?: number }) {
+  private async runCorrection(essayId: string, text: string, theme: string, ocr: { ocrLines?: number; ocrConfidence?: number }, usageId: string) {
     try {
       const result = await this.gradeText({ text, theme, ...ocr });
+      if (NO_AI_METHODS.has(result.method)) await this.refund(usageId);
       const competencies = Object.fromEntries(result.competencies.map((c) => [c.competency, c.score]));
       await this.prisma.$transaction(async (tx) => {
         const correction = await tx.essayCorrection.update({
@@ -275,7 +328,8 @@ export class EssayCorrectionService {
               method: result.method,
               discrepancy: result.discrepancy,
               calibrated: result.calibrated,
-              runs: result.runs.map((r) => ({ evaluator: r.evaluator, method: r.method, model: r.model, total: r.total, annulment: r.annulment, tangencia: r.tangencia, scores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.score])) })),
+              runs: result.runs.map((r) => ({ evaluator: r.evaluator, method: r.method, model: r.model, total: r.total, annulment: r.annulment, tangencia: r.tangencia, scores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.score])), rawScores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.rawScore ?? null])) })),
+              promptVersion: GRADER_PROMPT_VERSION,
               toolCalls: result.toolCalls,
               analysis: result.analysis,
               ocr,
@@ -290,13 +344,14 @@ export class EssayCorrectionService {
             competency: c.competency,
             score: c.score,
             justification: c.justification || null,
-            evidenceJson: { level: c.level, evidence: c.evidence, citations: c.citations } as Prisma.InputJsonValue,
+            evidenceJson: { level: c.level, evidence: c.evidence, citations: c.citations, tip: c.tip ?? null } as Prisma.InputJsonValue,
           })),
         });
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Correção da redação ${essayId} falhou: ${message}`);
+      await this.refund(usageId);
       await this.prisma.essayCorrection
         .update({
           where: { essayId },
@@ -347,8 +402,8 @@ export class EssayCorrectionService {
       competencies: c.details
         .sort((a, b) => order.indexOf(a.competency) - order.indexOf(b.competency))
         .map((d) => {
-          const extra = (d.evidenceJson ?? {}) as { level?: string; evidence?: string[]; citations?: unknown[] };
-          return { competency: d.competency, score: d.score, justification: d.justification, level: extra.level ?? '', evidence: extra.evidence ?? [], citations: extra.citations ?? [] };
+          const extra = (d.evidenceJson ?? {}) as { level?: string; evidence?: string[]; citations?: unknown[]; tip?: string | null };
+          return { competency: d.competency, score: d.score, justification: d.justification, tip: extra.tip ?? null, level: extra.level ?? '', evidence: extra.evidence ?? [], citations: extra.citations ?? [] };
         }),
       updatedAt: c.updatedAt,
     };

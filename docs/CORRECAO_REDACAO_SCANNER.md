@@ -69,19 +69,36 @@ Configuração de exemplo para um cliente MCP:
 { "mcpServers": { "lumina-redacao": { "command": "node", "args": ["lumina-backend/dist/essay-correction/mcp/stdio.js"] } } }
 ```
 
-### Corretor (processo do Inep)
+### Corretor (processo do Inep, uma avaliação por competência)
 
 1. `analisar_redacao` + `verificar_nota_zero`. "Em branco" e "até 7 linhas" zeram por regra, sem IA.
 2. Para cada competência: `grade_competencia` + `buscar_cartilha`, com consulta montada a partir dos problemas que a análise encontrou.
-3. **Dois avaliadores independentes** (duas chamadas, temperaturas 0,2 e 0,7). Discrepância = diferença maior que 100 no total ou maior que 80 numa competência (cartilha, p. 6). Nesse caso entra o **terceiro**, e a nota é a média das duas avaliações mais próximas. Anulação só vale se as duas avaliações finais concordarem.
-4. **Regras aplicadas no código**, não deixadas ao modelo: nota arredondada ao nível válido; tangenciamento limita C2, C3 e C5 a 40; desrespeito aos direitos humanos zera a C5.
-5. **Antialucinação:** trecho "citado" que não está na redação é descartado, e referência a trecho da cartilha que não foi entregue ao modelo também.
-6. **Calibração** (`model/llm-calibration.json`): nota = a·bruta + b por competência, ajustada com redações já avaliadas.
-7. **Sem IA** (provedor fora ou `AI_PROVIDER=mock`): o modelo estatístico dá uma estimativa marcada como tal, com confiança baixa.
+3. **Cada competência é uma chamada separada.** O modelo recebe só a tarefa daquela competência (o que avaliar e o que ignorar), a grade e os trechos da cartilha dela e os sinais automáticos que importam para ela (C1: períodos e informalidade; C4: conectivos e repetições; C5: elementos da proposta). Assim, um erro de gramática não contamina a nota da C3, por exemplo. A **C2** também decide anulação e tangenciamento (tema e tipo textual); a **C5**, o respeito aos direitos humanos. Cada resposta traz nota, justificativa, trechos da redação e "como melhorar".
+4. **Dois avaliadores independentes** (temperaturas 0,2 e 0,7), 5 chamadas cada. Discrepância = diferença maior que 80 numa competência ou maior que 100 no total (cartilha, p. 6). O **terceiro avaliador reavalia só as competências que divergiram** (se só o total passou de 100, as de maior diferença). Em cada competência, a nota é a média das duas avaliações mais próximas.
+5. **Anulação por voto:** só vale se a maioria das avaliações da C2 anular (os dois avaliadores, ou dois de três). Se só um anular, o terceiro reavalia a C2, e as notas das outras competências são comparadas pelo que cada avaliador deu, sem o zero da anulação.
+6. **Regras aplicadas no código**, não deixadas ao modelo: nota arredondada ao nível válido; tangenciamento limita C2, C3 e C5 a 40; desrespeito aos direitos humanos zera a C5.
+7. **Antialucinação:** trecho "citado" que não está na redação é descartado, e referência a trecho da cartilha que não foi entregue ao modelo também.
+8. **Calibração funcional por competência** (abaixo).
+9. **Comentário geral** montado das competências: o ponto mais forte e as duas competências a priorizar, com a dica de cada uma.
+10. **Sem IA** (provedor fora ou `AI_PROVIDER=mock`): o modelo estatístico dá uma estimativa marcada como tal, com confiança baixa.
+
+Custo: 10 chamadas por redação (15 no pior caso), 3 simultâneas (`ESSAY_COMPETENCY_CONCURRENCY`). O `AiService` respeita o limite por minuto de cada modelo (`AI_RPM_LIMITS`; 15/min no Gemini gratuito): acima dele, a chamada espera a vaga.
+
+### Calibração funcional (`grading/calibration.ts`, `model/llm-calibration.json`)
+
+Cada modelo distorce a escala de um jeito em cada competência. Por isso cada competência de cada modelo tem a própria **função** nota bruta → nota esperada, escolhida por validação cruzada (deixando cada redação de fora) entre:
+
+- **identidade:** a nota do modelo já está na escala;
+- **reta:** a·bruta + b;
+- **isotônica:** função monotônica definida nos seis níveis (0 a 200) e interpolada entre eles. Corrige compressões que a reta não pega (ex.: o modelo dá 120 tanto às redações de 80 quanto às de 160). Em cada nível, a média humana é puxada para a identidade com peso de 3 redações, para que um nível com pouca amostra não decida sozinho.
+
+A forma mais complexa só é escolhida se errar pelo menos 1 ponto a menos. A calibração vale só para o modelo e a versão de prompt com que foi ajustada (`promptVersion`). Um modelo sem calibração própria recebe a nota bruta, porque a função de um modelo não serve para outro.
 
 A nota alimenta a estimativa de nota do Enem (`score-estimate.service.ts` já lê `essay_corrections` concluídas).
 
 ## Banco
+
+Migration `20261101120000_essay_correction_monthly_quota` (só adição): tabela `essay_correction_usages`.
 
 Migration `20261031200000_essay_scanner_correction` (só adições):
 
@@ -99,8 +116,18 @@ Migration `20261031200000_essay_scanner_correction` (só adições):
 | POST | `/essay-scans/:id/retry` | Repete a leitura que falhou. |
 | POST | `/essay-scans/:id/confirm` | `{ text, theme, title? }` → cria a redação e inicia a correção. |
 | DELETE | `/essay-scans/:id/pages` | Apaga as fotos. |
-| POST | `/essays/:id/correction` | Corrige uma redação (digitada ou escaneada). Limite de 15 por aluno a cada 24 h. |
+| POST | `/essays/:id/correction` | Corrige uma redação (digitada ou escaneada). Consome 1 crédito da cota mensal; devolve `quota`. Sem crédito: 429 com `quota` no corpo. |
 | GET | `/essays/:id/correction` | Resultado (ou `IN_PROGRESS`). |
+| GET | `/essay-corrections/quota` | `{ limit, used, remaining, period, resetsAt }` do mês. |
+
+### Cota mensal de correções
+
+- **4 correções por IA por aluno por mês** (`ESSAY_CORRECTION_MONTHLY_LIMIT`). O mês é o do calendário em Brasília: renova à 00:00 do dia 1º.
+- Conta cada pedido que chama o modelo, inclusive "corrigir de novo" depois de editar. Pedir a correção de uma versão já corrigida, ou repetir o pedido enquanto ela roda, não gasta crédito.
+- **O crédito volta** se a correção falhar ou se a nota sair sem a IA (regra de nota zero ou modelo estatístico).
+- Registro em `essay_correction_usages` (uma linha por pedido; apagar a redação não devolve o crédito). A reserva roda numa transação com trava por aluno (`pg_advisory_xact_lock`), então dois cliques simultâneos não passam do limite.
+- **Foto:** a leitura só é aceita com crédito sobrando, e no máximo 3 fotos lidas por correção do mês (12 com o limite 4), porque cada leitura também chama a IA. Se a cota acabar entre a foto e o envio, a redação é salva sem correção e a tela avisa.
+- Na tela: contador "3 de 4 correções por IA restantes em novembro" no editor e no scanner; botões desativados quando zera.
 
 O limite de corpo de 9 MB vale só para `/essay-scans`. As demais rotas continuam com o padrão de 100 kB.
 
@@ -114,12 +141,46 @@ O limite de corpo de 9 MB vale só para `/essay-scans`. As demais rotas continua
 ```bash
 cd lumina-backend && npm run build
 npm run essay:train                                   # modelo estatístico (sem custo de API)
-npm run essay:eval -- --calib 12 --test 16 --inep 3 --max-calls 32   # IA: calibração + teste
+npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30 --inep 3 --max-calls 330   # IA: calibração + teste de um modelo
 ```
 
 - **Dados:** [Essay-BR estendido](https://github.com/lplnufpi/essay-br) (MIT): 6.577 redações avaliadas por profissionais nas cinco competências. É baixado para `lumina-backend/.cache/` (não versionado). A divisão treino/validação/teste é **por tema**, para medir a correção em propostas nunca vistas, como acontece em cada Enem. Também foram usadas as 10 redações nota mil comentadas na cartilha 2025 (cache local).
 - **Métrica principal:** concordância pela regra do próprio Inep. Correção automática e humana "concordam" quando não seriam discrepantes (até 100 de diferença no total e até 80 em cada competência). Também medidos: erro médio, QWK por competência e viés.
 - Cada resposta do modelo fica em cache. `--max-calls` protege a cota diária dos modelos gratuitos, e rodar de novo continua de onde parou.
+
+### Resultados (01/11/2026) — correção por competência e escolha de modelo
+
+**Modelos testados** (chaves gratuitas de OpenRouter, Gemini e Groq):
+
+| Modelo | Situação |
+| --- | --- |
+| `gemini:gemini-3.5-flash-lite` | **Escolhido.** ~2–3 s por chamada, sem falhas, 15 req/min e 500 req/dia no plano gratuito. |
+| `gemini:gemini-3.5-flash`, `3.6-flash` | Funcionam, mas só 20 req/dia no plano gratuito. |
+| `gemini:gemini-3.7-flash`, `3.8-flash` | 50–60 s por chamada (passam do tempo limite). |
+| `gemini:gemini-2.5-pro`, `3.1-pro-preview` | Sem acesso (404) ou sem cota (429) nesta chave. |
+| `groq:openai/gpt-oss-120b`, `qwen/qwen3.8-27b` | Rápidos, mas o plano gratuito (8 mil tokens/min contando a saída) comporta ~1 chamada por minuto, e as notas saíram comprimidas em 40–80. |
+| `nvidia/nemotron-3-ultra` (OpenRouter) | Bom na versão de uma chamada, mas leva 1–2 min por chamada e o OpenRouter gratuito dá 50 req/dia para a conta toda (chat incluído). |
+
+**Leitura da foto** (página sintética recriada: letra cursiva, sombra, rotação, 13 linhas, 5 erros propositais): `gemini-3.5-flash-lite` leu com **0% de erro por caractere e manteve os 5 erros** (3 s). O `nemotron-3.5-super-vl` errou 0,3%, mas "corrigiu" 2 dos 5 erros do aluno, o que derrubaria a C1 sem motivo.
+
+**Uma chamada vs. por competência** (mesmo modelo, flash-lite; mesmas 30 redações de temas inéditos, um avaliador):
+
+| | Uma chamada (v1) | Por competência (v2) |
+| --- | --- | --- |
+| Concordância pela regra do Inep | 36,7% | **46,7%** |
+| Até 100 pontos do total humano | 40% | **50%** |
+| Erro médio no total | 149 | **129** |
+| Erro médio C1 / C2 / C3 / C4 / C5 | 41 / 33 / 39 / 47 / 40 | **31** / 36 / **31** / 55 / **36** |
+| Nota mil do Inep (esperado 1000) | 1000 / 800 / 760 | **1000 / 880 / 920** |
+| Modelo estatístico, mesmas redações | erro 185, concordância 36,7% | |
+
+- A divisão por competência melhorou C1, C3 e C5 e a nota das redações fortes. **C4 piorou e C2 ficou estável:** nas duas, o modelo concentra as notas em 120 (35 de 60 redações na C4), enquanto as notas humanas das mesmas redações vão de 0 a 200. Nenhuma calibração separa o que o modelo juntou.
+- **Calibração** (81 redações: 51 de calibração + 30 de teste, validação nos dois sentidos):
+  - Com o critério frouxo (ganho de 1 ponto), a calibração ajustada em 30 redações **piorou** o teste (erro 129 → 141).
+  - As funções da C1 e da C5 erravam menos dentro da amostra e pioravam fora dela nos dois sentidos. A da C5 e a reta da C2 ainda levavam o 200 a 160: nenhuma redação passaria de 920 (as nota mil caíam para 920/840/840).
+  - Regra final: ganho mínimo de 3 pontos na validação cruzada e preservação dos extremos (200 continua 200 e 0 continua 0). Resultado: **isotônica na C2** (a única que melhorou fora da amostra: 36 → 33) e **identidade nas outras quatro**.
+  - O sistema recalibra sozinho quando houver mais dados (`essay:eval` com amostra maior).
+- Não medido ainda: a produção usa dois avaliadores (+ terceiro por competência). A validação mediu um, por causa da cota.
 
 ### Resultados (31/10/2026)
 
@@ -163,7 +224,7 @@ npm run essay:eval -- --calib 12 --test 16 --inep 3 --max-calls 32   # IA: calib
 ## Limites conhecidos
 
 - **Letra manuscrita real:** a leitura foi validada com uma foto sintética (fonte manuscrita, perspectiva, sombra e erros propositais), não com fotos de alunos. Antes de liberar, vale testar com 10–20 fotos reais de folhas de redação.
-- **Cota dos modelos gratuitos:** o plano gratuito do OpenRouter limita as requisições por dia. Cada correção usa 2 ou 3 chamadas e cada leitura de foto, 1 por página. Para uso real, é preciso um plano com créditos ou outro provedor.
+- **Cota dos modelos gratuitos:** cada correção usa 10 a 15 chamadas (5 por avaliador) e cada leitura de foto, 1 por página. Com o `gemini-3.5-flash-lite` gratuito (500/dia, 15/min) cabem ~35–45 correções por dia, cerca de 1 por minuto. Com a cota de 4 por aluno no mês, isso dá ~300 alunos ativos. Acima disso, é preciso plano pago.
 - **Cópia dos textos motivadores** (que derruba a C2 e desconta linhas) não é detectada: o sistema não tem os textos motivadores de cada proposta.
 - **Calibração com amostra pequena:** ajustada com 12 redações por causa da cota. O script aceita amostras maiores ao longo de vários dias, graças ao cache.
 - A nota é uma **estimativa para estudo**, e a tela diz isso. A nota oficial é da banca do Enem.

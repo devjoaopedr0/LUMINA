@@ -1,15 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeEssayText, splitParagraphs } from './analysis/text-analysis';
+import { applyCalibrationFn, fitIsotonicFn, LEVELS, preservesExtremes, selectCalibrationFn } from './grading/calibration';
 import {
+  assembleRun,
+  calibrationFor,
   closestPair,
+  closestScores,
+  competenciesForThird,
+  CompetencyRun,
+  composeGeneralFeedback,
   dedupeQuotes,
   discrepancyBetween,
   EssayGrader,
   EvaluatorRun,
   extractJson,
-  IDENTITY_CALIBRATION,
+  GRADER_PROMPT_VERSION,
+  LlmCalibration,
   LlmGenerate,
-  parseEvaluation,
+  parseCompetencyEvaluation,
   verifiedEvidence,
 } from './grading/essay-grader';
 import { extractFeatures, fitRidge, FEATURE_NAMES, snapToLevel } from './grading/feature-model';
@@ -31,8 +39,9 @@ Além disso, a escola, que deveria combater esse apagamento, ainda negligencia o
 
 Portanto, para valorizar a herança africana no Brasil, o Ministério da Educação deve fiscalizar o cumprimento da Lei 10.639, por meio de formação continuada de professores e de materiais didáticos que apresentem autores e intelectuais negros, a fim de que os alunos reconheçam essa contribuição. Ademais, a mídia, como formadora de opinião, precisa divulgar campanhas contra a intolerância religiosa, com o objetivo de reduzir os ataques a terreiros.`;
 
+const IDS = ['C1', 'C2', 'C3', 'C4', 'C5'] as const;
+
 function fakeRun(label: string, scores: number[], annulment: EvaluatorRun['annulment'] = null): EvaluatorRun {
-  const ids = ['C1', 'C2', 'C3', 'C4', 'C5'] as const;
   return {
     evaluator: label,
     method: 'llm',
@@ -40,24 +49,29 @@ function fakeRun(label: string, scores: number[], annulment: EvaluatorRun['annul
     annulment,
     tangencia: false,
     humanRightsViolation: false,
-    competencies: Object.fromEntries(ids.map((id, i) => [id, { score: scores[i], justification: `${label} ${id}`, evidence: [], references: [] }])) as unknown as EvaluatorRun['competencies'],
+    competencies: Object.fromEntries(IDS.map((id, i) => [id, { score: scores[i], justification: `${label} ${id}`, evidence: [], references: [] }])) as unknown as EvaluatorRun['competencies'],
     total: scores.reduce((a, b) => a + b, 0),
-    generalComment: `${label} geral`,
+    generalComment: '',
   };
 }
 
-function llmAnswer(scores: number[], extra: Record<string, unknown> = {}) {
-  const ids = ['C1', 'C2', 'C3', 'C4', 'C5'];
+/** Resposta do modelo para UMA competência. */
+function competencyAnswer(competency: string, nota: number, extra: Record<string, unknown> = {}) {
   return JSON.stringify({
-    anulacao: null,
-    tangenciamento: false,
-    direitos_humanos_desrespeitados: false,
-    competencias: Object.fromEntries(
-      ids.map((id, i) => [id, { nota: scores[i], justificativa: `Justificativa ${id}`, trechos: ['o racismo estrutural, herdado de mais de três séculos de escravização', 'trecho que não existe na redação'], referencias: [`${id.toLowerCase()}-niveis`, 'id-inventado'] }]),
-    ),
-    comentario_geral: 'Bom texto.',
+    nota,
+    justificativa: `Justificativa ${competency}`,
+    trechos: ['o racismo estrutural, herdado de mais de três séculos de escravização', 'trecho que não existe na redação'],
+    referencias: [`${competency.toLowerCase()}-niveis`, 'id-inventado'],
+    como_melhorar: `Dica ${competency}`,
     ...extra,
   });
+}
+
+/** Competência que o prompt pede ("Avalie SOMENTE a Competência N"). */
+function competencyOf(prompt: string): (typeof IDS)[number] {
+  const n = /Avalie SOMENTE a Competência (\d)/.exec(prompt)?.[1];
+  if (!n) throw new Error('prompt sem competência');
+  return `C${n}` as (typeof IDS)[number];
 }
 
 describe('Base de conhecimento da cartilha (RAG)', () => {
@@ -173,34 +187,73 @@ describe('Servidor MCP lumina-redacao', () => {
   });
 });
 
-describe('Corretor', () => {
+describe('Corretor por competência', () => {
+  const allowed = new Set(['c1-niveis', 'c2-niveis', 'c3-niveis', 'c4-niveis', 'c5-niveis']);
+
   it('não aceita trecho que não está na redação nem referência que não foi entregue', () => {
-    const run = parseEvaluation(extractJson('```json\n' + llmAnswer([160, 160, 120, 160, 200]) + '\n```'), ESSAY, new Set(['c1-niveis', 'c2-niveis', 'c3-niveis', 'c4-niveis', 'c5-niveis']), IDENTITY_CALIBRATION, 'a', 'm');
-    expect(run.competencies.C3.evidence).toEqual(['o racismo estrutural, herdado de mais de três séculos de escravização']);
-    expect(run.competencies.C3.references).toEqual(['c3-niveis']);
-    expect(run.total).toBe(800);
+    const run = parseCompetencyEvaluation(extractJson('```json\n' + competencyAnswer('C3', 120) + '\n```'), 'C3', ESSAY, allowed, undefined, 'a', 'm');
+    expect(run.evidence).toEqual(['o racismo estrutural, herdado de mais de três séculos de escravização']);
+    expect(run.references).toEqual(['c3-niveis']);
+    expect(run).toMatchObject({ score: 120, rawScore: 120, tip: 'Dica C3' });
   });
 
-  it('arredonda nota fora do nível, aplica tangenciamento e direitos humanos', () => {
-    const allowed = new Set<string>();
-    const run = parseEvaluation(JSON.parse(llmAnswer([170, 200, 200, 130, 200], { tangenciamento: true, direitos_humanos_desrespeitados: true })), ESSAY, allowed, IDENTITY_CALIBRATION, 'a', 'm');
-    expect(run.competencies.C1.score).toBe(160);
-    expect(run.competencies.C4.score).toBe(120);
-    expect(run.competencies.C2.score).toBe(40);
-    expect(run.competencies.C3.score).toBe(40);
-    expect(run.competencies.C5.score).toBe(0);
+  it('arredonda nota fora do nível', () => {
+    expect(parseCompetencyEvaluation(JSON.parse(competencyAnswer('C1', 170)), 'C1', ESSAY, allowed, undefined, 'a', 'm').score).toBe(160);
+    expect(parseCompetencyEvaluation(JSON.parse(competencyAnswer('C4', 130)), 'C4', ESSAY, allowed, undefined, 'a', 'm').score).toBe(120);
   });
 
-  it('aplica a calibração antes de arredondar', () => {
-    const calibration = { ...IDENTITY_CALIBRATION, fitted: true, perCompetency: { ...IDENTITY_CALIBRATION.perCompetency, C1: { a: 0.8, b: 0 } } };
-    const run = parseEvaluation(JSON.parse(llmAnswer([200, 200, 200, 200, 200])), ESSAY, new Set(), calibration, 'a', 'm');
-    expect(run.competencies.C1.score).toBe(160);
+  it('aplica a função de calibração da competência só ao modelo dela', () => {
+    const calibration: LlmCalibration = {
+      version: 2,
+      promptVersion: GRADER_PROMPT_VERSION,
+      byModel: {
+        'gemini:x': {
+          perCompetency: {
+            C1: { type: 'isotonic', points: [[0, 0], [40, 40], [80, 80], [120, 160], [160, 180], [200, 200]] },
+            C2: { type: 'identity' },
+            C3: { type: 'linear', a: 0.8, b: 0 },
+            C4: { type: 'identity' },
+            C5: { type: 'identity' },
+          },
+        },
+      },
+    };
+    const c1 = parseCompetencyEvaluation(JSON.parse(competencyAnswer('C1', 120)), 'C1', ESSAY, allowed, calibration, 'a', 'gemini:x');
+    expect(c1).toMatchObject({ rawScore: 120, score: 160 });
+    expect(parseCompetencyEvaluation(JSON.parse(competencyAnswer('C3', 200)), 'C3', ESSAY, allowed, calibration, 'a', 'gemini:x').score).toBe(160);
+    // Outro modelo, ou outra versão de prompt: sem calibração.
+    expect(parseCompetencyEvaluation(JSON.parse(competencyAnswer('C1', 120)), 'C1', ESSAY, allowed, calibration, 'a', 'groq:y').score).toBe(120);
+    expect(calibrationFor({ ...calibration, promptVersion: 'v1' }, 'gemini:x').fitted).toBe(false);
   });
 
-  it('discrepância segue o Inep: >100 no total ou >80 numa competência', () => {
+  it('regras entre competências: tangenciamento (C2) limita C2, C3 e C5; direitos humanos (C5) zeram a C5', () => {
+    const part = (id: (typeof IDS)[number], score: number, extra: Partial<CompetencyRun> = {}): CompetencyRun => ({
+      competency: id,
+      evaluator: 'a',
+      model: 'm',
+      score,
+      rawScore: score,
+      justification: '',
+      evidence: [],
+      references: [],
+      ...extra,
+    });
+    const run = assembleRun('a', { C1: part('C1', 160), C2: part('C2', 200, { tangencia: true, annulment: null }), C3: part('C3', 200), C4: part('C4', 120), C5: part('C5', 200, { humanRightsViolation: true }) });
+    expect(IDS.map((id) => run.competencies[id].score)).toEqual([160, 40, 40, 120, 0]);
+    const annulled = assembleRun('a', { C1: part('C1', 160), C2: part('C2', 120, { annulment: { code: 'FUGA_AO_TEMA', explanation: '' } }) });
+    expect(annulled.total).toBe(0);
+  });
+
+  it('discrepância segue o Inep e o terceiro reavalia só o que divergiu', () => {
     expect(discrepancyBetween(fakeRun('a', [160, 160, 160, 160, 160]), fakeRun('b', [120, 120, 160, 160, 160])).discrepant).toBe(false);
-    expect(discrepancyBetween(fakeRun('a', [200, 160, 160, 160, 160]), fakeRun('b', [80, 160, 160, 160, 160])).discrepant).toBe(true);
-    expect(discrepancyBetween(fakeRun('a', [200, 200, 200, 160, 160]), fakeRun('b', [160, 160, 160, 120, 120])).discrepant).toBe(true);
+    const byCompetency = discrepancyBetween(fakeRun('a', [200, 160, 160, 160, 160]), fakeRun('b', [80, 160, 160, 160, 160]));
+    expect(byCompetency.discrepant).toBe(true);
+    expect(competenciesForThird(byCompetency, false)).toEqual(['C1']);
+    // Só o total passou de 100: vão as de maior diferença.
+    const byTotal = discrepancyBetween(fakeRun('a', [200, 200, 200, 160, 160]), fakeRun('b', [160, 160, 120, 120, 120]));
+    expect(competenciesForThird(byTotal, false)).toEqual(['C3']);
+    expect(competenciesForThird(byCompetency, true)).toEqual(['C1', 'C2']);
+    expect(closestScores([200, 80, 160])).toEqual([200, 160]);
     const pair = closestPair([fakeRun('a', [200, 200, 200, 200, 200]), fakeRun('b', [80, 80, 80, 80, 80]), fakeRun('c', [160, 160, 200, 200, 200])]);
     expect(pair.map((r) => r.evaluator).sort()).toEqual(['a', 'c']);
   });
@@ -214,49 +267,69 @@ describe('Corretor', () => {
     expect(verifiedEvidence(['o racismo estrutural ... algo que não está no texto'], ESSAY)).toHaveLength(0);
   });
 
-  async function grade(llmTexts: (string | null)[]) {
+  /**
+   * Corrige com um modelo falso: `answer(competência, avaliador)` devolve o
+   * texto da resposta (o avaliador sai da temperatura: 0,2 → 1, 0,7 → 2, 0,4 → 3).
+   */
+  async function grade(answer: (competency: (typeof IDS)[number], evaluator: number) => string | null) {
     const tools = await EssayMcpClient.connect();
-    const queue = [...llmTexts];
-    const llm: LlmGenerate = vi.fn(async () => {
-      const next = queue.shift();
-      return next === null || next === undefined ? null : { text: next, model: 'fake-model' };
+    const prompts: string[] = [];
+    const llm: LlmGenerate = vi.fn(async ({ prompt, temperature }) => {
+      prompts.push(prompt);
+      const text = answer(competencyOf(prompt), temperature === 0.2 ? 1 : temperature === 0.7 ? 2 : 3);
+      return text === null ? null : { text, model: 'fake-model' };
     });
     try {
-      return { result: await new EssayGrader({ tools, llm }).grade({ text: ESSAY, theme: THEME }), llm };
+      return { result: await new EssayGrader({ tools, llm }).grade({ text: ESSAY, theme: THEME }), llm, prompts };
     } finally {
       await tools.close();
     }
   }
 
-  it('dois avaliadores concordantes: média, sem terceiro, e consulta à cartilha pelo MCP', async () => {
-    const { result, llm } = await grade([llmAnswer([160, 200, 160, 160, 200]), llmAnswer([160, 160, 160, 200, 200])]);
-    expect(llm).toHaveBeenCalledTimes(2);
+  const scores =
+    (first: number[], second: number[], third: number[] = first) =>
+    (c: (typeof IDS)[number], e: number) =>
+      competencyAnswer(c, (e === 1 ? first : e === 2 ? second : third)[IDS.indexOf(c)]);
+
+  it('dois avaliadores concordantes: cinco chamadas cada, uma por competência, com contexto só dela', async () => {
+    const { result, llm, prompts } = await grade(scores([160, 200, 160, 160, 200], [160, 160, 160, 200, 200]));
+    expect(llm).toHaveBeenCalledTimes(10);
     expect(result.method).toBe('dois-avaliadores');
     expect(result.competencies.map((c) => c.score)).toEqual([160, 180, 160, 180, 200]);
     expect(result.total).toBe(880);
     expect(result.discrepancy?.thirdEvaluator).toBe(false);
+    // O prompt da C1 traz a grade da C1 e não a das outras.
+    const c1 = prompts.find((p) => competencyOf(p) === 'C1')!;
+    expect(c1).toContain('[c1-niveis]');
+    expect(c1).not.toContain('[c5-niveis]');
+    expect(c1).not.toContain('"anulacao"');
+    expect(prompts.find((p) => competencyOf(p) === 'C2')).toContain('"anulacao"');
     const tools = result.toolCalls.map((c) => c.tool);
     expect(tools.slice(0, 2)).toEqual(['analisar_redacao', 'verificar_nota_zero']);
     expect(tools.filter((t) => t === 'grade_competencia')).toHaveLength(5);
     expect(tools.filter((t) => t === 'buscar_cartilha')).toHaveLength(5);
     expect(result.competencies[0].citations[0].citation).toMatch(/Cartilha do Participante Enem 2025/);
     expect(result.competencies[0].level).toMatch(/bom domínio/);
+    expect(result.competencies[0].tip).toBe('Dica C1');
+    expect(result.generalFeedback).toMatch(/Ponto mais forte: C5/);
   });
 
-  it('discrepância chama o terceiro avaliador e fica com o par mais próximo', async () => {
-    const { result, llm } = await grade([llmAnswer([200, 200, 200, 200, 200]), llmAnswer([80, 80, 80, 80, 80]), llmAnswer([160, 200, 200, 200, 200])]);
-    expect(llm).toHaveBeenCalledTimes(3);
+  it('discrepância numa competência: o terceiro reavalia só ela e vale o par mais próximo', async () => {
+    const { result, llm } = await grade(scores([200, 160, 160, 160, 160], [80, 160, 160, 160, 160], [160, 0, 0, 0, 0]));
+    expect(llm).toHaveBeenCalledTimes(11);
     expect(result.method).toBe('tres-avaliadores');
-    expect(result.total).toBe(980);
+    expect(result.discrepancy?.competencies).toEqual(['C1']);
+    expect(result.competencies.map((c) => c.score)).toEqual([180, 160, 160, 160, 160]);
     expect(result.confidence).toBeLessThan(0.85);
   });
 
-  it('anulação só vale quando as duas avaliações finais concordam', async () => {
-    const annul = llmAnswer([0, 0, 0, 0, 0], { anulacao: { motivo: 'FUGA_AO_TEMA', explicacao: 'Fala de outro tema.' } });
-    const split = await grade([annul, llmAnswer([160, 160, 160, 160, 160]), llmAnswer([160, 160, 120, 160, 160])]);
+  it('anulação só vale quando a maioria das avaliações da C2 concorda', async () => {
+    const annul = { anulacao: { motivo: 'FUGA_AO_TEMA', explicacao: 'Fala de outro tema.' } };
+    const split = await grade((c, e) => competencyAnswer(c, 160, c === 'C2' && e === 1 ? annul : {}));
     expect(split.result.annulment).toBeNull();
-    expect(split.result.total).toBe(780);
-    const both = await grade([annul, annul]);
+    expect(split.llm).toHaveBeenCalledTimes(11);
+    expect(split.result.total).toBe(800);
+    const both = await grade((c) => competencyAnswer(c, 160, c === 'C2' ? annul : {}));
     expect(both.result.annulment).toMatchObject({ code: 'FUGA_AO_TEMA', citation: expect.stringMatching(/p\. 24/) });
     expect(both.result.total).toBe(0);
   });
@@ -271,9 +344,77 @@ describe('Corretor', () => {
   });
 
   it('JSON quebrado tenta de novo; sem provedor e sem modelo treinado, falha com mensagem clara', async () => {
-    const retried = await grade(['isto não é json', llmAnswer([120, 120, 120, 120, 120]), llmAnswer([120, 120, 120, 120, 120])]);
+    const broken = new Set<string>();
+    const retried = await grade((c, e) => {
+      const key = `${c}${e}`;
+      if (c === 'C3' && !broken.has(key)) {
+        broken.add(key);
+        return 'isto não é json';
+      }
+      return competencyAnswer(c, 120);
+    });
     expect(retried.result.total).toBe(600);
-    await expect(grade([null])).rejects.toThrow('Correção indisponível');
+    expect(retried.llm).toHaveBeenCalledTimes(12);
+    await expect(grade(() => null)).rejects.toThrow('Correção indisponível');
+  });
+
+  it('comentário geral aponta o ponto forte e o que priorizar', () => {
+    const text = composeGeneralFeedback([
+      { competency: 'C1', score: 120, tip: 'Revise a crase.' },
+      { competency: 'C2', score: 200 },
+      { competency: 'C3', score: 160 },
+      { competency: 'C4', score: 160 },
+      { competency: 'C5', score: 80, tip: 'Detalhe o meio.' },
+    ]);
+    expect(text).toMatch(/Ponto mais forte: C2/);
+    expect(text).toMatch(/priorize C5 .* e C1/);
+    expect(text).toContain('C5: Detalhe o meio.');
+  });
+});
+
+describe('Calibração funcional por competência', () => {
+  it('isotônica é monotônica e, sem dados num nível, fica na identidade', () => {
+    const fn = fitIsotonicFn([
+      [120, 160], [120, 160], [120, 160], [120, 160],
+      [160, 140], [160, 140], [160, 140], [160, 140],
+    ]);
+    const values = LEVELS.map((x) => applyCalibrationFn(fn, x));
+    for (let i = 1; i < values.length; i++) expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]);
+    expect(applyCalibrationFn(fn, 0)).toBe(0);
+    expect(applyCalibrationFn(fn, 200)).toBe(200);
+    // Interpola entre níveis (média de dois avaliadores).
+    expect(applyCalibrationFn({ type: 'isotonic', points: [[80, 80], [120, 160]] }, 100)).toBe(120);
+  });
+
+  it('modelo já na escala: a validação cruzada mantém a identidade', () => {
+    const pairs: [number, number][] = Array.from({ length: 30 }, (_, i) => [LEVELS[i % 6], LEVELS[i % 6]]);
+    expect(selectCalibrationFn(pairs).fn).toEqual({ type: 'identity' });
+  });
+
+  it('modelo que comprime a escala: escolhe uma função que a expande', () => {
+    // O modelo dá 120 a redações de 80 a 160, e 80 às de 40.
+    const pairs: [number, number][] = [];
+    for (let i = 0; i < 8; i++) pairs.push([80, 40], [120, 80], [120, 120], [160, 200], [120, 160], [160, 160]);
+    const sel = selectCalibrationFn(pairs);
+    expect(sel.fn.type).not.toBe('identity');
+    expect(Math.min(sel.loo.linear, sel.loo.isotonic)).toBeLessThan(sel.loo.identity);
+    expect(applyCalibrationFn(sel.fn, 80)).toBeLessThan(80);
+    expect(applyCalibrationFn(sel.fn, 160)).toBeGreaterThan(160);
+  });
+
+  it('recusa função que achata os extremos (nenhuma redação chegaria a 1000)', () => {
+    // Avaliadores humanos ruidosos: o 200 do modelo vira, em média, 170.
+    const pairs: [number, number][] = [];
+    for (let i = 0; i < 6; i++) pairs.push([200, 200], [200, 160], [200, 120], [160, 160], [120, 120], [80, 80], [40, 40], [0, 0]);
+    expect(preservesExtremes({ type: 'linear', a: 0.633, b: 49 })).toBe(false);
+    expect(preservesExtremes({ type: 'isotonic', points: [[0, 18.6], [200, 173.3]] })).toBe(false);
+    const sel = selectCalibrationFn(pairs);
+    expect(preservesExtremes(sel.fn)).toBe(true);
+    expect(snapToLevel(applyCalibrationFn(sel.fn, 200))).toBe(200);
+  });
+
+  it('lê o formato antigo (reta sem tipo)', () => {
+    expect(applyCalibrationFn({ a: 0.5, b: 20 }, 200)).toBe(120);
   });
 });
 

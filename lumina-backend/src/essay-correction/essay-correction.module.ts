@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
-import { EssayCorrectionController, EssayScanController } from './essay-correction.controller';
+import { EssayCorrectionController, EssayCorrectionQuotaController, EssayScanController } from './essay-correction.controller';
 import { EssayCorrectionService } from './essay-correction.service';
 
 /**
@@ -10,7 +10,7 @@ import { EssayCorrectionService } from './essay-correction.service';
  */
 @Module({
   imports: [AiModule],
-  controllers: [EssayScanController, EssayCorrectionController],
+  controllers: [EssayScanController, EssayCorrectionController, EssayCorrectionQuotaController],
   providers: [EssayCorrectionService],
   exports: [EssayCorrectionService],
 })

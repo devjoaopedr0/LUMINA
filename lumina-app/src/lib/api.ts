@@ -97,6 +97,8 @@ export interface EssayCompetencyResult {
   score: number;
   level: string;
   justification: string | null;
+  /** O que faria a nota subir nesta competência. */
+  tip?: string | null;
   evidence: string[];
   citations: { id: string; title: string; citation: string }[];
 }
@@ -111,17 +113,32 @@ export interface EssayCorrection {
   errorMessage?: string | null;
   method?: 'dois-avaliadores' | 'tres-avaliadores' | 'modelo-estatistico' | 'regra' | null;
   calibrated?: boolean;
-  discrepancy?: { total: number; maxCompetency: number; thirdEvaluator: boolean } | null;
+  discrepancy?: { total: number; maxCompetency: number; thirdEvaluator: boolean; competencies?: string[] } | null;
   evaluators?: { evaluator: string; model: string | null; total: number }[];
   analysis?: { lines: number; linesSource: 'ocr' | 'estimativa'; words: number; paragraphs: number; warnings: string[] } | null;
   competencies?: EssayCompetencyResult[];
   updatedAt?: string;
+  /** Vem no pedido de correção: a cota já com este pedido descontado. */
+  quota?: EssayCorrectionQuota;
 }
 export const apiEssayScanCreate = (token: string, pages: string[], theme: string): Promise<{ id: string; status: EssayScanStatus }> =>
   request('/essay-scans', { method: 'POST', headers: essayHeaders(token), body: JSON.stringify({ pages, theme }) });
 export const apiEssayScan = (token: string, id: string): Promise<EssayScan> => request(`/essay-scans/${id}`, { headers: essayHeaders(token) });
 export const apiEssayScanRetry = (token: string, id: string): Promise<{ id: string; status: EssayScanStatus }> => request(`/essay-scans/${id}/retry`, { method: 'POST', headers: essayHeaders(token) });
-export const apiEssayScanConfirm = (token: string, id: string, data: { text: string; theme: string; title?: string }): Promise<{ essayId: string; correction: EssayCorrection }> =>
+/** Cota mensal de correções por IA (renova no dia 1º, horário de Brasília). */
+export interface EssayCorrectionQuota {
+  limit: number;
+  used: number;
+  remaining: number;
+  period: string;
+  resetsAt: string;
+}
+export const apiEssayCorrectionQuota = (token: string): Promise<EssayCorrectionQuota> => request('/essay-corrections/quota', { headers: essayHeaders(token) });
+export const apiEssayScanConfirm = (
+  token: string,
+  id: string,
+  data: { text: string; theme: string; title?: string },
+): Promise<{ essayId: string; correction: EssayCorrection; quota?: EssayCorrectionQuota; quotaMessage?: string }> =>
   request(`/essay-scans/${id}/confirm`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
 export const apiEssayScanDeleteImages = (token: string, id: string): Promise<{ deletedPages: number }> => request(`/essay-scans/${id}/pages`, { method: 'DELETE', headers: essayHeaders(token) });
 /** A página é binária (JPEG): busca fora do cliente JSON e devolve um object URL. */

@@ -60,9 +60,9 @@ export function EssayCorrectionView({ correction, onRetry, retrying }: { correct
   const total = correction.totalScore ?? 0;
   const methodText =
     correction.method === 'tres-avaliadores'
-      ? `Os dois primeiros avaliadores ficaram ${correction.discrepancy?.maxCompetency ?? 0} pontos distantes numa competência e ${correction.discrepancy?.total ?? 0} no total — além do limite do Inep (80 por competência, 100 no total). Um terceiro avaliou e a nota é a média das duas avaliações mais próximas.`
+      ? `Os dois primeiros avaliadores ficaram ${correction.discrepancy?.maxCompetency ?? 0} pontos distantes numa competência e ${correction.discrepancy?.total ?? 0} no total — além do limite do Inep (80 por competência, 100 no total). Um terceiro reavaliou ${correction.discrepancy?.competencies?.length ? correction.discrepancy.competencies.join(', ') : 'as competências divergentes'}, e em cada uma a nota é a média das duas avaliações mais próximas.`
       : correction.method === 'dois-avaliadores'
-        ? 'Nota = média de dois avaliadores independentes, como no Enem.'
+        ? 'Cada competência foi avaliada separadamente por dois avaliadores independentes; a nota é a média deles, como no Enem.'
         : correction.method === 'modelo-estatistico'
           ? 'Estimativa do modelo estatístico (a IA estava indisponível): use só como referência.'
           : 'Nota definida por regra objetiva da cartilha.';
@@ -118,6 +118,12 @@ export function EssayCorrectionView({ correction, onRetry, retrying }: { correct
                 </div>
                 {c.level ? <p className="mt-3 text-sm italic text-graphite-500">{c.score % 40 === 0 ? 'Nível da cartilha' : `Entre os níveis ${Math.floor(c.score / 40) * 40} e ${Math.ceil(c.score / 40) * 40} (média dos avaliadores) — nível garantido`}: “{c.level}”</p> : null}
                 {c.justification ? <p className="mt-2 text-sm text-graphite-700">{c.justification}</p> : null}
+                {c.tip && c.score < 200 ? (
+                  <p className="mt-2 rounded-lg bg-primary/10 px-3 py-2 text-sm text-graphite-700">
+                    <span className="font-semibold">Para subir: </span>
+                    {c.tip}
+                  </p>
+                ) : null}
                 {c.evidence.length ? (
                   <ul className="mt-3 space-y-1">
                     {c.evidence.map((quote) => (

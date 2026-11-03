@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { CornerEditor } from '@/components/essays/CornerEditor';
 import { EssayCorrectionView } from '@/components/essays/EssayCorrectionPanel';
-import { useEssayCorrection } from '@/hooks/useEssayCorrection';
+import { quotaLabel, useEssayCorrection } from '@/hooks/useEssayCorrection';
 import { getAccessToken } from '@/lib/auth';
 import {
   apiEssayScan,
@@ -59,7 +59,9 @@ export function EssayScanner() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [essayId, setEssayId] = useState<string | null>(null);
   const [pollKey, setPollKey] = useState(0);
-  const { correction, error: correctionError, busy: correctionBusy, request: requestCorrection, setCorrection } = useEssayCorrection(essayId);
+  const { correction, error: correctionError, busy: correctionBusy, request: requestCorrection, setCorrection, quota, setQuota } = useEssayCorrection(essayId);
+  const quotaExhausted = quota !== null && quota.remaining <= 0;
+  const [quotaNotice, setQuotaNotice] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -263,6 +265,10 @@ export function EssayScanner() {
       const result = await apiEssayScanConfirm(getAccessToken() ?? '', scanId, { text, theme: theme.trim(), title: title.trim() || undefined });
       setEssayId(result.essayId);
       setCorrection(result.correction);
+      if (result.quota) setQuota(result.quota);
+      else if (result.correction.quota) setQuota(result.correction.quota);
+      // Cota acabou entre a foto e o envio: a redação ficou salva sem correção.
+      setQuotaNotice(result.quotaMessage ?? '');
       setStep('done');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar para correção.');
@@ -316,9 +322,15 @@ export function EssayScanner() {
               <li>• Apoie a folha numa superfície escura e lisa, com boa luz e sem sombra da mão ou do celular.</li>
               <li>• Enquadre a folha inteira, de cima, com as quatro pontas aparecendo.</li>
             </ul>
+            {quota ? (
+              <p className={`mt-5 rounded-xl p-3 text-sm ${quotaExhausted ? 'bg-amber-50 font-semibold text-amber-800' : 'bg-surface-card text-graphite-500'}`}>
+                {quotaLabel(quota)}
+                {quotaExhausted ? ' Você ainda pode digitar a redação no editor e salvá-la para corrigir depois.' : ''}
+              </p>
+            ) : null}
             <div className="mt-6 flex flex-wrap gap-3">
-              <Button onClick={() => void openCamera()}><Camera size={18} />Abrir câmera</Button>
-              <Button variant="outline" onClick={() => fileRef.current?.click()}><FileImage size={18} />Escolher foto</Button>
+              <Button onClick={() => void openCamera()} disabled={quotaExhausted}><Camera size={18} />Abrir câmera</Button>
+              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={quotaExhausted}><FileImage size={18} />Escolher foto</Button>
               <input ref={fileRef} type="file" accept="image/*" capture="environment" className="sr-only" aria-label="Escolher foto da redação" onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} />
             </div>
           </Card>
@@ -432,7 +444,15 @@ export function EssayScanner() {
         {step === 'done' && essayId ? (
           <div className="space-y-4">
             {correctionError ? <p role="status" className="text-sm text-amber-700">{correctionError}</p> : null}
-            {correction ? <EssayCorrectionView correction={correction} onRetry={() => void requestCorrection()} retrying={correctionBusy} /> : <p role="status">Carregando a correção…</p>}
+            {quotaNotice ? (
+              <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+                {quotaNotice} Sua redação foi salva em <Link to={`/app/redacoes/${essayId}`} className="font-semibold underline">Minhas redações</Link>.
+              </p>
+            ) : correction ? (
+              <EssayCorrectionView correction={correction} onRetry={() => void requestCorrection()} retrying={correctionBusy} />
+            ) : (
+              <p role="status">Carregando a correção…</p>
+            )}
             <div className="flex flex-wrap gap-3">
               <Button variant="outline" onClick={() => navigate(`/app/redacoes/${essayId}`)}>Abrir no editor</Button>
               <Button variant="ghost" onClick={() => navigate('/app/redacoes/scanner')}><Camera size={16} />Corrigir outra redação</Button>

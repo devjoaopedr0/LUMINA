@@ -43,6 +43,7 @@ model User {
   mentalMathSessions     MentalMathSession[]
   essays                 Essay[]
   essayScans             EssayScan[]
+  essayCorrectionUsages  EssayCorrectionUsage[]
   teacherProfile         TeacherProfile?
   authoredEssayThemes    EssayTheme[]
   createdSimulations     Simulation[]
@@ -93,21 +94,22 @@ model MentalMathSession {
 }
 
 model Essay {
-  id         String           @id @default(uuid()) @db.Uuid
-  userId     String           @map("user_id") @db.Uuid
-  title      String           @default("") @db.VarChar(160)
-  theme      String           @default("") @db.VarChar(300)
-  content    String           @default("")
-  version    Int              @default(0)
-  wordCount  Int              @default(0) @map("word_count")
-  createdAt  DateTime         @default(now()) @map("created_at")
-  updatedAt  DateTime         @updatedAt @map("updated_at")
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  revisions  EssayRevision[]
-  correction EssayCorrection?
-  versions   EssayVersion[]
-  feedbacks  EssayFeedback[]
-  scans      EssayScan[]
+  id               String                 @id @default(uuid()) @db.Uuid
+  userId           String                 @map("user_id") @db.Uuid
+  title            String                 @default("") @db.VarChar(160)
+  theme            String                 @default("") @db.VarChar(300)
+  content          String                 @default("")
+  version          Int                    @default(0)
+  wordCount        Int                    @default(0) @map("word_count")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions        EssayRevision[]
+  correction       EssayCorrection?
+  versions         EssayVersion[]
+  feedbacks        EssayFeedback[]
+  scans            EssayScan[]
+  correctionUsages EssayCorrectionUsage[]
 
   @@index([userId, updatedAt])
   @@map("essays")
@@ -1998,4 +2000,25 @@ model AnswerSheetBatch {
 
   @@index([scannedById, createdAt])
   @@map("answer_sheet_batches")
+}
+
+/// Uso da cota mensal de correções por IA: uma linha por correção que
+/// chamou o modelo. Fica separada de essay_corrections porque ali há uma
+/// linha por redação (corrigir de novo sobrescreve), e a cota conta pedidos.
+model EssayCorrectionUsage {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Apagar a redação não devolve a correção já gasta.
+  essayId    String?   @map("essay_id") @db.Uuid
+  essay      Essay?    @relation(fields: [essayId], references: [id], onDelete: SetNull)
+  /// Mês da cota no fuso de Brasília, "AAAA-MM".
+  period     String    @db.VarChar(7)
+  /// Preenchido quando a correção não usou a IA (falhou ou caiu no modelo
+  /// estatístico/regra): o crédito volta para o aluno.
+  refundedAt DateTime? @map("refunded_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, period])
+  @@map("essay_correction_usages")
 }

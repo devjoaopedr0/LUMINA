@@ -1,15 +1,145 @@
 {
-  "version": 1,
-  "fitted": true,
-  "fittedAt": "2026-10-31T20:40:00.000Z",
-  "sampleSize": 28,
-  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "method": "Mínimos quadrados por competência sobre 28 redações do Essay-BR (12 da validação + 16 do teste, temas distintos), avaliador único. Mantido só onde a validação cruzada leave-one-out reduziu o erro: C1 32,9→28,6; C3 42,9→38,6; C5 37,1→34,3. C2 (32,9→37,1) e C4 (37,1→38,6) pioraram e ficam sem calibração. Total: erro médio 134→123 na validação cruzada.",
-  "perCompetency": {
-    "C1": { "a": 0.867, "b": 38.9 },
-    "C2": { "a": 1, "b": 0 },
-    "C3": { "a": 1.33, "b": -72.5 },
-    "C4": { "a": 1, "b": 0 },
-    "C5": { "a": 1.303, "b": 1.6 }
+  "version": 2,
+  "promptVersion": "v2-competencia",
+  "byModel": {
+    "gemini:gemini-3.5-flash-lite": {
+      "perCompetency": {
+        "C1": {
+          "type": "identity"
+        },
+        "C2": {
+          "type": "isotonic",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              40,
+              67.4
+            ],
+            [
+              80,
+              97.8
+            ],
+            [
+              120,
+              125.5
+            ],
+            [
+              160,
+              150
+            ],
+            [
+              200,
+              200
+            ]
+          ]
+        },
+        "C3": {
+          "type": "identity"
+        },
+        "C4": {
+          "type": "identity"
+        },
+        "C5": {
+          "type": "identity"
+        }
+      },
+      "fittedAt": "2026-11-01T19:34:33.280Z",
+      "sampleSize": 81,
+      "selection": {
+        "C1": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 35.6,
+            "linear": 37.5,
+            "isotonic": 33.6
+          },
+          "n": 81,
+          "rejectedForExtremes": []
+        },
+        "C2": {
+          "fn": {
+            "type": "isotonic",
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                40,
+                67.4
+              ],
+              [
+                80,
+                97.8
+              ],
+              [
+                120,
+                125.5
+              ],
+              [
+                160,
+                150
+              ],
+              [
+                200,
+                200
+              ]
+            ]
+          },
+          "loo": {
+            "identity": 32.6,
+            "linear": 29.6,
+            "isotonic": 29.6
+          },
+          "n": 81,
+          "rejectedForExtremes": [
+            "linear"
+          ]
+        },
+        "C3": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 34.1,
+            "linear": 43.5,
+            "isotonic": 41.5
+          },
+          "n": 81,
+          "rejectedForExtremes": []
+        },
+        "C4": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 44,
+            "linear": 44,
+            "isotonic": 44
+          },
+          "n": 81,
+          "rejectedForExtremes": []
+        },
+        "C5": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 33.6,
+            "linear": 37,
+            "isotonic": 28.6
+          },
+          "n": 81,
+          "rejectedForExtremes": [
+            "isotonic"
+          ]
+        }
+      }
+    }
   }
 }

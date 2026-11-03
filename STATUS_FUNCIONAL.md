@@ -1,5 +1,16 @@
 # Status funcional da Lumina
 
+## Atualização de 01/11/2026 — Correção de redação por competência, calibração funcional e cota mensal
+
+- **Por competência:** cada avaliador avalia as cinco competências em chamadas separadas, com a grade, os trechos da cartilha e os sinais só daquela competência. O terceiro avaliador reavalia só as competências que divergiram. Cada competência traz "como melhorar", que aparece na tela.
+- **Calibração funcional por competência e por modelo:** identidade, reta ou isotônica, escolhida por validação cruzada, com ganho mínimo de 3 pontos e preservação dos extremos (0 e 200).
+- **Resultado** (flash-lite, 30 redações de temas inéditos): concordância pela regra do Inep de 36,7% → 46,7%, erro médio 149 → 129, nota mil do Inep 1000/880/920 (antes 1000/800/760). C4 continua fraca.
+- **Vários provedores:** `AI_ESSAY_MODELS`/`AI_VISION_MODELS` aceitam `gemini:`, `groq:`, `openrouter:` e `openai:` numa mesma lista, com fallback entre eles. Há limitador por minuto por modelo (`AI_RPM_LIMITS`) e espera curta quando o provedor manda aguardar (429).
+- **Cota:** 4 correções por IA por aluno por mês (`ESSAY_CORRECTION_MONTHLY_LIMIT`). Falha ou nota sem IA devolve o crédito. Contador e bloqueio no editor e no scanner. `GET /essay-corrections/quota`.
+- Migration `20261101120000_essay_correction_monthly_quota` (só adição). **Ainda não aplicada no banco.**
+- Testes: backend com 742 (todos passando); app com os checks de sempre.
+- **Pendente:** aplicar a migration; definir no `.env` `AI_ESSAY_MODELS`/`AI_VISION_MODELS` com o flash-lite; ampliar a calibração (cota de 500/dia); melhorar C2/C4; validar com fotos reais.
+
 ## Atualização de 31/10/2026 — Cartão-resposta: domínio por tópico só no lançamento final
 
 - Lançar e corrigir a nota pelo cartão-resposta não mexem mais no domínio por tópico. Ele é aplicado uma única vez, com as respostas definitivas, quando o corretor finaliza a correção. A finalização trava a folha.

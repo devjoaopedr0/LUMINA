@@ -36,9 +36,58 @@ const DEFAULT_OPENROUTER_VISION_MODELS = [
   'google/gemma-4-26b-a4b-it:free',
 ];
 
+/** Provedores que podem aparecer como prefixo numa lista de modelos. */
+const ROUTABLE_PROVIDERS = ['openrouter', 'gemini', 'groq', 'openai'] as const;
+type RoutableProvider = (typeof ROUTABLE_PROVIDERS)[number];
+
+/**
+ * Referência a um modelo numa lista do ambiente. `gemini:gemini-3.8-flash`
+ * e `groq:openai/gpt-oss-120b` apontam o provedor; sem prefixo, vale o
+ * `AI_PROVIDER`. O prefixo só conta se for um provedor conhecido: nomes do
+ * OpenRouter como `nvidia/x:free` têm ":" mas não começam por um.
+ */
+export function parseModelRef(ref: string, defaultProvider: string): { provider: string; model: string } {
+  const i = ref.indexOf(':');
+  const prefix = i > 0 ? ref.slice(0, i).toLowerCase() : '';
+  if ((ROUTABLE_PROVIDERS as readonly string[]).includes(prefix)) return { provider: prefix, model: ref.slice(i + 1) };
+  return { provider: defaultProvider, model: ref };
+}
+
+/**
+ * Folga de tokens para modelos que raciocinam antes de responder e contam
+ * esse raciocínio dentro de max_tokens (Gemini 2.5+/3.x, gpt-oss, Qwen 3).
+ * Sem ela, o JSON da correção chega cortado.
+ */
+const REASONING_HEADROOM_TOKENS = 4000;
+
+/** Espera máxima aceita num 429 antes de passar ao próximo modelo. */
+const MAX_RETRY_AFTER_S = 30;
+/** Espera num 429 por rajada que não diz quanto esperar. */
+const DEFAULT_RATE_LIMIT_WAIT_S = 20;
+/** Plano gratuito do Gemini: 15 requisições por minuto (gemini-3.5-flash-lite). */
+const DEFAULT_GEMINI_RPM = 15;
+/**
+ * Espera máxima por uma vaga no limite por minuto antes de trocar de modelo.
+ * A janela é de 60 s, então 61 s garante a vaga (a chamada entra na fila em
+ * vez de falhar). `AI_RATE_MAX_WAIT_MS` reduz isso para trocar de modelo antes.
+ */
+const MAX_RATE_WAIT_MS = 61_000;
+
+type EndpointConfig = {
+  url: string;
+  apiKey: string;
+  providerName: string;
+  headers: Record<string, string>;
+  extraBody?: Record<string, unknown>;
+  extraBodyFor?: (model: string) => Record<string, unknown>;
+  reasoningHeadroom?: number;
+};
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
+  /** Instantes das chamadas do último minuto, por provedor:modelo. */
+  private readonly recentCalls = new Map<string, number[]>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -79,6 +128,8 @@ export class AiService {
         return only(this.callAnthropic(message, history, context, systemPrompt));
       case 'groq':
         return only(this.callGroq(message, history, context, systemPrompt));
+      case 'gemini':
+        return only(this.callGemini(message, history, context, systemPrompt));
       case 'mock':
       default:
         return this.mockResponse(message, history, context);
@@ -109,6 +160,8 @@ export class AiService {
         return (await this.callAnthropic(message, [], undefined, params.system, options)).message;
       case 'groq':
         return (await this.callGroq(message, [], undefined, params.system, options)).message;
+      case 'gemini':
+        return (await this.callGemini(message, [], undefined, params.system, options)).message;
       default:
         return null;
     }
@@ -141,6 +194,12 @@ export class AiService {
       models: params.models?.length ? params.models : undefined,
     };
     const vision = Boolean(params.imageDataUrl);
+    const chain = vision ? this.listFromEnv('AI_VISION_MODELS') : options.models ?? [];
+    // Qualquer modelo com prefixo de provedor (mesmo o do AI_PROVIDER) vai
+    // pela cadeia, que tira o prefixo antes de chamar a API.
+    if (provider !== 'mock' && chain.some((ref) => parseModelRef(ref, provider).model !== ref)) {
+      return this.callChain(chain, provider, message, params.system, options);
+    }
     let result: AiChatResponseDto & { model?: string };
     switch (provider) {
       case 'openai':
@@ -156,10 +215,97 @@ export class AiService {
         if (vision) return null;
         result = await this.callGroq(message, [], undefined, params.system, options);
         break;
+      case 'gemini':
+        result = await this.callGemini(message, [], undefined, params.system, options);
+        break;
       default:
         return null;
     }
     return { text: result.message, model: result.model ?? provider };
+  }
+
+  /**
+   * Cadeia com modelos de provedores diferentes (ex.: AI_ESSAY_MODELS =
+   * "gemini:gemini-3.8-flash,groq:openai/gpt-oss-120b,nvidia/x:free").
+   * Tenta em ordem; provedor sem chave é pulado. O modelo devolvido leva o
+   * prefixo do provedor, para a auditoria e a calibração por modelo.
+   */
+  private async callChain(
+    refs: string[],
+    defaultProvider: string,
+    message: AiChatMessageDto,
+    system: string,
+    options: GenerationOptions,
+  ): Promise<GenerationResult> {
+    let lastError = 'nenhum provedor configurado na cadeia';
+    for (const ref of refs) {
+      const { provider, model } = parseModelRef(ref, defaultProvider);
+      const endpoint = this.endpointFor(provider as RoutableProvider);
+      if (!endpoint) {
+        lastError = `${provider}: sem chave de API`;
+        continue;
+      }
+      try {
+        const result = await this.chatCompletion({ ...endpoint, models: [model], message, history: [], systemPrompt: system, options });
+        return { text: result.message, model: `${provider}:${result.model ?? model}` };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    throw new BadRequestException(`Erro de IA: todos os modelos da cadeia falharam. Ultimo erro: ${lastError}`);
+  }
+
+  /** Endereço, chave e ajustes de cada provedor compatível com a API da OpenAI. */
+  private endpointFor(provider: RoutableProvider): EndpointConfig | null {
+    switch (provider) {
+      case 'openrouter': {
+        const apiKey = this.config.get<string>('OPENROUTER_API_KEY') || this.config.get<string>('OPENAI_API_KEY');
+        if (!apiKey) return null;
+        const configured = this.config.get<string>('OPENAI_BASE_URL')?.replace(/\/+$/, '');
+        return {
+          url: `${configured?.includes('openrouter') ? configured : 'https://openrouter.ai/api/v1'}/chat/completions`,
+          apiKey,
+          providerName: 'OpenRouter',
+          headers: { 'HTTP-Referer': this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5174', 'X-Title': 'Lumina' },
+          extraBody: { reasoning: { enabled: false } },
+        };
+      }
+      case 'gemini': {
+        const apiKey = this.config.get<string>('GEMINI_API_KEY');
+        if (!apiKey) return null;
+        return {
+          url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+          apiKey,
+          providerName: 'Gemini',
+          headers: {},
+          extraBody: { reasoning_effort: this.config.get<string>('GEMINI_REASONING_EFFORT') || 'low' },
+          reasoningHeadroom: REASONING_HEADROOM_TOKENS,
+        };
+      }
+      case 'groq': {
+        const apiKey = this.config.get<string>('GROQ_API_KEY');
+        if (!apiKey) return null;
+        return {
+          url: 'https://api.groq.com/openai/v1/chat/completions',
+          apiKey,
+          providerName: 'Groq',
+          headers: {},
+          extraBodyFor: (model) =>
+            model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : model.startsWith('qwen/') ? { reasoning_effort: 'none' } : {},
+          // O plano gratuito limita tokens por minuto CONTANDO o max_tokens
+          // pedido (8 mil no gpt-oss-120b): folga grande nunca caberia.
+          reasoningHeadroom: 800,
+        };
+      }
+      case 'openai': {
+        const apiKey = this.config.get<string>('OPENAI_API_KEY');
+        // Com OPENAI_BASE_URL no OpenRouter, a chave é do OpenRouter, não da OpenAI.
+        if (!apiKey || this.config.get<string>('OPENAI_BASE_URL')?.includes('openrouter')) return null;
+        return { url: 'https://api.openai.com/v1/chat/completions', apiKey, providerName: 'OpenAI', headers: {} };
+      }
+      default:
+        return null;
+    }
   }
 
   /**
@@ -317,6 +463,10 @@ export class AiService {
     headers: Record<string, string>;
     /** Campos do corpo que só este provedor entende. */
     extraBody?: Record<string, unknown>;
+    /** Como extraBody, mas por modelo (ex.: esforço de raciocínio no Groq). */
+    extraBodyFor?: (model: string) => Record<string, unknown>;
+    /** O provedor conta o raciocínio dentro de max_tokens: tokens de folga. */
+    reasoningHeadroom?: number;
   }): Promise<AiChatResponseDto & { model?: string }> {
     const userContent: ProviderMessage['content'] = params.options.imageDataUrl
       ? [
@@ -332,7 +482,16 @@ export class AiService {
     ];
 
     let lastError = 'nenhuma tentativa executada';
-    for (const model of params.models) {
+    const queue = params.models.map((model) => ({ model, waited: false }));
+    for (let q = 0; q < queue.length; q++) {
+      const { model } = queue[q];
+      // Ritmo por modelo (planos gratuitos limitam requisições por minuto):
+      // espera a vaga; se demorar demais, a vez passa ao próximo modelo.
+      if (!(await this.acquireRateSlot(params.providerName, model))) {
+        lastError = `${params.providerName} ${model}: limite de requisições por minuto`;
+        this.logger.warn(`${params.providerName} ${model} sem vaga no limite por minuto; tentando o proximo modelo.`);
+        continue;
+      }
       try {
         const response = await fetch(params.url, {
           method: 'POST',
@@ -345,8 +504,9 @@ export class AiService {
             model,
             messages,
             temperature: params.options.temperature ?? 0.8,
-            max_tokens: params.options.maxTokens ?? DEFAULT_MAX_TOKENS,
+            max_tokens: (params.options.maxTokens ?? DEFAULT_MAX_TOKENS) + (params.reasoningHeadroom ?? 0),
             ...params.extraBody,
+            ...params.extraBodyFor?.(model),
           }),
           // Modelo gratuito às vezes aceita a conexão e não responde: sem
           // limite, a conversa do aluno ficava pendurada para sempre. O
@@ -357,6 +517,25 @@ export class AiService {
         if (!response.ok) {
           const raw = await response.text();
           lastError = `${response.status} ${raw.slice(0, 200)}`;
+          // Limite por minuto (Groq e Gemini gratuitos): se o provedor diz
+          // que libera em poucos segundos, espera uma vez e tenta o mesmo
+          // modelo antes de cair para o próximo.
+          // No Gemini e no Groq, 429 sem prazo e que não é cota diária =
+          // rajada acima do limite por minuto: espera um intervalo padrão. No
+          // OpenRouter, 429 costuma ser o provedor do modelo sobrecarregado: a
+          // vez passa logo ao próximo modelo (o chat não pode ficar esperando).
+          const burstLimited = params.providerName === 'Gemini' || params.providerName === 'Groq';
+          const retryAfter =
+            response.status === 429
+              ? this.retryAfterSeconds(response, raw) ?? (burstLimited && !/per ?day|PerDay|daily/i.test(raw) ? DEFAULT_RATE_LIMIT_WAIT_S : null)
+              : null;
+          if (retryAfter !== null && retryAfter <= MAX_RETRY_AFTER_S && !queue[q].waited) {
+            queue[q].waited = true;
+            this.logger.warn(`${params.providerName} ${model} pediu ${retryAfter}s de espera (429); aguardando.`);
+            await new Promise((r) => setTimeout(r, Math.ceil(retryAfter * 1000) + 250));
+            q--;
+            continue;
+          }
           this.logger.warn(
             `${params.providerName} ${model} respondeu ${response.status}; tentando o proximo modelo.`,
           );
@@ -446,6 +625,56 @@ export class AiService {
     return { message: data.content[0]?.text?.trim() ?? 'Sem resposta.', model };
   }
 
+  /**
+   * Requisições por minuto permitidas para um modelo. `AI_RPM_LIMITS` =
+   * "gemini:gemini-3.5-flash-lite=15,groq:openai/gpt-oss-120b=8" (o nome do
+   * provedor sozinho vale para todos os modelos dele). Padrão: 15 no Gemini
+   * (plano gratuito); sem limite nos demais.
+   */
+  private rpmLimit(providerName: string, model: string): number | null {
+    const provider = providerName.toLowerCase();
+    const entries = new Map(
+      this.listFromEnv('AI_RPM_LIMITS').map((item) => {
+        const i = item.lastIndexOf('=');
+        return [item.slice(0, i).trim().toLowerCase(), Number(item.slice(i + 1))] as const;
+      }),
+    );
+    const value = entries.get(`${provider}:${model.toLowerCase()}`) ?? entries.get(provider) ?? (provider === 'gemini' ? DEFAULT_GEMINI_RPM : null);
+    return value && Number.isFinite(value) && value > 0 ? value : null;
+  }
+
+  /** Reserva uma vaga na janela de 60 s do modelo; false se a espera passar do máximo. */
+  private async acquireRateSlot(providerName: string, model: string): Promise<boolean> {
+    const rpm = this.rpmLimit(providerName, model);
+    if (!rpm) return true;
+    const key = `${providerName}:${model}`;
+    let budget = Number(this.config.get<string>('AI_RATE_MAX_WAIT_MS')) || MAX_RATE_WAIT_MS;
+    for (;;) {
+      const now = Date.now();
+      const recent = (this.recentCalls.get(key) ?? []).filter((t) => now - t < 60_000);
+      if (recent.length < rpm) {
+        recent.push(now);
+        this.recentCalls.set(key, recent);
+        return true;
+      }
+      const wait = 60_000 - (now - recent[0]) + 50;
+      if (wait > budget) return false;
+      budget -= wait;
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+
+  /** Segundos até o provedor liberar: cabeçalho Retry-After ou o texto do erro. */
+  private retryAfterSeconds(response: Response, body: string): number | null {
+    const header = Number(response.headers.get('retry-after'));
+    if (Number.isFinite(header) && header > 0) return header;
+    const groq = /try again in (?:(\d+)m)?([\d.]+)s/i.exec(body);
+    if (groq) return Number(groq[1] ?? 0) * 60 + Number(groq[2]);
+    const gemini = /"retryDelay":\s*"([\d.]+)s"/.exec(body) ?? /retry in ([\d.]+)s/i.exec(body);
+    if (gemini) return Number(gemini[1]);
+    return null;
+  }
+
   /** Lista separada por vírgula vinda do ambiente (ex.: AI_FALLBACK_MODELS). */
   private listFromEnv(key: string): string[] {
     return (this.config.get<string>(key) ?? '')
@@ -470,22 +699,47 @@ export class AiService {
     systemPrompt = luminiaSystemPrompt(),
     options: GenerationOptions = {},
   ): Promise<AiChatResponseDto & { model?: string }> {
-    const apiKey = this.config.get<string>('GROQ_API_KEY');
-    if (!apiKey) {
+    const endpoint = this.endpointFor('groq');
+    if (!endpoint) {
       throw new BadRequestException('GROQ_API_KEY não configurada no ambiente.');
     }
-    const model = this.config.get<string>('GROQ_MODEL') || 'llama-3.1-70b-versatile';
+    // GROQ_MODEL aceita lista separada por vírgula, tentada em ordem.
+    const models = options.models ?? this.listFromEnv('GROQ_MODEL');
     return this.chatCompletion({
-      url: 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey,
-      models: [model],
-      providerName: 'Groq',
+      ...endpoint,
+      models: models.length ? models : ['openai/gpt-oss-120b'],
       message,
       history,
       context,
       systemPrompt,
       options,
-      headers: {},
+    });
+  }
+
+  /**
+   * Google Gemini pela rota compatível com a da OpenAI. `GEMINI_MODEL`
+   * aceita lista separada por vírgula, tentada em ordem.
+   */
+  private async callGemini(
+    message: AiChatMessageDto,
+    history: AiChatMessageDto[],
+    context?: string,
+    systemPrompt = luminiaSystemPrompt(),
+    options: GenerationOptions = {},
+  ): Promise<AiChatResponseDto & { model?: string }> {
+    const endpoint = this.endpointFor('gemini');
+    if (!endpoint) {
+      throw new BadRequestException('GEMINI_API_KEY não configurada no ambiente.');
+    }
+    const models = options.models ?? this.listFromEnv('GEMINI_MODEL');
+    return this.chatCompletion({
+      ...endpoint,
+      models: models.length ? models : ['gemini-3.5-flash'],
+      message,
+      history,
+      context,
+      systemPrompt,
+      options,
     });
   }
 }
