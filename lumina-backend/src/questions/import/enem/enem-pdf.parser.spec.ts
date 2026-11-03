@@ -6,6 +6,7 @@ import {
   classifyCienciasNaturezaSubject,
   parseAreaRanges,
   parseGabaritoText,
+  parseOfficialGabarito,
   parseQuestionBody,
   resolveAreaLabel,
   splitQuestionBlocks,
@@ -75,7 +76,7 @@ describe('parser de cadernos do ENEM', () => {
     vi.spyOn(service as any, 'loadExamContent').mockResolvedValue([
       `QUESTÃO 91 ${validBody} QUESTÃO 92 ${validBody} QUESTÃO 93 texto sem alternativas`,
       'Questões de número 91 a 135, relativas à área de Ciências da Natureza e suas Tecnologias.',
-      new Map([[91, 'C'], [92, 'Anulado']]),
+      { year: 2025, day: 2, bookletColor: 'Azul', bookletNumber: 7, items: [{ number: 91, letter: 'C', language: '' }, { number: 92, letter: null, language: '' }] },
       new Map([[91, 4], [92, 5]]),
     ]);
     const result = await service.fetchExam({
@@ -91,6 +92,27 @@ describe('parser de cadernos do ENEM', () => {
     expect(result.skipped).toEqual([
       { questionNumber: 92, reason: expect.stringContaining('anulada') },
       { questionNumber: 93, reason: expect.stringContaining('alternativas') },
+    ]);
+  });
+
+  it('1º dia: questões de 1 dígito e as duas línguas com gabarito e sourceId próprios', async () => {
+    const service = new EnemImportService();
+    vi.spyOn(service as any, 'loadExamContent').mockResolvedValue([
+      `QUESTÃO 1 ${validBody} QUESTÃO 1 ${validBody} QUESTÃO 6 ${validBody}`,
+      'Questões de número 1 a 45, relativas à área de Linguagens, Códigos e suas Tecnologias.',
+      parseOfficialGabarito('CADERNO 1AzulGabarito 20231diaºQUESTÃOGABARITOINGLÊS ESPANHOL1 B A6 D'),
+      new Map([[1, 2], [6, 3]]),
+    ]);
+    const result = await service.fetchExam({
+      year: 2023, day: 1,
+      provaUrl: 'https://download.inep.gov.br/prova.pdf',
+      gabaritoUrl: 'https://download.inep.gov.br/gabarito.pdf',
+    });
+    expect(result.skipped).toEqual([]);
+    expect(result.questions.map((q) => [q.sourceId, q.subject, q.correctLetter])).toEqual([
+      ['enem-2023-d1-q1-ingles', 'Inglês', 'B'],
+      ['enem-2023-d1-q1-espanhol', 'Espanhol', 'A'],
+      ['enem-2023-d1-q6', expect.any(String), 'D'],
     ]);
   });
 

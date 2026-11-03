@@ -22,6 +22,8 @@ export interface GradingItem {
   answer: number | null;
   area: string | null;
   validated: boolean;
+  /** Concordância (0–1) no gabarito comunitário. */
+  confidence?: number | null;
 }
 
 export interface QuestionResult {
@@ -30,6 +32,8 @@ export interface QuestionResult {
   selected: number | null;
   answer: number | null;
   status: CheckStatus;
+  /** Só nos pendentes do comunitário: concordância da resposta mais votada. */
+  agreement?: number | null;
 }
 
 export interface AreaResult {
@@ -53,6 +57,11 @@ export interface GradingResult {
   /** Acertos sobre as questões que contam (sem anuladas nem pendentes). */
   percent: number;
   byArea: AreaResult[];
+  /**
+   * Estimativa com os itens pendentes (comunitário): quantas respostas batem
+   * com a mais votada. Nunca entra no resultado oficial.
+   */
+  provisional: { matches: number; differs: number; blank: number };
 }
 
 export class GradingError extends Error {}
@@ -96,7 +105,7 @@ export function gradeAnswers(items: GradingItem[], answers: Record<string, numbe
     else if (!item.validated) status = 'PENDING';
     else if (selected === null) status = 'BLANK';
     else status = selected === item.answer ? 'CORRECT' : 'WRONG';
-    return { number, area: item.area, selected, answer: item.answer, status };
+    return { number, area: item.area, selected, answer: item.answer, status, ...(status === 'PENDING' ? { agreement: item.confidence ?? null } : {}) };
   });
 
   const count = (s: CheckStatus, list = questions) => list.filter((q) => q.status === s).length;
@@ -123,6 +132,11 @@ export function gradeAnswers(items: GradingItem[], answers: Record<string, numbe
     answered: questions.filter((q) => q.selected !== null).length,
     percent: pct(correct, correct + wrong + blank),
     byArea,
+    provisional: {
+      matches: questions.filter((q) => q.status === 'PENDING' && q.selected !== null && q.selected === q.answer).length,
+      differs: questions.filter((q) => q.status === 'PENDING' && q.selected !== null && q.selected !== q.answer).length,
+      blank: questions.filter((q) => q.status === 'PENDING' && q.selected === null).length,
+    },
   };
 }
 

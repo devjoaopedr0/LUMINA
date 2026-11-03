@@ -58,6 +58,7 @@ model User {
   answerSheetBatches     AnswerSheetBatch[]
   answerKeysCreated      AnswerKey[]                 @relation("AnswerKeyCreatedBy")
   answerKeyChecks        AnswerKeyCheck[]
+  answerKeyVotes         AnswerKeyVote[]
   questionScanUploads    QuestionScanUpload[]
   questionScanResults    QuestionScanResult[]
   essayFeedbacks         EssayFeedback[]             @relation("EssayFeedbackAuthor")
@@ -2080,6 +2081,7 @@ model AnswerKey {
   updatedAt      DateTime         @updatedAt @map("updated_at")
   items          AnswerKeyItem[]
   checks         AnswerKeyCheck[]
+  votes          AnswerKeyVote[]
 
   @@index([examId, origin, status])
   @@index([createdBy])
@@ -2106,6 +2108,8 @@ model AnswerKeyItem {
   confidence    Float?
   /// Falso = aguardando validação (aparece em amarelo para o aluno).
   validated     Boolean   @default(true)
+  /// Gabarito comunitário: quantos votos a questão recebeu.
+  votes         Int?
 
   @@unique([answerKeyId, number, language])
   @@index([questionId])
@@ -2139,4 +2143,24 @@ model AnswerKeyCheck {
   @@index([userId, createdAt])
   @@index([answerKeyId])
   @@map("answer_key_checks")
+}
+
+/// Voto de um aluno no gabarito comunitário: a alternativa que ele marcou.
+/// Um voto por aluno por questão (e língua); reenviar substitui.
+model AnswerKeyVote {
+  id          String    @id @default(uuid()) @db.Uuid
+  answerKeyId String    @map("answer_key_id") @db.Uuid
+  answerKey   AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  userId      String    @map("user_id") @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number      Int
+  language    String    @default("") @db.VarChar(10)
+  /// 1 = A … 5 = E.
+  answer      Int
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([answerKeyId, userId, number, language])
+  @@index([answerKeyId, number])
+  @@map("answer_key_votes")
 }

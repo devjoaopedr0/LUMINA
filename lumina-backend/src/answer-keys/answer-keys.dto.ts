@@ -82,3 +82,31 @@ export class ListAnswerKeysQuery {
   @IsOptional() @Type(() => Number) @IsInt() day?: number;
   @IsOptional() @IsEnum(AnswerKeyOrigin) origin?: AnswerKeyOrigin;
 }
+
+export class ImportInepAnswerKeyDto {
+  @ApiProperty({ description: 'PDF do gabarito em download.inep.gov.br (ex.: .../2024_GB_impresso_D2_CD5.pdf).' })
+  @IsUrl({ require_protocol: true, host_whitelist: ['download.inep.gov.br'] }) @MaxLength(500) gabaritoUrl!: string;
+
+  @ApiProperty({ description: 'Data de publicação do gabarito pelo INEP (o PDF não traz).' })
+  @IsDateString() publishedAt!: string;
+
+  @IsOptional() @IsString() @MaxLength(60) application?: string;
+
+  @IsOptional() @IsBoolean() publish?: boolean;
+}
+
+export class ReadAnswerSheetDto {
+  @ApiProperty({ description: 'Foto do cartão digitalizada como PDF de uma página (data URL application/pdf).' })
+  @IsString() @MaxLength(35_000_000) pdf!: string;
+}
+
+export class CommunityContributionDto {
+  @IsUUID() examId!: string;
+  @IsOptional() @IsString() @MaxLength(60) application?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(4) day?: number | null;
+  @IsOptional() @IsString() @MaxLength(30) bookletColor?: string | null;
+  @IsOptional() @IsIn(['INGLES', 'ESPANHOL']) language?: string;
+
+  @ApiProperty({ description: '{ "número": 1–5 | null } — em branco não vira voto.' })
+  @IsObject() answers!: Record<string, number | null>;
+}

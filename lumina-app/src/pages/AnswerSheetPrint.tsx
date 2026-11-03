@@ -86,7 +86,7 @@ function Section({ s, studentName }: { s: SheetSection; studentName: string | nu
  * Uma folha A4 em SVG, em milímetros — o mesmo layout que o servidor usa para
  * ler. Não mude escala nem margens: a impressão precisa sair em "tamanho real".
  */
-function Sheet({ layout, title, className, studentName, code, bits }: SheetProps) {
+export function Sheet({ layout, title, className, studentName, code, bits }: SheetProps) {
   const s = layout.fiducialSize;
   const sections = layout.sections;
   const subtitle = `${title}${className ? ` · Turma ${className}` : ''}`;

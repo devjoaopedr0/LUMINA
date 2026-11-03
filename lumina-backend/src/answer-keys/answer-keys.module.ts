@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Module, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Module, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
-import { CheckAnswersDto, CreateAnswerKeyDto, ListAnswerKeysQuery, ReviseAnswerKeyDto, SetAnswerKeyStatusDto } from './answer-keys.dto';
+import { EnemImportService } from '../questions/import/enem/enem-import.service';
+import { CheckAnswersDto, CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ListAnswerKeysQuery, ReadAnswerSheetDto, ReviseAnswerKeyDto, SetAnswerKeyStatusDto } from './answer-keys.dto';
 import { AnswerKeysService } from './answer-keys.service';
 
 const viewer = (user: UserWithProfile) => ({ id: user.id, accountType: user.accountType });
@@ -22,13 +23,19 @@ export class AnswerKeysController {
   @Get('checks/:checkId') getCheck(@CurrentUser() user: UserWithProfile, @Param('checkId', ParseUUIDPipe) checkId: string) { return this.service.getCheck(viewer(user), checkId); }
   @Get(':id') get(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query('answers') answers?: string) { return this.service.get(viewer(user), id, answers === 'true'); }
   @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateAnswerKeyDto) { return this.service.create(viewer(user), dto); }
+  @Post('community/contributions') contribute(@CurrentUser() user: UserWithProfile, @Body() dto: CommunityContributionDto) { return this.service.contribute(viewer(user), dto); }
+  @Delete(':id/votes/:userId') removeVotes(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string) { return this.service.removeVotes(viewer(user), id, userId); }
+  @Post('import/inep') importInep(@CurrentUser() user: UserWithProfile, @Body() dto: ImportInepAnswerKeyDto) { return this.service.importFromInep(viewer(user), dto); }
   @Put(':id/items') revise(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReviseAnswerKeyDto) { return this.service.revise(viewer(user), id, dto); }
   @Patch(':id/status') setStatus(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetAnswerKeyStatusDto) { return this.service.setStatus(viewer(user), id, dto.status); }
+  @Get(':id/stats') stats(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.stats(viewer(user), id); }
+  @Get(':id/sheet') sheet(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.sheet(viewer(user), id); }
+  @Post(':id/read-sheet') readSheet(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReadAnswerSheetDto) { return this.service.readSheet(viewer(user), id, dto.pdf); }
   @Post(':id/checks') check(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CheckAnswersDto) { return this.service.check(viewer(user), id, dto); }
 }
 
 @Module({
   controllers: [AnswerKeysController],
-  providers: [AnswerKeysService],
+  providers: [AnswerKeysService, EnemImportService],
 })
 export class AnswerKeysModule {}

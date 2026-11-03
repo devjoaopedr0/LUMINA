@@ -1,11 +1,14 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { QuestionDifficulty, QuestionSourceType } from '@prisma/client';
 import { ExternalQuestion } from '../../domain/question-types';
+import { fetchCompletingChain } from './incomplete-chain-fetch';
 import {
   areaLabelToSubject,
   classifyCienciasNaturezaSubject,
   parseAreaRanges,
-  parseGabaritoText,
+  parseOfficialGabarito,
+  type GabaritoLanguage,
+  type OfficialGabarito,
   parseQuestionBody,
   resolveAreaLabel,
   splitQuestionBlocks,
@@ -76,8 +79,20 @@ export class EnemImportService {
     const blocks = splitQuestionBlocks(examText);
     const questions: ExternalQuestion[] = [];
     const skipped: EnemFetchIssue[] = [];
+    // Questões de língua (1–5 do 1º dia) aparecem duas vezes no caderno: o
+    // bloco de inglês vem antes do de espanhol, cada um com o próprio gabarito.
+    const seenCount = new Map<number, number>();
 
     for (const block of blocks) {
+      const occurrence = seenCount.get(block.number) ?? 0;
+      seenCount.set(block.number, occurrence + 1);
+      const languages = gabarito.items.filter((i) => i.number === block.number && i.language !== '');
+      const language: GabaritoLanguage = languages.length ? (occurrence === 0 ? 'INGLES' : 'ESPANHOL') : '';
+      if (languages.length && occurrence > 1) {
+        skipped.push({ questionNumber: block.number, reason: 'Questão de língua repetida mais de duas vezes no caderno.' });
+        continue;
+      }
+
       const parsed = parseQuestionBody(block.body);
       if (!parsed) {
         skipped.push({
@@ -87,20 +102,22 @@ export class EnemImportService {
         continue;
       }
 
-      const correctLetter = gabarito.get(block.number);
-      if (!correctLetter || correctLetter === 'Anulado') {
+      const entry = gabarito.items.find((i) => i.number === block.number && i.language === language);
+      if (!entry || entry.letter === null) {
         skipped.push({
           questionNumber: block.number,
           reason:
-            correctLetter === 'Anulado'
+            entry && entry.letter === null
               ? 'Questão anulada pelo INEP — sem gabarito válido para importar.'
               : 'Gabarito não encontrado para esta questão.',
         });
         continue;
       }
+      const correctLetter = entry.letter;
 
       const areaLabel = resolveAreaLabel(block.number, areaRanges);
       let subject = areaLabel ? areaLabelToSubject(areaLabel) : 'ENEM';
+      if (language) subject = language === 'INGLES' ? 'Inglês' : 'Espanhol';
       if (subject === 'Ciências da Natureza') {
         subject = classifyCienciasNaturezaSubject(parsed.stem);
       }
@@ -108,7 +125,7 @@ export class EnemImportService {
       questions.push({
         sourceType: QuestionSourceType.OFFICIAL,
         sourceName: 'INEP/ENEM',
-        sourceId: `enem-${params.year}-d${params.day}-q${block.number}`,
+        sourceId: `enem-${params.year}-d${params.day}-q${block.number}${language ? `-${language.toLowerCase()}` : ''}`,
         exam: 'ENEM',
         year: params.year,
         examNumber: block.number,
@@ -126,7 +143,7 @@ export class EnemImportService {
 
   private async loadExamContent(
     params: FetchEnemExamParams,
-  ): Promise<[examText: string, introText: string, gabarito: Map<number, string>, pages: Map<number, number>]> {
+  ): Promise<[examText: string, introText: string, gabarito: OfficialGabarito, pages: Map<number, number>]> {
     // Import dinâmico: pdfjs-dist 6.x só publica build ESM (.mjs), e este
     // projeto compila para CommonJS — `import()` dinâmico é a forma correta
     // de consumir um pacote ESM-only a partir de código CJS no Node.
@@ -162,7 +179,25 @@ export class EnemImportService {
       gabaritoRaw += content.items.map((item) => ('str' in item ? item.str : '')).join('');
     }
 
-    return [examText, introText, parseGabaritoText(gabaritoRaw), pages];
+    // parseOfficialGabarito aceita as questões 1–9 e separa as duas línguas
+    // do 1º dia (o antigo parseGabaritoText perdia as duas coisas).
+    return [examText, introText, parseOfficialGabarito(gabaritoRaw), pages];
+  }
+
+  /**
+   * Gabarito oficial completo (cabeçalho do caderno e as duas línguas do 1º
+   * dia), para o Gabarito Inteligente. Mesmo host permitido do caderno.
+   */
+  async fetchOfficialGabarito(gabaritoUrl: string): Promise<OfficialGabarito> {
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await getDocument({ data: await this.download(gabaritoUrl) }).promise;
+    let raw = '';
+    for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+      const content = await (await doc.getPage(pageNum)).getTextContent();
+      // Sem espaço entre os runs — ver comentário de parseGabaritoText.
+      raw += content.items.map((item) => ('str' in item ? item.str : '')).join('');
+    }
+    return parseOfficialGabarito(raw);
   }
 
   private async download(url: string): Promise<Uint8Array> {
@@ -178,11 +213,23 @@ export class EnemImportService {
       );
     }
 
-    const res = await fetch(url);
-    if (!res.ok) {
+    // O servidor do INEP não envia o certificado intermediário: sem completar
+    // a cadeia, o Node recusa a conexão (ver incomplete-chain-fetch.ts).
+    let res: Awaited<ReturnType<typeof fetchCompletingChain>>;
+    try {
+      res = await fetchCompletingChain(url);
+    } catch (first) {
+      // Rede instável do servidor do INEP: uma nova tentativa costuma passar.
+      this.logger.warn(`Download do INEP falhou (${(first as { cause?: { code?: string } }).cause?.code ?? (first as Error).message}); tentando de novo.`);
+      try {
+        res = await fetchCompletingChain(url);
+      } catch {
+        throw new BadGatewayException('Não foi possível baixar o PDF do INEP agora (falha de rede). Tente de novo em instantes.');
+      }
+    }
+    if (res.status < 200 || res.status >= 300) {
       throw new BadRequestException(`Não foi possível baixar o PDF (status ${res.status}): ${url}`);
     }
-    const buffer = await res.arrayBuffer();
-    return new Uint8Array(buffer);
+    return res.bytes;
   }
 }

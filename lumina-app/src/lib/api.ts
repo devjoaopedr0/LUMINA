@@ -2180,9 +2180,10 @@ export interface AnswerKeyCheckResult {
   createdAt: string;
   answerKey: AnswerKeySummary;
   outdated: boolean;
-  questions: { number: number; area: string | null; selected: number | null; answer: number | null; status: AnswerKeyCheckStatus }[];
+  questions: { number: number; area: string | null; selected: number | null; answer: number | null; status: AnswerKeyCheckStatus; agreement?: number | null }[];
   correct: number; wrong: number; blank: number; pending: number; annulled: number; total: number; answered: number; percent: number;
   byArea: AnswerKeyAreaResult[];
+  provisional: { matches: number; differs: number; blank: number };
 }
 export interface AnswerKeyPerformance {
   checks: number; correct: number; wrong: number; blank: number; percent: number;
@@ -2204,6 +2205,23 @@ export const apiAnswerKeyExams = (token: string): Promise<AnswerKeyExam[]> => re
 export const apiAnswerKey = (token: string, id: string, withAnswers = false): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}${withAnswers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
 export const apiCreateAnswerKey = (token: string, payload: CreateAnswerKeyPayload): Promise<AnswerKeyDetail> => request('/answer-keys', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 export const apiSetAnswerKeyStatus = (token: string, id: string, status: AnswerKeyStatus): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
-export const apiCheckAnswerKey = (token: string, id: string, answers: Record<string, number | null>, language?: string | null): Promise<AnswerKeyCheckResult> => request(`/answer-keys/${id}/checks`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers, language: language ?? undefined, inputMode: 'MANUAL' }) });
+export const apiCheckAnswerKey = (token: string, id: string, answers: Record<string, number | null>, language?: string | null, inputMode: 'MANUAL' | 'PHOTO' = 'MANUAL'): Promise<AnswerKeyCheckResult> => request(`/answer-keys/${id}/checks`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers, language: language ?? undefined, inputMode }) });
 export const apiAnswerKeyCheck = (token: string, checkId: string): Promise<AnswerKeyCheckResult> => request(`/answer-keys/checks/${checkId}`, { headers: authHeaders(token) });
 export const apiAnswerKeyPerformance = (token: string): Promise<AnswerKeyPerformance> => request('/answer-keys/performance', { headers: authHeaders(token) });
+export const apiImportInepAnswerKey = (token: string, payload: { gabaritoUrl: string; publishedAt: string; application?: string; publish?: boolean }): Promise<AnswerKeyDetail> =>
+  request('/answer-keys/import/inep', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export interface AnswerKeySheet { title: string; layout: SheetLayout; code: number; bits: boolean[] }
+export interface AnswerKeySheetReading { answers: { number: number; selected: number | null; status: 'OK' | 'BLANK' | 'MULTIPLE' | 'AMBIGUOUS'; confidence: number; review: boolean }[]; warnings: string[]; reviewCount: number }
+export const apiAnswerKeySheet = (token: string, id: string): Promise<AnswerKeySheet> => request(`/answer-keys/${id}/sheet`, { headers: authHeaders(token) });
+export const apiReadAnswerKeySheet = (token: string, id: string, pdf: string): Promise<AnswerKeySheetReading> => request(`/answer-keys/${id}/read-sheet`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ pdf }) });
+export interface AnswerKeyStats {
+  answerKey: AnswerKeySummary;
+  students: number;
+  averagePercent: number;
+  byArea: { area: string; percent: number; scored: number }[];
+  questions: { number: number; area: string | null; answer: number | null; correctPercent: number; wrong: number; blank: number; total: number; topDistractor: { position: number; count: number } | null }[];
+  ranking: { userId: string; name: string; percent: number; correct: number; scored: number; checkedAt: string }[];
+}
+export const apiAnswerKeyStats = (token: string, id: string): Promise<AnswerKeyStats> => request(`/answer-keys/${id}/stats`, { headers: authHeaders(token) });
+export const apiContributeCommunity = (token: string, payload: { examId: string; application?: string; day?: number | null; bookletColor?: string | null; language?: string; answers: Record<string, number | null> }): Promise<AnswerKeyDetail> =>
+  request('/answer-keys/community/contributions', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });

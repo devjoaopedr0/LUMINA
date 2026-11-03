@@ -8,11 +8,26 @@
 - **Lumina Groups: Planejado (Fase 2). Lumina Marketplace: Futuro (Fase 4).** Nenhum código, tabela ou endpoint dessas frentes foi criado.
 - Esta seção de status recodificou o texto corrompido das entregas de 27/09/2026 (itens 19 e 20) e marcou como desatualizada a lista "Não iniciado".
 
+## Atualização de 03/11/2026 — Gabarito Inteligente: INEP, foto, painel do professor e comunitário
+
+- **Importação do gabarito oficial do INEP:** testada com o PDF real do ENEM 2024 (2º dia, Amarelo; questão 102 anulada). O download agora completa a cadeia TLS do INEP, que não envia o certificado intermediário, e tenta de novo em caso de falha de rede.
+- **Cartão por foto:** o aluno imprime o cartão da Lumina do gabarito, fotografa, e a leitura óptica preenche a grade, com as duvidosas em amarelo. O aluno confere antes de corrigir.
+- **Painel do professor:** alunos das turmas dele por gabarito, com acerto médio, acerto por área, questões mais difíceis com o distrator mais escolhido e lista de alunos.
+- **Gabarito comunitário:**
+  - os votos dos alunos geram a resposta mais votada, a partir de 3 votos, com a concordância;
+  - é sempre pendente e não oficial, com uma estimativa provisória separada do resultado;
+  - some quando sai o oficial;
+  - moderação só pela administração.
+- **Bug corrigido no importador de questões do ENEM:** as questões 1–9 do 1º dia ficavam sem gabarito, e as de língua (1–5) colidiam no `sourceId`.
+- **Testes:** validação no navegador sem erros. Backend com 774 testes (22 do Gabarito Inteligente); app com verificação de tipos real (`tsc -b`), lint e checks.
+- **Migrations aplicadas:** `20261103150000_answer_keys` e `20261103200000_answer_key_votes`.
+- **Pendente:** confirmar a data de publicação usada no gabarito importado (20/11/2024); gabarito sugerido por IA e LuminIA por questão (dependem de ligar as questões do caderno ao gabarito).
+
 ## Atualização de 03/11/2026 — Em andamento (sem commit)
 
 - **Cartão-resposta configurável pelo gestor:** cabeçalho no estilo do cartão do Enem (instituição, nome em quadrados, instruções, frase, cor do caderno, língua) que se adapta ao número de questões; numeração 91–180 no 2º dia; trava depois da primeira folha lida. Testes de layout e de leitura passando. Status: **em andamento** (sem commit).
 - **Turma por link de convite:** aluno independente não entra por código, só pelo link assinado que o professor gera. Status: **em andamento** (sem commit).
-- **Gabarito Inteligente (fase 1):** gabarito oficial (só administrador, com fonte e data) e de professor; seleção da prova, grade de respostas com revisão antes de corrigir, resultado com cores e por área, histórico e painel de desempenho (sem conversão para TRI). Página `/app/gabarito-inteligente` e item no menu. Testes: backend com 762 (11 novos). Migration `20261103150000_answer_keys` criada e **não aplicada**; interface sem validação no navegador. Detalhes: [docs/GABARITO_INTELIGENTE.md](docs/GABARITO_INTELIGENTE.md). Status: **em andamento**.
+- **Gabarito Inteligente (fase 1):** gabarito oficial (só administrador, com fonte e data) e de professor; seleção da prova, grade de respostas com revisão antes de corrigir, resultado com cores e por área, histórico e painel de desempenho (sem conversão para TRI). Página `/app/gabarito-inteligente` e item no menu. Testes: backend com 762 (11 novos). Importação do gabarito oficial direto do PDF do INEP (ano, dia, cor e as duas línguas lidos do PDF; incompleto é recusado). Migration `20261103150000_answer_keys` **aplicada** em 03/11; validado no navegador (ver entrada acima). Detalhes: [docs/GABARITO_INTELIGENTE.md](docs/GABARITO_INTELIGENTE.md). Status: **em andamento**.
 
 
 ## Atualização de 01/11/2026 — Correção de redação por competência, calibração funcional e cota mensal

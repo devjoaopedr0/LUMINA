@@ -1,11 +1,20 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
 import { AnswerKeyOrigin, AnswerKeyStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
-import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES } from './answer-key.grading';
-import { CreateAnswerKeyDto, ReviseAnswerKeyDto } from './answer-keys.dto';
+import { EnemImportService } from '../questions/import/enem/enem-import.service';
+import { decodePdf } from '../simulations/omr/answer-sheet-scan.service';
+import { OmrError, readSheet } from '../simulations/omr/omr';
+import { extractPdfImages, PdfError } from '../simulations/omr/pdf';
+import { ANSWER_KEY_SHEET_CODE, answerKeySheetBits, answerKeySheetLayout, readingToAnswers } from './answer-key-sheet';
+import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
+import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
+import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto } from './answer-keys.dto';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
+
+/** Abaixo disso a resposta mais votada não aparece (pouca base). */
+export const COMMUNITY_MIN_VOTES = 3;
 
 interface Viewer {
   id: string;
@@ -25,7 +34,10 @@ const personName = (u: { email: string; profile: { firstName: string; lastName: 
 
 @Injectable()
 export class AnswerKeysService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly enem?: EnemImportService,
+  ) {}
 
   /**
    * Professores cujos gabaritos publicados o usuário vê: os das turmas em que
@@ -44,6 +56,8 @@ export class AnswerKeysService {
     return {
       OR: [
         { origin: AnswerKeyOrigin.OFFICIAL, status: AnswerKeyStatus.PUBLISHED },
+        // Comunitário é de todos: quem votou primeiro não é dono.
+        { origin: AnswerKeyOrigin.COMMUNITY, status: AnswerKeyStatus.PUBLISHED },
         { createdBy: viewer.id, status: { not: AnswerKeyStatus.ARCHIVED } },
         ...(teachers.length ? [{ origin: AnswerKeyOrigin.TEACHER, status: AnswerKeyStatus.PUBLISHED, createdBy: { in: teachers } }] : []),
       ],
@@ -67,7 +81,7 @@ export class AnswerKeysService {
       version: row.version,
       correctionNote: row.correctionNote,
       questionCount: row._count.items,
-      author: row.origin === AnswerKeyOrigin.OFFICIAL ? null : personName(row.creator),
+      author: row.origin === AnswerKeyOrigin.OFFICIAL || row.origin === AnswerKeyOrigin.COMMUNITY ? null : personName(row.creator),
       mine: row.createdBy === viewer.id,
       updatedAt: row.updatedAt,
     };
@@ -89,8 +103,11 @@ export class AnswerKeysService {
       orderBy: [{ exam: { name: 'asc' } }, { exam: { year: 'desc' } }, { day: 'asc' }, { bookletColor: 'asc' }],
       take: 200,
     });
-    // Oficial primeiro: é o que vale.
-    return rows.sort((a, b) => Number(b.origin === 'OFFICIAL') - Number(a.origin === 'OFFICIAL')).map((r) => this.summary(r, viewer));
+    const combo = (r: KeyRow) => `${r.examId}|${r.application}|${r.day ?? ''}|${r.bookletColor ?? ''}`;
+    const officialCombos = new Set(rows.filter((r) => r.origin === AnswerKeyOrigin.OFFICIAL).map(combo));
+    // Oficial primeiro: é o que vale. O comunitário sai de cena quando o oficial chega.
+    // Comunitário sem nenhuma questão com votos suficientes ainda não serve para conferir.
+    return rows.filter((r) => r.origin !== AnswerKeyOrigin.COMMUNITY || (!officialCombos.has(combo(r)) && r._count.items > 0)).sort((a, b) => Number(b.origin === 'OFFICIAL') - Number(a.origin === 'OFFICIAL')).map((r) => this.summary(r, viewer));
   }
 
   /** Provas cadastradas (para escolher ao criar gabarito ou filtrar). */
@@ -108,7 +125,7 @@ export class AnswerKeysService {
 
   private async gradingItems(answerKeyId: string): Promise<GradingItem[]> {
     const items = await this.prisma.answerKeyItem.findMany({ where: { answerKeyId }, orderBy: [{ number: 'asc' }, { language: 'asc' }] });
-    return items.map((i) => ({ number: i.number, language: i.language, answer: i.answer, area: i.area, validated: i.validated }));
+    return items.map((i) => ({ number: i.number, language: i.language, answer: i.answer, area: i.area, validated: i.validated, confidence: i.confidence }));
   }
 
   /**
@@ -177,7 +194,7 @@ export class AnswerKeysService {
     } else if (dto.origin === AnswerKeyOrigin.TEACHER) {
       if (!TEACHER_ACCOUNT_TYPES.includes(viewer.accountType)) throw new ForbiddenException('Só professores e a gestão cadastram gabaritos.');
     } else {
-      throw new BadRequestException('Gabaritos sugeridos por IA e comunitários ainda não podem ser cadastrados por aqui.');
+      throw new BadRequestException('O gabarito comunitário nasce dos votos dos alunos e o sugerido por IA ainda não existe: não dá para cadastrá-los por aqui.');
     }
     const examId = await this.findOrCreateExam(dto);
     const exam = await this.prisma.exam.findUniqueOrThrow({ where: { id: examId }, select: { name: true } });
@@ -211,10 +228,265 @@ export class AnswerKeysService {
     }
   }
 
+  /**
+   * Importa o gabarito oficial do PDF do INEP (só host download.inep.gov.br).
+   * Confere se veio completo (90 questões do dia e as duas línguas no 1º dia)
+   * antes de gravar; reimportar o mesmo PDF devolve o que já existe.
+   */
+  async importFromInep(viewer: Viewer, dto: ImportInepAnswerKeyDto) {
+    if (viewer.accountType !== 'ADMIN') throw new ForbiddenException('Só a administração da Lumina importa gabarito oficial.');
+    if (!this.enem) throw new Error('Importação do INEP indisponível.');
+    const parsed = await this.enem.fetchOfficialGabarito(dto.gabaritoUrl);
+    const problems = checkInepGabarito(parsed);
+    if (problems.length) throw new UnprocessableEntityException(`O PDF não parece um gabarito completo do Enem: ${problems.join(' ')}`);
+    const year = parsed.year!;
+    const day = parsed.day!;
+    const application = dto.application?.trim() || 'Regular';
+    const items = parsed.items.map((i) => ({ number: i.number, language: i.language, answer: letterToPosition(i.letter), area: enemArea(i.number) }));
+
+    const exam = (await this.prisma.exam.findFirst({ where: { name: { equals: 'ENEM', mode: 'insensitive' }, year }, select: { id: true } }))
+      ?? (await this.prisma.exam.create({ data: { name: 'ENEM', year, institution: 'INEP' }, select: { id: true } }));
+    const existing = await this.prisma.answerKey.findFirst({
+      where: { examId: exam.id, origin: AnswerKeyOrigin.OFFICIAL, application, day, bookletColor: parsed.bookletColor, status: { not: AnswerKeyStatus.ARCHIVED } },
+      include: { items: true },
+    });
+    if (existing) {
+      const same = existing.items.length === items.length && items.every((i) => existing.items.some((e) => e.number === i.number && e.language === i.language && e.answer === i.answer));
+      if (same) return this.get(viewer, existing.id, true);
+      throw new ConflictException('Já existe gabarito oficial deste caderno com respostas diferentes. Se o INEP publicou retificação, use a correção do gabarito existente (com a nota do que mudou).');
+    }
+    const created = await this.prisma.answerKey.create({
+      data: {
+        examId: exam.id,
+        application,
+        day,
+        bookletColor: parsed.bookletColor,
+        origin: AnswerKeyOrigin.OFFICIAL,
+        status: dto.publish === false ? AnswerKeyStatus.DRAFT : AnswerKeyStatus.PUBLISHED,
+        sourceName: `INEP${parsed.bookletNumber ? ` — caderno ${parsed.bookletNumber}` : ''}`,
+        sourceUrl: dto.gabaritoUrl,
+        publishedAt: new Date(dto.publishedAt),
+        createdBy: viewer.id,
+        items: { create: items.map((i) => ({ ...i, validated: true })) },
+      },
+      select: { id: true },
+    });
+    return this.get(viewer, created.id, true);
+  }
+
+  /** Cartão-resposta para imprimir e marcar as respostas deste gabarito. */
+  async sheet(viewer: Viewer, id: string) {
+    const detail = await this.get(viewer, id, false);
+    let layout;
+    try {
+      layout = answerKeySheetLayout(detail.numbers, detail.needsLanguage);
+    } catch (error) {
+      throw new UnprocessableEntityException(error instanceof Error ? error.message : 'Não foi possível montar o cartão.');
+    }
+    const title = [detail.exam.name, detail.exam.year, detail.day ? `${detail.day}º dia` : null, detail.bookletColor ? `Caderno ${detail.bookletColor}` : null].filter(Boolean).join(' · ');
+    return { title, layout, code: ANSWER_KEY_SHEET_CODE, bits: answerKeySheetBits() };
+  }
+
+  /**
+   * Lê a foto do cartão (PDF de uma página gerado no app) e devolve as
+   * respostas para o aluno conferir. Não grava nada: a correção só acontece
+   * quando o aluno confirma, pelo mesmo caminho da digitação.
+   */
+  async readSheet(viewer: Viewer, id: string, pdfDataUrl: string) {
+    const detail = await this.get(viewer, id, false);
+    const layout = answerKeySheetLayout(detail.numbers, detail.needsLanguage);
+    let page;
+    try {
+      const pages = extractPdfImages(decodePdf(pdfDataUrl));
+      if (pages.length !== 1) throw new UnprocessableEntityException('Envie uma folha por vez.');
+      page = pages[0];
+    } catch (error) {
+      if (error instanceof PdfError) throw new UnprocessableEntityException(error.message);
+      throw error;
+    }
+    let reading;
+    try {
+      reading = readSheet(page, layout);
+    } catch (error) {
+      if (error instanceof OmrError) throw new UnprocessableEntityException(error.message);
+      throw error;
+    }
+    const warnings = [...reading.warnings];
+    if (reading.code !== null && reading.code !== ANSWER_KEY_SHEET_CODE) {
+      throw new UnprocessableEntityException('Esta folha é o cartão de um simulado, não o cartão deste gabarito. Use o scanner de gabarito do simulado.');
+    }
+    const answers = readingToAnswers(layout, reading.questions);
+    return { answers, warnings, reviewCount: answers.filter((a) => a.review).length };
+  }
+
+  /** Alunos das turmas que o professor cria ou leciona (ativas). */
+  private async studentsOf(teacherId: string): Promise<Map<string, string>> {
+    const members = await this.prisma.classMember.findMany({
+      where: { class: { archived: false, OR: [{ createdBy: teacherId }, { teachers: { some: { userId: teacherId } } }] } },
+      select: { user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } },
+    });
+    return new Map(members.map((m) => [m.user.id, personName(m.user)]));
+  }
+
+  /**
+   * Painel do professor: como os alunos das turmas dele foram neste gabarito
+   * (vale também para o oficial). Conta a conferência mais recente de cada
+   * aluno. A administração vê todos os alunos.
+   */
+  async stats(viewer: Viewer, id: string) {
+    if (!TEACHER_ACCOUNT_TYPES.includes(viewer.accountType)) throw new ForbiddenException('Só professores e a gestão veem o desempenho das turmas.');
+    const row = await this.loadVisible(viewer, id);
+    const students = viewer.accountType === 'ADMIN' ? null : await this.studentsOf(viewer.id);
+    if (students && !students.size) return { answerKey: this.summary(row, viewer), students: 0, averagePercent: 0, byArea: [], questions: [], ranking: [] };
+    const checks = await this.prisma.answerKeyCheck.findMany({
+      where: { answerKeyId: id, ...(students ? { userId: { in: [...students.keys()] } } : {}) },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } } },
+    });
+    const latest = new Map<string, (typeof checks)[number]>();
+    for (const c of checks) if (!latest.has(c.userId)) latest.set(c.userId, c);
+    const items = await this.gradingItems(id);
+    const perQuestion = new Map<number, { area: string | null; answer: number | null; correct: number; wrong: number; blank: number; picks: number[] }>();
+    const areaTotals = new Map<string, { correct: number; scored: number }>();
+    const ranking = [] as { userId: string; name: string; percent: number; correct: number; scored: number; checkedAt: Date }[];
+    for (const c of latest.values()) {
+      const r = gradeAnswers(items, c.answersJson as Record<string, number | null>, c.language);
+      ranking.push({ userId: c.userId, name: students?.get(c.userId) ?? personName(c.user), percent: r.percent, correct: r.correct, scored: r.correct + r.wrong + r.blank, checkedAt: c.createdAt });
+      for (const a of r.byArea) {
+        const t = areaTotals.get(a.area) ?? { correct: 0, scored: 0 };
+        t.correct += a.correct; t.scored += a.scored; areaTotals.set(a.area, t);
+      }
+      for (const q of r.questions) {
+        if (q.status === 'ANNULLED' || q.status === 'PENDING') continue;
+        const t = perQuestion.get(q.number) ?? { area: q.area, answer: q.answer, correct: 0, wrong: 0, blank: 0, picks: [0, 0, 0, 0, 0] };
+        if (q.status === 'CORRECT') t.correct++; else if (q.status === 'WRONG') t.wrong++; else t.blank++;
+        if (q.selected) t.picks[q.selected - 1]++;
+        perQuestion.set(q.number, t);
+      }
+    }
+    const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+    const questions = [...perQuestion.entries()].map(([number, t]) => {
+      const total = t.correct + t.wrong + t.blank;
+      // Distrator mais escolhido: a alternativa errada que mais atraiu a turma.
+      const distractor = t.picks.map((count, i) => ({ position: i + 1, count })).filter((p) => p.position !== t.answer && p.count > 0).sort((a, b) => b.count - a.count)[0] ?? null;
+      return { number, area: t.area, answer: t.answer, correctPercent: pct(t.correct, total), wrong: t.wrong, blank: t.blank, total, topDistractor: distractor };
+    }).sort((a, b) => a.correctPercent - b.correctPercent || a.number - b.number);
+    return {
+      answerKey: this.summary(row, viewer),
+      students: latest.size,
+      averagePercent: latest.size ? Math.round((ranking.reduce((s, r) => s + r.percent, 0) / latest.size) * 10) / 10 : 0,
+      byArea: [...areaTotals.entries()].map(([area, t]) => ({ area, percent: pct(t.correct, t.scored), scored: t.scored })).sort((a, b) => a.percent - b.percent),
+      questions,
+      ranking: ranking.sort((a, b) => b.percent - a.percent),
+    };
+  }
+
+  /**
+   * Gabarito comunitário: o aluno manda as respostas que marcou e elas viram
+   * votos (um por questão; reenviar substitui). A resposta de cada questão é
+   * a mais votada, sempre como item pendente (amarelo), com a concordância.
+   * Não existe comunitário onde já há oficial.
+   */
+  async contribute(viewer: Viewer, dto: CommunityContributionDto) {
+    const exam = await this.prisma.exam.findUnique({ where: { id: dto.examId }, select: { id: true, name: true } });
+    if (!exam) throw new BadRequestException('Prova não encontrada.');
+    const application = dto.application?.trim() || 'Regular';
+    const day = dto.day ?? null;
+    const bookletColor = dto.bookletColor?.trim() || null;
+    const official = await this.prisma.answerKey.findFirst({ where: { examId: exam.id, origin: AnswerKeyOrigin.OFFICIAL, status: AnswerKeyStatus.PUBLISHED, application, day, bookletColor }, select: { id: true } });
+    if (official) throw new ConflictException('Esta prova já tem gabarito oficial: confira por ele.');
+
+    const isEnem = /enem/i.test(exam.name);
+    const range = isEnem && day === 1 ? [1, 90] : isEnem && day === 2 ? [91, 180] : [1, 400];
+    const votes = Object.entries(dto.answers)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => ({ number: Number(k), answer: Number(v) }));
+    if (!votes.length) throw new BadRequestException('Marque pelo menos uma resposta para contribuir.');
+    for (const v of votes) {
+      if (!Number.isInteger(v.number) || v.number < range[0] || v.number > range[1]) throw new BadRequestException(`Questão ${v.number} fora da prova.`);
+      if (!Number.isInteger(v.answer) || v.answer < 1 || v.answer > 5) throw new BadRequestException(`Resposta inválida na questão ${v.number}.`);
+    }
+    const languageFor = (n: number) => (isEnem && day === 1 && n <= 5 ? (dto.language ?? '') : '');
+    if (isEnem && day === 1 && votes.some((v) => v.number <= 5) && !LANGUAGES.includes((dto.language ?? '') as (typeof LANGUAGES)[number])) {
+      throw new BadRequestException('Escolha a língua estrangeira para contribuir nas questões 1 a 5.');
+    }
+
+    let key = await this.prisma.answerKey.findFirst({ where: { examId: exam.id, origin: AnswerKeyOrigin.COMMUNITY, status: { not: AnswerKeyStatus.ARCHIVED }, application, day, bookletColor }, select: { id: true } });
+    if (!key) {
+      try {
+        key = await this.prisma.answerKey.create({
+          data: { examId: exam.id, application, day, bookletColor, origin: AnswerKeyOrigin.COMMUNITY, status: AnswerKeyStatus.PUBLISHED, sourceName: 'Comunidade Lumina', createdBy: viewer.id },
+          select: { id: true },
+        });
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
+        key = await this.prisma.answerKey.findFirstOrThrow({ where: { examId: exam.id, origin: AnswerKeyOrigin.COMMUNITY, status: { not: AnswerKeyStatus.ARCHIVED }, application, day, bookletColor }, select: { id: true } });
+      }
+    }
+    const keyId = key.id;
+    await this.prisma.$transaction(async (tx) => {
+      for (const v of votes) {
+        const language = languageFor(v.number);
+        await tx.answerKeyVote.upsert({
+          where: { answerKeyId_userId_number_language: { answerKeyId: keyId, userId: viewer.id, number: v.number, language } },
+          update: { answer: v.answer },
+          create: { answerKeyId: keyId, userId: viewer.id, number: v.number, language, answer: v.answer },
+        });
+      }
+      await this.recomputeCommunity(tx, keyId, isEnem);
+    });
+    return this.get(viewer, keyId, false);
+  }
+
+  /** Refaz os itens do comunitário a partir dos votos (mais votada + concordância). */
+  private async recomputeCommunity(tx: Prisma.TransactionClient, answerKeyId: string, isEnem: boolean) {
+    const votes = await tx.answerKeyVote.findMany({ where: { answerKeyId }, select: { number: true, language: true, answer: true } });
+    const groups = new Map<string, { number: number; language: string; counts: number[] }>();
+    for (const v of votes) {
+      const k = `${v.number}:${v.language}`;
+      const g = groups.get(k) ?? { number: v.number, language: v.language, counts: [0, 0, 0, 0, 0] };
+      g.counts[v.answer - 1]++;
+      groups.set(k, g);
+    }
+    const items = [...groups.values()].flatMap((g) => {
+      const total = g.counts.reduce((a, b) => a + b, 0);
+      if (total < COMMUNITY_MIN_VOTES) return [];
+      const top = Math.max(...g.counts);
+      const answer = g.counts.indexOf(top) + 1;
+      const tie = g.counts.filter((c) => c === top).length > 1;
+      return [{
+        answerKeyId,
+        number: g.number,
+        language: g.language,
+        answer,
+        area: isEnem ? enemArea(g.number) : null,
+        validated: false,
+        votes: total,
+        confidence: Math.round((top / total) * 100) / 100,
+        justification: `${top} de ${total} votos${tie ? ' (empate: sem consenso)' : ''}`,
+      }];
+    });
+    await tx.answerKeyItem.deleteMany({ where: { answerKeyId } });
+    if (items.length) await tx.answerKeyItem.createMany({ data: items });
+  }
+
+  /** Moderação: tira os votos de um usuário (ex.: votos em massa errados de propósito). */
+  async removeVotes(viewer: Viewer, id: string, userId: string) {
+    if (viewer.accountType !== 'ADMIN') throw new ForbiddenException('Só a administração modera o gabarito comunitário.');
+    const key = await this.prisma.answerKey.findUnique({ where: { id }, select: { origin: true, exam: { select: { name: true } } } });
+    if (!key || key.origin !== AnswerKeyOrigin.COMMUNITY) throw new NotFoundException('Gabarito comunitário não encontrado.');
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.answerKeyVote.deleteMany({ where: { answerKeyId: id, userId } });
+      await this.recomputeCommunity(tx, id, /enem/i.test(key.exam.name));
+      return count;
+    });
+    return { removed };
+  }
+
   private async assertCanEdit(viewer: Viewer, id: string) {
     const row = await this.prisma.answerKey.findUnique({ where: { id }, select: { id: true, origin: true, createdBy: true, exam: { select: { name: true } } } });
     if (!row) throw new NotFoundException('Gabarito não encontrado.');
-    const allowed = row.origin === AnswerKeyOrigin.OFFICIAL ? viewer.accountType === 'ADMIN' : row.createdBy === viewer.id;
+    const allowed = row.origin === AnswerKeyOrigin.OFFICIAL || row.origin === AnswerKeyOrigin.COMMUNITY ? viewer.accountType === 'ADMIN' : row.createdBy === viewer.id;
     if (!allowed) throw new ForbiddenException('Você não pode alterar este gabarito.');
     return row;
   }
@@ -357,4 +629,27 @@ export class AnswerKeysService {
       }, new Map<string, (typeof missed)[number] & { misses: number }>()).values()].sort((a, b) => b.misses - a.misses || a.number - b.number).slice(0, 40),
     };
   }
+}
+
+/** O que falta para o gabarito do INEP valer como oficial completo. */
+export function checkInepGabarito(g: OfficialGabarito): string[] {
+  const problems: string[] = [];
+  if (!g.year) problems.push('Ano não encontrado no cabeçalho.');
+  if (g.day !== 1 && g.day !== 2) problems.push('Dia de prova não encontrado no cabeçalho.');
+  if (!g.bookletColor) problems.push('Cor do caderno não encontrada.');
+  if (g.day === 1 || g.day === 2) {
+    const start = g.day === 1 ? 1 : 91;
+    const missing: number[] = [];
+    for (let n = start; n < start + 90; n++) if (!g.items.some((i) => i.number === n)) missing.push(n);
+    if (missing.length) problems.push(`Faltam as questões ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? '…' : ''}.`);
+    const outside = g.items.filter((i) => i.number < start || i.number >= start + 90);
+    if (outside.length) problems.push(`Questões fora do ${g.day}º dia: ${outside.slice(0, 5).map((i) => i.number).join(', ')}.`);
+    if (g.day === 1) {
+      for (let n = 1; n <= 5; n++) {
+        const langs = g.items.filter((i) => i.number === n).map((i) => i.language).sort().join(',');
+        if (langs !== 'ESPANHOL,INGLES') { problems.push('As questões 1 a 5 precisam das respostas de inglês e de espanhol.'); break; }
+      }
+    }
+  }
+  return problems;
 }

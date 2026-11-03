@@ -1,17 +1,24 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BadgeCheck, ClipboardCheck, History, Plus, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Camera, ClipboardCheck, History, Plus, Printer, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/auth';
+import { detectDocument, enhanceDocument, outputSize, warpPerspective } from '@/lib/doc-scanner';
+import { fileToRaster, nextFrame, rasterToGrayPage } from '@/lib/doc-scanner-canvas';
+import { buildPdf, bytesToBase64 } from '@/lib/pdf-writer';
 import {
   apiAnswerKey,
   apiAnswerKeyCheck,
   apiAnswerKeyExams,
   apiAnswerKeyPerformance,
+  apiAnswerKeyStats,
   apiAnswerKeys,
   apiCheckAnswerKey,
+  apiContributeCommunity,
   apiCreateAnswerKey,
+  apiImportInepAnswerKey,
+  apiReadAnswerKeySheet,
   apiSetAnswerKeyStatus,
   ApiError,
   type AnswerKeyCheckResult,
@@ -19,6 +26,7 @@ import {
   type AnswerKeyDetail,
   type AnswerKeyExam,
   type AnswerKeyPerformance,
+  type AnswerKeyStats,
   type AnswerKeySummary,
 } from '@/lib/api';
 
@@ -27,6 +35,16 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const letter = (p: number | null | undefined) => (p ? LETTERS[p - 1] : '—');
 const errorText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof Error ? e.message : fallback);
 const STAFF = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
+
+/** Foto → folha recortada e endireitada → PDF de uma página (mesmo caminho do scanner de gabarito). */
+async function photoToPdf(file: File): Promise<string> {
+  const raster = await fileToRaster(file);
+  await nextFrame();
+  const { quad } = detectDocument(raster);
+  const page = enhanceDocument(warpPerspective(raster, quad, outputSize(quad, 1600)), 'gray');
+  const pdf = await buildPdf([rasterToGrayPage(page, 1100)]);
+  return `data:application/pdf;base64,${bytesToBase64(pdf)}`;
+}
 
 /** Verde = acerto, vermelho = erro, cinza = em branco, amarelo = pendente de validação. */
 const STATUS_STYLE: Record<AnswerKeyCheckStatus, { cell: string; label: string }> = {
@@ -49,7 +67,7 @@ function OriginBadge({ k }: { k: AnswerKeySummary }) {
 function KeySource({ k }: { k: AnswerKeySummary }) {
   return (
     <p className="mt-1 text-xs text-graphite-500">
-      {k.official ? <>Fonte: {k.sourceUrl ? <a className="underline" href={k.sourceUrl} target="_blank" rel="noreferrer">{k.sourceName ?? 'banca'}</a> : k.sourceName}{k.publishedAt ? ` · publicado em ${new Date(k.publishedAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}</> : <>Cadastrado por {k.author ?? 'professor'} — confira com o gabarito oficial quando ele sair.</>}
+      {k.official ? <>Fonte: {k.sourceUrl ? <a className="underline" href={k.sourceUrl} target="_blank" rel="noreferrer">{k.sourceName ?? 'banca'}</a> : k.sourceName}{k.publishedAt ? ` · publicado em ${new Date(k.publishedAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}</> : k.origin === 'COMMUNITY' ? <>Resposta mais votada pelos alunos da Lumina, sem validação. Some quando o oficial sair.</> : <>Cadastrado por {k.author ?? 'professor'} — confira com o gabarito oficial quando ele sair.</>}
       {k.version > 1 ? ` · versão ${k.version}${k.correctionNote ? ` (${k.correctionNote})` : ''}` : ''}
       {k.status === 'DRAFT' ? ' · rascunho (só você vê)' : ''}
     </p>
@@ -83,6 +101,12 @@ function ResultView({ result, onBack }: { result: AnswerKeyCheckResult; onBack: 
         O percentual é de acertos, <strong>não é a nota TRI</strong>: a TRI depende dos parâmetros de cada questão, que a banca não publica com o gabarito.
         {result.annulled ? ` ${result.annulled} anulada(s) e` : ''}{result.pending ? ` ${result.pending} pendente(s) de validação` : ''}{result.annulled || result.pending ? ' não entram no percentual.' : ''}
       </p>
+      {result.pending ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Estimativa pelo gabarito {result.answerKey.origin === 'COMMUNITY' ? 'comunitário' : 'não validado'} (não oficial)</p>
+          <p className="mt-1">{result.provisional.matches} das suas respostas batem com a mais votada, {result.provisional.differs} diferem e {result.provisional.blank} ficaram em branco. Não é resultado: confira de novo quando o gabarito oficial sair.</p>
+        </div>
+      ) : null}
       {result.byArea.length > 1 || result.byArea[0]?.area !== 'Geral' ? (
         <div className="rounded-xl border bg-white p-4">
           <h3 className="font-semibold">Por área</h3>
@@ -104,6 +128,7 @@ function ResultView({ result, onBack }: { result: AnswerKeyCheckResult; onBack: 
             <div key={q.number} className={`rounded-lg border px-2 py-1.5 text-center text-xs ${STATUS_STYLE[q.status].cell}`} title={STATUS_STYLE[q.status].label}>
               <p className="font-bold">{q.number}</p>
               <p>{letter(q.selected)} → {q.status === 'ANNULLED' ? 'anul.' : q.status === 'PENDING' ? `${letter(q.answer)}?` : letter(q.answer)}</p>
+              {q.status === 'PENDING' && q.agreement != null ? <p className="text-[10px]">{Math.round(q.agreement * 100)}% concordam</p> : null}
             </div>
           ))}
         </div>
@@ -133,10 +158,41 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
   const [paste, setPaste] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [fromPhoto, setFromPhoto] = useState(false);
+  /** Respondendo para o gabarito comunitário (prova ainda sem oficial). */
+  const [contribution, setContribution] = useState<{ examId: string; application: string; day: number | null; bookletColor: string | null } | null>(null);
+  const [allExams, setAllExams] = useState<AnswerKeyExam[]>([]);
+  const [cExam, setCExam] = useState('');
+  const [cDay, setCDay] = useState('');
+  const [cColor, setCColor] = useState('');
+  const [cCount, setCCount] = useState('45');
+  const [thanks, setThanks] = useState('');
+  const [review, setReview] = useState<Set<number>>(new Set());
+  const [photoNote, setPhotoNote] = useState('');
 
   useEffect(() => {
     apiAnswerKeys(token()).then(setKeys).catch((e) => setError(errorText(e, 'Não foi possível carregar os gabaritos.')));
+    apiAnswerKeyExams(token()).then(setAllExams).catch(() => undefined);
   }, []);
+
+  /** Abre a grade para responder uma prova que ainda não tem gabarito oficial. */
+  function startContribution() {
+    const exam = allExams.find((x) => x.id === cExam);
+    if (!exam) return;
+    const day = cDay ? Number(cDay) : null;
+    const enem = /enem/i.test(exam.name);
+    const count = enem && day ? 90 : Math.max(1, Math.min(400, Number(cCount) || 45));
+    const first = enem && day === 2 ? 91 : 1;
+    const numbers = Array.from({ length: count }, (_, i) => first + i);
+    const area = (n: number) => (enem ? (n <= 45 ? 'Linguagens, Códigos e suas Tecnologias' : n <= 90 ? 'Ciências Humanas e suas Tecnologias' : n <= 135 ? 'Ciências da Natureza e suas Tecnologias' : 'Matemática e suas Tecnologias') : null);
+    setContribution({ examId: exam.id, application: 'Regular', day, bookletColor: cColor.trim() || null });
+    setSelected({
+      id: '', exam, application: 'Regular', day, bookletColor: cColor.trim() || null, area: null, origin: 'COMMUNITY', official: false, status: 'PUBLISHED',
+      sourceName: null, sourceUrl: null, publishedAt: null, version: 1, correctionNote: null, questionCount: count, author: null, mine: false, updatedAt: '',
+      needsLanguage: enem && day === 1, numbers, items: numbers.map((n) => ({ number: n, language: '', area: area(n), validated: false })),
+    });
+    setAnswers({}); setLanguage(''); setPaste(''); setConfirming(false); setFromPhoto(false); setReview(new Set()); setPhotoNote(''); setThanks('');
+  }
 
   const exams = useMemo(() => [...new Set((keys ?? []).map((k) => k.exam.name))].sort(), [keys]);
   const years = useMemo(() => [...new Set((keys ?? []).filter((k) => !examName || k.exam.name === examName).map((k) => k.exam.year).filter(Boolean))].sort((a, b) => Number(b) - Number(a)), [keys, examName]);
@@ -146,7 +202,7 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
     setError(''); setBusy(true);
     try {
       const detail = await apiAnswerKey(token(), k.id);
-      setSelected(detail); setAnswers({}); setLanguage(''); setPaste(''); setConfirming(false);
+      setSelected(detail); setContribution(null); setAnswers({}); setLanguage(''); setPaste(''); setConfirming(false); setFromPhoto(false); setReview(new Set()); setPhotoNote(''); setThanks('');
     } catch (e) { setError(errorText(e, 'Não foi possível abrir o gabarito.')); }
     finally { setBusy(false); }
   }
@@ -165,12 +221,38 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
     setAnswers(next);
   }
 
+  /** Lê a foto do cartão e preenche a grade; as duvidosas ficam destacadas para o aluno conferir. */
+  async function readPhoto(file: File | undefined) {
+    if (!selected || !file) return;
+    setBusy(true); setError(''); setPhotoNote('Lendo o cartão…');
+    try {
+      const reading = await apiReadAnswerKeySheet(token(), selected.id, await photoToPdf(file));
+      setAnswers(Object.fromEntries(reading.answers.map((a) => [String(a.number), a.selected])));
+      setReview(new Set(reading.answers.filter((a) => a.review).map((a) => a.number)));
+      setFromPhoto(true); setConfirming(false);
+      setPhotoNote([
+        `Cartão lido: ${reading.answers.filter((a) => a.selected).length} respostas.`,
+        reading.reviewCount ? `${reading.reviewCount} duvidosa(s) em amarelo: confira na grade antes de corrigir (dupla marcação fica em branco).` : 'Nenhuma duvidosa, mas confira a grade antes de corrigir.',
+        ...reading.warnings,
+      ].join(' '));
+    } catch (e) { setPhotoNote(''); setError(errorText(e, 'Não foi possível ler o cartão.')); }
+    finally { setBusy(false); }
+  }
+
   async function submit() {
     if (!selected) return;
     setBusy(true); setError('');
     try {
+      if (contribution) {
+        // Vira voto no comunitário; depois confere contra a resposta mais votada.
+        const key = await apiContributeCommunity(token(), { ...contribution, language: language || undefined, answers });
+        const own = Object.fromEntries(key.numbers.map((n) => [String(n), answers[String(n)] ?? null]));
+        if (!key.numbers.length) { setThanks('Obrigado! Suas respostas entraram no gabarito comunitário. Ainda há poucos votos para mostrar a resposta mais votada: volte mais tarde.'); setConfirming(false); return; }
+        onResult(await apiCheckAnswerKey(token(), key.id, own, language || null, fromPhoto ? 'PHOTO' : 'MANUAL'));
+        return;
+      }
       const payload = Object.fromEntries(selected.numbers.map((n) => [String(n), answers[String(n)] ?? null]));
-      onResult(await apiCheckAnswerKey(token(), selected.id, payload, language || null));
+      onResult(await apiCheckAnswerKey(token(), selected.id, payload, language || null, fromPhoto ? 'PHOTO' : 'MANUAL'));
     } catch (e) { setError(errorText(e, 'Não foi possível conferir.')); setConfirming(false); }
     finally { setBusy(false); }
   }
@@ -180,7 +262,7 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
     const areaOf = new Map(selected.items.map((i) => [i.number, i.area]));
     return (
       <section className="mt-6">
-        <button type="button" onClick={() => setSelected(null)} className="inline-flex items-center gap-1 text-sm font-semibold"><ArrowLeft size={15} />Trocar de gabarito</button>
+        <button type="button" onClick={() => { setSelected(null); setContribution(null); }} className="inline-flex items-center gap-1 text-sm font-semibold"><ArrowLeft size={15} />Trocar de gabarito</button>
         <h2 className="mt-3 text-xl font-bold">{keyTitle(selected)}</h2>
         <div className="mt-1"><OriginBadge k={selected} /></div>
         <KeySource k={selected} />
@@ -199,21 +281,32 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
           <Button size="sm" variant="outline" type="button" onClick={applyPaste} disabled={!paste.trim()}>Preencher</Button>
           <p className="text-sm text-graphite-500">{answered} de {selected.numbers.length} respondidas</p>
         </div>
+        {contribution ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Você está respondendo para o <strong>gabarito comunitário</strong>: suas respostas viram votos (um por questão, reenviar substitui). Em branco não conta. A resposta mais votada aparece só a partir de 3 votos e nunca é tratada como oficial.</p> : null}
+        {thanks ? <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{thanks}</p> : null}
+        <div className={`mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-dashed bg-white p-4 text-sm ${contribution ? 'hidden' : ''}`}>
+          <span className="font-semibold">Marcou num cartão impresso?</span>
+          <Link to={`/app/gabarito-inteligente/${selected.id}/cartao`} className="inline-flex items-center gap-1 underline"><Printer size={15} />Imprimir cartão</Link>
+          <label className={`inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-1.5 font-semibold ${busy ? 'opacity-50' : 'hover:bg-primary/20'}`}>
+            <Camera size={15} />Ler foto do cartão
+            <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} onChange={(e) => { void readPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          {photoNote ? <p role="status" className="basis-full text-graphite-600">{photoNote}</p> : null}
+        </div>
         <div className="mt-4 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
           {selected.numbers.map((n, i) => {
             const area = areaOf.get(n);
             const newArea = area && areaOf.get(selected.numbers[i - 1]) !== area;
             return (
-              <div key={n} className={newArea ? 'col-span-full mt-3' : ''}>
-                {newArea ? <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-graphite-400">{area}</p> : null}
+              <Fragment key={n}>
+                {newArea ? <p className="col-span-full mt-3 text-xs font-semibold uppercase tracking-wide text-graphite-400">{area}</p> : null}
                 <div className="flex items-center gap-2">
-                  <span className="w-9 text-right text-sm font-bold">{n}</span>
+                  <span className={`w-9 rounded text-right text-sm font-bold ${review.has(n) ? 'bg-amber-200 px-1' : ''}`} title={review.has(n) ? 'Leitura duvidosa: confira' : undefined}>{n}</span>
                   {LETTERS.map((l, p) => {
                     const on = answers[String(n)] === p + 1;
-                    return <button key={l} type="button" aria-pressed={on} aria-label={`Questão ${n}, alternativa ${l}`} onClick={() => setAnswers({ ...answers, [String(n)]: on ? null : p + 1 })} className={`h-8 w-8 rounded-full border text-xs font-semibold ${on ? 'border-graphite bg-graphite text-white' : 'bg-white hover:bg-primary/20'}`}>{l}</button>;
+                    return <button key={l} type="button" aria-pressed={on} aria-label={`Questão ${n}, alternativa ${l}`} onClick={() => { setAnswers({ ...answers, [String(n)]: on ? null : p + 1 }); if (review.has(n)) setReview(new Set([...review].filter((x) => x !== n))); }} className={`h-8 w-8 rounded-full border text-xs font-semibold ${on ? 'border-graphite bg-graphite text-white' : 'bg-white hover:bg-primary/20'}`}>{l}</button>;
                   })}
                 </div>
-              </div>
+              </Fragment>
             );
           })}
         </div>
@@ -221,7 +314,7 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
           {confirming ? (
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-sm">Confira antes de corrigir: <strong>{answered}</strong> respondidas e <strong>{selected.numbers.length - answered}</strong> em branco{selected.needsLanguage ? `, língua: ${language === 'INGLES' ? 'inglês' : language === 'ESPANHOL' ? 'espanhol' : 'não escolhida'}` : ''}.</p>
-              <Button size="sm" onClick={() => void submit()} disabled={busy || (selected.needsLanguage && !language)}>{busy ? 'Corrigindo…' : 'Confirmar e corrigir'}</Button>
+              <Button size="sm" onClick={() => void submit()} disabled={busy || (selected.needsLanguage && !language)}>{busy ? 'Enviando…' : contribution ? 'Enviar ao comunitário e conferir' : 'Confirmar e corrigir'}</Button>
               <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>Voltar e ajustar</Button>
             </div>
           ) : <Button onClick={() => setConfirming(true)} disabled={selected.needsLanguage && !language}><ClipboardCheck size={18} />Revisar e corrigir</Button>}
@@ -251,6 +344,17 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
             <KeySource k={k} />
           </button>
         ))}
+      </div>
+      <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+        <h3 className="font-semibold">Prova sem gabarito oficial ainda?</h3>
+        <p className="mt-1 text-sm text-graphite-500">Marque o que você respondeu e contribua com o gabarito comunitário: você vê a resposta mais votada e quantos concordam. Ele é sempre não oficial e sai de cena quando o oficial for publicado.</p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-sm">Prova<select className="mt-1 block rounded-lg border px-3 py-2" value={cExam} onChange={(e) => setCExam(e.target.value)}><option value="">Escolha…</option>{allExams.map((x) => <option key={x.id} value={x.id}>{x.name} {x.year ?? ''}</option>)}</select></label>
+          <label className="text-sm">Dia<select className="mt-1 block rounded-lg border px-3 py-2" value={cDay} onChange={(e) => setCDay(e.target.value)}><option value="">Único</option><option value="1">1º</option><option value="2">2º</option></select></label>
+          <label className="text-sm">Cor do caderno<input className="mt-1 block w-32 rounded-lg border px-3 py-2" value={cColor} onChange={(e) => setCColor(e.target.value)} placeholder="Azul…" /></label>
+          {!(/enem/i.test(allExams.find((x) => x.id === cExam)?.name ?? '') && cDay) ? <label className="text-sm">Questões<input type="number" min={1} max={400} className="mt-1 block w-24 rounded-lg border px-3 py-2" value={cCount} onChange={(e) => setCCount(e.target.value)} /></label> : null}
+          <Button size="sm" variant="outline" type="button" disabled={!cExam} onClick={startContribution}>Responder e contribuir</Button>
+        </div>
       </div>
     </section>
   );
@@ -301,6 +405,39 @@ function PerformanceTab({ onOpen }: { onOpen: (checkId: string) => void }) {
 }
 
 // ------------------------------------------------------------------ cadastro (professor/gestão)
+
+/** Administração: importa o gabarito oficial direto do PDF do INEP. */
+function InepImport({ onDone }: { onDone: () => void }) {
+  const [url, setUrl] = useState('');
+  const [publishedAt, setPublishedAt] = useState('');
+  const [application, setApplication] = useState('Regular');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const field = 'mt-1 block w-full rounded-lg border px-3 py-2';
+  async function run(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true); setMessage(null);
+    try {
+      const k = await apiImportInepAnswerKey(token(), { gabaritoUrl: url.trim(), publishedAt, application });
+      setMessage({ ok: true, text: `Importado: ${keyTitle(k)} (${k.numbers.length} questões${k.needsLanguage ? ', com inglês e espanhol' : ''}).` });
+      setUrl(''); onDone();
+    } catch (err) { setMessage({ ok: false, text: errorText(err, 'Não foi possível importar.') }); }
+    finally { setBusy(false); }
+  }
+  return (
+    <form onSubmit={(e) => void run(e)} className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 p-5">
+      <h2 className="flex items-center gap-2 font-semibold"><BadgeCheck size={18} />Importar gabarito oficial do INEP</h2>
+      <p className="text-xs text-graphite-500">Cole o link do PDF do gabarito (download.inep.gov.br). Ano, dia, cor do caderno e as duas línguas do 1º dia são lidos do próprio PDF, e um gabarito incompleto é recusado.</p>
+      <label className="block text-sm">Link do PDF<input required type="url" className={field} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://download.inep.gov.br/enem/provas_e_gabaritos/2024_GB_impresso_D2_CD5.pdf" /></label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-sm">Publicado pelo INEP em<input required type="date" className={field} value={publishedAt} onChange={(e) => setPublishedAt(e.target.value)} /></label>
+        <label className="text-sm">Aplicação<input className={field} value={application} onChange={(e) => setApplication(e.target.value)} /></label>
+      </div>
+      {message ? <p role={message.ok ? 'status' : 'alert'} className={`rounded-lg p-3 text-sm ${message.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{message.text}</p> : null}
+      <Button disabled={busy}>{busy ? 'Importando…' : 'Importar'}</Button>
+    </form>
+  );
+}
 
 function CreateTab({ isAdmin }: { isAdmin: boolean }) {
   const [exams, setExams] = useState<AnswerKeyExam[]>([]);
@@ -371,6 +508,7 @@ function CreateTab({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <section className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      {isAdmin ? <div className="lg:col-span-2"><InepImport onDone={() => void reload()} /></div> : null}
       <form onSubmit={(e) => void save(e)} className="space-y-3 rounded-xl border bg-white p-5">
         <h2 className="font-semibold">Cadastrar gabarito</h2>
         <p className="text-xs text-graphite-500">{official ? 'Gabarito oficial: copie exatamente o documento da banca e informe a fonte e a data de publicação.' : 'Gabarito de professor: aparece como "não oficial" para os alunos das suas turmas quando publicado.'}</p>
@@ -435,12 +573,74 @@ function CreateTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+// ------------------------------------------------------------------ painel do professor
+
+function ClassStatsTab() {
+  const [keys, setKeys] = useState<AnswerKeySummary[]>([]);
+  const [keyId, setKeyId] = useState('');
+  const [stats, setStats] = useState<AnswerKeyStats | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { apiAnswerKeys(token()).then(setKeys).catch((e) => setError(errorText(e, 'Não foi possível carregar os gabaritos.'))); }, []);
+  useEffect(() => {
+    if (!keyId) { setStats(null); return; }
+    setError('');
+    apiAnswerKeyStats(token(), keyId).then(setStats).catch((e) => setError(errorText(e, 'Não foi possível carregar o desempenho.')));
+  }, [keyId]);
+  return (
+    <section className="mt-6 space-y-5">
+      <label className="block max-w-xl text-sm">Gabarito
+        <select className="mt-1 block w-full rounded-lg border px-3 py-2" value={keyId} onChange={(e) => setKeyId(e.target.value)}>
+          <option value="">Escolha…</option>
+          {keys.map((k) => <option key={k.id} value={k.id}>{keyTitle(k)}{k.official ? ' (oficial)' : ''}</option>)}
+        </select>
+      </label>
+      <p className="text-xs text-graphite-500">Mostra a conferência mais recente de cada aluno das suas turmas neste gabarito.</p>
+      {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {stats && !stats.students ? <p className="rounded-xl bg-surface-card p-4 text-sm text-graphite-500">Nenhum aluno das suas turmas conferiu este gabarito ainda.</p> : null}
+      {stats && stats.students ? (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border bg-white p-4"><p className="text-xs text-graphite-500">Alunos que conferiram</p><p className="mt-1 text-2xl font-bold">{stats.students}</p></div>
+            <div className="rounded-xl border bg-white p-4"><p className="text-xs text-graphite-500">Acerto médio</p><p className="mt-1 text-2xl font-bold">{stats.averagePercent.toLocaleString('pt-BR')}%</p></div>
+          </div>
+          {stats.byArea.length ? (
+            <div className="rounded-xl border bg-white p-4">
+              <h3 className="font-semibold">Por área</h3>
+              <div className="mt-3 space-y-3">{stats.byArea.map((a) => (
+                <div key={a.area}><div className="flex justify-between text-sm"><span>{a.area}</span><span className="font-semibold">{a.percent.toLocaleString('pt-BR')}%</span></div><div className="mt-1 h-2 rounded-full bg-surface-card"><div className="h-2 rounded-full bg-primary" style={{ width: `${a.percent}%` }} /></div></div>
+              ))}</div>
+            </div>
+          ) : null}
+          <div className="overflow-x-auto rounded-xl border bg-white p-4">
+            <h3 className="font-semibold">Questões mais difíceis para a turma</h3>
+            <table className="mt-2 w-full min-w-[520px] text-left text-sm">
+              <thead className="text-xs text-graphite-400"><tr><th className="py-1">Questão</th><th>Área</th><th>Acerto</th><th>Gabarito</th><th>Distrator mais escolhido</th></tr></thead>
+              <tbody className="divide-y">{stats.questions.slice(0, 15).map((q) => (
+                <tr key={q.number}><td className="py-1.5 font-semibold">{q.number}</td><td className="text-xs">{q.area}</td><td>{q.correctPercent.toLocaleString('pt-BR')}%</td><td>{letter(q.answer)}</td><td>{q.topDistractor ? `${letter(q.topDistractor.position)} (${q.topDistractor.count} aluno${q.topDistractor.count > 1 ? 's' : ''})` : '—'}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div className="overflow-x-auto rounded-xl border bg-white p-4">
+            <h3 className="font-semibold">Alunos</h3>
+            <table className="mt-2 w-full min-w-[420px] text-left text-sm">
+              <thead className="text-xs text-graphite-400"><tr><th className="py-1">Aluno</th><th>Acerto</th><th>Acertos</th><th>Conferido em</th></tr></thead>
+              <tbody className="divide-y">{stats.ranking.map((r) => (
+                <tr key={r.userId}><td className="py-1.5">{r.name}</td><td className="font-semibold">{r.percent.toLocaleString('pt-BR')}%</td><td>{r.correct}/{r.scored}</td><td className="text-xs">{new Date(r.checkedAt).toLocaleDateString('pt-BR')}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 // ------------------------------------------------------------------ página
 
 export function SmartAnswerKey() {
   const { user } = useAuth();
   const staff = STAFF.includes(user?.accountType ?? '');
-  const [tab, setTab] = useState<'check' | 'performance' | 'create'>('check');
+  const [tab, setTab] = useState<'check' | 'performance' | 'create' | 'classes'>('check');
   const [result, setResult] = useState<AnswerKeyCheckResult | null>(null);
   const [error, setError] = useState('');
 
@@ -452,7 +652,7 @@ export function SmartAnswerKey() {
   const tabs: { id: typeof tab; label: string }[] = [
     { id: 'check', label: 'Conferir prova' },
     { id: 'performance', label: 'Meu desempenho' },
-    ...(staff ? [{ id: 'create' as const, label: 'Cadastrar gabarito' }] : []),
+    ...(staff ? [{ id: 'create' as const, label: 'Cadastrar gabarito' }, { id: 'classes' as const, label: 'Desempenho das turmas' }] : []),
   ];
 
   return (
@@ -467,7 +667,7 @@ export function SmartAnswerKey() {
             <div className="mt-6 flex gap-2 border-b" role="tablist">
               {tabs.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} type="button" onClick={() => setTab(t.id)} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === t.id ? 'border-primary text-graphite' : 'border-transparent text-graphite-400'}`}>{t.label}</button>)}
             </div>
-            {tab === 'check' ? <CheckTab onResult={setResult} /> : tab === 'performance' ? <PerformanceTab onOpen={(id) => void openCheck(id)} /> : <CreateTab isAdmin={user?.accountType === 'ADMIN'} />}
+            {tab === 'check' ? <CheckTab onResult={setResult} /> : tab === 'performance' ? <PerformanceTab onOpen={(id) => void openCheck(id)} /> : tab === 'classes' ? <ClassStatsTab /> : <CreateTab isAdmin={user?.accountType === 'ADMIN'} />}
           </>
         )}
       </div>

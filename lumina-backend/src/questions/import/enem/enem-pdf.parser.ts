@@ -180,3 +180,79 @@ export function classifyCienciasNaturezaSubject(stem: string): string {
   if (best.score === 0 || best.score === second.score) return 'Ciências da Natureza';
   return best.subject;
 }
+
+export type GabaritoLanguage = '' | 'INGLES' | 'ESPANHOL';
+
+export interface OfficialGabaritoItem {
+  number: number;
+  /** "A"–"E" ou null quando o INEP anulou a questão. */
+  letter: string | null;
+  language: GabaritoLanguage;
+}
+
+export interface OfficialGabarito {
+  year: number | null;
+  day: number | null;
+  bookletColor: string | null;
+  bookletNumber: number | null;
+  items: OfficialGabaritoItem[];
+}
+
+const BOOKLET_COLORS = ['Azul', 'Amarelo', 'Branco', 'Rosa', 'Cinza', 'Verde', 'Laranja', 'Roxo'];
+
+/**
+ * Lê o PDF de gabarito oficial do Enem inteiro (texto SEM espaço entre os
+ * runs, como em parseGabaritoText), com o cabeçalho do caderno e as duas
+ * línguas das questões 1–5 do 1º dia. Formato real do INEP (2023/2024):
+ *
+ *   "CADERNO 1AzulGabarito 20231diaºQUESTÃO GABARITO46 C47 D… INGLÊS ESPANHOL1 B A2 B A…"
+ *
+ * Diferente de parseGabaritoText, aceita questões de 1 dígito (1–9) e exige
+ * o espaço entre número e letra que o PDF real tem ("46 C"), o que evita ler
+ * "CADERNO 1Azul" ou o ano como questão.
+ */
+export function parseOfficialGabarito(raw: string): OfficialGabarito {
+  const year = /Gabarito\s*(\d{4})/i.exec(raw);
+  const dayAfter = /Gabarito\s*\d{4}\s*(\d)\s*dia/i.exec(raw) ?? /dia\s*º?\s*(\d)/i.exec(raw);
+  const color = BOOKLET_COLORS.find((c) => new RegExp(c, 'i').test(raw.slice(0, 200))) ?? null;
+  const booklet = /CADERNO\s*(\d{1,2})/i.exec(raw);
+
+  // Cabeçalho das línguas: a 1ª letra é a da língua que vem primeiro.
+  const norm = raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  const en = norm.indexOf('INGLES');
+  const es = norm.indexOf('ESPANHOL');
+  const order: GabaritoLanguage[] = es >= 0 && en > es ? ['ESPANHOL', 'INGLES'] : ['INGLES', 'ESPANHOL'];
+
+  const items: OfficialGabaritoItem[] = [];
+  const seen = new Map<string, string | null>();
+  const re = /(\d{1,3}) +(Anulad[oa]|[A-E])(?: +(Anulad[oa]|[A-E]))?(?![a-z])/g;
+  let m: RegExpExecArray | null;
+  const push = (number: number, value: string, language: GabaritoLanguage) => {
+    const letter = /^anulad/i.test(value) ? null : value;
+    const key = `${number}:${language}`;
+    if (seen.has(key)) {
+      if (seen.get(key) !== letter) throw new Error(`Gabarito ambíguo: a questão ${number} aparece com respostas diferentes.`);
+      return;
+    }
+    seen.set(key, letter);
+    items.push({ number, letter, language });
+  };
+  while ((m = re.exec(raw))) {
+    const number = Number(m[1]);
+    if (number < 1 || number > 180) continue;
+    if (m[3] && en >= 0 && es >= 0) {
+      push(number, m[2], order[0]);
+      push(number, m[3], order[1]);
+    } else {
+      push(number, m[2], '');
+    }
+  }
+  items.sort((a, b) => a.number - b.number || a.language.localeCompare(b.language));
+  return {
+    year: year ? Number(year[1]) : null,
+    day: dayAfter ? Number(dayAfter[1]) : null,
+    bookletColor: color,
+    bookletNumber: booklet ? Number(booklet[1]) : null,
+    items,
+  };
+}
