@@ -16,15 +16,15 @@
             ],
             [
               40,
-              67.4
+              70.9
             ],
             [
               80,
-              97.8
+              98.2
             ],
             [
               120,
-              125.5
+              130.9
             ],
             [
               160,
@@ -46,20 +46,22 @@
           "type": "identity"
         }
       },
-      "fittedAt": "2026-11-01T19:34:33.280Z",
-      "sampleSize": 81,
+      "fittedAt": "2026-11-03T14:52:45.709Z",
+      "sampleSize": 99,
       "selection": {
         "C1": {
           "fn": {
             "type": "identity"
           },
           "loo": {
-            "identity": 35.6,
-            "linear": 37.5,
-            "isotonic": 33.6
+            "identity": 34.7,
+            "linear": 31.1,
+            "isotonic": 32.7
           },
-          "n": 81,
-          "rejectedForExtremes": []
+          "n": 99,
+          "rejectedForExtremes": [
+            "linear"
+          ]
         },
         "C2": {
           "fn": {
@@ -71,15 +73,15 @@
               ],
               [
                 40,
-                67.4
+                70.9
               ],
               [
                 80,
-                97.8
+                98.2
               ],
               [
                 120,
-                125.5
+                130.9
               ],
               [
                 160,
@@ -92,11 +94,11 @@
             ]
           },
           "loo": {
-            "identity": 32.6,
-            "linear": 29.6,
-            "isotonic": 29.6
+            "identity": 34.3,
+            "linear": 28.7,
+            "isotonic": 31.1
           },
-          "n": 81,
+          "n": 99,
           "rejectedForExtremes": [
             "linear"
           ]
@@ -106,11 +108,11 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 34.1,
-            "linear": 43.5,
-            "isotonic": 41.5
+            "identity": 32.3,
+            "linear": 36.4,
+            "isotonic": 38.4
           },
-          "n": 81,
+          "n": 99,
           "rejectedForExtremes": []
         },
         "C4": {
@@ -118,11 +120,11 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 44,
-            "linear": 44,
-            "isotonic": 44
+            "identity": 41.6,
+            "linear": 41.6,
+            "isotonic": 41.6
           },
-          "n": 81,
+          "n": 99,
           "rejectedForExtremes": []
         },
         "C5": {
@@ -130,11 +132,11 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 33.6,
-            "linear": 37,
-            "isotonic": 28.6
+            "identity": 33.5,
+            "linear": 38.4,
+            "isotonic": 27.1
           },
-          "n": 81,
+          "n": 99,
           "rejectedForExtremes": [
             "isotonic"
           ]
