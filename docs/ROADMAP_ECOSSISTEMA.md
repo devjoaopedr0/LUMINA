@@ -44,7 +44,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Faltam visualizador de PDF e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
-| Gabarito Inteligente | Em andamento | Fase 1 (backend e interface) no código em 03/11; migration não aplicada; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
+| Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); falta o gabarito sugerido por IA; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
 | Gamificação, metas, notificações, flashcards, revisão espaçada, agenda | Planejado | Itens 30–52 do inventário |
 | Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
 | Lumina Groups | Planejado | Fase 2 |
@@ -131,9 +131,9 @@ Preparação para o ENEM; questões e simulados; scanner de gabaritos; correçã
 - **Já entregue:** ver §2.
 - **Pendências da fase:**
   - **Calibração e validação:** ampliar a calibração da correção de redação; validar com fotos reais (redação) e impressões reais (cartão-resposta).
-  - **Gabarito Inteligente:** fase 1 em andamento; depois gabarito por IA, comunitário, foto do cartão e LuminIA por questão.
+  - **Gabarito Inteligente:** fase 1, INEP, foto, painel e comunitário entregues; vínculo com o banco e LuminIA por questão validados com o ENEM 2024 (75/90 questões importadas e ligadas; as 15 restantes puladas por imagem, fórmula ilegível ou anulação); falta o gabarito sugerido por IA.
   - **Conteúdo:** Caderno de Repertórios completo (aguarda o resto da especificação); provas anteriores completas.
-  - **LuminIA e dados:** LuminIA explicando questões (com o texto real da questão); OCR real no scanner de questões.
+  - **LuminIA e dados:** ~~LuminIA explicando questões (com o texto real da questão)~~ (feito em 04/11 no Gabarito Inteligente); OCR real no scanner de questões.
   - **Comercial:** planos e cota do plano gratuito alinhados à landing.
 
 ### Fase 2: Lumina Groups

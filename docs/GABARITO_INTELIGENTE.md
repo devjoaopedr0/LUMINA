@@ -1,6 +1,6 @@
 # Gabarito Inteligente
 
-> **Status: Em andamento.** Fase 1, importação do INEP, cartão por foto, painel do professor e gabarito comunitário estão no código e foram **validados no navegador em 03/11/2026**, com o gabarito real do ENEM 2024 (2º dia, Amarelo). As migrations `20261103150000_answer_keys` e `20261103200000_answer_key_votes` estão aplicadas. Faltam o gabarito sugerido por IA e a LuminIA por questão. **A data de publicação do gabarito importado (20/11/2024) precisa ser confirmada.**
+> **Status: Em andamento.** Fase 1, importação do INEP, cartão por foto, painel do professor e gabarito comunitário estão no código e foram **validados no navegador em 03/11/2026**, com o gabarito real do ENEM 2024 (2º dia, Amarelo). As migrations `20261103150000_answer_keys` e `20261103200000_answer_key_votes` estão aplicadas. O vínculo do gabarito com o banco de questões e a **explicação da LuminIA por questão** entraram no código em 04/11/2026; no mesmo dia, o caderno do ENEM 2024 (2º dia) foi importado (75 das 90 questões) e o vínculo e a explicação foram **validados ponta a ponta com a IA real** (75/90 itens ligados; questão 91 explicada, questão sem vínculo devolvendo 422). Falta o gabarito sugerido por IA. **A data de publicação do gabarito importado (20/11/2024) precisa ser confirmada.**
 
 O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, brancos e desempenho por área, com histórico. O gabarito oficial aparece marcado como **Oficial**, com fonte e data. Os demais aparecem sempre como **não oficiais**.
 
@@ -31,11 +31,13 @@ O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, branco
 | GET | `/answer-keys/checks/:checkId` | Conferência refeita contra o gabarito atual |
 | GET | `/answer-keys/performance` | Painel de desempenho |
 | GET | `/answer-keys/:id/stats` | Painel do professor: alunos das turmas dele neste gabarito (ADMIN: todos) |
+| POST | `/answer-keys/:id/link-questions` | Liga os itens às questões do banco público (ENEM pelo `sourceId`; outras provas pelo número) |
+| GET | `/answer-keys/:id/questions/:number/explanation?selected&language` | Explicação da LuminIA para uma questão já respondida (422 quando ainda não há vínculo) |
 | POST | `/answer-keys/community/contributions` | Contribui com o gabarito comunitário (respostas viram votos) |
 | DELETE | `/answer-keys/:id/votes/:userId` | Moderação: remove os votos de um usuário (ADMIN) |
 
-- **Código:** `lumina-backend/src/answer-keys/` (a lógica de correção pura está em `answer-key.grading.ts`) e `lumina-app/src/pages/SmartAnswerKey.tsx` (rota `/app/gabarito-inteligente`).
-- **Testes:** `answer-keys.spec.ts`, com 17 casos (4 sobre a importação do INEP e 2 sobre o cartão por foto).
+- **Código:** `lumina-backend/src/answer-keys/` (a lógica de correção pura está em `answer-key.grading.ts` e o vínculo/prompt em `answer-key.questions.ts`) e `lumina-app/src/pages/SmartAnswerKey.tsx` (rota `/app/gabarito-inteligente`).
+- **Testes:** `answer-keys.spec.ts`, com 30 casos (4 sobre a importação do INEP, 2 sobre o cartão por foto e 8 sobre vínculo, explicação e limpeza do texto da IA).
 
 ## Importação do gabarito oficial do INEP
 O administrador cola o link do PDF do gabarito (ex.: `.../provas_e_gabaritos/2024_GB_impresso_D2_CD5.pdf`) e informa a data de publicação, que o PDF não traz.
@@ -72,13 +74,29 @@ A administração vê todos. Os alunos não veem o painel (403).
 - **Moderação:** só a administração arquiva o comunitário e remove os votos de um usuário, e os itens são recalculados.
 - **Banco:** um comunitário por prova, aplicação, dia e cor (índice parcial). Migration `20261103200000_answer_key_votes` (tabela `answer_key_votes` e coluna `answer_key_items.votes`), aplicada em 03/11/2026.
 
+## LuminIA por questão
+- **Vínculo:** cada item do gabarito pode apontar para uma questão do banco (`AnswerKeyItem.questionId`). O vínculo automático roda ao criar/importar/corrigir um gabarito e ao recalcular o comunitário; também há o botão **“Vincular questões”** em “Meus gabaritos”.
+- **Só o banco público:** o vínculo usa apenas questões do workspace `banco@lumina.app`. Fora dele a questão não é ligada, porque a explicação precisa funcionar para qualquer aluno autenticado — não só para quem tem acesso ao workspace de quem importou o caderno.
+- **Como casa:** no ENEM, pelo `sourceId` canônico (`enem-2024-d2-q91`, `enem-2023-d1-q1-ingles`); nas demais provas, pelo número da questão dentro da mesma prova cadastrada (itens de língua ficam de fora).
+- **Explicação:** depois da conferência, as questões erradas ou em branco mostram **“Explicar com a LuminIA”**. A IA recebe o enunciado, as alternativas, a resposta correta e a resposta do aluno. Se a IA não estiver configurada ou falhar, a tela mostra um **roteiro de revisão determinístico** marcado como tal, sem conteúdo inventado.
+- **Sem vínculo não há explicação:** a API responde **422** e a interface diz que falta ligar a questão ao banco. Nunca é gerada uma explicação sem o texto real da questão.
+- **Privacidade e honestidade:** a explicação não é gravada em cache nesta fase; cada pedido é uma chamada (ou o fallback). A imagem da questão, quando existe, não é enviada para leitura — o prompt avisa que só o texto está disponível. Como a interface mostra texto puro, a resposta da IA passa por uma limpeza simples de markdown (negrito, itálico e títulos), sem alterar o conteúdo.
+
 ## Dados reais
-O banco ainda **não tem nenhum gabarito oficial completo**. Os `exam_papers` com gabarito são dados de exemplo (o ENEM 2023, por exemplo, tem 5 respostas) e não foram migrados para cá. Os oficiais entram pela importação do INEP ou pelo cadastro manual do administrador.
+O gabarito oficial do ENEM 2024 (2º dia, Amarelo) está no banco e o caderno do mesmo dia foi **importado em 04/11/2026**: **75 das 90 questões** estão no workspace público `banco@lumina.app`. A importação não criou duplicatas nem erros; as 15 restantes foram **puladas com motivo explícito**, sem texto inventado:
+
+- **9 questões dependem de imagem/figura ou de um layout que a extração de texto não separa com segurança** (100, 106, 109, 110, 135, 146, 153, 156, 162): o leitor prefere pular a importar um enunciado sem as alternativas corretas.
+- **5 questões têm fórmulas ou figuras que viraram “sopa de números”** (139, 147, 149, 179, 180): o leitor prefere pular a importar alternativas ilegíveis.
+- **1 questão foi anulada pelo INEP** (102): não há resposta válida a importar.
+
+O vínculo ficou em **75/90** — exatamente as questões importadas. Os 15 itens sem questão continuam funcionando para conferir a resposta; a explicação por questão fica indisponível e a interface diz isso, em vez de inventar enunciado. O parser do PDF de 2024 foi corrigido para aceitar o marcador de alternativa de uma letra (o de 2023 usa duas) e para descartar o rodapé/cabeçalho de página que contaminava questões que atravessam páginas.
+
+Os demais `exam_papers` com gabarito continuam sendo dados de exemplo (o ENEM 2023, por exemplo, tem 5 respostas) e não foram migrados para cá. Os oficiais entram pela importação do INEP ou pelo cadastro manual do administrador.
 
 ## Próximas fases
 1. ~~Importar o gabarito oficial do PDF do INEP~~ (feito).
 2. ~~Foto do cartão-resposta para preencher as respostas~~ (feito; ver abaixo).
 3. Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor. **Depende de ter o texto das questões ligado ao gabarito** (ver item 5).
 4. ~~Gabarito comunitário~~ (feito; ver abaixo).
-5. LuminIA por questão com o texto real da questão e das alternativas (exige vincular `AnswerKeyItem.questionId` às questões do banco).
+5. ~~LuminIA por questão com o texto real da questão e das alternativas (exige vincular `AnswerKeyItem.questionId` às questões do banco)~~ (feito em 04/11/2026; ver acima).
 6. ~~Painel do professor~~ (feito; ver abaixo).

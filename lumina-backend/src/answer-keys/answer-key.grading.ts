@@ -24,14 +24,20 @@ export interface GradingItem {
   validated: boolean;
   /** Concordância (0–1) no gabarito comunitário. */
   confidence?: number | null;
+  /** Questão do banco ligada a este item (para a LuminIA explicar). */
+  questionId?: string | null;
 }
 
 export interface QuestionResult {
   number: number;
+  /** Língua do item usado (Enem 1º dia); vazio quando não há versões. */
+  language: string;
   area: string | null;
   selected: number | null;
   answer: number | null;
   status: CheckStatus;
+  /** Questão do banco ligada a este item; nulo quando ainda não há vínculo. */
+  questionId: string | null;
   /** Só nos pendentes do comunitário: concordância da resposta mais votada. */
   agreement?: number | null;
 }
@@ -105,7 +111,16 @@ export function gradeAnswers(items: GradingItem[], answers: Record<string, numbe
     else if (!item.validated) status = 'PENDING';
     else if (selected === null) status = 'BLANK';
     else status = selected === item.answer ? 'CORRECT' : 'WRONG';
-    return { number, area: item.area, selected, answer: item.answer, status, ...(status === 'PENDING' ? { agreement: item.confidence ?? null } : {}) };
+    return {
+      number,
+      language: item.language,
+      area: item.area,
+      selected,
+      answer: item.answer,
+      status,
+      questionId: item.questionId ?? null,
+      ...(status === 'PENDING' ? { agreement: item.confidence ?? null } : {}),
+    };
   });
 
   const count = (s: CheckStatus, list = questions) => list.filter((q) => q.status === s).length;

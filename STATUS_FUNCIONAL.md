@@ -2,6 +2,17 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 04/11/2026 — Gabarito Inteligente: vínculo com o banco e LuminIA por questão
+
+- **Vínculo do gabarito com o banco:** cada item pode apontar para uma questão (`AnswerKeyItem.questionId`). O vínculo automático roda ao criar, importar do INEP, corrigir e recalcular o comunitário; o botão “Vincular questões” também permite refazer em “Meus gabaritos”. Só entram questões do workspace público `banco@lumina.app`.
+- **Como casa:** ENEM pelo `sourceId` canônico (`enem-2024-d2-q91`, `enem-2023-d1-q1-ingles`); outras provas pelo número dentro da mesma prova. Itens de língua de outras provas ficam de fora.
+- **LuminIA por questão:** após a conferência, questões erradas ou em branco mostram “Explicar com a LuminIA”. A IA recebe enunciado, alternativas, resposta correta e resposta do aluno. Sem IA configurada (ou se ela falhar), a resposta é um roteiro de revisão determinístico marcado como `rules`, sem conteúdo inventado. Sem questão ligada, a API responde 422 e a tela explica que falta o vínculo.
+- **Testes:** backend com 30 casos no `answer-keys.spec.ts` (8 novos: sourceId, escolha do banco público, fallback honesto, vínculo, IA com sucesso, IA com falha, ausência de vínculo e limpeza de markdown na resposta da IA). App com `tsc -b`, lint, checks e build passando.
+- **Sem migration:** o campo `AnswerKeyItem.questionId` já existia; não houve alteração de schema.
+- **Dados reais (04/11/2026):** o caderno do ENEM 2024 (2º dia, Amarelo) foi importado no workspace público com **75 das 90 questões** (0 duplicatas, 0 erros; 15 puladas com motivo). Ficaram de fora, com motivo explícito: 9 dependem de imagem/figura ou de layout não separável com segurança (100, 106, 109, 110, 135, 146, 153, 156, 162), 5 têm fórmulas/figuras ilegíveis (139, 147, 149, 179, 180) e 1 foi anulada (102). O vínculo ficou em **75/90** e a explicação foi validada ponta a ponta com a IA real (questão 91, `source: ai`) e com 422 na questão sem vínculo (100).
+- **Parser do ENEM 2024:** passou a aceitar o marcador de alternativa de uma letra (o PDF de 2023 usa duas) e a descartar rodapé/cabeçalho de página que contaminava questões que atravessam páginas; alternativas que viram “sopa de números” são puladas em vez de importadas.
+- **Pendente:** o gabarito sugerido por IA; confirmar a data de publicação do gabarito importado (20/11/2024).
+
 ## Atualização de 03/11/2026 — Documentação da visão do ecossistema (só documentação)
 
 - Novos documentos: [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md) (visão, modelo de negócio, camadas transversais, roadmap em 5 fases, riscos e decisões pendentes), [docs/LUMINA_GROUPS.md](docs/LUMINA_GROUPS.md) (grupos e salas coletivas de estudo) e [docs/LUMINA_MARKETPLACE.md](docs/LUMINA_MARKETPLACE.md) (mercado educacional).

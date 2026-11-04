@@ -1,7 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
 import { AnswerKeyOrigin, AnswerKeyStatus, Prisma } from '@prisma/client';
+import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../database/prisma.service';
 import { EnemImportService } from '../questions/import/enem/enem-import.service';
+import { QUESTION_BANK_INSTITUTION_EMAIL, QuestionAccessService } from '../questions/question-access.service';
 import { decodePdf } from '../simulations/omr/answer-sheet-scan.service';
 import { OmrError, readSheet } from '../simulations/omr/omr';
 import { extractPdfImages, PdfError } from '../simulations/omr/pdf';
@@ -9,6 +11,7 @@ import { ANSWER_KEY_SHEET_CODE, answerKeySheetBits, answerKeySheetLayout, readin
 import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
 import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto } from './answer-keys.dto';
+import { enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, pickQuestion, plainExplanation } from './answer-key.questions';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
@@ -34,9 +37,13 @@ const personName = (u: { email: string; profile: { firstName: string; lastName: 
 
 @Injectable()
 export class AnswerKeysService {
+  private readonly logger = new Logger(AnswerKeysService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly enem?: EnemImportService,
+    @Optional() private readonly ai?: AiService,
+    @Optional() private readonly access?: QuestionAccessService,
   ) {}
 
   /**
@@ -125,7 +132,7 @@ export class AnswerKeysService {
 
   private async gradingItems(answerKeyId: string): Promise<GradingItem[]> {
     const items = await this.prisma.answerKeyItem.findMany({ where: { answerKeyId }, orderBy: [{ number: 'asc' }, { language: 'asc' }] });
-    return items.map((i) => ({ number: i.number, language: i.language, answer: i.answer, area: i.area, validated: i.validated, confidence: i.confidence }));
+    return items.map((i) => ({ number: i.number, language: i.language, answer: i.answer, area: i.area, validated: i.validated, confidence: i.confidence, questionId: i.questionId }));
   }
 
   /**
@@ -144,7 +151,188 @@ export class AnswerKeysService {
       ...this.summary(row, viewer),
       needsLanguage,
       numbers,
+      linkedQuestions: items.filter((i) => i.questionId).length,
       items: items.map((i) => (withAnswers ? i : { number: i.number, language: i.language, area: i.area, validated: i.validated, questionId: i.questionId })),
+    };
+  }
+
+  /**
+   * Liga cada item do gabarito à questão correspondente do banco público.
+   * Só o banco central é usado: as questões oficiais são públicas para
+   * qualquer aluno autenticado, então a explicação da LuminIA não depende de
+   * o aluno pertencer ao workspace de quem importou o caderno.
+   *
+   * Devolve quantos itens foram ligados e quais números ficaram sem questão.
+   * Não é uma operação obrigatória: gabarito sem questões no banco continua
+   * valendo para conferir; só não tem explicação por questão.
+   */
+  async linkQuestions(viewer: Viewer, id: string) {
+    await this.assertCanEdit(viewer, id);
+    return this.relinkQuestions(id);
+  }
+
+  /** Best-effort depois de criar/importar/corrigir: nunca derruba o gabarito. */
+  private async safeRelinkQuestions(answerKeyId: string): Promise<void> {
+    try {
+      await this.relinkQuestions(answerKeyId);
+    } catch (error) {
+      this.logger.warn(`Não foi possível ligar as questões do gabarito ${answerKeyId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async relinkQuestions(answerKeyId: string): Promise<{ linked: number; total: number; missing: number[] }> {
+    const key = await this.prisma.answerKey.findUnique({
+      where: { id: answerKeyId },
+      select: { examId: true, day: true, exam: { select: { name: true, year: true } } },
+    });
+    if (!key) throw new NotFoundException('Gabarito não encontrado.');
+    const items = await this.prisma.answerKeyItem.findMany({
+      where: { answerKeyId },
+      select: { id: true, number: true, language: true, questionId: true },
+    });
+    if (!items.length) return { linked: 0, total: 0, missing: [] };
+
+    const bank = await this.prisma.workspace.findFirst({
+      where: { institution: { email: QUESTION_BANK_INSTITUTION_EMAIL } },
+      select: { id: true },
+    });
+    const bankWorkspaceId = bank?.id ?? null;
+    const isEnem = /enem/i.test(key.exam.name);
+
+    const updates: { id: string; questionId: string }[] = [];
+    if (isEnem && key.exam.year && key.day) {
+      const wanted = new Map(items.map((item) => [enemQuestionSourceId(key.exam.year!, key.day!, item), item]));
+      const questions = await this.prisma.question.findMany({
+        where: { sourceId: { in: [...wanted.keys()] } },
+        select: { id: true, sourceId: true, workspaceId: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const bySource = new Map<string, { id: string; workspaceId: string }[]>();
+      for (const q of questions) {
+        if (!q.sourceId) continue;
+        bySource.set(q.sourceId, [...(bySource.get(q.sourceId) ?? []), { id: q.id, workspaceId: q.workspaceId }]);
+      }
+      for (const [sourceId, item] of wanted) {
+        const questionId = pickQuestion(bySource.get(sourceId) ?? [], bankWorkspaceId);
+        if (questionId) updates.push({ id: item.id, questionId });
+      }
+    } else {
+      // Provas sem o formato do Enem: casa pelo número na prova dentro da
+      // mesma prova cadastrada. Itens de língua ficam de fora (o número se
+      // repete e o banco não guarda o idioma no examNumber).
+      const numbered = items.filter((item) => !item.language);
+      const numbers = [...new Set(numbered.map((item) => item.number))];
+      const questions = await this.prisma.question.findMany({
+        where: { examId: key.examId, examNumber: { in: numbers } },
+        select: { id: true, examNumber: true, workspaceId: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const byNumber = new Map<number, { id: string; workspaceId: string }[]>();
+      for (const q of questions) {
+        if (q.examNumber === null) continue;
+        byNumber.set(q.examNumber, [...(byNumber.get(q.examNumber) ?? []), { id: q.id, workspaceId: q.workspaceId }]);
+      }
+      for (const item of numbered) {
+        const questionId = pickQuestion(byNumber.get(item.number) ?? [], bankWorkspaceId);
+        if (questionId) updates.push({ id: item.id, questionId });
+      }
+    }
+
+    const changed = updates.filter((u) => items.find((item) => item.id === u.id)?.questionId !== u.questionId);
+    if (changed.length) {
+      await this.prisma.$transaction(changed.map((u) => this.prisma.answerKeyItem.update({ where: { id: u.id }, data: { questionId: u.questionId } })));
+    }
+    const linkedIds = new Set(updates.map((u) => u.id));
+    const missing = items.filter((item) => !linkedIds.has(item.id) && !item.questionId).map((item) => item.number);
+    return { linked: updates.length, total: items.length, missing: [...new Set(missing)] };
+  }
+
+  /**
+   * Explicação de uma questão já respondida. Usa o texto real da questão do
+   * banco (enunciado e alternativas) e a resposta do aluno; a IA recebe só o
+   * que está no enunciado e não é convidada a inventar conteúdo.
+   *
+   * Sem questão ligada, a resposta é 422 e a interface diz que falta vincular
+   * — nunca uma explicação inventada. Sem IA configurada (ou se ela falhar),
+   * devolve um roteiro de revisão determinístico, marcado como `rules`.
+   */
+  async explainQuestion(viewer: Viewer, id: string, number: number, selected?: number | null, language?: string | null) {
+    await this.loadVisible(viewer, id);
+    if (!Number.isInteger(number) || number < 1 || number > 999) throw new BadRequestException('Número de questão inválido.');
+    if (selected !== undefined && selected !== null && (!Number.isInteger(selected) || selected < 1 || selected > 5)) {
+      throw new BadRequestException('Resposta marcada inválida.');
+    }
+    const items = await this.prisma.answerKeyItem.findMany({
+      where: { answerKeyId: id, number },
+      include: {
+        question: {
+          select: {
+            id: true,
+            workspaceId: true,
+            stem: true,
+            subject: true,
+            imageUrl: true,
+            alternatives: { select: { position: true, text: true }, orderBy: { position: 'asc' } },
+          },
+        },
+      },
+    });
+    const wantedLanguage = (language ?? '').trim().toUpperCase();
+    const item = items.find((i) => i.language === wantedLanguage) ?? items.find((i) => i.language === '') ?? (items.length === 1 ? items[0] : null);
+    if (!item) throw new BadRequestException('Escolha a língua estrangeira para explicar esta questão.');
+    if (!item.question) {
+      throw new UnprocessableEntityException('Esta questão ainda não está ligada ao banco de questões. Importe o caderno no banco ou use o vínculo do gabarito antes de pedir a explicação.');
+    }
+    if (this.access) await this.access.assertCanUse(viewer.id, item.question.workspaceId);
+
+    const alternatives = item.question.alternatives.map((a) => ({ position: a.position, text: a.text }));
+    const hasImage = Boolean(item.question.imageUrl);
+    let explanation: string | null = null;
+    let model: string | null = null;
+    let source: 'ai' | 'rules' = 'rules';
+    if (this.ai) {
+      try {
+        const result = await this.ai.generateStructured({
+          system: EXPLANATION_SYSTEM_PROMPT,
+          prompt: explanationPrompt({
+            stem: item.question.stem,
+            subject: item.question.subject,
+            area: item.area,
+            alternatives,
+            correct: item.answer,
+            selected: selected ?? null,
+            hasImage,
+          }),
+          maxTokens: 900,
+          timeoutMs: 25_000,
+          temperature: 0.2,
+        });
+        if (result?.text?.trim()) {
+          explanation = plainExplanation(result.text);
+          model = result.model;
+          source = 'ai';
+        }
+      } catch (error) {
+        this.logger.warn(`LuminIA não explicou a questão ${number} do gabarito ${id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (!explanation) {
+      explanation = fallbackExplanation({ correct: item.answer, selected: selected ?? null, stem: item.question.stem, alternatives });
+    }
+    return {
+      number,
+      language: item.language,
+      questionId: item.question.id,
+      subject: item.question.subject,
+      area: item.area,
+      stem: item.question.stem,
+      alternatives,
+      correct: item.answer,
+      selected: selected ?? null,
+      explanation,
+      model,
+      source,
+      hasImage,
     };
   }
 
@@ -219,6 +407,7 @@ export class AnswerKeysService {
         },
         select: { id: true },
       });
+      await this.safeRelinkQuestions(created.id);
       return this.get(viewer, created.id, true);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -252,7 +441,10 @@ export class AnswerKeysService {
     });
     if (existing) {
       const same = existing.items.length === items.length && items.every((i) => existing.items.some((e) => e.number === i.number && e.language === i.language && e.answer === i.answer));
-      if (same) return this.get(viewer, existing.id, true);
+      if (same) {
+        await this.safeRelinkQuestions(existing.id);
+        return this.get(viewer, existing.id, true);
+      }
       throw new ConflictException('Já existe gabarito oficial deste caderno com respostas diferentes. Se o INEP publicou retificação, use a correção do gabarito existente (com a nota do que mudou).');
     }
     const created = await this.prisma.answerKey.create({
@@ -271,6 +463,7 @@ export class AnswerKeysService {
       },
       select: { id: true },
     });
+    await this.safeRelinkQuestions(created.id);
     return this.get(viewer, created.id, true);
   }
 
@@ -435,6 +628,7 @@ export class AnswerKeysService {
       }
       await this.recomputeCommunity(tx, keyId, isEnem);
     });
+    await this.safeRelinkQuestions(keyId);
     return this.get(viewer, keyId, false);
   }
 
@@ -506,6 +700,7 @@ export class AnswerKeysService {
         data: { version: { increment: 1 }, correctionNote: dto.correctionNote.trim(), items: { create: items.map((i) => ({ ...i, validated: true })) } },
       }),
     ]);
+    await this.safeRelinkQuestions(id);
     return this.get(viewer, id, true);
   }
 

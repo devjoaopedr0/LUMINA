@@ -5,6 +5,8 @@ import { fetchCompletingChain } from './incomplete-chain-fetch';
 import {
   areaLabelToSubject,
   classifyCienciasNaturezaSubject,
+  isEnemPageFurniture,
+  isUnreliableEnemExtraction,
   parseAreaRanges,
   parseOfficialGabarito,
   type GabaritoLanguage,
@@ -101,6 +103,13 @@ export class EnemImportService {
         });
         continue;
       }
+      if (isUnreliableEnemExtraction(parsed)) {
+        skipped.push({
+          questionNumber: block.number,
+          reason: 'Alternativas com fórmulas ou figuras não puderam ser lidas com segurança no PDF.',
+        });
+        continue;
+      }
 
       const entry = gabarito.items.find((i) => i.number === block.number && i.language === language);
       if (!entry || entry.letter === null) {
@@ -161,7 +170,16 @@ export class EnemImportService {
     for (let pageNum = 1; pageNum <= provaDoc.numPages; pageNum++) {
       const page = await provaDoc.getPage(pageNum);
       const content = await page.getTextContent();
-      const pageText = content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
+      // Remove marca d'água, rodapé, cabeçalho de área e número de página
+      // antes de juntar o texto: sem isso, a "moldura" da página entra no
+      // meio das questões que atravessam quebra de página (ver
+      // isEnemPageFurniture).
+      const pageText = content.items
+        .flatMap((item) => {
+          if (!('str' in item)) return [];
+          return isEnemPageFurniture(item) ? [] : [item.str];
+        })
+        .join(' ');
       if (pageNum === 1) introText = pageText;
       for (const match of pageText.matchAll(/QUEST[ÃA]O\s+(\d{1,3})\s+/g)) {
         const number = Number(match[1]);

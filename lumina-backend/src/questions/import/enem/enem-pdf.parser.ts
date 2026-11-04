@@ -82,42 +82,136 @@ export function splitQuestionBlocks(fullText: string): { number: number; body: s
 
 const ALTERNATIVE_LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
+interface AlternativeMarker {
+  letter: string;
+  index: number;
+  /** Inclui a letra duplicada quando o caderno traz "A A texto". */
+  length: number;
+}
+
 /**
- * Extrai enunciado + as 5 alternativas de um bloco de questão. No texto
- * extraído pelo pdfjs, cada alternativa vem marcada por uma letra
- * "circulada" seguida da própria letra corrida (ex: "A A texto...") — um
- * artefato de como os glifos decorativos do PDF são lidos, não um erro de
- * digitação. Usa as ÚLTIMAS 5 ocorrências desse padrão (evita confundir com
- * letras soltas dentro do enunciado) e confere que elas realmente formam
- * A,B,C,D,E em ordem antes de aceitar.
+ * Marcadores de alternativa no texto do pdfjs. O formato varia entre
+ * edições: cadernos como o de 2023 trazem a letra "circulada" seguida da
+ * letra corrida ("A A texto"), enquanto o de 2024 traz só a letra com
+ * espaçamento largo ("A   texto"). Aceitamos as duas formas e depois
+ * escolhemos a última sequência A,B,C,D,E — letras soltas no enunciado
+ * ("A desmineralização...") não podem ser confundidas com alternativas.
+ */
+function alternativeMarkers(body: string): AlternativeMarker[] {
+  const re = /\b([A-E])\b(?:\s+\1\b)?/g;
+  return [...body.matchAll(re)].map((match) => ({
+    letter: match[1],
+    index: match.index ?? 0,
+    length: match[0].length,
+  }));
+}
+
+/**
+ * Extrai enunciado + as 5 alternativas de um bloco de questão. Usa a ÚLTIMA
+ * sequência de marcadores A,B,C,D,E (ver alternativeMarkers) e exige texto
+ * em todas as alternativas.
  *
  * Retorna `null` quando o padrão não é reconhecido — ex: questão cujas
- * alternativas são predominantemente numéricas/gráficas sem o texto de
- * apoio, ou que atravessa uma quebra de página de forma atípica. Nesses
- * casos o chamador reporta como falha de extração; nunca inventa um valor.
+ * alternativas são predominantemente gráficas, ou que atravessa uma quebra
+ * de página de forma atípica. Nesses casos o chamador reporta como falha de
+ * extração; nunca inventa um valor.
  */
 export function parseQuestionBody(body: string): EnemParsedQuestionBody | null {
-  const markerRe = /\b([A-E])\s*\1\s+/g;
-  const marks = [...body.matchAll(markerRe)];
-  if (marks.length < 5) return null;
+  const markers = alternativeMarkers(body);
+  const picked: AlternativeMarker[] = [];
+  let searchEnd = markers.length - 1;
 
-  const last5 = marks.slice(-5);
-  if (last5.map((m) => m[1]).join('') !== ALTERNATIVE_LETTERS.join('')) return null;
+  for (const letter of [...ALTERNATIVE_LETTERS].reverse()) {
+    let found = -1;
+    for (let i = searchEnd; i >= 0; i--) {
+      if (markers[i].letter === letter) {
+        found = i;
+        break;
+      }
+    }
+    if (found < 0) return null;
+    picked.unshift(markers[found]);
+    searchEnd = found - 1;
+  }
 
-  const stem = body.slice(0, last5[0].index).replace(/\s+/g, ' ').trim();
+  const stem = body.slice(0, picked[0].index).replace(/\s+/g, ' ').trim();
   if (stem.length === 0) return null;
 
-  const alternatives = last5.map((mark, idx) => {
-    const start = (mark.index ?? 0) + mark[0].length;
-    const end = idx + 1 < last5.length ? (last5[idx + 1].index ?? body.length) : body.length;
+  const alternatives = picked.map((mark, idx) => {
+    const start = mark.index + mark.length;
+    const end = idx + 1 < picked.length ? picked[idx + 1].index : body.length;
     return {
-      letter: mark[1],
+      letter: mark.letter,
       text: body.slice(start, end).replace(/\s+/g, ' ').trim(),
     };
   });
 
   if (alternatives.some((a) => a.text.length === 0)) return null;
   return { stem, alternatives };
+}
+
+/**
+ * Itens que o pdfjs extrai das margens do caderno não são conteúdo de
+ * questão: marca d'água repetida ("ENEM2024…", fonte minúscula), rodapé
+ * ("*020125AM2*", "2º DIA • CADERNO 5 • AMARELO"), cabeçalho de área e
+ * número da página. Sem removê-los, eles entram no meio de uma questão que
+ * atravessa a página e contaminam as alternativas.
+ */
+const PAGE_FURNITURE_PATTERNS: RegExp[] = [
+  /^(ENEM\d{4})+$/,
+  /^\*\d{6}AM\d+\*$/,
+  /^(?:CIÊNCIAS DA NATUREZA|MATEMÁTICA|CIÊNCIAS HUMANAS|LINGUAGENS, CÓDIGOS) E SUAS TECNOLOGIAS$/,
+  /(?:CIÊNCIAS DA NATUREZA|MATEMÁTICA|CIÊNCIAS HUMANAS|LINGUAGENS, CÓDIGOS) E SUAS TECNOLOGIAS\s*•/,
+  /DIA\s*•\s*CADERNO/,
+  /^Questões de \d+ a \d+$/,
+];
+
+export function isEnemPageFurniture(item: {
+  str: string;
+  height?: number;
+  transform?: number[];
+}): boolean {
+  const text = item.str.trim();
+  if (!text) return true;
+  // A marca d'água é desenhada com fonte de 2pt; nenhum texto real é tão baixo.
+  if ((item.height ?? 0) < 4) return true;
+  if (PAGE_FURNITURE_PATTERNS.some((pattern) => pattern.test(text))) return true;
+
+  // Rodapé: "º" e o número da página ficam abaixo de ~65pt (o conteúdo
+  // começa por volta de 77pt). Só descartamos esses tokens curtos, nunca
+  // texto de questão.
+  const y = item.transform?.[5];
+  if (y !== undefined && y < 65 && /^(?:\d{1,2}|º)$/.test(text)) return true;
+  return false;
+}
+
+/**
+ * Fórmulas e figuras viram uma sopa de números no texto do pdfjs (ex:
+ * "6 6 3", "3 12 3 01", "1 25 1 25 1 25 + +"). Essas alternativas não são
+ * confiáveis: melhor pular a questão e dizer o motivo do que gravar um
+ * enunciado que não corresponde ao caderno.
+ */
+export function isUnreliableEnemExtraction(parsed: EnemParsedQuestionBody): boolean {
+  return parsed.alternatives.some((alternative) => {
+    if (alternative.text.includes('!')) return true;
+    const tokens = alternative.text.split(/\s+/);
+    let run = 0;
+    let longestRun = 0;
+    for (const token of tokens) {
+      if (/^\d{1,2}$/.test(token)) {
+        run += 1;
+        longestRun = Math.max(longestRun, run);
+      } else {
+        run = 0;
+      }
+    }
+    // Sequência de três ou mais números soltos: fórmula quebrada ("6 6 3").
+    if (longestRun >= 3) return true;
+    // Sem nenhuma letra e com três números: também é fórmula/figura.
+    const hasLetters = /[a-zA-ZÀ-ÿ]/.test(alternative.text);
+    const bareNumbers = tokens.filter((token) => /^\d{1,2}$/.test(token)).length;
+    return !hasLetters && bareNumbers >= 3;
+  });
 }
 
 /**

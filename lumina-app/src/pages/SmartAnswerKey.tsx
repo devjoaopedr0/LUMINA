@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BadgeCheck, Camera, ClipboardCheck, History, Plus, Printer, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Camera, ClipboardCheck, History, Plus, Printer, ShieldAlert, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/auth';
@@ -17,7 +17,9 @@ import {
   apiCheckAnswerKey,
   apiContributeCommunity,
   apiCreateAnswerKey,
+  apiExplainAnswerKeyQuestion,
   apiImportInepAnswerKey,
+  apiLinkAnswerKeyQuestions,
   apiReadAnswerKeySheet,
   apiSetAnswerKeyStatus,
   ApiError,
@@ -25,6 +27,7 @@ import {
   type AnswerKeyCheckStatus,
   type AnswerKeyDetail,
   type AnswerKeyExam,
+  type AnswerKeyExplanation,
   type AnswerKeyPerformance,
   type AnswerKeyStats,
   type AnswerKeySummary,
@@ -75,6 +78,46 @@ function KeySource({ k }: { k: AnswerKeySummary }) {
 }
 
 // ------------------------------------------------------------------ resultado
+
+/** Explicação sob demanda: só aparece depois da conferência, nunca antes de responder. */
+function QuestionExplanation({ answerKeyId, question }: { answerKeyId: string; question: AnswerKeyCheckResult['questions'][number] }) {
+  const [state, setState] = useState<{ loading: boolean; data?: AnswerKeyExplanation; error?: string }>({ loading: false });
+  async function run() {
+    setState({ loading: true });
+    try {
+      const data = await apiExplainAnswerKeyQuestion(token(), answerKeyId, question.number, question.selected, question.language || null);
+      setState({ loading: false, data });
+    } catch (e) {
+      setState({ loading: false, error: errorText(e, 'Não foi possível pedir a explicação.') });
+    }
+  }
+  if (!question.questionId) {
+    return <p className="mt-2 text-xs text-graphite-500">Esta questão ainda não está ligada ao banco: sem o enunciado real, a LuminIA não explica nem inventa. Importe o caderno no banco ou peça ao professor para vincular as questões.</p>;
+  }
+  return (
+    <div className="mt-2">
+      {!state.data && !state.error ? (
+        <Button size="sm" variant="outline" type="button" disabled={state.loading} onClick={() => void run()}>
+          <Sparkles size={14} />{state.loading ? 'LuminIA está lendo…' : 'Explicar com a LuminIA'}
+        </Button>
+      ) : null}
+      {state.error ? <p role="alert" className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">{state.error}</p> : null}
+      {state.data ? (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <Sparkles size={14} />{state.data.source === 'ai' ? 'Explicação da LuminIA' : 'Roteiro de revisão'}
+            {state.data.source === 'rules' ? <span className="font-normal text-graphite-500">(IA indisponível agora: texto determinístico, sem conteúdo inventado)</span> : null}
+          </p>
+          <details className="mt-2 text-xs text-graphite-600">
+            <summary className="cursor-pointer font-medium">Ver enunciado da questão</summary>
+            <p className="mt-1 whitespace-pre-line">{state.data.stem}</p>
+          </details>
+          <div className="mt-2 whitespace-pre-line text-sm">{state.data.explanation}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function ResultView({ result, onBack }: { result: AnswerKeyCheckResult; onBack: () => void }) {
   const wrongOnes = result.questions.filter((q) => q.status === 'WRONG' || q.status === 'BLANK');
@@ -136,8 +179,15 @@ function ResultView({ result, onBack }: { result: AnswerKeyCheckResult; onBack: 
       {wrongOnes.length ? (
         <div className="rounded-xl border bg-white p-4">
           <h3 className="font-semibold">Para revisar ({wrongOnes.length})</h3>
-          <p className="mt-1 text-xs text-graphite-500">Questões erradas ou em branco. Em breve a LuminIA explica cada uma com o texto real da questão.</p>
-          <ul className="mt-2 grid gap-1 text-sm sm:grid-cols-2">{wrongOnes.map((q) => <li key={q.number}>Questão {q.number}{q.area ? ` · ${q.area}` : ''}: você marcou {letter(q.selected)}, gabarito {letter(q.answer)}</li>)}</ul>
+          <p className="mt-1 text-xs text-graphite-500">Questões erradas ou em branco. Peça a explicação da LuminIA: ela usa o enunciado e as alternativas reais do banco e nunca inventa conteúdo.</p>
+          <ul className="mt-3 space-y-2">
+            {wrongOnes.map((q) => (
+              <li key={q.number} className="rounded-lg border bg-surface-card/40 p-3 text-sm">
+                <p>Questão {q.number}{q.area ? ` · ${q.area}` : ''}: você marcou {letter(q.selected)}, gabarito {letter(q.answer)}</p>
+                <QuestionExplanation answerKeyId={result.answerKey.id} question={q} />
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
     </section>
@@ -189,7 +239,7 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
     setSelected({
       id: '', exam, application: 'Regular', day, bookletColor: cColor.trim() || null, area: null, origin: 'COMMUNITY', official: false, status: 'PUBLISHED',
       sourceName: null, sourceUrl: null, publishedAt: null, version: 1, correctionNote: null, questionCount: count, author: null, mine: false, updatedAt: '',
-      needsLanguage: enem && day === 1, numbers, items: numbers.map((n) => ({ number: n, language: '', area: area(n), validated: false })),
+      needsLanguage: enem && day === 1, numbers, linkedQuestions: 0, items: numbers.map((n) => ({ number: n, language: '', area: area(n), validated: false })),
     });
     setAnswers({}); setLanguage(''); setPaste(''); setConfirming(false); setFromPhoto(false); setReview(new Set()); setPhotoNote(''); setThanks('');
   }
@@ -459,6 +509,7 @@ function CreateTab({ isAdmin }: { isAdmin: boolean }) {
   const [publishedAt, setPublishedAt] = useState('');
   const [publish, setPublish] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [linking, setLinking] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const reload = () => apiAnswerKeys(token()).then((rows) => setMine(rows.filter((r) => r.mine))).catch(() => undefined);
@@ -504,6 +555,17 @@ function CreateTab({ isAdmin }: { isAdmin: boolean }) {
 
   async function setStatus(id: string, status: 'PUBLISHED' | 'ARCHIVED' | 'DRAFT') {
     try { await apiSetAnswerKeyStatus(token(), id, status); void reload(); } catch (e) { setMessage({ ok: false, text: errorText(e, 'Não foi possível alterar.') }); }
+  }
+
+  /** Liga os itens às questões do banco público para a LuminIA poder explicar. */
+  async function linkQuestions(id: string) {
+    setLinking(id); setMessage(null);
+    try {
+      const r = await apiLinkAnswerKeyQuestions(token(), id);
+      const missing = r.missing.length ? ` Sem questão no banco: ${r.missing.slice(0, 12).join(', ')}${r.missing.length > 12 ? '…' : ''}.` : '';
+      setMessage({ ok: true, text: r.total ? `Questões vinculadas: ${r.linked} de ${r.total}.${missing}` : 'Este gabarito ainda não tem itens.' });
+    } catch (e) { setMessage({ ok: false, text: errorText(e, 'Não foi possível vincular as questões.') }); }
+    finally { setLinking(null); }
   }
 
   return (
@@ -557,13 +619,15 @@ function CreateTab({ isAdmin }: { isAdmin: boolean }) {
       </form>
       <div className="rounded-xl border bg-white p-5">
         <h2 className="font-semibold">Meus gabaritos</h2>
+        <p className="mt-1 text-xs text-graphite-500">“Vincular questões” liga o gabarito ao banco público para a LuminIA explicar cada questão depois da conferência.</p>
         {!mine.length ? <p className="mt-2 text-sm text-graphite-500">Nenhum ainda.</p> : null}
         <ul className="mt-2 divide-y">{mine.map((k) => (
           <li key={k.id} className="py-2 text-sm">
             <p className="font-medium">{keyTitle(k)}</p>
             <p className="text-xs text-graphite-500">{k.questionCount} questões · {k.status === 'PUBLISHED' ? 'publicado' : k.status === 'DRAFT' ? 'rascunho' : 'arquivado'}</p>
-            <div className="mt-1 flex gap-2">
+            <div className="mt-1 flex flex-wrap gap-2">
               {k.status !== 'PUBLISHED' ? <button type="button" className="text-xs underline" onClick={() => void setStatus(k.id, 'PUBLISHED')}>Publicar</button> : <button type="button" className="text-xs underline" onClick={() => void setStatus(k.id, 'DRAFT')}>Despublicar</button>}
+              {k.origin !== 'COMMUNITY' || isAdmin ? <button type="button" className="text-xs underline" disabled={linking === k.id} onClick={() => void linkQuestions(k.id)}>{linking === k.id ? 'Vinculando…' : 'Vincular questões'}</button> : null}
               <button type="button" className="text-xs text-red-700 underline" onClick={() => void setStatus(k.id, 'ARCHIVED')}>Arquivar</button>
             </div>
           </li>

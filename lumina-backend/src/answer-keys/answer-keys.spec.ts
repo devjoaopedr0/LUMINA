@@ -1,7 +1,8 @@
-import { ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { enemArea, gradeAnswers, GradingError, GradingItem, letterToPosition } from './answer-key.grading';
+import { enemQuestionSourceId, fallbackExplanation, pickQuestion, plainExplanation } from './answer-key.questions';
 import { parseOfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { grayImagesToPdf } from '../simulations/omr/pdf';
 import { answerKeySheetBits, answerKeySheetLayout } from './answer-key-sheet';
@@ -284,5 +285,124 @@ describe('Gabarito Inteligente — gabarito comunitário', () => {
 
   it('só a administração modera', async () => {
     await expect(new AnswerKeysService({} as never).removeVotes({ id: 'p', accountType: 'TEACHER' }, 'k', 'u')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('Gabarito Inteligente — vínculo com o banco e explicação da LuminIA', () => {
+  it('sourceId do Enem: dia, número e sufixo da língua', () => {
+    expect(enemQuestionSourceId(2024, 2, { number: 91, language: '' })).toBe('enem-2024-d2-q91');
+    expect(enemQuestionSourceId(2023, 1, { number: 1, language: 'INGLES' })).toBe('enem-2023-d1-q1-ingles');
+    expect(enemQuestionSourceId(2023, 1, { number: 1, language: 'ESPANHOL' })).toBe('enem-2023-d1-q1-espanhol');
+  });
+
+  it('só liga questão do banco público, nunca de um workspace particular', () => {
+    const candidates = [{ id: 'particular', workspaceId: 'w1' }, { id: 'publica', workspaceId: 'banco' }];
+    expect(pickQuestion(candidates, 'banco')).toBe('publica');
+    expect(pickQuestion([{ id: 'particular', workspaceId: 'w1' }], 'banco')).toBeNull();
+    expect(pickQuestion(candidates, null)).toBeNull();
+  });
+
+  it('limpa a marcação de markdown que a IA devolve, sem mexer no conteúdo', () => {
+    expect(plainExplanation('A **alternativa C** é a correta.\n\n## Resumo\nUse __atenção__.'))
+      .toBe('A alternativa C é a correta.\n\nResumo\nUse atenção.');
+    expect(plainExplanation('  texto puro  ')).toBe('texto puro');
+  });
+
+  it('sem IA, o roteiro de revisão é honesto e não inventa conteúdo', () => {
+    const text = fallbackExplanation({
+      correct: 2,
+      selected: 4,
+      stem: 'Enunciado qualquer',
+      alternatives: [{ position: 2, text: 'Alternativa correta' }, { position: 4, text: 'Alternativa marcada' }],
+    });
+    expect(text).toContain('alternativa B');
+    expect(text).toContain('Alternativa correta');
+    expect(text).toContain('alternativa D');
+    expect(text).toMatch(/não está disponível/);
+    expect(text).toMatch(/sem conteúdo inventado/);
+  });
+
+  it('liga apenas as questões que existem no banco público e devolve o que faltou', async () => {
+    const prisma = {
+      answerKey: {
+        findUnique: vi.fn()
+          .mockResolvedValueOnce({ id: 'k', origin: 'TEACHER', createdBy: 'prof', exam: { name: 'ENEM' } })
+          .mockResolvedValue({ examId: 'exam', day: 2, exam: { name: 'ENEM', year: 2024 } }),
+      },
+      answerKeyItem: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'i91', number: 91, language: '', questionId: null },
+          { id: 'i92', number: 92, language: '', questionId: null },
+        ]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      workspace: { findFirst: vi.fn().mockResolvedValue({ id: 'banco' }) },
+      question: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'q91', sourceId: 'enem-2024-d2-q91', workspaceId: 'banco' },
+          { id: 'q92', sourceId: 'enem-2024-d2-q92', workspaceId: 'particular' },
+        ]),
+      },
+      $transaction: vi.fn().mockResolvedValue([]),
+    };
+    const service = new AnswerKeysService(prisma as never);
+    const result = await service.linkQuestions({ id: 'prof', accountType: 'TEACHER' }, 'k');
+    expect(result).toEqual({ linked: 1, total: 2, missing: [92] });
+    expect(prisma.answerKeyItem.update).toHaveBeenCalledTimes(1);
+    expect(prisma.answerKeyItem.update).toHaveBeenCalledWith({ where: { id: 'i91' }, data: { questionId: 'q91' } });
+  });
+
+  it('explica com a IA usando o enunciado e as alternativas reais', async () => {
+    const prisma = {
+      answerKeyItem: {
+        findMany: vi.fn().mockResolvedValue([{
+          number: 91, language: '', answer: 2, area: 'Ciências da Natureza e suas Tecnologias',
+          question: {
+            id: 'q91', workspaceId: 'banco', stem: 'Um texto de biologia.', subject: 'Biologia', imageUrl: null,
+            alternatives: [{ position: 1, text: 'Errada A' }, { position: 2, text: 'Certa B' }],
+          },
+        }]),
+      },
+    };
+    const ai = { generateStructured: vi.fn().mockResolvedValue({ text: 'A **resposta é B** porque o texto diz isso.', model: 'modelo-x' }) };
+    const access = { assertCanUse: vi.fn().mockResolvedValue(undefined) };
+    const service = new AnswerKeysService(prisma as never, undefined, ai as never, access as never);
+    vi.spyOn(service as unknown as { loadVisible: () => Promise<unknown> }, 'loadVisible').mockResolvedValue({ id: 'k' } as never);
+
+    const result = await service.explainQuestion({ id: 'aluno', accountType: 'STUDENT_INDEPENDENT' }, 'k', 91, 1, null);
+    expect(result).toMatchObject({ source: 'ai', model: 'modelo-x', correct: 2, selected: 1, questionId: 'q91' });
+    expect(result.explanation).toContain('porque o texto diz isso');
+    expect(result.explanation).not.toContain('**');
+    expect(access.assertCanUse).toHaveBeenCalledWith('aluno', 'banco');
+    expect(ai.generateStructured.mock.calls[0][0].prompt).toContain('Um texto de biologia.');
+    expect(ai.generateStructured.mock.calls[0][0].prompt).toContain('B) Certa B');
+  });
+
+  it('se a IA falhar, devolve o roteiro determinístico marcado como rules', async () => {
+    const prisma = {
+      answerKeyItem: {
+        findMany: vi.fn().mockResolvedValue([{
+          number: 91, language: '', answer: 2, area: null,
+          question: { id: 'q91', workspaceId: 'banco', stem: 'Enunciado', subject: 'Biologia', imageUrl: null, alternatives: [{ position: 2, text: 'Certa' }] },
+        }]),
+      },
+    };
+    const ai = { generateStructured: vi.fn().mockRejectedValue(new Error('fora do ar')) };
+    const service = new AnswerKeysService(prisma as never, undefined, ai as never);
+    vi.spyOn(service as unknown as { loadVisible: () => Promise<unknown> }, 'loadVisible').mockResolvedValue({ id: 'k' } as never);
+    const result = await service.explainQuestion({ id: 'aluno', accountType: 'STUDENT_INDEPENDENT' }, 'k', 91, 2, null);
+    expect(result).toMatchObject({ source: 'rules', model: null });
+    expect(result.explanation).toMatch(/não está disponível/);
+  });
+
+  it('sem questão ligada, recusa explicar em vez de inventar', async () => {
+    const prisma = {
+      answerKeyItem: {
+        findMany: vi.fn().mockResolvedValue([{ number: 91, language: '', answer: 2, area: null, question: null }]),
+      },
+    };
+    const service = new AnswerKeysService(prisma as never);
+    vi.spyOn(service as unknown as { loadVisible: () => Promise<unknown> }, 'loadVisible').mockResolvedValue({ id: 'k' } as never);
+    await expect(service.explainQuestion({ id: 'aluno', accountType: 'STUDENT_INDEPENDENT' }, 'k', 91, 1, null)).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 });

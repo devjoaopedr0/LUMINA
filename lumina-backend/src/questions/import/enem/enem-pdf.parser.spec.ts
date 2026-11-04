@@ -4,6 +4,8 @@ import { EnemImportService } from './enem-import.service';
 import {
   areaLabelToSubject,
   classifyCienciasNaturezaSubject,
+  isEnemPageFurniture,
+  isUnreliableEnemExtraction,
   parseAreaRanges,
   parseGabaritoText,
   parseOfficialGabarito,
@@ -58,6 +60,57 @@ describe('parser de cadernos do ENEM', () => {
 
   it('recusa alternativa incompleta em vez de inventar conteúdo', () => {
     expect(parseQuestionBody('Enunciado A A uma B B duas C C três D D quatro')).toBeNull();
+  });
+
+  it('aceita alternativas com letra única, formato dos cadernos de 2024', () => {
+    const parsed = parseQuestionBody(
+      'O esquema representa um experimento. Qual componente foi afetado? ' +
+      'A   Vacúolos. B   Mitocôndrias. C   Microfilamentos. D   Material genético. E   Membrana plasmática.',
+    );
+    expect(parsed?.alternatives.map((a) => `${a.letter}:${a.text}`)).toEqual([
+      'A:Vacúolos.',
+      'B:Mitocôndrias.',
+      'C:Microfilamentos.',
+      'D:Material genético.',
+      'E:Membrana plasmática.',
+    ]);
+  });
+
+  it('não confunde letra solta do enunciado com marcador de alternativa', () => {
+    const parsed = parseQuestionBody(
+      'As barras A e B foram imersas. Qual o resultado? ' +
+      'A   Uma resposta. B   Outra resposta. C   Terceira. D   Quarta. E   Quinta.',
+    );
+    expect(parsed?.alternatives[0]).toEqual({ letter: 'A', text: 'Uma resposta.' });
+    expect(parsed?.stem).toContain('As barras A e B');
+  });
+
+  it('descarta marca d\'água, rodapé e cabeçalho da página sem perder conteúdo', () => {
+    expect(isEnemPageFurniture({ str: 'ENEM2024ENEM2024ENEM2024', height: 2, transform: [1, 0, 0, 1, 66, 64] })).toBe(true);
+    expect(isEnemPageFurniture({ str: '*020125AM2*', height: 20, transform: [1, 0, 0, 1, 66, 779] })).toBe(true);
+    expect(isEnemPageFurniture({ str: 'CIÊNCIAS DA NATUREZA E SUAS TECNOLOGIAS', height: 10, transform: [1, 0, 0, 1, 66, 739] })).toBe(true);
+    expect(isEnemPageFurniture({ str: '2', height: 8, transform: [1, 0, 0, 1, 66, 54] })).toBe(true);
+    // Conteúdo de verdade: cabeçalho de questão e alternativa no fim da página.
+    expect(isEnemPageFurniture({ str: 'QUESTÃO 91', height: 11, transform: [1, 0, 0, 1, 66, 739] })).toBe(false);
+    expect(isEnemPageFurniture({ str: 'Vacúolos.', height: 10, transform: [1, 0, 0, 1, 76, 77] })).toBe(false);
+  });
+
+  it('recusa alternativas que viraram sopa de números (fórmulas/figuras)', () => {
+    const base = { stem: 'Enunciado' };
+    expect(isUnreliableEnemExtraction({ ...base, alternatives: [
+      { letter: 'A', text: '6' }, { letter: 'B', text: '18' }, { letter: 'C', text: '6 6' },
+      { letter: 'D', text: '6 6 3' }, { letter: 'E', text: '3 12 3 01' },
+    ] })).toBe(true);
+    expect(isUnreliableEnemExtraction({ ...base, alternatives: [
+      { letter: 'A', text: '2 400,00.' }, { letter: 'B', text: '2 520,00.' }, { letter: 'C', text: '2 550,00.' },
+      { letter: 'D', text: '2 700,00.' }, { letter: 'E', text: '2 800,00.' },
+    ] })).toBe(false);
+    // Rótulos com números (S 1, S 3, S 2) continuam legíveis.
+    expect(isUnreliableEnemExtraction({ ...base, alternatives: [
+      { letter: 'A', text: 'S 1 , S 3 e S 2 .' }, { letter: 'B', text: 'S 2 , S 1 e S 3 .' },
+      { letter: 'C', text: 'S 2 , S 3 e S 1 .' }, { letter: 'D', text: 'S 3 , S 1 e S 2 .' },
+      { letter: 'E', text: 'S 3 , S 2 e S 1 .' },
+    ] })).toBe(false);
   });
 
   it('reconstitui números e reconhece questões anuladas no gabarito', () => {

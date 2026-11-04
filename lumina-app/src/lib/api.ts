@@ -2173,18 +2173,34 @@ export interface AnswerKeySummary {
   updatedAt: string;
 }
 export interface AnswerKeyItem { number: number; language: string; area: string | null; validated: boolean; answer?: number | null; justification?: string | null; questionId?: string | null }
-export interface AnswerKeyDetail extends AnswerKeySummary { needsLanguage: boolean; numbers: number[]; items: AnswerKeyItem[] }
+export interface AnswerKeyDetail extends AnswerKeySummary { needsLanguage: boolean; numbers: number[]; linkedQuestions: number; items: AnswerKeyItem[] }
 export interface AnswerKeyAreaResult { area: string; correct: number; wrong: number; blank: number; scored: number; percent: number }
 export interface AnswerKeyCheckResult {
   id: string;
   createdAt: string;
   answerKey: AnswerKeySummary;
   outdated: boolean;
-  questions: { number: number; area: string | null; selected: number | null; answer: number | null; status: AnswerKeyCheckStatus; agreement?: number | null }[];
+  questions: { number: number; language: string; area: string | null; selected: number | null; answer: number | null; status: AnswerKeyCheckStatus; questionId: string | null; agreement?: number | null }[];
   correct: number; wrong: number; blank: number; pending: number; annulled: number; total: number; answered: number; percent: number;
   byArea: AnswerKeyAreaResult[];
   provisional: { matches: number; differs: number; blank: number };
 }
+export interface AnswerKeyExplanation {
+  number: number;
+  language: string;
+  questionId: string;
+  subject: string;
+  area: string | null;
+  stem: string;
+  alternatives: { position: number; text: string }[];
+  correct: number | null;
+  selected: number | null;
+  explanation: string;
+  model: string | null;
+  source: 'ai' | 'rules';
+  hasImage: boolean;
+}
+export interface AnswerKeyLinkResult { linked: number; total: number; missing: number[] }
 export interface AnswerKeyPerformance {
   checks: number; correct: number; wrong: number; blank: number; percent: number;
   byArea: AnswerKeyAreaResult[];
@@ -2207,6 +2223,14 @@ export const apiCreateAnswerKey = (token: string, payload: CreateAnswerKeyPayloa
 export const apiSetAnswerKeyStatus = (token: string, id: string, status: AnswerKeyStatus): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
 export const apiCheckAnswerKey = (token: string, id: string, answers: Record<string, number | null>, language?: string | null, inputMode: 'MANUAL' | 'PHOTO' = 'MANUAL'): Promise<AnswerKeyCheckResult> => request(`/answer-keys/${id}/checks`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers, language: language ?? undefined, inputMode }) });
 export const apiAnswerKeyCheck = (token: string, checkId: string): Promise<AnswerKeyCheckResult> => request(`/answer-keys/checks/${checkId}`, { headers: authHeaders(token) });
+export const apiExplainAnswerKeyQuestion = (token: string, id: string, number: number, selected: number | null, language?: string | null): Promise<AnswerKeyExplanation> => {
+  const q = new URLSearchParams();
+  if (selected !== null) q.set('selected', String(selected));
+  if (language) q.set('language', language);
+  return request(`/answer-keys/${id}/questions/${number}/explanation${q.size ? `?${q}` : ''}`, { headers: authHeaders(token) });
+};
+export const apiLinkAnswerKeyQuestions = (token: string, id: string): Promise<AnswerKeyLinkResult> =>
+  request(`/answer-keys/${id}/link-questions`, { method: 'POST', headers: authHeaders(token) });
 export const apiAnswerKeyPerformance = (token: string): Promise<AnswerKeyPerformance> => request('/answer-keys/performance', { headers: authHeaders(token) });
 export const apiImportInepAnswerKey = (token: string, payload: { gabaritoUrl: string; publishedAt: string; application?: string; publish?: boolean }): Promise<AnswerKeyDetail> =>
   request('/answer-keys/import/inep', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
