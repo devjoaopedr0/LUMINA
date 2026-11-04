@@ -5,7 +5,33 @@
     "gemini:gemini-3.5-flash-lite": {
       "perCompetency": {
         "C1": {
-          "type": "identity"
+          "type": "isotonic",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              40,
+              72
+            ],
+            [
+              80,
+              110.9
+            ],
+            [
+              120,
+              142.3
+            ],
+            [
+              160,
+              156.7
+            ],
+            [
+              200,
+              200
+            ]
+          ]
         },
         "C2": {
           "type": "isotonic",
@@ -16,19 +42,19 @@
             ],
             [
               40,
-              70.9
+              71.1
             ],
             [
               80,
-              98.2
+              93.3
             ],
             [
               120,
-              130.9
+              126.2
             ],
             [
               160,
-              150
+              156.5
             ],
             [
               200,
@@ -46,19 +72,45 @@
           "type": "identity"
         }
       },
-      "fittedAt": "2026-11-03T14:52:45.709Z",
-      "sampleSize": 99,
+      "fittedAt": "2026-11-04T23:53:45.663Z",
+      "sampleSize": 174,
       "selection": {
         "C1": {
           "fn": {
-            "type": "identity"
+            "type": "isotonic",
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                40,
+                72
+              ],
+              [
+                80,
+                110.9
+              ],
+              [
+                120,
+                142.3
+              ],
+              [
+                160,
+                156.7
+              ],
+              [
+                200,
+                200
+              ]
+            ]
           },
           "loo": {
-            "identity": 34.7,
-            "linear": 31.1,
-            "isotonic": 32.7
+            "identity": 35.2,
+            "linear": 24.4,
+            "isotonic": 24.4
           },
-          "n": 99,
+          "n": 174,
           "rejectedForExtremes": [
             "linear"
           ]
@@ -73,19 +125,19 @@
               ],
               [
                 40,
-                70.9
+                71.1
               ],
               [
                 80,
-                98.2
+                93.3
               ],
               [
                 120,
-                130.9
+                126.2
               ],
               [
                 160,
-                150
+                156.5
               ],
               [
                 200,
@@ -94,11 +146,11 @@
             ]
           },
           "loo": {
-            "identity": 34.3,
-            "linear": 28.7,
-            "isotonic": 31.1
+            "identity": 29.2,
+            "linear": 26,
+            "isotonic": 26
           },
-          "n": 99,
+          "n": 174,
           "rejectedForExtremes": [
             "linear"
           ]
@@ -108,11 +160,11 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 32.3,
-            "linear": 36.4,
-            "isotonic": 38.4
+            "identity": 27.4,
+            "linear": 27.4,
+            "isotonic": 27.4
           },
-          "n": 99,
+          "n": 174,
           "rejectedForExtremes": []
         },
         "C4": {
@@ -120,11 +172,11 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 41.6,
-            "linear": 41.6,
-            "isotonic": 41.6
+            "identity": 41.1,
+            "linear": 40.5,
+            "isotonic": 41.1
           },
-          "n": 99,
+          "n": 174,
           "rejectedForExtremes": []
         },
         "C5": {
@@ -132,14 +184,12 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 33.5,
-            "linear": 38.4,
-            "isotonic": 27.1
+            "identity": 35.4,
+            "linear": 35.2,
+            "isotonic": 35.4
           },
-          "n": 99,
-          "rejectedForExtremes": [
-            "isotonic"
-          ]
+          "n": 174,
+          "rejectedForExtremes": []
         }
       }
     }

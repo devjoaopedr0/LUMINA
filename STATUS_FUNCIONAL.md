@@ -2,6 +2,15 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 04/11/2026 — Redação: calibração ampliada para 180 redações
+
+- **Amostra:** 90 redações de calibração + 90 de teste (temas inéditos), contra 99 antes. Ficaram 87 + 87 completas; 6 foram descartadas por 503/timeout do Gemini e não entraram nos números. Custo: 395 chamadas em 33,5 min, mediana de 2,8 s/chamada.
+- **Teste honesto (87 redações):** concordância pela regra do Inep **41,4% → 42,5%** (diferença dentro do ruído: McNemar p = 1,0); erro médio **124,6 → 126,9** (não caiu; IC 95% da diferença: −4,6 a +9,2); viés **−54,7 → −30,3** (subestimação caiu quase pela metade); correlação 0,807 → 0,798.
+- **Por competência:** C1 com erro 35,9 → 33,6, mas QWK 0,455 → 0,311 (a isotônica junta níveis vizinhos); C2 27,6 → 26,7 com QWK estável; C3, C4 e C5 ficaram na identidade. **C4 continua o gargalo** (erro 46,4, QWK 0,393, exato 21,8%): 44 das 87 notas do modelo estão em 120.
+- **Calibração final:** ajustada nas 174 redações completas; isotônica em C1 e C2, identidade em C3/C4/C5. Leave-one-out: C1 35,2 → 24,4; C2 29,2 → 26,0; C3 27,4; C4 41,1; C5 35,4. Arquivo `model/llm-calibration.json` atualizado.
+- **Leitura honesta:** o ganho de 46,7% da medição com 30 redações era otimismo de amostra pequena. A calibração reduz o viés e melhora C1/C2 no erro absoluto, mas não muda o quadro geral. O próximo ataque à C4/C2 é no prompt, não na calibração.
+- **Nota mil do Inep:** 1000/880/920, mantidas. **Sem migration.** Testes de redação: 48/48.
+
 ## Atualização de 04/11/2026 — Gabarito Inteligente: vínculo com o banco e LuminIA por questão
 
 - **Vínculo do gabarito com o banco:** cada item pode apontar para uma questão (`AnswerKeyItem.questionId`). O vínculo automático roda ao criar, importar do INEP, corrigir e recalcular o comunitário; o botão “Vincular questões” também permite refazer em “Meus gabaritos”. Só entram questões do workspace público `banco@lumina.app`.
@@ -45,7 +54,7 @@
 
 - **Por competência:** cada avaliador avalia as cinco competências em chamadas separadas, com a grade, os trechos da cartilha e os sinais só daquela competência. O terceiro avaliador reavalia só as competências que divergiram. Cada competência traz "como melhorar", que aparece na tela.
 - **Calibração funcional por competência e por modelo:** identidade, reta ou isotônica, escolhida por validação cruzada, com ganho mínimo de 3 pontos e preservação dos extremos (0 e 200).
-- **Resultado** (flash-lite, 30 redações de temas inéditos): concordância pela regra do Inep de 36,7% → 46,7%, erro médio 149 → 129, nota mil do Inep 1000/880/920 (antes 1000/800/760). C4 continua fraca.
+- **Resultado** (flash-lite, 30 redações de temas inéditos): concordância pela regra do Inep de 36,7% → 46,7%, erro médio 149 → 129, nota mil do Inep 1000/880/920 (antes 1000/800/760). C4 continua fraca. **Amostra pequena:** a medição com 87 redações em 04/11/2026 mostrou ganho bem menor (41,4% → 42,5%; ver entrada acima).
 - **Vários provedores:** `AI_ESSAY_MODELS`/`AI_VISION_MODELS` aceitam `gemini:`, `groq:`, `openrouter:` e `openai:` numa mesma lista, com fallback entre eles. Há limitador por minuto por modelo (`AI_RPM_LIMITS`) e espera curta quando o provedor manda aguardar (429).
 - **Cota:** 4 correções por IA por aluno por mês (`ESSAY_CORRECTION_MONTHLY_LIMIT`). Falha ou nota sem IA devolve o crédito. Contador e bloqueio no editor e no scanner. `GET /essay-corrections/quota`.
 - Migration `20261101120000_essay_correction_monthly_quota` (só adição). **Ainda não aplicada no banco.**

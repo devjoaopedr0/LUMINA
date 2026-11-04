@@ -92,7 +92,7 @@ Cada modelo distorce a escala de um jeito em cada competência. Por isso cada co
 - **reta:** a·bruta + b;
 - **isotônica:** função monotônica definida nos seis níveis (0 a 200) e interpolada entre eles. Corrige compressões que a reta não pega (ex.: o modelo dá 120 tanto às redações de 80 quanto às de 160). Em cada nível, a média humana é puxada para a identidade com peso de 3 redações, para que um nível com pouca amostra não decida sozinho.
 
-A forma mais complexa só é escolhida se errar pelo menos 1 ponto a menos. A calibração vale só para o modelo e a versão de prompt com que foi ajustada (`promptVersion`). Um modelo sem calibração própria recebe a nota bruta, porque a função de um modelo não serve para outro.
+A forma mais complexa só é escolhida se errar pelo menos 3 pontos a menos na validação cruzada (com amostra pequena, ganhos de ~2 pontos eram ruído). A calibração vale só para o modelo e a versão de prompt com que foi ajustada (`promptVersion`). Um modelo sem calibração própria recebe a nota bruta, porque a função de um modelo não serve para outro.
 
 A nota alimenta a estimativa de nota do Enem (`score-estimate.service.ts` já lê `essay_corrections` concluídas).
 
@@ -182,6 +182,29 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30
   - O sistema recalibra sozinho quando houver mais dados (`essay:eval` com amostra maior).
 - Não medido ainda: a produção usa dois avaliadores (+ terceiro por competência). A validação mediu um, por causa da cota.
 
+### Resultados (04/11/2026) — calibração ampliada (180 redações)
+
+**Amostra e custo:** 90 redações da validação (calibração) + 90 do teste (temas inéditos), contra 99 antes. Ficaram 87 + 87 completas; 6 foram descartadas por 503/timeout do Gemini, sem entrar em nenhum número. Foram 395 chamadas em 33,5 min (mediana de 2,8 s por chamada) com `gemini:gemini-3.5-flash-lite`.
+
+**Teste honesto** (calibração ajustada só nas 87 de calibração, medida nas 87 de temas inéditos):
+
+| Métrica | Sem calibração | Com calibração |
+| --- | --- | --- |
+| Concordância pela regra do Inep | 41,4% | **42,5%** |
+| Erro médio no total | 124,6 | 126,9 |
+| Viés médio no total | −54,7 | **−30,3** |
+| Correlação no total | 0,807 | 0,798 |
+| Erro médio C1 / C2 / C3 / C4 / C5 | 35,9 / 27,6 / 24,4 / 46,4 / 38,2 | **33,6** / **26,7** / 24,4 / 46,4 / 38,2 |
+| QWK C1 / C2 / C3 / C4 / C5 | 0,455 / 0,500 / 0,695 / 0,393 / 0,645 | 0,311 / 0,497 / 0,695 / 0,393 / 0,645 |
+
+- **Leitura honesta:** com 87 redações, o ganho de concordância é pequeno (41,4% → 42,5%) e o erro médio não cai (124,6 → 126,9). A diferença de concordância está dentro do ruído (5 redações discordantes para cada lado; McNemar p = 1,0), e a do erro médio também (IC 95%: −4,6 a +9,2 pontos). O 46,7% da medição anterior, com 30 redações, era otimismo de amostra pequena. A calibração continua útil para **reduzir o viés** (a IA subestimava o total em ~55 pontos; passa a ~30) e para melhorar C1/C2 no erro absoluto.
+- **C1:** a isotônica melhora o erro absoluto (35,9 → 33,6) mas piora o QWK (0,455 → 0,311), porque junta níveis vizinhos ao arredondar. É um trade-off explícito; a concordância total sobe.
+- **C3, C4 e C5:** identidade. **C4 continua o gargalo** (erro 46,4, QWK 0,393, acerto exato 21,8%): o modelo concentra 44 das 87 notas em 120, enquanto as humanas vão de 0 a 200. Nenhuma função separa o que o modelo juntou; o próximo ataque é no prompt, não na calibração.
+- **Calibração final** (ajustada nas 174 redações completas, gravada em `model/llm-calibration.json`): isotônica em C1 e C2; identidade em C3, C4 e C5. Na validação cruzada (leave-one-out) por competência: C1 35,2 → 24,4; C2 29,2 → 26,0; C3 27,4; C4 41,1; C5 35,4.
+- **Nota mil do Inep:** 1000 / 880 / 920, as mesmas de antes (a calibração não mexe nos extremos).
+- **Modelo estatístico nas mesmas 87:** concordância 44,8%, erro 139,3, viés +39,1. A IA ainda erra menos em valor absoluto, mas a concordância pela regra do Inep é menor que a do modelo estatístico; a vantagem da IA está na correção por competência e na explicação, não em bater a régua de concordância.
+- **O que não foi medido:** os dois avaliadores da produção (a validação usa um por causa da cota).
+
 ### Resultados (31/10/2026)
 
 **Digitalização** (cena sintética: folha em perspectiva, sombra forte, tinta azul):
@@ -219,12 +242,12 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30
 - **O que não foi medido:** a produção usa a média de dois avaliadores (e um terceiro na discrepância), o que reduz o ruído de um avaliador só. A validação mediu um avaliador por redação para caber na cota diária gratuita (29 chamadas).
 - **Ponta a ponta no navegador** (foto → cantos → digitalização → leitura → revisão → correção): funcionou. Rodou com o modelo reserva (`nemotron-3.5-lightning`), porque o `.env` local não tem `AI_ESSAY_MODELS`. Esse modelo deu 40 na C5 a uma proposta com agente, ação, meio e finalidade, o que confirma que o modelo da correção importa.
 
-**Próximo passo para melhorar a nota:** ampliar a calibração para 150–300 redações (algumas sessões de `essay:eval`, graças ao cache) e medir o pipeline completo de dois avaliadores. Com mais dados, uma calibração não linear (isotônica) por competência deve atacar a compressão de escala.
+**Próximo passo para melhorar a nota:** atacar a C4/C2 no prompt (a calibração não separa o que o modelo junta) e medir o pipeline completo de dois avaliadores. A amostra de calibração já foi ampliada para 180 redações em 04/11/2026 (ver acima); o ganho honesto foi menor que o da amostra pequena.
 
 ## Limites conhecidos
 
 - **Letra manuscrita real:** a leitura foi validada com uma foto sintética (fonte manuscrita, perspectiva, sombra e erros propositais), não com fotos de alunos. Antes de liberar, vale testar com 10–20 fotos reais de folhas de redação.
 - **Cota dos modelos gratuitos:** cada correção usa 10 a 15 chamadas (5 por avaliador) e cada leitura de foto, 1 por página. Com o `gemini-3.5-flash-lite` gratuito (500/dia, 15/min) cabem ~35–45 correções por dia, cerca de 1 por minuto. Com a cota de 4 por aluno no mês, isso dá ~300 alunos ativos. Acima disso, é preciso plano pago.
 - **Cópia dos textos motivadores** (que derruba a C2 e desconta linhas) não é detectada: o sistema não tem os textos motivadores de cada proposta.
-- **Calibração com amostra pequena:** ajustada com 12 redações por causa da cota. O script aceita amostras maiores ao longo de vários dias, graças ao cache.
+- **Calibração com amostra ainda limitada:** ajustada com 174 redações completas (180 coletadas; 6 falharam por 503/timeout). O script aceita amostras maiores ao longo de vários dias, graças ao cache. O limite atual não é mais o tamanho da amostra, e sim o sinal da C4: o modelo concentra as notas em 120 e nenhuma função recupera a separação.
 - A nota é uma **estimativa para estudo**, e a tela diz isso. A nota oficial é da banca do Enem.

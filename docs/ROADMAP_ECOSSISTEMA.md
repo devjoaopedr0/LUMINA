@@ -130,7 +130,7 @@ Hoje: imagens e PDFs do scanner são guardados no banco ou em URL, e não há st
 Preparação para o ENEM; questões e simulados; scanner de gabaritos; correção de redação; cadernos; cronograma; LuminIA; experiência individual do aluno.
 - **Já entregue:** ver §2.
 - **Pendências da fase:**
-  - **Calibração e validação:** ampliar a calibração da correção de redação; validar com fotos reais (redação) e impressões reais (cartão-resposta).
+  - **Calibração e validação:** calibração da redação ampliada para 180 redações em 04/11 (174 completas; ganho honesto menor que a amostra de 30, viés reduzido); próximo: atacar C4/C2 no prompt, medir dois avaliadores e validar com fotos reais (redação) e impressões reais (cartão-resposta).
   - **Gabarito Inteligente:** fase 1, INEP, foto, painel e comunitário entregues; vínculo com o banco e LuminIA por questão validados com o ENEM 2024 (75/90 questões importadas e ligadas; as 15 restantes puladas por imagem, fórmula ilegível ou anulação); falta o gabarito sugerido por IA.
   - **Conteúdo:** Caderno de Repertórios completo (aguarda o resto da especificação); provas anteriores completas.
   - **LuminIA e dados:** ~~LuminIA explicando questões (com o texto real da questão)~~ (feito em 04/11 no Gabarito Inteligente); OCR real no scanner de questões.
