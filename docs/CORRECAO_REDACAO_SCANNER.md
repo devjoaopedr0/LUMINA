@@ -88,9 +88,9 @@ Configuração de exemplo para um cliente MCP:
 9. **Comentário geral** montado das competências: o ponto mais forte e as duas competências a priorizar, com a dica de cada uma.
 10. **Sem IA** (provedor fora ou `AI_PROVIDER=mock`): o modelo estatístico dá uma estimativa marcada como tal, com confiança baixa.
 
-Custo: 10 chamadas por redação (15 no pior caso), 3 simultâneas (`ESSAY_COMPETENCY_CONCURRENCY`). O `AiService` respeita o limite por minuto de cada modelo (`AI_RPM_LIMITS`; 15/min no Gemini gratuito): acima dele, a chamada espera a vaga.
+Custo: 10 chamadas por redação (15 no pior caso), 3 simultâneas (`ESSAY_COMPETENCY_CONCURRENCY`). O `AiService` respeita o limite por minuto de cada modelo (`AI_RPM_LIMITS`; 15/min no Gemini gratuito): acima dele, a chamada espera a vaga. Um 5xx transitório (em especial o 503 "high demand" do Gemini) é repetido no mesmo modelo com esperas de 2 s e 5 s antes de a vez passar ao próximo modelo.
 
-**Versão do prompt:** `GRADER_PROMPT_VERSION = v3-c2-c4-oficial-2026`. A versão fica gravada na auditoria de cada correção, junto com o documento e a versão da base. Uma calibração só é aplicada se o `promptVersion` for exatamente esse; por isso a calibração antiga (`v2-competencia`) não é reutilizada silenciosamente. As heurísticas de `text-analysis.ts` (cobertura lexical, contagem de conectivos, repetição e parágrafo sem conectivo inicial) são **sinais para a IA conferir**, nunca nota ou anulação automática.
+**Versão do prompt:** `GRADER_PROMPT_VERSION = v3-c2-c4-oficial-2026`. A versão fica gravada na auditoria de cada correção, junto com o documento e a versão da base. Uma calibração só é aplicada se o `promptVersion` for exatamente esse; por isso a calibração antiga (`v2-competencia`) não é reutilizada silenciosamente. Ao gravar uma calibração de prompt novo, o arquivo anterior é copiado para `model/archive/llm-calibration.<promptVersion>.json` em vez de ser descartado. As heurísticas de `text-analysis.ts` (cobertura lexical, contagem de conectivos, repetição e parágrafo sem conectivo inicial) são **sinais para a IA conferir**, nunca nota ou anulação automática.
 
 ### Calibração funcional (`grading/calibration.ts`, `model/llm-calibration.json`)
 
@@ -102,7 +102,7 @@ Cada modelo distorce a escala de um jeito em cada competência. Por isso cada co
 
 A forma mais complexa só é escolhida se errar pelo menos 3 pontos a menos na validação cruzada (com amostra pequena, ganhos de ~2 pontos eram ruído). A calibração vale só para o modelo e a versão de prompt com que foi ajustada (`promptVersion`). Um modelo sem calibração própria recebe a nota bruta, porque a função de um modelo não serve para outro.
 
-**Estado após a mudança de prompt (04/11/2026):** o `model/llm-calibration.json` existente foi ajustado com o prompt `v2-competencia` e as 174 redações da medição anterior. Como o prompt de C2/C4 foi reformulado, essa calibração **não é aplicada** ao prompt `v3-c2-c4-oficial-2026`; a correção roda com identidade até uma nova rodada de `essay:eval`. Os números de 41,4% → 42,5% de concordância, MAE 124,6 → 126,9, viés −54,7 → −30,3 e C4 com MAE 46,4/QWK 0,393 descrevem o prompt antigo e servem de linha de base, não de validação do prompt novo.
+**Estado após a mudança de prompt (05/11/2026):** a calibração `v2-competencia`, ajustada com 174 redações, foi copiada para `model/archive/llm-calibration.v2-competencia.json`; o arquivo ativo continua em v2, de modo que o corretor v3 roda com identidade. Os números de 41,4% → 42,5% de concordância, MAE 124,6 → 126,9, viés −54,7 → −30,3 e C4 com MAE 46,4/QWK 0,393 descrevem o prompt antigo e servem de linha de base, não de validação do prompt novo. Uma execução parcial de 05/11/2026 chegou a gravar uma calibração v3 de 10 redações antes da guarda: o Gemini respondeu 503 e o Nemotron gratuito do OpenRouter estourou a cota (429) depois de 10 redações de calibração, sem nenhuma de teste. Essa função parcial foi descartada e o arquivo ativo restaurado para v2. O `essay:eval` agora só grava a calibração final quando há pelo menos 10 redações de **teste** medidas, para que uma interrupção de cota não substitua a calibração ativa por uma função ajustada só na amostra de calibração. A execução de 30+30 concluída em 05/11/2026 fechou 29 redações de calibração + 30 de teste (uma de calibração falhou por 503) e **não gravou** a v3: o teste held-out não mostrou ganho e a comparação pareada com a v2 nas mesmas 30 redações ficou pior na estimativa pontual (detalhes na seção de resultados).
 
 A nota alimenta a estimativa de nota do Enem (`score-estimate.service.ts` já lê `essay_corrections` concluídas).
 
@@ -143,7 +143,7 @@ O limite de corpo de 9 MB vale só para `/essay-scans`. As demais rotas continua
 
 ## Configuração (`lumina-backend/.env`)
 
-- `AI_ESSAY_MODELS`: modelos da correção, em ordem. A calibração foi ajustada com `nvidia/nemotron-3-ultra-550b-a55b:free`. Sem essa variável, a correção usa `AI_MODEL` + `AI_FALLBACK_MODELS`.
+- `AI_ESSAY_MODELS`: modelos da correção, em ordem. A calibração v2 foi ajustada com `gemini:gemini-3.5-flash-lite`; o prompt v3 foi medido em 29+30 e não atingiu o critério para gravar calibração, então roda com identidade. Sem essa variável, a correção usa `AI_MODEL` + `AI_FALLBACK_MODELS`.
 - `AI_VISION_MODELS`: modelos que leem a foto. Vazio no OpenRouter = Gemma 4 31B, Nemotron 3.5 Super VL e Gemma 4 26B (gratuitos).
 
 ## Treino e validação
@@ -152,11 +152,12 @@ O limite de corpo de 9 MB vale só para `/essay-scans`. As demais rotas continua
 cd lumina-backend && npm run build
 npm run essay:train                                   # modelo estatístico (sem custo de API)
 npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30 --inep 3 --max-calls 330   # IA: calibração + teste de um modelo
+npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 0 --max-calls 30 --write false # só completa o cache, sem gravar calibração
 ```
 
 - **Dados:** [Essay-BR estendido](https://github.com/lplnufpi/essay-br) (MIT): 6.577 redações avaliadas por profissionais nas cinco competências. É baixado para `lumina-backend/.cache/` (não versionado). A divisão treino/validação/teste é **por tema**, para medir a correção em propostas nunca vistas, como acontece em cada Enem. Também foram usadas as 10 redações nota mil comentadas na cartilha (cache local; a edição vigente é a de 2026).
 - **Métrica principal:** concordância pela regra do próprio Inep. Correção automática e humana "concordam" quando não seriam discrepantes (até 100 de diferença no total e até 80 em cada competência). Também medidos: erro médio, QWK por competência e viés.
-- Cada resposta do modelo fica em cache. `--max-calls` protege a cota diária dos modelos gratuitos, e rodar de novo continua de onde parou.
+- Cada resposta do modelo fica em cache. `--max-calls` protege a cota diária dos modelos gratuitos, e rodar de novo continua de onde parou. A calibração final só é gravada quando há pelo menos 10 redações de teste completas e, antes disso, a calibração do prompt anterior é preservada em `model/archive/`.
 
 ### Resultados (01/11/2026) — correção por competência e escolha de modelo
 
@@ -217,6 +218,32 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30
 - **Modelo estatístico nas mesmas 87:** concordância 44,8%, erro 139,3, viés +39,1. A IA ainda erra menos em valor absoluto, mas a concordância pela regra do Inep é menor que a do modelo estatístico; a vantagem da IA está na correção por competência e na explicação, não em bater a régua de concordância.
 - **O que não foi medido:** os dois avaliadores da produção (a validação usa um por causa da cota).
 
+### Resultados (05/11/2026) — medição do prompt v3 (29+30)
+
+**Amostra e custo:** 30 redações de calibração + 30 de teste (temas inéditos) com `gemini:gemini-3.5-flash-lite`, em 05/11/2026, `--write false`. Ficaram **29 de calibração + 30 de teste**: uma redação de calibração (`essay-br-3408`, C3) falhou depois das retentativas de 503. Foram 174 chamadas em 795 s (mediana de 2,7 s/chamada); o cache foi preservado.
+
+**Teste held-out** (funções ajustadas só nas 29 de calibração e medidas nas 30 de temas inéditos). A coluna v2 usa as mesmas 30 redações e a calibração held-out da v2, não a linha de base completa de 87:
+
+| Métrica | v2 bruto | v3 bruto | v2 calibrado | v3 calibrado |
+| --- | ---: | ---: | ---: | ---: |
+| Concordância pela regra do Inep | **46,7%** | 33,3% | **43,3%** | 36,7% |
+| Erro médio no total | **129,3** | 150,7 | **141,3** | 152,0 |
+| Viés médio no total | −46,7 | **−6,7** | −24,0 | −45,3 |
+| Correlação no total | **0,808** | 0,784 | **0,793** | 0,777 |
+| C1 MAE/QWK | **30,7**/0,658 | 37,3/0,447 | **32,0**/0,458 | 37,3/0,447 |
+| C2 MAE/QWK | **36,0**/0,347 | 37,3/0,153 | **33,3**/0,332 | 37,3/0,153 |
+| C3 MAE/QWK | **30,7**/0,654 | 42,7/0,389 | **30,7**/0,654 | 44,0/0,389 |
+| C4 MAE/QWK | 54,7/0,263 | **48,0**/0,409 | 54,7/0,263 | **48,0**/0,409 |
+| C5 MAE/QWK | 36,0/0,679 | **33,3**/0,689 | 36,0/0,679 | **33,3**/0,689 |
+
+- **Calibração v3 held-out:** identidade em C1, C2, C4 e C5; reta em C3 (`a = 1,277`, `b = −60,5`). Ela **piorou** a C3 no teste (42,7 → 44,0) e não mudou as outras competências. O ajuste final em n=59 escolheu isotônica em C3 e C5, mas esse ajuste não foi validado fora da amostra e **não foi gravado**.
+- **Comparação pareada nas mesmas 30 redações (v3 − v2):**
+  - **Bruto:** erro médio +21,3 pontos (IC 95%: −2,7 a +46,7); 7 redações melhoraram, 14 pioraram e 9 empataram. Concordância 4 a 0 contra a v3 (McNemar p = 0,125).
+  - **Calibrado held-out:** erro médio +10,7 pontos (IC 95%: −9,3 a +30,7); 10 melhoraram, 13 pioraram e 7 empataram. Concordância 2 a 0 contra a v3 (McNemar p = 0,5).
+  - **Por competência (bruto):** C3 piorou de forma consistente (+12,0; IC 95%: +2,7 a +21,3); C1 piorou no limite (+6,7; IC 95%: 0,0 a +13,3); C4 melhorou direcionalmente (−6,7; IC 95%: −14,7 a +1,3), mas o IC ainda inclui zero; C2 (+1,3) e C5 (−2,7) ficaram dentro do ruído.
+- **Leitura honesta:** a v3 **não mostrou ganho** sobre a v2. A estimativa pontual é pior no total, a C3 piorou de forma consistente e a C4 melhorou sem significância. Não há base para gravar a calibração v3; o arquivo ativo continua `v2-competencia` e o prompt v3 roda com identidade. O próximo ataque é o prompt de C3/C1 (e a instabilidade da C2), não a calibração.
+- **Provedores e cota (05/11/2026):** o Gemini oscilou com 503 e as retentativas salvaram a maior parte da amostra. O Grok 4.3 via OpenRouter passou num teste isolado (`essay-br-6382`, 80/120/40/80/0), mas a execução completa voltou a receber **402** depois de algumas chamadas; o `/key` mostra limite de US$ 1.000 como teto de gasto, não crédito disponível (uso ~US$ 0,0287). Grok 4.7/4.6/4.5 exigem raciocínio e rejeitam `reasoning: { enabled: false }` com 400; 4.3 e 4.20 aceitam, então 4.3 é a única opção compatível sem mudar o `AiService`. Os modelos gratuitos do OpenRouter ficaram em **429** (`free-models-per-day`, 50/dia, restante 0, reset em `2026-11-06T00:00:00Z`); adicionar 10 créditos elevaria o limite para 1.000 requisições gratuitas/dia.
+
 ### Resultados (31/10/2026)
 
 **Digitalização** (cena sintética: folha em perspectiva, sombra forte, tinta azul):
@@ -251,10 +278,10 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30
 - **Leitura dos números:** a IA ordena bem as redações (correlação 0,88), mas **comprime a escala**. Dá nota alta demais às fracas (+80 a +160) e baixa demais às fortes (até −400). Por isso o erro absoluto e a concordância pela regra do Inep ainda estão fracos.
 - **Calibração:** com as 28 redações, a validação cruzada (leave-one-out) baixou o erro médio de 134 para 123. Ela foi aplicada só em C1, C3 e C5, onde generalizou (ver `model/llm-calibration.json`). A concordância pela regra do Inep ficou em 39% com e sem calibração: com 28 redações, não há dado para mais.
 - **Nota mil do Inep** (3 das 10 redações comentadas na cartilha 2025): 1000, 760 e 760. A subavaliação das redações fortes aparece aqui também, sobretudo na C5 (120).
-- **O que não foi medido:** a produção usa a média de dois avaliadores (e um terceiro na discrepância), o que reduz o ruído de um avaliador só. A validação mediu um avaliador por redação para caber na cota diária gratuita (29 chamadas).
+- **O que não foi medido:** a produção usa a média de dois avaliadores (e um terceiro na discrepância), o que reduz o ruído de um avaliador só. A validação mediu um avaliador por redação para caber na cota diária gratuita (29 chamadas). A medição do prompt v3 mantém **um avaliador** de propósito, para comparar com a mesma metodologia da linha de base v2; a validação com dois avaliadores é uma etapa separada e não deve ser confundida com a recalibração por modelo.
 - **Ponta a ponta no navegador** (foto → cantos → digitalização → leitura → revisão → correção): funcionou. Rodou com o modelo reserva (`nemotron-3.5-lightning`), porque o `.env` local não tem `AI_ESSAY_MODELS`. Esse modelo deu 40 na C5 a uma proposta com agente, ação, meio e finalidade, o que confirma que o modelo da correção importa.
 
-**Próximo passo para melhorar a nota:** o prompt de C2/C4 já foi reformulado com a cartilha 2026 e os manuais oficiais (`v3-c2-c4-oficial-2026`), mas ainda falta **medir** essa versão com o pipeline completo de dois avaliadores e recalibrar. A amostra de 180 redações de 04/11/2026 mediu o prompt anterior; o ganho honesto foi menor que o da amostra pequena.
+**Próximo passo para melhorar a nota:** o prompt v3 (`v3-c2-c4-oficial-2026`) foi medido em 05/11/2026 com um avaliador (29 de calibração + 30 de teste). Não houve ganho sobre a v2: a concordância ficou em 33,3% bruta/36,7% calibrada contra 46,7%/43,3% da v2 nas mesmas redações, e a C3 piorou de forma consistente. A C4 melhorou direcionalmente (MAE 54,7 → 48,0), mas o intervalo de confiança ainda inclui zero. A calibração v3 não foi gravada e o arquivo ativo continua v2; o próximo ataque é o prompt de C3/C1 (e a instabilidade da C2), não a calibração. Depois, validar a produção com os dois avaliadores.
 
 ## Testes adversariais de C2/C4
 
@@ -265,12 +292,12 @@ A suíte `essay-correction.spec.ts` cobre os casos em que a heurística não pod
 - C2 e C4 não misturam trechos: a busca filtrada por competência devolve só o escopo pedido; a grade oficial sempre abre o contexto.
 - O título é tratado como linha escrita e não avaliado nas competências, conforme a cartilha 2026; o trecho de fuga não usa título como prova.
 - O prompt estruturado exige pontos fortes, problemas, explicação do nível, trechos literais e "como melhorar"; se o modelo omitir justificativa/explicação, o parser preenche uma explicação neutra em vez de deixar o campo vazio.
-- A calibração do prompt anterior não é reutilizada no prompt novo.
+- A calibração do prompt anterior não é reutilizada no prompt novo e é arquivada em `model/archive/llm-calibration.<promptVersion>.json` quando uma versão nova é gravada.
 
 ## Limites conhecidos
 
 - **Letra manuscrita real:** a leitura foi validada com uma foto sintética (fonte manuscrita, perspectiva, sombra e erros propositais), não com fotos de alunos. Antes de liberar, vale testar com 10–20 fotos reais de folhas de redação.
 - **Cota dos modelos gratuitos:** cada correção usa 10 a 15 chamadas (5 por avaliador) e cada leitura de foto, 1 por página. Com o `gemini-3.5-flash-lite` gratuito (500/dia, 15/min) cabem ~35–45 correções por dia, cerca de 1 por minuto. Com a cota de 4 por aluno no mês, isso dá ~300 alunos ativos. Acima disso, é preciso plano pago.
 - **Cópia dos textos motivadores** (que derruba a C2 e desconta linhas) não é detectada: o sistema não tem os textos motivadores de cada proposta.
-- **Calibração pendente para o prompt novo:** a calibração gravada foi ajustada com 174 redações completas (180 coletadas; 6 falharam por 503/timeout) no prompt `v2-competencia`. Ela não vale para `v3-c2-c4-oficial-2026`; até a recalibração, as notas usam a identidade. O script aceita amostras maiores ao longo de vários dias, graças ao cache. O limite atual não é só o tamanho da amostra, mas o sinal da C4: o modelo ainda concentra notas em 120, e o prompt novo precisa ser medido para saber se separa melhor os níveis.
+- **Calibração pendente para o prompt novo:** a calibração v2 foi ajustada com 174 redações completas (180 coletadas; 6 falharam por 503/timeout) e está arquivada em `model/archive/llm-calibration.v2-competencia.json`. Ela não vale para `v3-c2-c4-oficial-2026`; até a recalibração, as notas usam a identidade. A amostra 29+30 de 05/11/2026 completou o teste, mas a v3 não mostrou ganho e a calibração não foi gravada; o ajuste final em n=59 escolheu isotônica em C3 e C5, mas não foi validado fora da amostra. O script aceita amostras maiores ao longo de vários dias, graças ao cache, mas não grava calibração parcial (exige pelo menos 10 redações de teste). O limite atual não é só o tamanho da amostra: C3/C1 precisam de ajuste no prompt, e a C4 melhorou mas ainda não tem significância. A validação com dois avaliadores é uma etapa separada.
 - A nota é uma **estimativa para estudo**, e a tela diz isso. A nota oficial é da banca do Enem.

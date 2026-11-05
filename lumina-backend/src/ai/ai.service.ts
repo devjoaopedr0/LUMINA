@@ -64,6 +64,12 @@ const REASONING_HEADROOM_TOKENS = 4000;
 const MAX_RETRY_AFTER_S = 30;
 /** Espera num 429 por rajada que não diz quanto esperar. */
 const DEFAULT_RATE_LIMIT_WAIT_S = 20;
+/**
+ * 5xx transitório (em especial o 503 "high demand" do Gemini) não significa
+ * que o modelo caiu: a mesma requisição costuma passar segundos depois. Tenta
+ * o mesmo modelo com estas esperas antes de gastar a vez no próximo.
+ */
+const TRANSIENT_RETRY_DELAYS_MS = [2_000, 5_000];
 /** Plano gratuito do Gemini: 15 requisições por minuto (gemini-3.5-flash-lite). */
 const DEFAULT_GEMINI_RPM = 15;
 /**
@@ -482,7 +488,7 @@ export class AiService {
     ];
 
     let lastError = 'nenhuma tentativa executada';
-    const queue = params.models.map((model) => ({ model, waited: false }));
+    const queue = params.models.map((model) => ({ model, waited: false, transientRetries: 0 }));
     for (let q = 0; q < queue.length; q++) {
       const { model } = queue[q];
       // Ritmo por modelo (planos gratuitos limitam requisições por minuto):
@@ -533,6 +539,17 @@ export class AiService {
             queue[q].waited = true;
             this.logger.warn(`${params.providerName} ${model} pediu ${retryAfter}s de espera (429); aguardando.`);
             await new Promise((r) => setTimeout(r, Math.ceil(retryAfter * 1000) + 250));
+            q--;
+            continue;
+          }
+          const transient = response.status === 502 || response.status === 503 || response.status === 504;
+          if (transient && queue[q].transientRetries < TRANSIENT_RETRY_DELAYS_MS.length) {
+            const delay = TRANSIENT_RETRY_DELAYS_MS[queue[q].transientRetries];
+            queue[q].transientRetries += 1;
+            this.logger.warn(
+              `${params.providerName} ${model} respondeu ${response.status}; nova tentativa no mesmo modelo em ${delay}ms.`,
+            );
+            await new Promise((r) => setTimeout(r, delay));
             q--;
             continue;
           }

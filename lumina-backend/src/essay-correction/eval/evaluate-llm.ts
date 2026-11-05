@@ -4,7 +4,9 @@
  *   npm run build && npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30 --inep 3 --max-calls 400
  *
  * Mede UM modelo por vez (calibração é por modelo), um avaliador, cinco
- * chamadas por redação — uma por competência, como na produção.
+ * chamadas por redação — uma por competência, como na produção. O avaliador
+ * único é deliberado: a linha de base v2 também foi medida assim. A validação
+ * com os dois avaliadores da produção é uma etapa separada.
  *
  * 1. Calibração: amostra estratificada da VALIDAÇÃO do Essay-BR. Para cada
  *    competência, a validação cruzada escolhe a função (identidade, reta ou
@@ -28,6 +30,7 @@ import { ConfigService } from '@nestjs/config';
 import { AiService } from '../../ai/ai.service';
 import { analyzeEssayText } from '../analysis/text-analysis';
 import { applyCalibrationFn, CalibrationFn, fitCalibration } from '../grading/calibration';
+import { archiveCalibrationIfNeeded, canWriteFinalCalibration } from '../grading/calibration-store';
 import { EssayGrader, GRADER_PROMPT_VERSION, IDENTITY_CALIBRATION, LlmCalibration } from '../grading/essay-grader';
 import { extractFeatures, FeatureModelWeights, predictWithFeatureModel, snapToLevel } from '../grading/feature-model';
 import { CompetencyId, COMPETENCY_IDS } from '../knowledge';
@@ -200,11 +203,16 @@ async function main() {
           return { human: p.human, predicted: Object.fromEntries(COMPETENCY_IDS.map((id) => [id, snapToLevel(f[id])])) as Scores };
         });
 
-  // 2) Calibração final, com todos os dados, gravada para o modelo.
+  // 2) Calibração final, com todos os dados, gravada para o modelo. Só grava
+  // quando a amostra de TESTE também foi medida: calibrar com as redações de
+  // calibração e não validar em temas inéditos foi o que produziu uma função
+  // de 10 redações numa execução interrompida por limite de cota (05/11/2026).
   const allPairs = [...calibPairs, ...testPairs];
-  const final = allPairs.length >= 10 ? fitCalibration(allPairs) : null;
+  const final = canWriteFinalCalibration(calibPairs.length, testPairs.length) ? fitCalibration(allPairs) : null;
   const modelKey = [...answeredBy][0] ?? calibPairs[0]?.cached.model ?? model;
   if (final && argText('write') !== 'false') {
+    const archived = archiveCalibrationIfNeeded(CALIBRATION_PATH, GRADER_PROMPT_VERSION);
+    if (archived) console.log(`Calibração anterior arquivada em ${archived}`);
     const current = existsSync(CALIBRATION_PATH) ? (JSON.parse(readFileSync(CALIBRATION_PATH, 'utf8')) as Partial<LlmCalibration>) : {};
     const next: LlmCalibration =
       current.version === 2 && current.promptVersion === GRADER_PROMPT_VERSION

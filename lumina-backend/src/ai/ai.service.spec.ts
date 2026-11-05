@@ -262,6 +262,34 @@ describe('AiService', () => {
       expect(JSON.parse(String(secondInit.body)).model).toBe('modelo-que-da-certo');
     });
 
+    it('repete o mesmo modelo quando o provedor responde 503 transitório', async () => {
+      vi.useFakeTimers();
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response('{"error":{"message":"high demand"}}', { status: 503 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: 'Resposta depois do 503.' } }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+
+      const service = withConfig({
+        AI_PROVIDER: 'openrouter',
+        OPENAI_API_KEY: 'sk-or-test',
+        AI_MODEL: 'modelo-instavel',
+      });
+
+      const pending = service.sendMessage(prompt);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(pending).resolves.toEqual({ message: 'Resposta depois do 503.' });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      const [, secondInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+      expect(JSON.parse(String(secondInit.body)).model).toBe('modelo-instavel');
+      vi.useRealTimers();
+      fetchSpy.mockRestore();
+    });
+
     it('trata resposta 200 sem texto como falha e tenta o próximo modelo', async () => {
       const fetchSpy = vi
         .spyOn(globalThis, 'fetch')
