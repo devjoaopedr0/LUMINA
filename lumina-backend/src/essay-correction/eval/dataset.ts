@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CompetencyId } from '../knowledge/inep-cartilha-2025';
+import type { CompetencyId } from '../knowledge';
 
 export const CACHE_DIR = join(__dirname, '..', '..', '..', '.cache', 'essay-br');
 const BASE_URL = 'https://raw.githubusercontent.com/lplnufpi/essay-br/main/extended-corpus';

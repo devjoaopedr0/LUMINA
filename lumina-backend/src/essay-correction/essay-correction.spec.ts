@@ -13,6 +13,8 @@ import {
   discrepancyBetween,
   EssayGrader,
   EvaluatorRun,
+  buildCompetencyPrompt,
+  buildCompetencyQuery,
   extractJson,
   GRADER_PROMPT_VERSION,
   LlmCalibration,
@@ -21,8 +23,9 @@ import {
   verifiedEvidence,
 } from './grading/essay-grader';
 import { extractFeatures, fitRidge, FEATURE_NAMES, snapToLevel } from './grading/feature-model';
-import { COMPETENCY_GRID, KNOWLEDGE_BASE } from './knowledge/inep-cartilha-2025';
+import { ARCHIVED_KNOWLEDGE_BASE, CARTILHA_2026, COMPETENCY_GRID, CURRENT_KNOWLEDGE_BASE, KNOWLEDGE_BASE, KNOWLEDGE_DOCUMENTS } from './knowledge';
 import { EssayMcpClient } from './mcp/essay-mcp-client';
+import llmCalibration from './model/llm-calibration.json';
 import { combineConfidence, linesToText, parseTranscription, transcribeEssayPages } from './ocr/essay-ocr';
 import { tokenize } from './rag/bm25';
 import { EssayKnowledgeBase } from './rag/knowledge-base';
@@ -49,7 +52,7 @@ function fakeRun(label: string, scores: number[], annulment: EvaluatorRun['annul
     annulment,
     tangencia: false,
     humanRightsViolation: false,
-    competencies: Object.fromEntries(IDS.map((id, i) => [id, { score: scores[i], justification: `${label} ${id}`, evidence: [], references: [] }])) as unknown as EvaluatorRun['competencies'],
+    competencies: Object.fromEntries(IDS.map((id, i) => [id, { score: scores[i], justification: `${label} ${id}`, strengths: [], problems: [], levelExplanation: '', evidence: [], references: [] }])) as unknown as EvaluatorRun['competencies'],
     total: scores.reduce((a, b) => a + b, 0),
     generalComment: '',
   };
@@ -60,6 +63,9 @@ function competencyAnswer(competency: string, nota: number, extra: Record<string
   return JSON.stringify({
     nota,
     justificativa: `Justificativa ${competency}`,
+    pontos_fortes: [`Ponto forte ${competency}`],
+    problemas: [`Problema ${competency}`],
+    explicacao_nivel: `Explicação do nível ${competency}`,
     trechos: ['o racismo estrutural, herdado de mais de três séculos de escravização', 'trecho que não existe na redação'],
     referencias: [`${competency.toLowerCase()}-niveis`, 'id-inventado'],
     como_melhorar: `Dica ${competency}`,
@@ -78,10 +84,33 @@ describe('Base de conhecimento da cartilha (RAG)', () => {
   it('tem a grade oficial de seis níveis em todas as competências e só trechos citáveis', () => {
     for (const grid of Object.values(COMPETENCY_GRID)) expect(Object.keys(grid.levels).sort()).toEqual(['0', '120', '160', '200', '40', '80']);
     for (const chunk of KNOWLEDGE_BASE) {
-      if (chunk.source === 'inep-cartilha-2025') expect(chunk.page).toBeGreaterThan(0);
-      else expect(chunk.text).toMatch(/Critério operacional da Lumina/);
+      if (chunk.source === 'lumina') expect(chunk.text).toMatch(/Critério operacional da Lumina/);
+      else expect(chunk.page).toBeGreaterThan(0);
     }
     expect(new Set(KNOWLEDGE_BASE.map((c) => c.id)).size).toBe(KNOWLEDGE_BASE.length);
+    expect(KNOWLEDGE_DOCUMENTS.some((d) => d.id === 'inep-cartilha-2026' && d.status === 'current')).toBe(true);
+    expect(CARTILHA_2026.publishedAt).toBe('2026-09-21');
+  });
+
+  it('usa o texto de 2026 para título e não infere fuga pelo título ou por palavras isoladas', () => {
+    const kb = new EssayKnowledgeBase();
+    const title = kb.get('geral-titulo')!;
+    expect(title.text).toMatch(/considerado linha escrita/i);
+    expect(title.text).not.toMatch(/não conta como linha escrita/i);
+    const fuga = kb.get('c2-fuga-ao-tema')!;
+    expect(fuga.text).not.toMatch(/título|leitor que não teve acesso/i);
+    expect(fuga.text).toMatch(/nem o assunto mais amplo nem o tema específico/i);
+    expect(kb.get('c2-manual-tipo-textual')!.text).toMatch(/proporcionalidade das partes/i);
+    expect(kb.get('c4-referencial-oficial')!.text).toMatch(/justaposição/i);
+  });
+
+  it('mantém 2025 arquivada e fora da recuperação padrão', () => {
+    expect(ARCHIVED_KNOWLEDGE_BASE.length).toBeGreaterThan(0);
+    expect(ARCHIVED_KNOWLEDGE_BASE.every((c) => c.documentId === 'inep-cartilha-2025' && c.id.startsWith('2025:'))).toBe(true);
+    const kb = new EssayKnowledgeBase();
+    expect(kb.search('nota zero', { limit: 12 }).every((h) => !h.id.startsWith('2025:'))).toBe(true);
+    expect(kb.search('nota zero', { documentId: 'inep-cartilha-2025', limit: 1 })[0].documentId).toBe('inep-cartilha-2025');
+    expect(CURRENT_KNOWLEDGE_BASE.every((c) => c.documentId !== 'inep-cartilha-2025')).toBe(true);
   });
 
   it('normaliza acento e flexão: "argumentação" e "argumentos" caem no mesmo radical', () => {
@@ -99,9 +128,9 @@ describe('Base de conhecimento da cartilha (RAG)', () => {
     expect(kb.search('nota zero', { scope: 'C2', includeGeneral: true }).some((h) => h.scope === 'GERAL')).toBe(true);
   });
 
-  it('cita a página da cartilha e identifica critério da Lumina como não oficial', () => {
+  it('cita documento, versão e página e identifica critério da Lumina como não oficial', () => {
     const kb = new EssayKnowledgeBase();
-    expect(kb.search('discrepância entre avaliadores', { limit: 1 })[0].citation).toBe('Cartilha do Participante Enem 2025 (Inep), p. 6');
+    expect(kb.search('discrepância entre avaliadores', { limit: 1 })[0].citation).toMatch(/Cartilha do Participante \(Inep\), 2026, p\. 6/);
     expect(kb.search('contagem de elementos da proposta', { scope: 'C5', limit: 3 }).find((h) => h.source === 'lumina')?.citation).toMatch(/não consta da cartilha/);
   });
 
@@ -109,6 +138,23 @@ describe('Base de conhecimento da cartilha (RAG)', () => {
     const ctx = new EssayKnowledgeBase().contextFor('C4', 'conectivos repetidos');
     expect(ctx[0].id).toBe('c4-niveis');
     expect(ctx.slice(1).every((c) => c.scope === 'C4')).toBe(true);
+  });
+
+  it('não mistura C2 e C4 e recupera o manual específico da competência', () => {
+    const kb = new EssayKnowledgeBase();
+    const c2 = kb.search('repetição coesão referencial conectivo inadequado', { scope: 'C2', limit: 12 });
+    expect(c2.every((h) => h.scope === 'C2')).toBe(true);
+    const c4 = kb.search('repertório de bolso tangenciamento recorte temático', { scope: 'C4', limit: 12 });
+    expect(c4.every((h) => h.scope === 'C4')).toBe(true);
+    expect(kb.search('legitimidade pertinência produtividade repertório', { scope: 'C2', limit: 12 }).some((h) => h.documentId === 'inep-manual-c2-2019')).toBe(true);
+    expect(kb.search('repetição coesão referencial', { scope: 'C4', limit: 12 }).some((h) => h.documentId === 'inep-manual-c4-2019')).toBe(true);
+  });
+
+  it('mantém a base vigente como padrão e a arquivada apenas por consulta explícita', () => {
+    const kb = new EssayKnowledgeBase();
+    expect(kb.currentDocument().id).toBe('inep-cartilha-2026');
+    expect(kb.search('nota zero', { limit: 12 }).every((h) => h.documentId !== 'inep-cartilha-2025')).toBe(true);
+    expect(kb.search('nota zero', { documentId: 'inep-cartilha-2025', limit: 1 })[0].documentId).toBe('inep-cartilha-2025');
   });
 });
 
@@ -134,14 +180,42 @@ describe('Análise determinística do texto', () => {
     expect(analyzeEssayText('   ').zeroRisks[0].code).toBe('EM_BRANCO');
   });
 
-  it('sinaliza fuga provável, bilhete à banca, direitos humanos e registro informal', () => {
+  it('não conclui fuga ao tema por cobertura lexical; só alerta para leitura global', () => {
     const offTopic = analyzeEssayText(ESSAY.replace(/herança africana|africana|Brasil|desafios|valorização|valorizar/gi, 'futebol'), { theme: THEME });
-    expect(offTopic.zeroRisks.map((r) => r.code)).toContain('FUGA_AO_TEMA');
+    expect(offTopic.zeroRisks.map((r) => r.code)).not.toContain('FUGA_AO_TEMA');
+    expect(offTopic.warnings.join(' ')).toMatch(/Cobertura lexical baixa.*Sinal auxiliar/i);
     const note = analyzeEssayText(`${ESSAY}\n\nPrezado avaliador, estou nervoso.`, { theme: THEME });
     expect(note.zeroRisks.map((r) => r.code)).toContain('PARTE_DESCONECTADA');
     const hr = analyzeEssayText(`${ESSAY}\n\nPor isso, defendo a pena de morte para quem ataca terreiros.`);
     expect(hr.humanRightsFlags).toContain('pena de morte');
     expect(analyzeEssayText('Eu acho que a gente precisa ler mais pq é bom. '.repeat(20)).informalMarkers).toEqual(expect.arrayContaining(['eu acho', 'a gente', 'pq']));
+  });
+
+  it('não transforma ausência de conectivo inicial nem repetição em penalidade automática', () => {
+    const semConectivos = `A herança africana está presente no Brasil. A escola ainda silencia essa história. O racismo estrutural persiste. É preciso mudar esse quadro. O Ministério da Educação deve agir. A mídia deve divulgar a cultura afro-brasileira. A sociedade deve reconhecer essa contribuição.`;
+    const a = analyzeEssayText(semConectivos, { theme: THEME, ocrLines: 10 });
+    expect(a.connectives.distinct).toBeLessThanOrEqual(1);
+    expect(a.zeroRisks).toEqual([]);
+    expect(a.warnings.join(' ')).not.toMatch(/Repertório limitado|sem elemento de ligação no início/i);
+    expect(a.warnings.join(' ')).not.toMatch(/nota automática.*conectivo/i);
+    expect(buildCompetencyQuery('C4', a)).toMatch(/coesão referencial justaposição sem conectivo explícito/i);
+    expect(buildCompetencyQuery('C4', a)).not.toMatch(/repetição conector inadequado substituição/i);
+    const repeticao = analyzeEssayText(`${ESSAY}\n\nA herança africana é uma herança viva; a herança africana deve ser valorizada.`, { theme: THEME });
+    expect(repeticao.warnings.join(' ')).toMatch(/podem ser temáticas ou referenciais/i);
+    expect(repeticao.zeroRisks).toEqual([]);
+    expect(buildCompetencyQuery('C2', repeticao)).not.toMatch(/repertório repetido|pouco produtivo/i);
+    expect(buildCompetencyQuery('C4', repeticao)).toMatch(/repetição referencial progressão/i);
+  });
+
+  it('não transforma sinônimos e retomadas em fuga por baixa cobertura lexical', () => {
+    const sinonimos = `O legado afro-brasileiro aparece na culinária, na música e na religiosidade popular. Ainda assim, a população negra enfrenta preconceito e apagamento histórico no país. É necessário discutir como a escola silencia pensadores e artistas negros. Muitos currículos reduzem a cultura negra ao período da escravidão. A mídia também repete estereótipos sobre os descendentes de africanos. O poder público deve ampliar o ensino da história afro-brasileira. A sociedade precisa reconhecer essa contribuição.`;
+    const a = analyzeEssayText(sinonimos, { theme: THEME, ocrLines: 10 });
+    expect(a.themeCoverage).not.toBeNull();
+    expect(a.themeCoverage!).toBeLessThan(0.6);
+    expect(a.zeroRisks).toEqual([]);
+    expect(a.warnings.join(' ')).toMatch(/Cobertura lexical baixa.*Sinal auxiliar/i);
+    expect(buildCompetencyQuery('C2', a)).toContain('cobertura lexical auxiliar');
+    expect(buildCompetencyQuery('C2', a)).not.toMatch(/fuga ao tema tangenciamento abordagem parcial/);
   });
 
   it('separa parágrafos por linha em branco e por recuo', () => {
@@ -156,12 +230,25 @@ describe('Servidor MCP lumina-redacao', () => {
       expect(await client.listTools()).toEqual(['buscar_cartilha', 'grade_competencia', 'analisar_redacao', 'verificar_nota_zero']);
       const grade = await client.gradeCompetencia('C5');
       expect(grade.niveis.map((n) => n.nota)).toEqual([200, 160, 120, 80, 40, 0]);
-      expect(grade.citacao).toMatch(/p\. 37/);
+      expect(grade.citacao).toMatch(/p\. 38/);
       const hits = await client.buscarCartilha({ consulta: 'repertório de bolso', competencia: 'C2', limite: 2 });
       expect(hits[0].id).toBe('c2-repertorio-de-bolso');
       const zero = await client.verificarNotaZero({ texto: 'Curto.' });
       expect(zero.anulacao_certa[0].code).toBe('TEXTO_INSUFICIENTE');
       expect(client.calls.map((c) => c.tool)).toEqual(['grade_competencia', 'buscar_cartilha', 'verificar_nota_zero']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('devolve versão e documento do trecho, inclusive no arquivo de 2025', async () => {
+    const client = await EssayMcpClient.connect();
+    try {
+      const current = await client.buscarCartilha({ consulta: 'repertório de bolso', competencia: 'C2', limite: 1 });
+      expect(current[0]).toMatchObject({ documento: 'inep-cartilha-2026', versao: '2026', publicado_em: '2026-09-21' });
+      const archived = await client.buscarCartilha({ consulta: 'nota zero', documento_versao: 'inep-cartilha-2025', limite: 1 });
+      expect(archived[0]).toMatchObject({ documento: 'inep-cartilha-2025', versao: '2025' });
+      expect(archived[0].citacao).toMatch(/2025/);
     } finally {
       await client.close();
     }
@@ -202,6 +289,23 @@ describe('Corretor por competência', () => {
     expect(parseCompetencyEvaluation(JSON.parse(competencyAnswer('C4', 130)), 'C4', ESSAY, allowed, undefined, 'a', 'm').score).toBe(120);
   });
 
+  it('preenche explicação e justificativa quando o modelo omite os campos', () => {
+    const raw = JSON.parse(competencyAnswer('C2', 120));
+    delete raw.justificativa;
+    delete raw.explicacao_nivel;
+    delete raw.como_melhorar;
+    const run = parseCompetencyEvaluation(raw, 'C2', ESSAY, allowed, undefined, 'a', 'm');
+    expect(run.justification).toMatch(/descritor melhor descreve/i);
+    expect(run.levelExplanation).toMatch(/descritor melhor descreve/i);
+    expect(run.tip).toMatch(/Reescreva os trechos apontados/i);
+  });
+
+  it('não reutiliza a calibração ajustada ao prompt anterior', () => {
+    expect(llmCalibration.promptVersion).toBe('v2-competencia');
+    expect(llmCalibration.promptVersion).not.toBe(GRADER_PROMPT_VERSION);
+    expect(calibrationFor(llmCalibration as unknown as LlmCalibration, 'gemini:gemini-3.5-flash-lite').fitted).toBe(false);
+  });
+
   it('aplica a função de calibração da competência só ao modelo dela', () => {
     const calibration: LlmCalibration = {
       version: 2,
@@ -234,6 +338,9 @@ describe('Corretor por competência', () => {
       score,
       rawScore: score,
       justification: '',
+      strengths: [],
+      problems: [],
+      levelExplanation: '',
       evidence: [],
       references: [],
       ...extra,
@@ -308,10 +415,41 @@ describe('Corretor por competência', () => {
     expect(tools.slice(0, 2)).toEqual(['analisar_redacao', 'verificar_nota_zero']);
     expect(tools.filter((t) => t === 'grade_competencia')).toHaveLength(5);
     expect(tools.filter((t) => t === 'buscar_cartilha')).toHaveLength(5);
-    expect(result.competencies[0].citations[0].citation).toMatch(/Cartilha do Participante Enem 2025/);
+    expect(result.competencies[0].citations[0].citation).toMatch(/Cartilha do Participante \(Inep\), 2026/);
     expect(result.competencies[0].level).toMatch(/bom domínio/);
     expect(result.competencies[0].tip).toBe('Dica C1');
     expect(result.generalFeedback).toMatch(/Ponto mais forte: C5/);
+  });
+
+  it('prompts de C2 e C4 ensinam os critérios oficiais sem transformar contagem em nota', async () => {
+    const { prompts } = await grade(scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]));
+    const c2 = prompts.find((p) => competencyOf(p) === 'C2')!;
+    const c4 = prompts.find((p) => competencyOf(p) === 'C4')!;
+    expect(c2).toMatch(/recorte temático/i);
+    expect(c2).toMatch(/\[recorte\].*\[tipo textual\].*\[repertório\]/is);
+    expect(c2).toMatch(/legitimidade.*pertinência.*produtividade/is);
+    expect(c2).toMatch(/Não conclua fuga porque faltam palavras exatas do tema/i);
+    expect(c2).toMatch(/Cobertura lexical.*Sinal auxiliar/is);
+    expect(c2).not.toContain('[c4-niveis]');
+    expect(c4).toMatch(/Não exija conectivo no início de cada parágrafo/i);
+    expect(c4).toMatch(/quantidade de conectivos/i);
+    expect(c4).toMatch(/referenciação/i);
+    expect(c4).toMatch(/repetição.*pode ser necessária/is);
+    expect(c4).toMatch(/A contagem é auxiliar/i);
+    expect(c4).not.toContain('[c2-niveis]');
+    expect(GRADER_PROMPT_VERSION).toBe('v3-c2-c4-oficial-2026');
+  });
+
+  it('devolve pontos fortes, problemas, explicação do nível e a versão da base usada', async () => {
+    const { result } = await grade(scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]));
+    expect(result.competencies[0]).toMatchObject({
+      strengths: ['Ponto forte C1'],
+      problems: ['Problema C1'],
+      levelExplanation: 'Explicação do nível C1',
+    });
+    expect(result.knowledge.activeDocument).toMatchObject({ id: 'inep-cartilha-2026', version: '2026', publishedAt: '2026-09-21' });
+    expect(result.knowledge.documents.map((d) => d.id)).toEqual(expect.arrayContaining(['inep-cartilha-2026', 'inep-cartilha-2025', 'inep-manual-c2-2019', 'inep-manual-c4-2019']));
+    expect(result.knowledge.documents.find((d) => d.id === 'inep-cartilha-2025')?.status).toBe('archived');
   });
 
   it('discrepância numa competência: o terceiro reavalia só ela e vale o par mais próximo', async () => {
@@ -330,7 +468,7 @@ describe('Corretor por competência', () => {
     expect(split.llm).toHaveBeenCalledTimes(11);
     expect(split.result.total).toBe(800);
     const both = await grade((c) => competencyAnswer(c, 160, c === 'C2' ? annul : {}));
-    expect(both.result.annulment).toMatchObject({ code: 'FUGA_AO_TEMA', citation: expect.stringMatching(/p\. 24/) });
+    expect(both.result.annulment).toMatchObject({ code: 'FUGA_AO_TEMA', citation: expect.stringMatching(/p\. 25/) });
     expect(both.result.total).toBe(0);
   });
 

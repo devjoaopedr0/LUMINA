@@ -95,19 +95,31 @@ export interface EssayTextAnalysis {
     total: number;
     distinct: number;
     byRelation: Partial<Record<ConnectiveRelation, string[]>>;
-    /** Conectivo usado 3+ vezes — "repertório pouco diversificado" na C4. */
+    /** Conectivo usado 3+ vezes — sinal auxiliar, não falha automática. */
     overused: string[];
-    /** Parágrafos (a partir do 2º) que não começam com elemento de ligação. */
+    /**
+     * Parágrafos (a partir do 2º) sem conectivo explícito na abertura.
+     * É um dado descritivo: a articulação pode ser feita por referenciação,
+     * elipse ou continuidade semântica. Não é falha automática na C4.
+     */
     paragraphsWithoutLink: number[];
   };
-  repeatedWords: { word: string; count: number }[];
+  /** Repetições no texto; `thematic` indica termo do próprio tema. */
+  repeatedWords: { word: string; count: number; thematic: boolean }[];
   informalMarkers: string[];
   proposal: ProposalAnalysis;
   humanRightsFlags: string[];
-  /** Cobertura dos termos do tema no texto (0–1); null sem tema. */
+  /**
+   * Cobertura lexical dos termos do tema (0–1); null sem tema.
+   * Sinal AUXILIAR: fuga/tangenciamento exigem leitura global do texto.
+   */
   themeCoverage: number | null;
   themeTermsMissing: string[];
-  zeroRisks: { code: 'TEXTO_INSUFICIENTE' | 'EM_BRANCO' | 'PARTE_DESCONECTADA' | 'IDENTIFICACAO' | 'FUGA_AO_TEMA'; detail: string }[];
+  /**
+   * Riscos objetivos que a regra pode verificar sem IA. Fuga ao tema não
+   * entra aqui: cobertura lexical nunca conclui anulação.
+   */
+  zeroRisks: { code: 'TEXTO_INSUFICIENTE' | 'EM_BRANCO' | 'PARTE_DESCONECTADA' | 'IDENTIFICACAO'; detail: string }[];
   /** Avisos que viram consulta do RAG e conferência do corretor. */
   warnings: string[];
 }
@@ -216,10 +228,10 @@ export function analyzeEssayText(text: string, options: { theme?: string; ocrLin
   }
   const themeStems = new Set(options.theme ? tokenize(options.theme) : []);
   const repeatedWords = [...wordCounts.entries()]
-    .filter(([word, count]) => count >= 4 && !themeStems.has(word))
+    .filter(([, count]) => count >= 4)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([word, count]) => ({ word, count }));
+    .map(([word, count]) => ({ word, count, thematic: themeStems.has(word) }));
 
   const informalMarkers = INFORMAL_MARKERS.filter((m) => countOccurrences(normalized, m) > 0);
   const humanRightsFlags = HUMAN_RIGHTS_FLAGS.filter((m) => countOccurrences(normalized, m) > 0);
@@ -242,20 +254,18 @@ export function analyzeEssayText(text: string, options: { theme?: string; ocrLin
   if (disconnected.length) zeroRisks.push({ code: 'PARTE_DESCONECTADA', detail: `Possível trecho desconectado do tema: ${disconnected.join(', ')}.` });
   const identification = IDENTIFICATION_FLAGS.filter((m) => countOccurrences(normalized, m) > 0);
   if (identification.length) zeroRisks.push({ code: 'IDENTIFICACAO', detail: `Possível identificação no texto: ${identification.join(', ')}.` });
-  if (themeCoverage !== null && themeCoverage < 0.34) zeroRisks.push({ code: 'FUGA_AO_TEMA', detail: `Poucos termos do tema aparecem no texto (faltam: ${themeTermsMissing.join(', ')}).` });
 
   const warnings: string[] = [];
-  if (paragraphs.length < 3) warnings.push('Menos de três parágrafos: estrutura com proposição, argumentação e conclusão pode não estar completa; ausência de paragrafação afeta a coesão.');
-  if (paragraphs.length === 1) warnings.push('Texto em um único parágrafo (ausência de paragrafação).');
+  if (paragraphs.length < 3) warnings.push('Menos de três parágrafos: confira se a organização dissertativo-argumentativa está completa; isso é um indício, não uma nota automática.');
+  if (paragraphs.length === 1) warnings.push('Texto em um único parágrafo: a ausência de paragrafação pode dificultar a articulação, mas não zera a competência por si só.');
   if (lines > MAX_LINES) warnings.push(`Texto com ${lines} linhas, acima das 30 da folha oficial.`);
   const longest = Math.max(0, ...sentenceLengths);
   if (longest > 60) warnings.push(`Período muito longo (${longest} palavras): risco de truncamento, justaposição ou pontuação inadequada.`);
-  if (usage.size < 4) warnings.push('Repertório limitado de recursos coesivos (poucos conectivos distintos).');
   const overused = [...usage.entries()].filter(([, count]) => count >= 3).map(([c]) => c);
-  if (overused.length) warnings.push(`Conectivos repetidos: ${overused.join(', ')}.`);
-  if (paragraphsWithoutLink.length) warnings.push(`Parágrafos sem elemento de ligação no início: ${paragraphsWithoutLink.join(', ')}.`);
-  if (repeatedWords.length) warnings.push(`Palavras repetidas sem retomada por sinônimo ou pronome: ${repeatedWords.map((w) => `${w.word}… (${w.count}x)`).join(', ')}.`);
+  if (overused.length) warnings.push(`Conectivos repetidos (${overused.join(', ')}): confira se a repetição prejudica a relação semântica; a contagem, sozinha, não define a C4.`);
+  if (repeatedWords.length) warnings.push(`Repetições detectadas (${repeatedWords.map((w) => `${w.word}… (${w.count}x${w.thematic ? ', termo do tema' : ''})`).join(', ')}): podem ser temáticas ou referenciais e só viram problema se prejudicarem a progressão ou a clareza.`);
   if (informalMarkers.length) warnings.push(`Marcas de registro informal ou primeira pessoa: ${informalMarkers.join(', ')}.`);
+  if (themeCoverage !== null && themeCoverage < 0.34) warnings.push(`Cobertura lexical baixa dos termos do tema (faltam: ${themeTermsMissing.join(', ')}). Sinal auxiliar: leia o texto globalmente antes de concluir fuga ou tangenciamento; não anule só por isso.`);
   if (proposal.count === 0) warnings.push('Nenhuma proposta de intervenção identificada nos dois últimos parágrafos.');
   else {
     const missing = Object.entries(proposal.elements).filter(([, v]) => !v).map(([k]) => k);

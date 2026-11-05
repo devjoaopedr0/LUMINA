@@ -19,7 +19,7 @@
  * `preservesExtremes`). Mais complexa só ganha se errar menos — com amostra
  * pequena, isso costuma não acontecer, e fica a identidade.
  */
-import { COMPETENCY_IDS, CompetencyId } from '../knowledge/inep-cartilha-2025';
+import { COMPETENCY_IDS, CompetencyId } from '../knowledge';
 import { snapToLevel } from './feature-model';
 
 export const LEVELS = [0, 40, 80, 120, 160, 200] as const;

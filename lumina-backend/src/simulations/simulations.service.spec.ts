@@ -550,3 +550,39 @@ describe('SimulationsService.create — cartão-resposta automático', () => {
     expect(result.answerSheetTemplateId).toBeNull();
   });
 });
+
+describe('SimulationsService — link de convite da turma', () => {
+  const setup = () => {
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
+    const row = { ...classRow, name: 'Turma A', joinCode: 'ABC123', archived: false, teachers: [] };
+    const prisma = {
+      class: {
+        findUnique: vi.fn().mockResolvedValue(row),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(row),
+        update: vi.fn().mockResolvedValue(row),
+      },
+      classMember: { findUnique: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(0), upsert: vi.fn().mockResolvedValue({}) },
+      $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
+    };
+    return { prisma, row, service: new SimulationsService(prisma as never, {} as never, {} as never) };
+  };
+
+  it('quem criou a turma gera o link e o aluno entra por ele', async () => {
+    const { prisma, service } = setup();
+    const link = await service.classInviteLink('creator-1', 'class-1');
+    await expect(service.acceptClassInvite('student-9', link.token)).resolves.toMatchObject({ id: 'class-1', name: 'Turma A' });
+    expect(prisma.classMember.upsert).toHaveBeenCalled();
+  });
+
+  it('recusa link adulterado, expirado ou de código já trocado', async () => {
+    const { prisma, row, service } = setup();
+    const link = await service.classInviteLink('creator-1', 'class-1');
+    const [payload, signature] = link.token.split('.');
+    await expect(service.acceptClassInvite('student-9', `${payload}.${signature.slice(0, -2)}xx`)).rejects.toBeInstanceOf(BadRequestException);
+    const expired = Buffer.from(`class-1.${Date.now() - 1000}`).toString('base64url');
+    await expect(service.acceptClassInvite('student-9', `${expired}.${signature}`)).rejects.toBeInstanceOf(BadRequestException);
+    prisma.class.findUnique.mockResolvedValue({ ...row, joinCode: 'NOVO99' });
+    await expect(service.acceptClassInvite('student-9', link.token)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.classMember.upsert).not.toHaveBeenCalled();
+  });
+});

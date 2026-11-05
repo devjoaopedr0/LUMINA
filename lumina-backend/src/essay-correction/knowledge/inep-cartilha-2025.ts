@@ -1,35 +1,23 @@
 /**
- * Base de conhecimento da correção de redação (RAG).
+ * Base de conhecimento ARQUIVADA da cartilha de 2025 (RAG).
  *
  * Fonte: "A redação no Enem 2025 — Cartilha do Participante" (Inep/MEC,
  * publicada em 03/10/2025). As páginas citadas são as numeradas no rodapé da
  * cartilha (não as do arquivo PDF, que tem duas páginas de capa a mais).
  *
- * Como a cartilha foi transcrita: o PDF usa fontes sem mapeamento Unicode e a
- * extração automática de texto devolve ~40% das linhas embaralhadas; por isso
- * as páginas foram renderizadas e lidas uma a uma. As grades de níveis
- * (`kind: 'grade'`) estão literais; os demais trechos são condensações fiéis
- * do texto oficial, sem acrescentar critério.
+ * Esta versão NÃO é a base padrão: a edição vigente é a de 2026. O arquivo
+ * permanece para auditoria e para consulta explícita por versão. A base
+ * corrente e o catálogo de documentos ficam em `knowledge/index.ts`.
  *
  * Trechos com `source: 'lumina'` NÃO estão na cartilha: são critérios
  * operacionais da Lumina para tornar a avaliação reprodutível (ex.: contagem
  * dos elementos da proposta de intervenção) e estão marcados como tal para a
  * IA e para o aluno nunca os confundirem com texto do Inep.
  */
+import { attachDocument, COMPETENCY_IDS, CompetencyId, KnowledgeChunk, KnowledgeChunkSeed } from './types';
+import { CARTILHA_2025 } from './documents';
 
-export type CompetencyId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
-export type KnowledgeScope = CompetencyId | 'GERAL';
-
-export interface KnowledgeChunk {
-  id: string;
-  scope: KnowledgeScope;
-  title: string;
-  text: string;
-  /** Página no rodapé da cartilha; null para critério da Lumina. */
-  page: number | null;
-  source: 'inep-cartilha-2025' | 'lumina';
-  kind: 'criterio' | 'grade' | 'orientacao' | 'exemplo';
-}
+export type { CompetencyId, KnowledgeChunk, KnowledgeScope } from './types';
 
 export const CARTILHA_REFERENCE = {
   title: 'A redação no Enem 2025 — Cartilha do Participante',
@@ -102,7 +90,7 @@ export const COMPETENCY_GRID: Record<CompetencyId, { name: string; page: number;
   },
 };
 
-const gradeChunks: KnowledgeChunk[] = (Object.keys(COMPETENCY_GRID) as CompetencyId[]).map((id) => {
+const gradeChunks: KnowledgeChunkSeed[] = (Object.keys(COMPETENCY_GRID) as CompetencyId[]).map((id) => {
   const grid = COMPETENCY_GRID[id];
   const lines = ([200, 160, 120, 80, 40, 0] as const).map((score) => `${score} pontos: ${grid.levels[score]}`);
   return {
@@ -116,7 +104,7 @@ const gradeChunks: KnowledgeChunk[] = (Object.keys(COMPETENCY_GRID) as Competenc
   };
 });
 
-const chunks: KnowledgeChunk[] = [
+const chunks: KnowledgeChunkSeed[] = [
   // ---------------------------------------------------------------- GERAL
   {
     id: 'geral-o-que-a-prova-exige',
@@ -196,7 +184,7 @@ const chunks: KnowledgeChunk[] = [
     source: 'inep-cartilha-2025',
     kind: 'criterio',
     text:
-      'O título é opcional e não é avaliado em nenhuma competência nem conta como linha escrita. Pode, porém, levar à nota zero se tiver característica de anulação (por exemplo, desenhos, sinais gráficos sem função evidente ou impropérios).',
+      'O título é opcional. Embora seja considerado linha escrita, não é avaliado em nenhum aspecto relacionado às competências da Matriz de Referência. Pode, porém, levar à nota zero se tiver característica de anulação (por exemplo, desenhos, sinais gráficos sem função evidente ou impropérios).',
   },
   // ---------------------------------------------------------------- C1
   {
@@ -456,7 +444,16 @@ const chunks: KnowledgeChunk[] = [
   },
 ];
 
-export const KNOWLEDGE_BASE: KnowledgeChunk[] = [...chunks, ...gradeChunks];
+/** Trechos de 2025 sem metadados; a base os vincula ao documento arquivado. */
+export const CARTA_2025_CHUNKS: KnowledgeChunkSeed[] = [...chunks, ...gradeChunks];
 
-export const COMPETENCY_IDS: CompetencyId[] = ['C1', 'C2', 'C3', 'C4', 'C5'];
+/** Base arquivada completa, com ids prefixados para não colidir com a vigente. */
+export const ARCHIVED_KNOWLEDGE_BASE: KnowledgeChunk[] = CARTA_2025_CHUNKS.map((chunk) =>
+  attachDocument({ ...chunk, id: `2025:${chunk.id}` }, CARTILHA_2025),
+);
+
+/** Compatibilidade com importações antigas: é a base de 2025, não a vigente. */
+export const KNOWLEDGE_BASE = ARCHIVED_KNOWLEDGE_BASE;
+
+export { COMPETENCY_IDS };
 export const SCORE_LEVELS = [0, 40, 80, 120, 160, 200] as const;

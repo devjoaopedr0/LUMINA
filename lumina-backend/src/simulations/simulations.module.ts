@@ -1,11 +1,11 @@
-import { Body, Controller, Delete, Get, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
 import { QuestionsModule } from '../questions/questions.module';
 import { SchedulesModule } from '../schedules/schedules.module';
-import { ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateEnemSimulationDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
+import { AcceptClassInviteDto, ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateEnemSimulationDto, CreateSimulationDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
 import { AnswerSheetScanService } from './omr/answer-sheet-scan.service';
@@ -28,7 +28,13 @@ export class SimulationsController {
   ) {}
   @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
-  @Post('classes/join') joinClass(@CurrentUser() user: UserWithProfile, @Body() dto: JoinClassDto) { return this.service.joinClass(user.id, dto.joinCode); }
+  // Aluno independente não entra por código: só pelo link de convite de quem gerencia a turma.
+  @Post('classes/join') joinClass(@CurrentUser() user: UserWithProfile, @Body() dto: JoinClassDto) {
+    if (user.accountType === 'STUDENT_INDEPENDENT') throw new ForbiddenException('Aluno independente entra em turma só pelo link de convite do professor.');
+    return this.service.joinClass(user.id, dto.joinCode);
+  }
+  @Post('classes/invite/accept') acceptClassInvite(@CurrentUser() user: UserWithProfile, @Body() dto: AcceptClassInviteDto) { return this.service.acceptClassInvite(user.id, dto.token); }
+  @Get('classes/:id/invite-link') classInviteLink(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.classInviteLink(user.id, id); }
   @Get('classes/:id') classDetail(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.classDetail(user.id, id); }
   @Patch('classes/:id') updateClass(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateClassDto) { return this.service.updateClass(user.id, id, dto); }
   @Patch('classes/:id/archive') archiveClass(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ArchiveClassDto) { return this.service.setClassArchived(user.id, id, dto.archived); }

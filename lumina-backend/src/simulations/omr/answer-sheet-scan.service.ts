@@ -5,7 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { SimulationsService } from '../simulations.service';
 import { GrayImage, LOW_CONFIDENCE, OmrError, QuestionReading, readSheet } from './omr';
 import { extractPdfImages, grayToPng, PdfError } from './pdf';
-import { buildSheetLayout, encodeSheetCode, MAX_SHEET_CODE } from './sheet-layout';
+import { buildSheetLayout, defaultSheetOptions, encodeSheetCode, MAX_SHEET_CODE, SheetOptions } from './sheet-layout';
 import { upsertSheetTemplate } from './sheet-template';
 
 const MIN_SIDE = 600;
@@ -14,6 +14,9 @@ const MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 /** Layout de referência só para achar marcadores e ler o código (iguais em todo cartão v2). */
 const PROBE_LAYOUT = buildSheetLayout([2]);
+
+/** Quem personaliza o cartão: o gestor (professor, coordenação, direção). */
+const SHEET_MANAGER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
 
 interface SimulationAccess {
   id: string;
@@ -90,7 +93,7 @@ export class AnswerSheetScanService {
    * Folhas para imprimir. Professor/autor: uma personalizada por aluno da
    * turma (ou os escolhidos), mais uma genérica. Aluno: só a dele.
    */
-  async prepareSheets(userId: string, simulationId: string, studentIds?: string[]) {
+  async prepareSheets(userId: string, simulationId: string, studentIds?: string[], accountType?: string) {
     const sim = await this.loadSimulation(simulationId);
     const staff = this.isStaff(userId, sim);
     if (!staff && !this.isMember(userId, sim)) throw new NotFoundException('Simulado não encontrado.');
@@ -110,7 +113,36 @@ export class AnswerSheetScanService {
       const code = await this.codeFor(template.id, t.id, userId);
       sheets.push({ code, bits: encodeSheetCode(code), studentId: t.id, studentName: t.name || null });
     }
-    return { simulation: { id: sim.id, title: sim.title, className: sim.class?.name ?? null, questionCount: sim.items.length }, layout, sheets };
+    const canCustomize = staff && SHEET_MANAGER_ACCOUNT_TYPES.includes(accountType ?? '');
+    const locked = canCustomize ? (await this.prisma.answerSheetUpload.count({ where: { templateId: template.id } })) > 0 : false;
+    return {
+      simulation: { id: sim.id, title: sim.title, className: sim.class?.name ?? null, questionCount: sim.items.length },
+      layout,
+      sheets,
+      // Cartão antigo (sem opções): o painel parte dos padrões e aplicar passa para o modelo novo.
+      customization: { canCustomize, locked, legacy: !layout.options, options: layout.options ?? defaultSheetOptions({ enemDay: sim.enemDay }), notes: layout.notes ?? [] },
+    };
+  }
+
+  /**
+   * O gestor escolhe o que o cartão traz. Muda a posição das bolhas, então só
+   * vale enquanto nenhuma folha do simulado foi lida — depois disso, as folhas
+   * já impressas precisam continuar legíveis com o layout em que saíram.
+   */
+  async saveSheetOptions(userId: string, accountType: string, simulationId: string, options: SheetOptions) {
+    const sim = await this.loadSimulation(simulationId);
+    if (!this.isStaff(userId, sim) || !SHEET_MANAGER_ACCOUNT_TYPES.includes(accountType)) throw new ForbiddenException('Só o professor ou a gestão do simulado personaliza o cartão-resposta.');
+    const current = await this.prisma.answerSheetTemplate.findUnique({ where: { simulationId }, select: { id: true } });
+    if (current && (await this.prisma.answerSheetUpload.count({ where: { templateId: current.id } })) > 0) {
+      throw new ConflictException('Este cartão já tem folhas lidas: mudar o layout deixaria as folhas impressas ilegíveis. Crie outro simulado para usar um cartão diferente.');
+    }
+    try {
+      await upsertSheetTemplate(this.prisma, sim, options);
+    } catch (error) {
+      if (error instanceof Error && !(error instanceof HttpException)) throw new BadRequestException(error.message);
+      throw error;
+    }
+    return this.prepareSheets(userId, simulationId, undefined, accountType);
   }
 
   /**

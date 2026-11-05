@@ -1,6 +1,6 @@
 # Correção de redação por foto (scanner + IA com RAG e MCP)
 
-O aluno abre a câmera, fotografa a folha, o app digitaliza a imagem no estilo CamScanner, a LuminIA lê a letra e, depois que o aluno confere o texto, corrige pelas cinco competências do Enem. Os critérios de correção vêm da **Cartilha do Participante — A redação no Enem 2025 (Inep)**.
+O aluno abre a câmera, fotografa a folha, o app digitaliza a imagem no estilo CamScanner, a LuminIA lê a letra e, depois que o aluno confere o texto, corrige pelas cinco competências do Enem. Os critérios de correção vêm da cartilha **A redação no Enem 2026 — Cartilha do Participante (Inep)**, publicada on-line em setembro de 2026, com apoio dos manuais oficiais de correção das Competências II e IV.
 
 Rotas: `/app/redacoes/scanner` (novo fluxo) e o botão **Corrigir com a LuminIA** no editor de redação digitada (`/app/redacoes/:id`), que usa a mesma correção.
 
@@ -20,9 +20,13 @@ Biblioteca de imagem: `lumina-app/src/lib/doc-scanner.ts`. É própria, sem depe
 ## Arquitetura da correção (`lumina-backend/src/essay-correction/`)
 
 ```
-knowledge/inep-cartilha-2025.ts   base de conhecimento: grades literais + trechos da cartilha com página
-rag/bm25.ts, rag/knowledge-base.ts recuperação BM25 própria (acento, stopwords, radical simplificado)
-analysis/text-analysis.ts         análise determinística: linhas, parágrafos, conectivos, proposta, riscos de zero
+knowledge/types.ts                contratos de trecho, documento e versão
+knowledge/documents.ts            catálogo: cartilha 2026 vigente, 2025 arquivada, manuais C2/C4 e base Lumina
+knowledge/inep-cartilha-2026.ts   base corrente: grade 2026 + trechos oficiais de C2/C4 + material migrado
+knowledge/inep-cartilha-2025.ts   base arquivada, com ids prefixados "2025:" e fora da busca padrão
+knowledge/index.ts                base unificada e exportações públicas
+rag/bm25.ts, rag/knowledge-base.ts recuperação BM25 própria, filtro por competência e por documento/versão
+analysis/text-analysis.ts         análise determinística: linhas, parágrafos, conectivos, proposta, sinais para a IA
 mcp/essay-mcp-server.ts           servidor MCP "lumina-redacao" (ferramentas abaixo)
 mcp/essay-mcp-client.ts           cliente MCP em memória usado pelo corretor
 mcp/stdio.ts                      o mesmo servidor por stdio, para clientes externos
@@ -35,23 +39,25 @@ model/*.json                      pesos treinados e calibração (versionados)
 
 ### Base de conhecimento (RAG)
 
-- **Fonte:** cartilha 2025 do Inep. O PDF usa fontes sem mapeamento Unicode (~40% das linhas saem embaralhadas na extração de texto), por isso as páginas foram renderizadas e lidas uma a uma.
-- **Grades de níveis** (0 a 200 em cada competência): texto literal.
-- **Demais trechos:** condensações fiéis do texto oficial, com página. Cobrem nota zero, discrepância, cópia, partes desconectadas, título, estrutura sintática, tipos de desvio, recorte temático, repertório (e repertório de bolso), fuga, tangenciamento, tipo textual, projeto de texto, coesão, elementos da proposta e direitos humanos.
-- **Critérios operacionais da Lumina:** dois trechos que **não** estão na cartilha (contagem de elementos da proposta na C5; frequência de desvios por nível na C1). Estão marcados com `source: 'lumina'`. O corretor recebe a instrução de nunca apresentá-los como texto do Inep, e na tela eles aparecem como "Critério operacional da Lumina (não consta da cartilha)".
-- **Recuperação:** BM25 lexical. A base é pequena e usa o vocabulário técnico da própria cartilha. É determinístico (a correção é auditável) e roda sem API.
+- **Fonte vigente:** A redação no Enem 2026 — Cartilha do Participante (Inep), publicada on-line em setembro de 2026 (`publishedAt: 2026-09-21`). O PDF usa fontes sem mapeamento Unicode, por isso as páginas foram conferidas uma a uma.
+- **Grades de níveis** (0 a 200 em cada competência): texto literal da edição de 2026. As páginas de C2 e C4 são 27 e 34; C5, 38.
+- **C2 e C4:** trechos próprios da cartilha 2026, sem herdar o texto de 2025. Na implementação, a C2 é avaliada em três dimensões separadas - recorte temático, tipo dissertativo-argumentativo e repertório (legitimidade, pertinência e produtividade). A C4 avalia relações semânticas, referenciação, articulação entre parágrafos e qualidade da repetição, não a contagem de conectivos.
+- **Manuais oficiais de 2019:** os materiais de leitura das Competências II e IV (Módulos 04 e 06) entram como `status: 'reference'`, restritos à competência correspondente. Eles aprofundam tangenciamento, tipo textual, repertório, repetição e conectivo inadequado; não substituem a cartilha vigente.
+- **Histórico:** a cartilha 2025 permanece arquivada, com ids `2025:<id>`, para auditoria e consulta explícita. Ela não entra na recuperação padrão.
+- **Critérios operacionais da Lumina:** trechos marcados com `source: 'lumina'` **não** são texto do Inep (por exemplo, contagem de elementos da proposta e leitura global do tema). O corretor é instruído a nunca apresentá-los como cartilha; na tela aparecem como "Critério operacional da Lumina (não consta da cartilha)".
+- **Recuperação:** BM25 lexical, com filtro por competência e por documento/versão. A edição vigente é o padrão; documentos arquivados só entram com `documento_versao` explícito. A base é pequena, determinística e roda sem API.
 
 ### Servidor MCP `lumina-redacao`
 
 | Ferramenta | Para quê |
 | --- | --- |
-| `buscar_cartilha` | Trechos da cartilha relevantes para a consulta, com página (filtro por competência). |
+| `buscar_cartilha` | Trechos da cartilha vigente e dos manuais, com documento, versão e página (filtro por competência; `documento_versao` para consultar o arquivo de 2025). |
 | `grade_competencia` | Os seis níveis oficiais de uma competência. |
 | `analisar_redacao` | Métricas determinísticas do texto (sinais, não notas). |
 | `verificar_nota_zero` | Condições de anulação mensuráveis (em branco, até 7 linhas) e alertas para conferir. |
 | `corrigir_redacao` | Correção completa (só no processo do backend, que tem banco e IA). |
 
-Recurso: `cartilha://enem-2025/{id}`, um trecho da base.
+Recursos: `cartilha://enem-2026/{id}` (vigente) e `cartilha://enem-2025/{id}` (arquivo, só para auditoria). Cada resposta de busca informa o documento de origem e a versão.
 
 O corretor **não lê a base diretamente**: ele é um cliente MCP. O que a IA "sabe" sobre a correção é exatamente o que essas ferramentas devolvem, e cada chamada fica registrada na auditoria da correção (`audit_json.toolCalls`).
 
@@ -73,7 +79,7 @@ Configuração de exemplo para um cliente MCP:
 
 1. `analisar_redacao` + `verificar_nota_zero`. "Em branco" e "até 7 linhas" zeram por regra, sem IA.
 2. Para cada competência: `grade_competencia` + `buscar_cartilha`, com consulta montada a partir dos problemas que a análise encontrou.
-3. **Cada competência é uma chamada separada.** O modelo recebe só a tarefa daquela competência (o que avaliar e o que ignorar), a grade e os trechos da cartilha dela e os sinais automáticos que importam para ela (C1: períodos e informalidade; C4: conectivos e repetições; C5: elementos da proposta). Assim, um erro de gramática não contamina a nota da C3, por exemplo. A **C2** também decide anulação e tangenciamento (tema e tipo textual); a **C5**, o respeito aos direitos humanos. Cada resposta traz nota, justificativa, trechos da redação e "como melhorar".
+3. **Cada competência é uma chamada separada.** O modelo recebe só a tarefa daquela competência (o que avaliar e o que ignorar), a grade e os trechos da cartilha dela e os sinais automáticos que importam para ela (C1: períodos e informalidade; C2: cobertura lexical apenas como alerta e termos recorrentes; C4: relações coesivas e repetições; C5: elementos da proposta). Assim, um erro de gramática não contamina a nota da C3, por exemplo. A **C2** também decide anulação e tangenciamento (tema e tipo textual); a **C5**, o respeito aos direitos humanos. Cada resposta traz nota, justificativa, pontos fortes, problemas, trechos literais da redação, explicação do nível e "como melhorar".
 4. **Dois avaliadores independentes** (temperaturas 0,2 e 0,7), 5 chamadas cada. Discrepância = diferença maior que 80 numa competência ou maior que 100 no total (cartilha, p. 6). O **terceiro avaliador reavalia só as competências que divergiram** (se só o total passou de 100, as de maior diferença). Em cada competência, a nota é a média das duas avaliações mais próximas.
 5. **Anulação por voto:** só vale se a maioria das avaliações da C2 anular (os dois avaliadores, ou dois de três). Se só um anular, o terceiro reavalia a C2, e as notas das outras competências são comparadas pelo que cada avaliador deu, sem o zero da anulação.
 6. **Regras aplicadas no código**, não deixadas ao modelo: nota arredondada ao nível válido; tangenciamento limita C2, C3 e C5 a 40; desrespeito aos direitos humanos zera a C5.
@@ -84,6 +90,8 @@ Configuração de exemplo para um cliente MCP:
 
 Custo: 10 chamadas por redação (15 no pior caso), 3 simultâneas (`ESSAY_COMPETENCY_CONCURRENCY`). O `AiService` respeita o limite por minuto de cada modelo (`AI_RPM_LIMITS`; 15/min no Gemini gratuito): acima dele, a chamada espera a vaga.
 
+**Versão do prompt:** `GRADER_PROMPT_VERSION = v3-c2-c4-oficial-2026`. A versão fica gravada na auditoria de cada correção, junto com o documento e a versão da base. Uma calibração só é aplicada se o `promptVersion` for exatamente esse; por isso a calibração antiga (`v2-competencia`) não é reutilizada silenciosamente. As heurísticas de `text-analysis.ts` (cobertura lexical, contagem de conectivos, repetição e parágrafo sem conectivo inicial) são **sinais para a IA conferir**, nunca nota ou anulação automática.
+
 ### Calibração funcional (`grading/calibration.ts`, `model/llm-calibration.json`)
 
 Cada modelo distorce a escala de um jeito em cada competência. Por isso cada competência de cada modelo tem a própria **função** nota bruta → nota esperada, escolhida por validação cruzada (deixando cada redação de fora) entre:
@@ -92,7 +100,9 @@ Cada modelo distorce a escala de um jeito em cada competência. Por isso cada co
 - **reta:** a·bruta + b;
 - **isotônica:** função monotônica definida nos seis níveis (0 a 200) e interpolada entre eles. Corrige compressões que a reta não pega (ex.: o modelo dá 120 tanto às redações de 80 quanto às de 160). Em cada nível, a média humana é puxada para a identidade com peso de 3 redações, para que um nível com pouca amostra não decida sozinho.
 
-A forma mais complexa só é escolhida se errar pelo menos 1 ponto a menos. A calibração vale só para o modelo e a versão de prompt com que foi ajustada (`promptVersion`). Um modelo sem calibração própria recebe a nota bruta, porque a função de um modelo não serve para outro.
+A forma mais complexa só é escolhida se errar pelo menos 3 pontos a menos na validação cruzada (com amostra pequena, ganhos de ~2 pontos eram ruído). A calibração vale só para o modelo e a versão de prompt com que foi ajustada (`promptVersion`). Um modelo sem calibração própria recebe a nota bruta, porque a função de um modelo não serve para outro.
+
+**Estado após a mudança de prompt (04/11/2026):** o `model/llm-calibration.json` existente foi ajustado com o prompt `v2-competencia` e as 174 redações da medição anterior. Como o prompt de C2/C4 foi reformulado, essa calibração **não é aplicada** ao prompt `v3-c2-c4-oficial-2026`; a correção roda com identidade até uma nova rodada de `essay:eval`. Os números de 41,4% → 42,5% de concordância, MAE 124,6 → 126,9, viés −54,7 → −30,3 e C4 com MAE 46,4/QWK 0,393 descrevem o prompt antigo e servem de linha de base, não de validação do prompt novo.
 
 A nota alimenta a estimativa de nota do Enem (`score-estimate.service.ts` já lê `essay_corrections` concluídas).
 
@@ -144,7 +154,7 @@ npm run essay:train                                   # modelo estatístico (sem
 npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30 --inep 3 --max-calls 330   # IA: calibração + teste de um modelo
 ```
 
-- **Dados:** [Essay-BR estendido](https://github.com/lplnufpi/essay-br) (MIT): 6.577 redações avaliadas por profissionais nas cinco competências. É baixado para `lumina-backend/.cache/` (não versionado). A divisão treino/validação/teste é **por tema**, para medir a correção em propostas nunca vistas, como acontece em cada Enem. Também foram usadas as 10 redações nota mil comentadas na cartilha 2025 (cache local).
+- **Dados:** [Essay-BR estendido](https://github.com/lplnufpi/essay-br) (MIT): 6.577 redações avaliadas por profissionais nas cinco competências. É baixado para `lumina-backend/.cache/` (não versionado). A divisão treino/validação/teste é **por tema**, para medir a correção em propostas nunca vistas, como acontece em cada Enem. Também foram usadas as 10 redações nota mil comentadas na cartilha (cache local; a edição vigente é a de 2026).
 - **Métrica principal:** concordância pela regra do próprio Inep. Correção automática e humana "concordam" quando não seriam discrepantes (até 100 de diferença no total e até 80 em cada competência). Também medidos: erro médio, QWK por competência e viés.
 - Cada resposta do modelo fica em cache. `--max-calls` protege a cota diária dos modelos gratuitos, e rodar de novo continua de onde parou.
 
@@ -181,6 +191,31 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30
   - Regra final: ganho mínimo de 3 pontos na validação cruzada e preservação dos extremos (200 continua 200 e 0 continua 0). Resultado: **isotônica na C2** (a única que melhorou fora da amostra: 36 → 33) e **identidade nas outras quatro**.
   - O sistema recalibra sozinho quando houver mais dados (`essay:eval` com amostra maior).
 - Não medido ainda: a produção usa dois avaliadores (+ terceiro por competência). A validação mediu um, por causa da cota.
+
+### Resultados (04/11/2026) — calibração ampliada (180 redações)
+
+> **Linha de base do prompt anterior.** Estes números foram medidos com `v2-competencia`. Depois da reformulação de C2/C4, o prompt passou a `v3-c2-c4-oficial-2026` e a calibração antiga deixou de ser aplicada; é preciso repetir a avaliação para medir o novo prompt. Os valores abaixo não devem ser apresentados como desempenho da versão atual.
+
+**Amostra e custo:** 90 redações da validação (calibração) + 90 do teste (temas inéditos), contra 99 antes. Ficaram 87 + 87 completas; 6 foram descartadas por 503/timeout do Gemini, sem entrar em nenhum número. Foram 395 chamadas em 33,5 min (mediana de 2,8 s por chamada) com `gemini:gemini-3.5-flash-lite`.
+
+**Teste honesto** (calibração ajustada só nas 87 de calibração, medida nas 87 de temas inéditos):
+
+| Métrica | Sem calibração | Com calibração |
+| --- | --- | --- |
+| Concordância pela regra do Inep | 41,4% | **42,5%** |
+| Erro médio no total | 124,6 | 126,9 |
+| Viés médio no total | −54,7 | **−30,3** |
+| Correlação no total | 0,807 | 0,798 |
+| Erro médio C1 / C2 / C3 / C4 / C5 | 35,9 / 27,6 / 24,4 / 46,4 / 38,2 | **33,6** / **26,7** / 24,4 / 46,4 / 38,2 |
+| QWK C1 / C2 / C3 / C4 / C5 | 0,455 / 0,500 / 0,695 / 0,393 / 0,645 | 0,311 / 0,497 / 0,695 / 0,393 / 0,645 |
+
+- **Leitura honesta:** com 87 redações, o ganho de concordância é pequeno (41,4% → 42,5%) e o erro médio não cai (124,6 → 126,9). A diferença de concordância está dentro do ruído (5 redações discordantes para cada lado; McNemar p = 1,0), e a do erro médio também (IC 95%: −4,6 a +9,2 pontos). O 46,7% da medição anterior, com 30 redações, era otimismo de amostra pequena. A calibração continua útil para **reduzir o viés** (a IA subestimava o total em ~55 pontos; passa a ~30) e para melhorar C1/C2 no erro absoluto.
+- **C1:** a isotônica melhora o erro absoluto (35,9 → 33,6) mas piora o QWK (0,455 → 0,311), porque junta níveis vizinhos ao arredondar. É um trade-off explícito; a concordância total sobe.
+- **C3, C4 e C5:** identidade. **C4 continua o gargalo** (erro 46,4, QWK 0,393, acerto exato 21,8%): o modelo concentra 44 das 87 notas em 120, enquanto as humanas vão de 0 a 200. Nenhuma função separa o que o modelo juntou; o próximo ataque é no prompt, não na calibração.
+- **Calibração final do prompt v2** (ajustada nas 174 redações completas, gravada em `model/llm-calibration.json`): isotônica em C1 e C2; identidade em C3, C4 e C5. Na validação cruzada (leave-one-out) por competência: C1 35,2 → 24,4; C2 29,2 → 26,0; C3 27,4; C4 41,1; C5 35,4. Com o prompt v3, esse arquivo permanece como registro histórico e não é aplicado.
+- **Nota mil do Inep:** 1000 / 880 / 920, as mesmas de antes (a calibração não mexe nos extremos).
+- **Modelo estatístico nas mesmas 87:** concordância 44,8%, erro 139,3, viés +39,1. A IA ainda erra menos em valor absoluto, mas a concordância pela regra do Inep é menor que a do modelo estatístico; a vantagem da IA está na correção por competência e na explicação, não em bater a régua de concordância.
+- **O que não foi medido:** os dois avaliadores da produção (a validação usa um por causa da cota).
 
 ### Resultados (31/10/2026)
 
@@ -219,12 +254,23 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 30
 - **O que não foi medido:** a produção usa a média de dois avaliadores (e um terceiro na discrepância), o que reduz o ruído de um avaliador só. A validação mediu um avaliador por redação para caber na cota diária gratuita (29 chamadas).
 - **Ponta a ponta no navegador** (foto → cantos → digitalização → leitura → revisão → correção): funcionou. Rodou com o modelo reserva (`nemotron-3.5-lightning`), porque o `.env` local não tem `AI_ESSAY_MODELS`. Esse modelo deu 40 na C5 a uma proposta com agente, ação, meio e finalidade, o que confirma que o modelo da correção importa.
 
-**Próximo passo para melhorar a nota:** ampliar a calibração para 150–300 redações (algumas sessões de `essay:eval`, graças ao cache) e medir o pipeline completo de dois avaliadores. Com mais dados, uma calibração não linear (isotônica) por competência deve atacar a compressão de escala.
+**Próximo passo para melhorar a nota:** o prompt de C2/C4 já foi reformulado com a cartilha 2026 e os manuais oficiais (`v3-c2-c4-oficial-2026`), mas ainda falta **medir** essa versão com o pipeline completo de dois avaliadores e recalibrar. A amostra de 180 redações de 04/11/2026 mediu o prompt anterior; o ganho honesto foi menor que o da amostra pequena.
+
+## Testes adversariais de C2/C4
+
+A suíte `essay-correction.spec.ts` cobre os casos em que a heurística não pode decidir sozinha:
+
+- C2 com sinônimos e retomadas (cobertura lexical baixa) não vira fuga automática; o texto continua com alerta para leitura global.
+- C4 sem conectivos explícitos e com repetição temática não recebe penalidade automática; a consulta ao RAG fala em repetição referencial, não em "repetição tolerável" ou repertório pouco produtivo.
+- C2 e C4 não misturam trechos: a busca filtrada por competência devolve só o escopo pedido; a grade oficial sempre abre o contexto.
+- O título é tratado como linha escrita e não avaliado nas competências, conforme a cartilha 2026; o trecho de fuga não usa título como prova.
+- O prompt estruturado exige pontos fortes, problemas, explicação do nível, trechos literais e "como melhorar"; se o modelo omitir justificativa/explicação, o parser preenche uma explicação neutra em vez de deixar o campo vazio.
+- A calibração do prompt anterior não é reutilizada no prompt novo.
 
 ## Limites conhecidos
 
 - **Letra manuscrita real:** a leitura foi validada com uma foto sintética (fonte manuscrita, perspectiva, sombra e erros propositais), não com fotos de alunos. Antes de liberar, vale testar com 10–20 fotos reais de folhas de redação.
 - **Cota dos modelos gratuitos:** cada correção usa 10 a 15 chamadas (5 por avaliador) e cada leitura de foto, 1 por página. Com o `gemini-3.5-flash-lite` gratuito (500/dia, 15/min) cabem ~35–45 correções por dia, cerca de 1 por minuto. Com a cota de 4 por aluno no mês, isso dá ~300 alunos ativos. Acima disso, é preciso plano pago.
 - **Cópia dos textos motivadores** (que derruba a C2 e desconta linhas) não é detectada: o sistema não tem os textos motivadores de cada proposta.
-- **Calibração com amostra pequena:** ajustada com 12 redações por causa da cota. O script aceita amostras maiores ao longo de vários dias, graças ao cache.
+- **Calibração pendente para o prompt novo:** a calibração gravada foi ajustada com 174 redações completas (180 coletadas; 6 falharam por 503/timeout) no prompt `v2-competencia`. Ela não vale para `v3-c2-c4-oficial-2026`; até a recalibração, as notas usam a identidade. O script aceita amostras maiores ao longo de vários dias, graças ao cache. O limite atual não é só o tamanho da amostra, mas o sinal da C4: o modelo ainda concentra notas em 120, e o prompt novo precisa ser medido para saber se separa melhor os níveis.
 - A nota é uma **estimativa para estudo**, e a tela diz isso. A nota oficial é da banca do Enem.

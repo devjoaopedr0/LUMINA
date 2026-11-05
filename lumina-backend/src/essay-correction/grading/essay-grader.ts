@@ -26,7 +26,7 @@
  * trecho da cartilha que não lhe foi entregue (é descartada).
  */
 import { EssayTextAnalysis } from '../analysis/text-analysis';
-import { CompetencyId, COMPETENCY_IDS } from '../knowledge/inep-cartilha-2025';
+import { CARTILHA_2026, CompetencyId, COMPETENCY_IDS, KNOWLEDGE_DOCUMENTS, KnowledgeDocument } from '../knowledge';
 import { stripAccents } from '../rag/bm25';
 import type { CartilhaHit, CompetencyGrade, EssayTools } from '../mcp/essay-mcp-client';
 import { applyCalibrationFn, CalibrationFn, IDENTITY_FN } from './calibration';
@@ -38,7 +38,7 @@ export type LlmGenerate = (args: { system: string; prompt: string; temperature: 
  * Versão dos prompts. A calibração é ajustada para uma versão: trocar o
  * prompt muda a distribuição das notas brutas e exige calibrar de novo.
  */
-export const GRADER_PROMPT_VERSION = 'v2-competencia';
+export const GRADER_PROMPT_VERSION = 'v3-c2-c4-oficial-2026';
 
 export type AnnulmentCode =
   | 'EM_BRANCO'
@@ -91,7 +91,14 @@ export interface CompetencyEvaluation {
   score: number;
   /** Nota que o modelo deu, antes da calibração. */
   rawScore?: number;
+  /** Descrição do desempenho que levou ao nível. */
   justification: string;
+  /** Pontos fortes observados, sempre ancorados no texto. */
+  strengths: string[];
+  /** Problemas observados, sempre ancorados no texto. */
+  problems: string[];
+  /** Por que o nível escolhido descreve o texto (não é a nota isolada). */
+  levelExplanation: string;
   /** O que faria a nota subir nesta competência. */
   tip?: string;
   evidence: string[];
@@ -129,10 +136,19 @@ export interface CompetencyResult {
   score: number;
   level: string;
   justification: string;
+  strengths: string[];
+  problems: string[];
+  levelExplanation: string;
   /** O que faria a nota subir nesta competência. */
   tip?: string;
   evidence: string[];
   citations: { id: string; title: string; citation: string }[];
+}
+
+/** Versão da base usada na correção, para auditoria e transparência. */
+export interface GradeKnowledgeInfo {
+  activeDocument: Pick<KnowledgeDocument, 'id' | 'title' | 'version' | 'publishedAt' | 'sourceUrl'>;
+  documents: Pick<KnowledgeDocument, 'id' | 'title' | 'version' | 'publishedAt' | 'status'>[];
 }
 
 export interface EssayGradeResult {
@@ -148,6 +164,7 @@ export interface EssayGradeResult {
   analysis: EssayTextAnalysis;
   toolCalls: { tool: string; at: string }[];
   calibrated: boolean;
+  knowledge: GradeKnowledgeInfo;
 }
 
 export interface GradeInput {
@@ -176,6 +193,23 @@ export interface GraderDependencies {
 const DISCREPANCY_TOTAL = 100;
 const DISCREPANCY_COMPETENCY = 80;
 
+const KNOWLEDGE_INFO: GradeKnowledgeInfo = {
+  activeDocument: {
+    id: CARTILHA_2026.id,
+    title: CARTILHA_2026.title,
+    version: CARTILHA_2026.version,
+    publishedAt: CARTILHA_2026.publishedAt,
+    sourceUrl: CARTILHA_2026.sourceUrl,
+  },
+  documents: KNOWLEDGE_DOCUMENTS.map((document) => ({
+    id: document.id,
+    title: document.title,
+    version: document.version,
+    publishedAt: document.publishedAt,
+    status: document.status,
+  })),
+};
+
 const COMPETENCY_NAMES: Record<CompetencyId, string> = {
   C1: 'domínio da escrita formal',
   C2: 'compreensão do tema e repertório',
@@ -184,22 +218,25 @@ const COMPETENCY_NAMES: Record<CompetencyId, string> = {
   C5: 'proposta de intervenção',
 };
 
+const CARTILHA_2026_CITATION = `${CARTILHA_2026.title} (Inep), ${CARTILHA_2026.version}`;
+const annulmentCitation = (pages: string) => `${CARTILHA_2026_CITATION}, p. ${pages}`;
+
 const ANNULMENT_CITATIONS: Record<AnnulmentCode, string> = {
-  EM_BRANCO: 'Cartilha do Participante Enem 2025 (Inep), p. 7',
-  TEXTO_INSUFICIENTE: 'Cartilha do Participante Enem 2025 (Inep), p. 7',
-  FUGA_AO_TEMA: 'Cartilha do Participante Enem 2025 (Inep), p. 24',
-  TIPO_TEXTUAL: 'Cartilha do Participante Enem 2025 (Inep), p. 25–26',
-  PARTE_DESCONECTADA: 'Cartilha do Participante Enem 2025 (Inep), p. 8–9',
-  IDENTIFICACAO: 'Cartilha do Participante Enem 2025 (Inep), p. 7',
-  LINGUA_ESTRANGEIRA: 'Cartilha do Participante Enem 2025 (Inep), p. 8',
-  ILEGIVEL: 'Cartilha do Participante Enem 2025 (Inep), p. 8',
+  EM_BRANCO: annulmentCitation('7'),
+  TEXTO_INSUFICIENTE: annulmentCitation('7'),
+  FUGA_AO_TEMA: annulmentCitation('25'),
+  TIPO_TEXTUAL: annulmentCitation('26–27'),
+  PARTE_DESCONECTADA: annulmentCitation('8–9'),
+  IDENTIFICACAO: annulmentCitation('8'),
+  LINGUA_ESTRANGEIRA: annulmentCitation('8'),
+  ILEGIVEL: annulmentCitation('8'),
 };
 
 const COMPETENCY_QUERIES: Record<CompetencyId, string> = {
   C1: 'desvios gramaticais convenções da escrita estrutura sintática escolha de registro vocabular',
-  C2: 'tema recorte repertório sociocultural produtivo tipo dissertativo-argumentativo proposição argumentação conclusão',
+  C2: 'tema recorte leitura global tangenciamento fuga repertório legitimidade pertinência produtividade repertório de bolso tipo dissertativo-argumentativo',
   C3: 'projeto de texto desenvolvimento dos argumentos autoria organização ponto de vista',
-  C4: 'coesão conectivos operadores argumentativos referenciação articulação entre parágrafos',
+  C4: 'coesão referencial sequencial articulação entre parágrafos referenciação repetição conectivo inadequado operadores argumentativos',
   C5: 'proposta de intervenção elementos ação agente meio finalidade detalhamento',
 };
 
@@ -212,16 +249,20 @@ export function buildCompetencyQuery(competency: CompetencyId, analysis: EssayTe
       if (analysis.longestSentenceWords > 60) extra.push('períodos truncados justaposição pontuação');
       break;
     case 'C2':
-      if (analysis.themeCoverage !== null && analysis.themeCoverage < 0.6) extra.push('fuga ao tema tangenciamento abordagem parcial');
-      extra.push('repertório de bolso');
-      if (analysis.paragraphs < 3) extra.push('estrutura proposição argumentação conclusão');
+      // A cobertura lexical é só um gatilho de leitura: nunca vira conclusão
+      // de fuga. A consulta pede os critérios de recorte e de repertório.
+      if (analysis.themeCoverage !== null && analysis.themeCoverage < 0.6) extra.push('cobertura lexical auxiliar leitura global do tema tangenciamento');
+      if (analysis.repeatedWords.length) extra.push('termos recorrentes do tema retomadas repertório');
+      if (analysis.paragraphs < 3) extra.push('tipo textual estrutura proposição argumentação conclusão');
       break;
     case 'C3':
       if (analysis.paragraphs < 3) extra.push('informações soltas sem desenvolvimento');
       break;
     case 'C4':
-      if (analysis.connectives.overused.length || analysis.repeatedWords.length) extra.push('repetição conector inadequado substituição');
-      if (analysis.paragraphs <= 1) extra.push('ausência de paragrafação');
+      if (analysis.connectives.overused.length || analysis.repeatedWords.length) extra.push('repetição referencial progressão inadequação semântica operador argumentativo');
+      if (analysis.connectives.distinct <= 1) extra.push('coesão referencial justaposição sem conectivo explícito');
+      if (analysis.paragraphs <= 1) extra.push('ausência de paragrafação monobloco');
+      if (analysis.connectives.paragraphsWithoutLink.length) extra.push('articulação por referenciação elipse continuidade semântica');
       break;
     case 'C5':
       if (analysis.humanRightsFlags.length) extra.push('direitos humanos violência justiça com as próprias mãos');
@@ -241,19 +282,21 @@ interface CompetencyContext {
 /** O que cada chamada avalia — e o que ela deve ignorar. */
 const COMPETENCY_TASK: Record<CompetencyId, string> = {
   C1: 'Avalie SOMENTE a Competência 1 — domínio da modalidade escrita formal: desvios gramaticais (concordância, regência, crase, pontuação), de convenção da escrita (ortografia, acentuação, maiúsculas), estrutura sintática (períodos truncados ou justapostos) e escolha de registro. Não avalie tema, argumentos, coesão nem proposta.',
-  C2: 'Avalie SOMENTE a Competência 2 — compreensão da proposta: abordagem completa do tema (o recorte, não só o assunto amplo), estrutura do tipo dissertativo-argumentativo (proposição, argumentação, conclusão) e repertório sociocultural (legitimado, pertinente ao tema e usado de forma produtiva). Decida também se a redação deve ser anulada e se tangencia o tema.',
+  C2: 'Avalie SOMENTE a Competência 2 — compreensão da proposta, em três dimensões separadas: (a) recorte temático: o texto desenvolve o tema específico e os elementos do recorte, não apenas o assunto amplo; (b) tipo dissertativo-argumentativo: defesa de ponto de vista com proposição, argumentação e conclusão, sem predominância de narração, descrição, poema ou depoimento; (c) repertório sociocultural: verifique legitimidade (referência reconhecida, não inventada), pertinência ao recorte e produtividade argumentativa (o repertório é interpretado e sustenta a tese, não apenas citado). Não use contagem de palavras do tema como prova de fuga. Decida também, com cautela, se há fuga total, tangenciamento ou anulação por tipo textual.',
   C3: 'Avalie SOMENTE a Competência 3 — seleção, relação, organização e interpretação de informações, fatos e opiniões em defesa de um ponto de vista: projeto de texto, desenvolvimento e aprofundamento dos argumentos, autoria. Não avalie gramática, conectivos nem a proposta.',
-  C4: 'Avalie SOMENTE a Competência 4 — mecanismos linguísticos de coesão: conectivos entre parágrafos e entre períodos, referenciação (pronomes, sinônimos, expressões resumitivas), repetições e conectores inadequados. Não avalie o mérito dos argumentos nem a gramática em geral.',
+  C4: 'Avalie SOMENTE a Competência 4 — articulação textual: relações semânticas entre ideias, referenciação (pronomes, sinônimos, hiperônimos, expressões resumitivas, elipse), progressão entre parágrafos e adequação dos recursos coesivos. A quantidade de conectivos, por si só, não é nota: avalie se as relações lógicas são recuperáveis e se a repetição prejudica ou não a clareza. Não exija conectivo no início de cada parágrafo e não penalize repetição temática por si só.',
   C5: 'Avalie SOMENTE a Competência 5 — proposta de intervenção: presença e detalhamento dos elementos (agente, ação, modo/meio, finalidade/efeito e detalhamento), articulação com a discussão do texto e respeito aos direitos humanos.',
 };
 
 const SYSTEM_PROMPT = `Você é avaliador(a) da redação do Enem, formado(a) em Letras, treinado(a) pela Matriz de Referência do Inep.
-Nesta tarefa você avalia UMA competência, usando SOMENTE os critérios dos trechos da cartilha fornecidos.
+Nesta tarefa você avalia UMA competência, usando SOMENTE os critérios dos trechos oficiais fornecidos.
 Regras:
-- A nota é exatamente um destes valores: 0, 40, 80, 120, 160 ou 200. Escolha o nível cujo descritor melhor descreve o texto NESTA competência; use a escala inteira (200 para o que atende plenamente ao descritor, 0 ou 40 para o que quase não atende).
-- Fundamente a nota com trechos copiados LITERALMENTE da redação (até 3) e com os ids dos trechos da cartilha usados.
+- A nota é exatamente um destes valores: 0, 40, 80, 120, 160 ou 200. Escolha o nível cujo descritor melhor descreve o texto NESTA competência; use a escala inteira.
+- Fundamente a nota com trechos copiados LITERALMENTE da redação (até 3) e com os ids dos trechos oficiais usados. Nunca invente citação, referência ou problema que não esteja no texto.
+- Separe o que é elogio, o que é problema e a explicação do nível. "pontos_fortes" e "problemas" devem ser listas curtas, específicas e ancoradas no texto; "explicacao_nivel" deve justificar por que o descritor escolhido se aplica, sem repetir a nota.
 - Trechos marcados como "critério operacional da Lumina" não são texto do Inep: use-os como guia de consistência, sem dizer que são da cartilha.
-- Escreva em português, dirigindo-se ao(à) estudante, de forma direta e específica: a justificativa (2 a 4 frases) diz o que levou ao nível; "como_melhorar" (1 a 2 frases) diz o que faria a nota subir.
+- Sinais automáticos são indícios, não notas: cobertura lexical, contagem de conectivos, repetição de palavras e parágrafos sem conectivo inicial não decidem a competência.
+- Escreva em português, dirigindo-se ao(à) estudante, de forma direta e específica: a justificativa (2 a 4 frases) descreve o desempenho; "como_melhorar" (1 a 2 frases) diz o que faria a nota subir.
 Responda APENAS com um objeto JSON válido, sem texto antes ou depois.`;
 
 /** Sinais automáticos relevantes para cada competência. */
@@ -268,18 +311,21 @@ function competencySignals(competency: CompetencyId, analysis: EssayTextAnalysis
     case 'C2':
       return [
         shape,
-        ...(analysis.themeCoverage !== null ? [`Cobertura dos termos do tema: ${Math.round(analysis.themeCoverage * 100)}%${analysis.themeTermsMissing.length ? ` (ausentes: ${analysis.themeTermsMissing.join(', ')})` : ''}.`] : []),
-        ...zeroAlerts.map((w) => `Possível anulação (confira lendo o texto): ${w}`),
+        ...(analysis.themeCoverage !== null
+          ? [`Cobertura lexical dos termos do tema: ${Math.round(analysis.themeCoverage * 100)}%${analysis.themeTermsMissing.length ? ` (ausentes: ${analysis.themeTermsMissing.join(', ')})` : ''}. Sinal auxiliar: leia o recorte desenvolvido, os sinônimos, as retomadas e os exemplos antes de concluir fuga ou tangenciamento.`]
+          : []),
+        ...(analysis.repeatedWords.length ? [`Termos recorrentes no texto (podem ser temáticos/referenciais): ${analysis.repeatedWords.map((w) => `${w.word} (${w.count}x)`).join(', ')}.`] : []),
+        ...zeroAlerts.map((w) => `Alerta objetivo para conferir (não é anulação automática): ${w}`),
       ];
     case 'C3':
       return [shape];
     case 'C4':
       return [
         shape,
-        `Conectivos distintos: ${analysis.connectives.distinct} (${Object.entries(analysis.connectives.byRelation).map(([r, l]) => `${r}: ${l?.join(', ')}`).join('; ') || 'nenhum'}).`,
-        ...(analysis.connectives.overused.length ? [`Conectivos repetidos: ${analysis.connectives.overused.join(', ')}.`] : []),
-        ...(analysis.connectives.paragraphsWithoutLink.length ? [`Parágrafos que não começam com elemento de ligação: ${analysis.connectives.paragraphsWithoutLink.join(', ')}.`] : []),
-        ...(analysis.repeatedWords.length ? [`Palavras repetidas: ${analysis.repeatedWords.map((w) => `${w.word} (${w.count}x)`).join(', ')}.`] : []),
+        `Relações coesivas reconhecidas: ${analysis.connectives.distinct} conectivo(s) distinto(s) (${Object.entries(analysis.connectives.byRelation).map(([r, l]) => `${r}: ${l?.join(', ')}`).join('; ') || 'nenhum'}). A contagem é auxiliar; avalie as relações semânticas e a referenciação.`,
+        ...(analysis.connectives.overused.length ? [`Conectivos repetidos (${analysis.connectives.overused.join(', ')}): confira se a repetição prejudica a relação lógica ou é apenas ênfase.`] : []),
+        ...(analysis.connectives.paragraphsWithoutLink.length ? [`Parágrafos sem conectivo explícito na abertura: ${analysis.connectives.paragraphsWithoutLink.join(', ')}. Isso não é falha automática: a articulação pode ocorrer por referenciação, elipse ou continuidade semântica.`] : []),
+        ...(analysis.repeatedWords.length ? [`Repetições detectadas: ${analysis.repeatedWords.map((w) => `${w.word} (${w.count}x)`).join(', ')}. Podem ser temáticas ou referenciais; só penalize se prejudicarem a progressão ou a clareza.`] : []),
       ];
     case 'C5':
       return [
@@ -302,9 +348,20 @@ const EXTRA_FIELDS: Record<CompetencyId, string> = {
 
 const EXTRA_RULES: Record<CompetencyId, string> = {
   C1: '',
-  C2: '\nAnulação (nota zero total) só nos casos da cartilha: fuga total ao tema, não atendimento ao tipo dissertativo-argumentativo, parte deliberadamente desconectada, identificação, texto predominantemente em língua estrangeira. Na dúvida, não anule. Tangenciamento = aborda só o assunto amplo, não o recorte do tema (limita C2, C3 e C5 a 40).',
+  C2: `
+Regras específicas da C2:
+- Leia o texto inteiro antes de decidir. Fuga ao tema é desenvolver outro tema; tangenciamento é abordar apenas o assunto amplo, sem o recorte. Não conclua fuga porque faltam palavras exatas do tema: sinônimos, paráfrases e retomadas contam.
+- Trate as três dimensões separadamente: quando houver evidência, identifique o ponto forte ou o problema com o prefixo [recorte], [tipo textual] ou [repertório]. Não transforme uma falha de repertório em fuga ao tema, nem uma falha de estrutura em problema de recorte.
+- Repertório: avalie legitimidade, pertinência e produtividade. Citar autor/obra não garante nota; repertório de bolso, genérico ou apenas justaposto é problema de produtividade.
+- Anulação (nota zero total) só nos casos da cartilha: fuga total ao tema, predominância de outro tipo textual, parte deliberadamente desconectada, identificação ou texto predominantemente em língua estrangeira. Na dúvida, não anule.
+- Tangenciamento limita C2, C3 e C5 a 40; marque "tangenciamento" apenas se o recorte temático tiver sido realmente abandonado.`,
   C3: '',
-  C4: '',
+  C4: `
+Regras específicas da C4:
+- Avalie relações semânticas e referenciação, não a quantidade de conectivos. Poucos conectivos podem ser suficientes se a articulação estiver clara; muitos conectivos podem ser inadequados se não expressarem a relação pretendida.
+- Não exija conectivo no início de cada parágrafo. A articulação pode ser feita por pronomes, sinônimos, hiperônimos, expressões resumitivas, elipse, ordem dos enunciados e continuidade temática.
+- Repetição de palavras ou de termos do tema pode ser necessária para manter o referente. Só aponte problema quando a repetição ou a substituição inadequada prejudicar a progressão, a clareza ou a relação lógica.
+- "Repertório diversificado de recursos coesivos" é qualitativo: descreva quais relações o texto constrói e onde há inadequação real.`,
   C5: '\nProposta que desrespeite os direitos humanos zera a C5: marque "direitos_humanos_desrespeitados" só se for o caso.',
 };
 
@@ -331,7 +388,8 @@ ${input.text}
 """
 
 Formato da resposta:
-{"nota": 0, "justificativa": "...", "trechos": ["..."], "referencias": ["${competency.toLowerCase()}-niveis"], "como_melhorar": "..."${EXTRA_FIELDS[competency]}}`;
+{"nota": 0, "justificativa": "...", "pontos_fortes": ["..."], "problemas": ["..."], "explicacao_nivel": "...", "trechos": ["..."], "referencias": ["${competency.toLowerCase()}-niveis"], "como_melhorar": "..."${EXTRA_FIELDS[competency]}}
+Use "trechos" somente com citações literais da redação; use "problemas" para o que impede nota maior e "pontos_fortes" para o que o texto já faz bem. Se não houver ponto forte ou problema, devolva lista vazia.`;
 }
 
 /** Extrai o primeiro objeto JSON da resposta (modelos às vezes cercam com ```). */
@@ -346,6 +404,14 @@ export function extractJson(text: string): unknown {
 
 function normalizeQuote(text: string): string {
   return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function textList(value: unknown, limit = 5, maxLength = 300): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim().slice(0, maxLength))
+    .slice(0, limit);
 }
 
 /** Mantém só citações que estão de fato na redação (evita trecho inventado). */
@@ -396,14 +462,20 @@ export function parseCompetencyEvaluation(
   const clamped = snapToLevel(Math.min(200, Math.max(0, rawScore)));
   const fn = calibrationFor(calibration, model).perCompetency[competency];
   const refs = Array.isArray(data.referencias) ? data.referencias.filter((r): r is string => typeof r === 'string' && allowedRefs.has(r)) : [];
+  const justification = String(data.justificativa ?? '').trim().slice(0, 1500);
+  const levelExplanation = String(data.explicacao_nivel ?? '').trim().slice(0, 900) || justification;
+  const fallback = 'A nota corresponde ao nível cujo descritor melhor descreve o desempenho observado nesta competência.';
   const run: CompetencyRun = {
     competency,
     evaluator: label,
     model,
     rawScore: clamped,
     score: snapToLevel(applyCalibrationFn(fn, clamped)),
-    justification: String(data.justificativa ?? '').trim().slice(0, 1500),
-    tip: String(data.como_melhorar ?? '').trim().slice(0, 600),
+    justification: justification || levelExplanation || fallback,
+    strengths: textList(data.pontos_fortes),
+    problems: textList(data.problemas),
+    levelExplanation: levelExplanation || fallback,
+    tip: String(data.como_melhorar ?? '').trim().slice(0, 600) || 'Reescreva os trechos apontados em "problemas" e compare a nova versão com o descritor do nível seguinte.',
     evidence: verifiedEvidence(data.trechos, essay),
     references: [...new Set(refs)],
   };
@@ -434,7 +506,17 @@ export function assembleRun(label: string, parts: Partial<Record<CompetencyId, C
     if (tangencia && (id === 'C2' || id === 'C3' || id === 'C5')) score = Math.min(score, 40);
     if (humanRightsViolation && id === 'C5') score = 0;
     if (annulment && !options.ignoreAnnulment) score = 0;
-    competencies[id] = { score, rawScore: part.rawScore, justification: part.justification, tip: part.tip, evidence: part.evidence, references: part.references };
+    competencies[id] = {
+      score,
+      rawScore: part.rawScore,
+      justification: part.justification,
+      strengths: part.strengths,
+      problems: part.problems,
+      levelExplanation: part.levelExplanation,
+      tip: part.tip,
+      evidence: part.evidence,
+      references: part.references,
+    };
   }
   const models = [...new Set(Object.values(parts).map((p) => p!.model))];
   return {
@@ -517,7 +599,18 @@ function featureRun(model: FeatureModelWeights, analysis: EssayTextAnalysis, tex
         : 'Nenhuma proposta de intervenção identificada nos últimos parágrafos.',
     ],
   };
-  for (const id of COMPETENCY_IDS) competencies[id] = { score: snapToLevel(raw[id]), justification: [...signals[id], note].join(' '), evidence: [], references: [] };
+  for (const id of COMPETENCY_IDS) {
+    const explanation = [...signals[id], note].join(' ');
+    competencies[id] = {
+      score: snapToLevel(raw[id]),
+      justification: explanation,
+      strengths: [],
+      problems: [],
+      levelExplanation: signals[id].length ? signals[id].join(' ') : note,
+      evidence: [],
+      references: [],
+    };
+  }
   if (analysis.humanRightsFlags.length) competencies.C5.score = Math.min(competencies.C5.score, 40);
   return {
     evaluator: 'modelo-estatistico',
@@ -558,7 +651,7 @@ function annulledResult(code: AnnulmentCode, explanation: string, analysis: Essa
   return {
     total: 0,
     annulment: { code, explanation, citation: ANNULMENT_CITATIONS[code] },
-    competencies: COMPETENCY_IDS.map((id) => ({ competency: id, score: 0, level: '', justification: '', evidence: [], citations: [] })),
+    competencies: COMPETENCY_IDS.map((id) => ({ competency: id, score: 0, level: '', justification: explanation, strengths: [], problems: [], levelExplanation: explanation, evidence: [], citations: [] })),
     generalFeedback: explanation,
     confidence: method === 'regra' ? 1 : 0.7,
     method,
@@ -567,6 +660,7 @@ function annulledResult(code: AnnulmentCode, explanation: string, analysis: Essa
     analysis,
     toolCalls: [...tools.calls],
     calibrated: false,
+    knowledge: KNOWLEDGE_INFO,
   };
 }
 
@@ -701,6 +795,9 @@ export class EssayGrader {
           score: run.competencies[id].score,
           level: levelText(gradeById.get(id), run.competencies[id].score),
           justification: run.competencies[id].justification,
+          strengths: run.competencies[id].strengths,
+          problems: run.competencies[id].problems,
+          levelExplanation: run.competencies[id].levelExplanation,
           evidence: [],
           citations: [{ id: `${id.toLowerCase()}-niveis`, ...(prepared.chunkInfo.get(`${id.toLowerCase()}-niveis`) ?? { title: id, citation: '' }) }],
         })),
@@ -712,6 +809,7 @@ export class EssayGrader {
         analysis,
         toolCalls: [...tools.calls],
         calibrated: false,
+        knowledge: KNOWLEDGE_INFO,
       };
     }
 
@@ -768,6 +866,9 @@ export class EssayGrader {
         score,
         level: levelText(gradeById.get(id), score),
         justification: lead.run.competencies[id].justification,
+        strengths: lead.run.competencies[id].strengths,
+        problems: lead.run.competencies[id].problems,
+        levelExplanation: lead.run.competencies[id].levelExplanation,
         evidence: dedupeQuotes(used.flatMap((c) => c.run.competencies[id].evidence)).slice(0, 3),
         citations: (refs.length ? refs : [`${id.toLowerCase()}-niveis`]).map((ref) => ({ id: ref, ...(prepared.chunkInfo.get(ref) ?? { title: ref, citation: '' }) })),
         tip: lead.run.competencies[id].tip,
@@ -791,6 +892,7 @@ export class EssayGrader {
       analysis,
       toolCalls: [...tools.calls],
       calibrated: [...models].some((m) => calibrationFor(this.deps.calibration, m).fitted),
+      knowledge: KNOWLEDGE_INFO,
     };
   }
 }

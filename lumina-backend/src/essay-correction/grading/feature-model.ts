@@ -11,7 +11,7 @@
  * determinística; os pesos vêm de `scripts/essay-eval/train.ts` e ficam em
  * `feature-model.json`. Sem o JSON (modelo não treinado), não há previsão.
  */
-import { CompetencyId, COMPETENCY_IDS } from '../knowledge/inep-cartilha-2025';
+import { CompetencyId, COMPETENCY_IDS } from '../knowledge';
 import { EssayTextAnalysis } from '../analysis/text-analysis';
 
 export const FEATURE_NAMES = [

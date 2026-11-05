@@ -6,7 +6,7 @@
  * competência (cartilha 2025, p. 6). É a régua que decide se, no Enem, uma
  * terceira correção seria chamada.
  */
-import { CompetencyId, COMPETENCY_IDS } from '../knowledge/inep-cartilha-2025';
+import { CompetencyId, COMPETENCY_IDS } from '../knowledge';
 
 export interface ScoredPair {
   human: Record<CompetencyId, number>;

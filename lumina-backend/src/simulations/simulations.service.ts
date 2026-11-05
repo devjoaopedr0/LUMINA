@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { assertInstitutionClassMember } from '../workspaces/class-membership-policy';
 import { PrismaService } from '../database/prisma.service';
@@ -16,6 +16,17 @@ const INSTITUTION_STAFF_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR'];
 /** Corrigir um simulado longo mexe no domínio de dezenas de tópicos: precisa
  *  de mais que os 5 s padrão de uma transação. */
 const SUBMIT_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
+
+/** Validade do link de convite da turma. */
+const CLASS_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Assinatura do link: turma + validade + código atual da turma (trocar o
+ *  código invalida os links antigos). Sem tabela nova: o link se confere sozinho. */
+function signClassInvite(classId: string, expiresAt: number, joinCode: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET não configurado.');
+  return createHmac('sha256', secret).update(`class-invite:${classId}:${expiresAt}:${joinCode}`).digest('base64url');
+}
 
 @Injectable()
 export class SimulationsService {
@@ -338,6 +349,35 @@ export class SimulationsService {
   /** Detalhe + histórico da turma: composição (disciplina, período, ano,
    * professores, alunos) e a linha do tempo de atividades/simulados criados
    * nela, com contagem de entregas — a base de "histórico da turma". */
+  /** Link de convite da turma (só quem gerencia). É o único jeito de um aluno
+   *  independente entrar numa turma: o código digitado é recusado para ele. */
+  async classInviteLink(userId: string, classId: string) {
+    const access = await this.assertCanViewClass(userId, classId);
+    const canManage = access.createdBy === userId || access.coordinatorId === userId || access.teachers.length > 0 || await this.hasAnyWorkspacePermission(userId, access.workspaceId, ['CLASS_MANAGE']);
+    if (!canManage) throw new ForbiddenException('Só quem gerencia a turma gera o link de convite.');
+    const row = await this.prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { joinCode: true, archived: true } });
+    if (row.archived) throw new BadRequestException('Desarquive a turma antes de convidar alunos.');
+    const expiresAt = Date.now() + CLASS_INVITE_TTL_MS;
+    const payload = Buffer.from(`${classId}.${expiresAt}`).toString('base64url');
+    return { token: `${payload}.${signClassInvite(classId, expiresAt, row.joinCode)}`, expiresAt: new Date(expiresAt).toISOString() };
+  }
+
+  async acceptClassInvite(userId: string, token: string) {
+    const invalid = new BadRequestException('Link de convite inválido ou expirado. Peça um novo ao professor.');
+    const [payload, signature] = token.split('.');
+    if (!payload || !signature) throw invalid;
+    const [classId, expiresRaw] = Buffer.from(payload, 'base64url').toString().split('.');
+    const expiresAt = Number(expiresRaw);
+    if (!classId || !Number.isFinite(expiresAt) || expiresAt < Date.now()) throw invalid;
+    const row = await this.prisma.class.findUnique({ where: { id: classId }, select: { id: true, name: true, joinCode: true, archived: true } });
+    if (!row || row.archived) throw invalid;
+    const expected = Buffer.from(signClassInvite(classId, expiresAt, row.joinCode));
+    const given = Buffer.from(signature);
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) throw invalid;
+    await this.enrollClassMember(row.id, userId);
+    return { id: row.id, name: row.name, isTeacher: false };
+  }
+
   async classDetail(userId: string, classId: string) {
     const access = await this.assertCanViewClass(userId, classId);
     const canManage = access.createdBy === userId || access.coordinatorId === userId || access.teachers.length > 0 || await this.hasAnyWorkspacePermission(userId, access.workspaceId, ['CLASS_MANAGE']);

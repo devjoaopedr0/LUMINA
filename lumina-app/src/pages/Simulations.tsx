@@ -81,6 +81,8 @@ export function Simulations() {
   const [subjectId, setSubjectId] = useState('');
   const [topics, setTopics] = useState<Topic[]>([]);
   const [topicId, setTopicId] = useState('');
+  // Aluno independente não entra por código: só pelo link de convite do professor.
+  const isIndependent = user?.accountType === 'STUDENT_INDEPENDENT';
   const canGenerateAnswerSheet = !!user?.accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(user.accountType);
 
   // Quantidade desejada: em vez de marcar questão por questão, pede N e o
@@ -332,7 +334,7 @@ export function Simulations() {
     <div className="mx-auto max-w-5xl">
       <div className="print:hidden"><Link to="/app" className="text-sm font-semibold">← Voltar à visão geral</Link></div>
       <h1 className="mt-6 text-3xl font-bold">Simulados</h1>
-      <Link to="/app/turmas" className="my-4 inline-block underline print:hidden">Gerenciar turmas, vínculos e histórico</Link>
+      {(!isIndependent || classes.length > 0) && <Link to="/app/turmas" className="my-4 inline-block underline print:hidden">Gerenciar turmas, vínculos e histórico</Link>}
       {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700 print:hidden">{error}</p>}
 
       {id ? simulation ? <>
@@ -461,7 +463,7 @@ export function Simulations() {
         <section className="break-before-page rounded-xl border bg-white p-6">
           <h2 className="text-xl font-bold">Cartão-resposta</h2>
           <p className="text-xs">Lumina · versão {simulation.sheetVersion} · simulado {simulation.id}</p>
-          <p className="my-5">Nome: ____________________________________ Turma: __________________</p>
+          <p className="my-5">Nome: ____________________________________{(!isIndependent || classes.length > 0) && <> Turma: __________________</>}</p>
           <p className="mb-5 text-sm">Pinte completamente uma bolinha por questão. Confira o número antes de marcar.</p>
           <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 print:grid-cols-2">
             {simulation.items.map(item => (
@@ -475,7 +477,7 @@ export function Simulations() {
       </> : <p>Carregando simulado...</p> : (
         <>
           {/* Create class / join class */}
-          <div className="my-7 grid gap-5 md:grid-cols-2">
+          {!isIndependent && <div className="my-7 grid gap-5 md:grid-cols-2">
             {user?.teacherSubject && (
               <form className="rounded-xl border bg-white p-5" onSubmit={e => { e.preventDefault(); void run(async () => { await apiCreateSimulationClass(token(), className); setClassName(''); }); }}>
                 <h2 className="font-bold">Criar turma</h2>
@@ -488,7 +490,7 @@ export function Simulations() {
               <input required maxLength={12} value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="Código de ingresso" className="my-3 w-full rounded-lg border p-2" />
               <button disabled={busy} className="rounded-lg bg-graphite px-4 py-2 text-white">Entrar</button>
             </form>
-          </div>
+          </div>}
           {classes.length > 0 && (
             <section className="mb-7 rounded-xl border bg-white p-5">
               <h2 className="font-bold">Minhas turmas</h2>

@@ -11,6 +11,11 @@ export class JoinClassDto {
   joinCode!: string;
 }
 
+export class AcceptClassInviteDto {
+  @IsString() @IsNotEmpty() @MaxLength(300)
+  token!: string;
+}
+
 export class CreateSimulationDto {
   @IsString() @IsNotEmpty() @MaxLength(160)
   title!: string;

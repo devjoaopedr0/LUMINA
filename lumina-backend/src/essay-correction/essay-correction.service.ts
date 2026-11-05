@@ -11,7 +11,8 @@ import { EssayCorrectionStatus, EssayScanStatus, Prisma } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../database/prisma.service';
 import { countWords } from '../essays/essays.dto';
-import { EssayGradeResult, EssayGrader, GRADER_PROMPT_VERSION, LlmCalibration } from './grading/essay-grader';
+import { EssayGradeResult, EssayGrader, GradeKnowledgeInfo, GRADER_PROMPT_VERSION, LlmCalibration } from './grading/essay-grader';
+import { CARTILHA_2025, KNOWLEDGE_DOCUMENTS } from './knowledge';
 import { FeatureModelWeights } from './grading/feature-model';
 import { EssayMcpClient } from './mcp/essay-mcp-client';
 import featureModelJson from './model/feature-model.json';
@@ -330,6 +331,7 @@ export class EssayCorrectionService {
               calibrated: result.calibrated,
               runs: result.runs.map((r) => ({ evaluator: r.evaluator, method: r.method, model: r.model, total: r.total, annulment: r.annulment, tangencia: r.tangencia, scores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.score])), rawScores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.rawScore ?? null])) })),
               promptVersion: GRADER_PROMPT_VERSION,
+              knowledge: result.knowledge,
               toolCalls: result.toolCalls,
               analysis: result.analysis,
               ocr,
@@ -344,7 +346,15 @@ export class EssayCorrectionService {
             competency: c.competency,
             score: c.score,
             justification: c.justification || null,
-            evidenceJson: { level: c.level, evidence: c.evidence, citations: c.citations, tip: c.tip ?? null } as Prisma.InputJsonValue,
+            evidenceJson: {
+              level: c.level,
+              strengths: c.strengths,
+              problems: c.problems,
+              levelExplanation: c.levelExplanation,
+              evidence: c.evidence,
+              citations: c.citations,
+              tip: c.tip ?? null,
+            } as Prisma.InputJsonValue,
           })),
         });
       });
@@ -381,7 +391,14 @@ export class EssayCorrectionService {
         include: { details: true },
       });
     }
-    const audit = (c.auditJson ?? {}) as { method?: string; discrepancy?: unknown; calibrated?: boolean; runs?: { evaluator: string; model: string | null; total: number }[]; analysis?: { lines?: number; linesSource?: string; words?: number; paragraphs?: number; warnings?: string[]; proposal?: unknown } };
+    const audit = (c.auditJson ?? {}) as {
+      method?: string;
+      discrepancy?: unknown;
+      calibrated?: boolean;
+      runs?: { evaluator: string; model: string | null; total: number }[];
+      analysis?: { lines?: number; linesSource?: string; words?: number; paragraphs?: number; warnings?: string[]; proposal?: unknown };
+      knowledge?: GradeKnowledgeInfo;
+    };
     const order = ['C1', 'C2', 'C3', 'C4', 'C5'];
     return {
       essayId,
@@ -395,6 +412,18 @@ export class EssayCorrectionService {
       method: audit.method ?? null,
       calibrated: audit.calibrated ?? false,
       discrepancy: audit.discrepancy ?? null,
+      knowledge: audit.knowledge ?? {
+        // Correções anteriores ao registro de versão usavam a cartilha de
+        // 2025. Não rotulamos o histórico com a base de 2026.
+        activeDocument: {
+          id: CARTILHA_2025.id,
+          title: CARTILHA_2025.title,
+          version: CARTILHA_2025.version,
+          publishedAt: CARTILHA_2025.publishedAt,
+          sourceUrl: CARTILHA_2025.sourceUrl,
+        },
+        documents: KNOWLEDGE_DOCUMENTS.map((document) => ({ id: document.id, title: document.title, version: document.version, publishedAt: document.publishedAt, status: document.status })),
+      },
       evaluators: (audit.runs ?? []).map((r) => ({ evaluator: r.evaluator, model: r.model, total: r.total })),
       analysis: audit.analysis
         ? { lines: audit.analysis.lines, linesSource: audit.analysis.linesSource, words: audit.analysis.words, paragraphs: audit.analysis.paragraphs, warnings: audit.analysis.warnings ?? [], proposal: audit.analysis.proposal }
@@ -402,8 +431,27 @@ export class EssayCorrectionService {
       competencies: c.details
         .sort((a, b) => order.indexOf(a.competency) - order.indexOf(b.competency))
         .map((d) => {
-          const extra = (d.evidenceJson ?? {}) as { level?: string; evidence?: string[]; citations?: unknown[]; tip?: string | null };
-          return { competency: d.competency, score: d.score, justification: d.justification, tip: extra.tip ?? null, level: extra.level ?? '', evidence: extra.evidence ?? [], citations: extra.citations ?? [] };
+          const extra = (d.evidenceJson ?? {}) as {
+            level?: string;
+            strengths?: string[];
+            problems?: string[];
+            levelExplanation?: string;
+            evidence?: string[];
+            citations?: unknown[];
+            tip?: string | null;
+          };
+          return {
+            competency: d.competency,
+            score: d.score,
+            justification: d.justification,
+            strengths: extra.strengths ?? [],
+            problems: extra.problems ?? [],
+            levelExplanation: extra.levelExplanation ?? '',
+            tip: extra.tip ?? null,
+            level: extra.level ?? '',
+            evidence: extra.evidence ?? [],
+            citations: extra.citations ?? [],
+          };
         }),
       updatedAt: c.updatedAt,
     };

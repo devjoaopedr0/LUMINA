@@ -56,6 +56,9 @@ model User {
   answerSheetScans       AnswerSheetUpload[]         @relation("AnswerSheetScanner")
   answerSheetCodes       AnswerSheetCode[]
   answerSheetBatches     AnswerSheetBatch[]
+  answerKeysCreated      AnswerKey[]                 @relation("AnswerKeyCreatedBy")
+  answerKeyChecks        AnswerKeyCheck[]
+  answerKeyVotes         AnswerKeyVote[]
   questionScanUploads    QuestionScanUpload[]
   questionScanResults    QuestionScanResult[]
   essayFeedbacks         EssayFeedback[]             @relation("EssayFeedbackAuthor")
@@ -677,6 +680,7 @@ model Exam {
   userVestibulares UserVestibular[]
   adaptiveSessions AdaptiveSimulationSession[]
   papers           ExamPaper[]
+  answerKeys       AnswerKey[]
 
   @@index([name, year])
   @@map("exams")
@@ -726,6 +730,7 @@ model Question {
   adaptiveSteps      AdaptiveSimulationStep[]
   scanResults        QuestionScanResult[]
   examPaperQuestions ExamPaperQuestion[]
+  answerKeyItems     AnswerKeyItem[]
 
   @@index([workspaceId])
   @@index([workspaceId, subject])
@@ -2021,4 +2026,141 @@ model EssayCorrectionUsage {
 
   @@index([userId, period])
   @@map("essay_correction_usages")
+}
+
+// =============================================================================
+// Gabarito Inteligente: gabaritos por prova/aplicação/dia/cor, conferência do
+// aluno e histórico de desempenho.
+// =============================================================================
+
+/// De onde vem o gabarito. Só OFFICIAL é oficial; os demais aparecem sempre
+/// marcados como não oficiais.
+enum AnswerKeyOrigin {
+  OFFICIAL
+  TEACHER
+  AI_SUGGESTED
+  COMMUNITY
+}
+
+enum AnswerKeyStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Gabarito de uma prova numa aplicação, dia e cor de caderno. O oficial é
+/// único por (prova, aplicação, dia, cor) — índice parcial na migration — e,
+/// quando a banca corrige, sobe de versão (as conferências guardam a versão).
+model AnswerKey {
+  id             String           @id @default(uuid()) @db.Uuid
+  examId         String           @map("exam_id") @db.Uuid
+  exam           Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  /// Edição/aplicação: "Regular", "Reaplicação/PPL", "Digital"…
+  application    String           @default("Regular") @db.VarChar(60)
+  /// Dia de prova (Enem: 1 ou 2); nulo para provas de um dia só.
+  day            Int?
+  /// Cor/modelo do caderno; nulo quando a prova não tem versões.
+  bookletColor   String?          @map("booklet_color") @db.VarChar(30)
+  /// Área do conhecimento, quando o gabarito é de uma área só.
+  area           String?          @db.VarChar(80)
+  origin         AnswerKeyOrigin
+  status         AnswerKeyStatus  @default(DRAFT)
+  /// Fonte (oficial: banca e link do documento).
+  sourceName     String?          @map("source_name") @db.VarChar(120)
+  sourceUrl      String?          @map("source_url") @db.VarChar(500)
+  /// Data de publicação do gabarito pela banca.
+  publishedAt    DateTime?        @map("published_at")
+  version        Int              @default(1)
+  /// O que mudou na última correção oficial.
+  correctionNote String?          @map("correction_note")
+  /// Instituição do professor (nulo para o oficial, que vale para todos).
+  workspaceId    String?          @map("workspace_id") @db.Uuid
+  createdBy      String           @map("created_by") @db.Uuid
+  creator        User             @relation("AnswerKeyCreatedBy", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  items          AnswerKeyItem[]
+  checks         AnswerKeyCheck[]
+  votes          AnswerKeyVote[]
+
+  @@index([examId, origin, status])
+  @@index([createdBy])
+  @@map("answer_keys")
+}
+
+/// Resposta de uma questão no gabarito. Nas questões de língua estrangeira do
+/// Enem (1–5 do 1º dia) há um item por língua.
+model AnswerKeyItem {
+  id            String    @id @default(uuid()) @db.Uuid
+  answerKeyId   String    @map("answer_key_id") @db.Uuid
+  answerKey     AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  number        Int
+  /// "" = vale para todos; "INGLES" ou "ESPANHOL" nas questões de língua.
+  language      String    @default("") @db.VarChar(10)
+  /// 1 = A … 5 = E; nulo = questão anulada.
+  answer        Int?
+  area          String?   @db.VarChar(80)
+  questionId    String?   @map("question_id") @db.Uuid
+  question      Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  /// Justificativa (gabarito sugerido por IA ou pelo professor).
+  justification String?
+  /// Confiança (0–1) só quando há base para calcular.
+  confidence    Float?
+  /// Falso = aguardando validação (aparece em amarelo para o aluno).
+  validated     Boolean   @default(true)
+  /// Gabarito comunitário: quantos votos a questão recebeu.
+  votes         Int?
+
+  @@unique([answerKeyId, number, language])
+  @@index([questionId])
+  @@map("answer_key_items")
+}
+
+/// Uma conferência do aluno: respostas, resultado e a versão do gabarito usada.
+model AnswerKeyCheck {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answerKeyId      String    @map("answer_key_id") @db.Uuid
+  answerKey        AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  answerKeyVersion Int       @map("answer_key_version")
+  /// Língua escolhida (Enem 1º dia).
+  language         String?   @db.VarChar(10)
+  /// "MANUAL" ou "PHOTO".
+  inputMode        String    @default("MANUAL") @map("input_mode") @db.VarChar(10)
+  /// { "número": 1–5 | null }.
+  answersJson      Json      @map("answers_json")
+  correct          Int
+  wrong            Int
+  blank            Int
+  /// Questões com gabarito ainda não validado (não entram no percentual).
+  pending          Int
+  /// Questões anuladas (não entram no percentual).
+  annulled         Int
+  total            Int
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([answerKeyId])
+  @@map("answer_key_checks")
+}
+
+/// Voto de um aluno no gabarito comunitário: a alternativa que ele marcou.
+/// Um voto por aluno por questão (e língua); reenviar substitui.
+model AnswerKeyVote {
+  id          String    @id @default(uuid()) @db.Uuid
+  answerKeyId String    @map("answer_key_id") @db.Uuid
+  answerKey   AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  userId      String    @map("user_id") @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number      Int
+  language    String    @default("") @db.VarChar(10)
+  /// 1 = A … 5 = E.
+  answer      Int
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([answerKeyId, userId, number, language])
+  @@index([answerKeyId, number])
+  @@map("answer_key_votes")
 }
