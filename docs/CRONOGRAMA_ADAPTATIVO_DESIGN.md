@@ -2,9 +2,13 @@
 
 Este documento projeta a reformulação do cronograma de estudos a partir da
 especificação funcional recebida (aluno → "o que estudar hoje, quanto tempo e
-por quê"). Nada aqui está construído ainda — é o plano para orientar as
-próximas sessões. Segue o mesmo espírito dos outros docs de `docs/`, mas
-descrito ANTES da implementação, não depois.
+por quê"). **Nota de estado (05/11/2026):** as fases 1–5 já estão
+implementadas (ver `TopicMastery`, `TopicMasteryHistory`, `schedule-priority`,
+`schedule-phase`, `schedule-practice` e o gerador de cronograma). A seção 1
+abaixo descreve o ponto de partida histórico, anterior à implementação, e não
+o estado atual; ela é mantida para preservar o desenho e as decisões. Consulte
+o código e o [ROADMAP_ECOSSISTEMA.md](ROADMAP_ECOSSISTEMA.md) para o estado
+vigente.
 
 ---
 
