@@ -20,8 +20,96 @@ export interface LinkedQuestion {
   alternatives: { position: number; text: string; isCorrect: boolean }[];
 }
 
+export interface SuggestionAlternative {
+  position: number;
+  text: string;
+}
+
 const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 export const positionLetter = (position: number | null | undefined) => (position ? LETTERS[position - 1] ?? '?' : '—');
+
+/**
+ * Alternativas marcadas como corretas no banco. O gabarito sugerido só pode
+ * usar a resposta pronta quando há exatamente uma: nenhuma significa que a IA
+ * precisa decidir; mais de uma é ambiguidade do cadastro e não vira sugestão.
+ */
+export function correctPositions(alternatives: { position: number; isCorrect: boolean }[]): number[] {
+  return alternatives.filter((a) => a.isCorrect).map((a) => a.position);
+}
+
+/**
+ * Entre questões equivalentes (mesmo número e língua), prefere a do banco
+ * público — a mesma regra da explicação, para o aluno não depender do
+ * workspace de quem importou. Sem banco público, usa a primeira acessível.
+ */
+export function pickAccessibleQuestion<T extends { workspaceId: string }>(candidates: T[], bankWorkspaceId: string | null): T | null {
+  return candidates.find((q) => q.workspaceId === bankWorkspaceId) ?? candidates[0] ?? null;
+}
+
+/** Prompt do gabarito sugerido: resposta fechada e justificativa curta, sem invenção. */
+export const SUGGESTION_SYSTEM_PROMPT = [
+  'Você é a LuminIA, professora do Ensino Médio. Sugira a alternativa correta de uma questão de múltipla escolha usando SOMENTE o enunciado e as alternativas fornecidos.',
+  'Regras:',
+  '- Escolha exatamente uma alternativa, de A a E, que responda ao comando da questão.',
+  '- Justifique em no máximo três frases, citando o trecho do enunciado ou o raciocínio que sustenta a escolha.',
+  '- Não invente dados, leis, fórmulas, textos, contexto externo ou uma alternativa que não esteja na lista.',
+  '- Se o enunciado estiver incompleto, depender de imagem ou não permitir uma decisão segura, devolva "answer": null e explique o que falta na justificativa.',
+  '- Responda somente com JSON válido, sem markdown e sem texto antes ou depois: {"answer":"A","justification":"..."}.',
+].join('\n');
+
+export function suggestionPrompt(params: {
+  stem: string;
+  subject: string;
+  area: string | null;
+  alternatives: SuggestionAlternative[];
+}): string {
+  const alternatives = params.alternatives
+    .map((a) => `${positionLetter(a.position)}) ${a.text}`)
+    .join('\n');
+  return [
+    `Disciplina: ${params.subject}${params.area ? ` · ${params.area}` : ''}`,
+    `Enunciado:\n${params.stem}`,
+    `Alternativas:\n${alternatives}`,
+    'Sugira a alternativa correta e justifique. Responda apenas o JSON pedido.',
+  ].join('\n\n');
+}
+
+/**
+ * Lê a sugestão da IA. Só aceita uma alternativa existente e uma justificativa
+ * com conteúdo: sem isso, é melhor não sugerir do que preencher com invenção.
+ * A confiança não vem daqui — o serviço só a preenche quando há base
+ * calculável (resposta já registrada no banco).
+ */
+export function parseSuggestedAnswer(text: string, alternatives: SuggestionAlternative[]): { position: number; justification: string } | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1] : text;
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(body.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  const raw = data as { answer?: unknown; justification?: unknown };
+  let position: number | null = null;
+  if (typeof raw.answer === 'number' && Number.isInteger(raw.answer)) position = raw.answer;
+  else if (typeof raw.answer === 'string') {
+    const value = raw.answer.trim().toUpperCase();
+    if (/^[A-E]$/.test(value)) position = LETTERS.indexOf(value) + 1;
+    else if (/^[1-5]$/.test(value)) position = Number(value);
+    else {
+      const letter = /^([A-E])(?:[).:\s-]|$)/.exec(value);
+      if (letter) position = LETTERS.indexOf(letter[1]) + 1;
+    }
+  }
+  if (!position || !alternatives.some((a) => a.position === position)) return null;
+  const justification = typeof raw.justification === 'string' ? plainExplanation(raw.justification).trim() : '';
+  if (justification.length < 10) return null;
+  return { position, justification: justification.slice(0, 800) };
+}
 
 /**
  * `sourceId` canônico das questões importadas do ENEM (ver EnemImportService).

@@ -53,6 +53,42 @@ export class CreateAnswerKeyDto {
   items!: AnswerKeyItemDto[];
 }
 
+export class SuggestAnswerKeyDto {
+  @ApiProperty({ description: 'Prova já cadastrada, com questões no banco.' })
+  @IsUUID() examId!: string;
+
+  @IsOptional() @IsString() @MaxLength(60) application?: string;
+
+  @IsOptional() @IsInt() @Min(1) @Max(4) day?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(30) bookletColor?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(80) area?: string | null;
+
+  @ApiPropertyOptional({ description: 'Números a sugerir; vazio = todas as questões encontradas da prova/dia.' })
+  @IsOptional() @IsArray() @ArrayMaxSize(400) @IsInt({ each: true }) @Min(1, { each: true }) @Max(999, { each: true }) numbers?: number[];
+
+  @ApiPropertyOptional({ description: 'Enem 1º dia: sugere só uma língua nas questões 1–5; vazio = inglês e espanhol.' })
+  @IsOptional() @IsIn(['INGLES', 'ESPANHOL']) language?: string;
+}
+
+export class ValidateAnswerKeyItemDto {
+  @IsInt() @Min(1) @Max(999) number!: number;
+
+  @IsOptional() @IsIn(['', 'INGLES', 'ESPANHOL']) language?: string;
+
+  @ApiPropertyOptional({ description: 'Resposta confirmada ou corrigida pelo professor; null = anulada. Omitir mantém a sugestão.' })
+  @IsOptional() @IsInt() @Min(1) @Max(5) answer?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(1000) justification?: string | null;
+}
+
+export class ValidateAnswerKeyItemsDto {
+  @ApiProperty({ type: [ValidateAnswerKeyItemDto] })
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(400) @ValidateNested({ each: true }) @Type(() => ValidateAnswerKeyItemDto)
+  items!: ValidateAnswerKeyItemDto[];
+}
+
 export class ReviseAnswerKeyDto {
   @ApiProperty({ description: 'O que mudou (ex.: "Retificação do INEP de 20/11: questão 37 anulada").' })
   @IsString() @MaxLength(500) correctionNote!: string;

@@ -10,8 +10,8 @@ import { extractPdfImages, PdfError } from '../simulations/omr/pdf';
 import { ANSWER_KEY_SHEET_CODE, answerKeySheetBits, answerKeySheetLayout, readingToAnswers } from './answer-key-sheet';
 import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
-import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto } from './answer-keys.dto';
-import { enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, pickQuestion, plainExplanation } from './answer-key.questions';
+import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto, SuggestAnswerKeyDto, ValidateAnswerKeyItemsDto } from './answer-keys.dto';
+import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswer, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, suggestionPrompt } from './answer-key.questions';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
@@ -31,6 +31,23 @@ const keyInclude = {
 } satisfies Prisma.AnswerKeyInclude;
 
 type KeyRow = Prisma.AnswerKeyGetPayload<{ include: typeof keyInclude }>;
+
+interface SuggestionQuestion {
+  id: string;
+  workspaceId: string;
+  examNumber: number | null;
+  sourceId: string | null;
+  stem: string;
+  subject: string;
+  imageUrl: string | null;
+  alternatives: { position: number; text: string; isCorrect: boolean }[];
+}
+
+interface SuggestionSkip {
+  number: number;
+  language: string;
+  reason: string;
+}
 
 const personName = (u: { email: string; profile: { firstName: string; lastName: string | null } | null }) =>
   u.profile ? `${u.profile.firstName} ${u.profile.lastName ?? ''}`.trim() : u.email;
@@ -66,7 +83,9 @@ export class AnswerKeysService {
         // Comunitário é de todos: quem votou primeiro não é dono.
         { origin: AnswerKeyOrigin.COMMUNITY, status: AnswerKeyStatus.PUBLISHED },
         { createdBy: viewer.id, status: { not: AnswerKeyStatus.ARCHIVED } },
-        ...(teachers.length ? [{ origin: AnswerKeyOrigin.TEACHER, status: AnswerKeyStatus.PUBLISHED, createdBy: { in: teachers } }] : []),
+        // Professor e sugestão por IA publicados para as turmas. Itens ainda não
+        // validados aparecem como pendentes e não entram no percentual.
+        ...(teachers.length ? [{ origin: { in: [AnswerKeyOrigin.TEACHER, AnswerKeyOrigin.AI_SUGGESTED] }, status: AnswerKeyStatus.PUBLISHED, createdBy: { in: teachers } }] : []),
       ],
     };
   }
@@ -147,9 +166,11 @@ export class AnswerKeysService {
       select: { number: true, language: true, area: true, answer: true, validated: true, justification: true, confidence: true, questionId: true },
     });
     const { numbers, needsLanguage } = keyNumbers(items.map((i) => ({ ...i, validated: i.validated })));
+    const languages = [...new Set(items.map((i) => i.language).filter(Boolean))];
     return {
       ...this.summary(row, viewer),
       needsLanguage,
+      languages,
       numbers,
       linkedQuestions: items.filter((i) => i.questionId).length,
       items: items.map((i) => (withAnswers ? i : { number: i.number, language: i.language, area: i.area, validated: i.validated, questionId: i.questionId })),
@@ -382,7 +403,7 @@ export class AnswerKeysService {
     } else if (dto.origin === AnswerKeyOrigin.TEACHER) {
       if (!TEACHER_ACCOUNT_TYPES.includes(viewer.accountType)) throw new ForbiddenException('Só professores e a gestão cadastram gabaritos.');
     } else {
-      throw new BadRequestException('O gabarito comunitário nasce dos votos dos alunos e o sugerido por IA ainda não existe: não dá para cadastrá-los por aqui.');
+      throw new BadRequestException('O gabarito comunitário nasce dos votos dos alunos e o sugerido por IA é gerado pela rota de sugestão: não dá para cadastrá-los por aqui.');
     }
     const examId = await this.findOrCreateExam(dto);
     const exam = await this.prisma.exam.findUniqueOrThrow({ where: { id: examId }, select: { name: true } });
@@ -415,6 +436,328 @@ export class AnswerKeysService {
       }
       throw error;
     }
+  }
+
+  /** Workspaces cujas questões o usuário pode ler: os ativos dele e o banco público. */
+  private async allowedWorkspaceIds(userId: string): Promise<Set<string>> {
+    const [memberships, bank] = await Promise.all([
+      this.prisma.workspaceMember.findMany({ where: { userId, status: 'ACTIVE' }, select: { workspaceId: true } }),
+      this.prisma.workspace.findFirst({ where: { institution: { email: QUESTION_BANK_INSTITUTION_EMAIL } }, select: { id: true } }),
+    ]);
+    return new Set([...memberships.map((m) => m.workspaceId), ...(bank ? [bank.id] : [])]);
+  }
+
+  /**
+   * Encontra as questões da prova que podem ser usadas na sugestão. No Enem, o
+   * vínculo é pelo `sourceId` canônico (o mesmo da explicação); nas demais
+   * provas, pelo `examId` + número. Só entram questões de workspace acessível.
+   */
+  private async suggestionQuestions(exam: { id: string; name: string; year: number | null }, dto: SuggestAnswerKeyDto, allowed: Set<string>, bankWorkspaceId: string | null) {
+    const isEnem = /enem/i.test(exam.name);
+    if (isEnem && dto.day !== 1 && dto.day !== 2) {
+      throw new BadRequestException('Informe o dia da prova (1 ou 2) para sugerir o gabarito do Enem.');
+    }
+
+    let numbers: number[];
+    if (dto.numbers?.length) {
+      numbers = [...new Set(dto.numbers)].sort((a, b) => a - b);
+    } else if (isEnem) {
+      numbers = Array.from({ length: 90 }, (_, i) => (dto.day === 1 ? 1 : 91) + i);
+    } else {
+      const rows = await this.prisma.question.findMany({
+        where: { examId: exam.id, examNumber: { not: null } },
+        select: { examNumber: true },
+        distinct: ['examNumber'],
+      });
+      numbers = [...new Set(rows.map((r) => r.examNumber).filter((n): n is number => n !== null))].sort((a, b) => a - b);
+    }
+    if (!numbers.length) throw new UnprocessableEntityException('Nenhuma questão numerada foi encontrada nesta prova.');
+
+    if (isEnem) {
+      const start = dto.day === 1 ? 1 : 91;
+      const end = start + 89;
+      const outside = numbers.filter((n) => n < start || n > end);
+      if (outside.length) throw new BadRequestException(`Questões fora do ${dto.day}º dia: ${outside.slice(0, 8).join(', ')}.`);
+    }
+
+    const refs: { number: number; language: string }[] = [];
+    for (const number of numbers) {
+      if (isEnem && dto.day === 1 && number <= 5) {
+        for (const language of dto.language ? [dto.language] : LANGUAGES) refs.push({ number, language });
+      } else {
+        refs.push({ number, language: '' });
+      }
+    }
+
+    const select = {
+      id: true,
+      workspaceId: true,
+      examNumber: true,
+      sourceId: true,
+      stem: true,
+      subject: true,
+      imageUrl: true,
+      alternatives: { select: { position: true, text: true, isCorrect: true }, orderBy: { position: 'asc' as const } },
+    };
+    const rows: SuggestionQuestion[] = isEnem
+      ? await this.prisma.question.findMany({
+          where: { sourceId: { in: refs.map((r) => enemQuestionSourceId(exam.year!, dto.day!, r)) } },
+          select,
+          orderBy: { createdAt: 'asc' },
+        })
+      : await this.prisma.question.findMany({
+          where: { examId: exam.id, examNumber: { in: numbers } },
+          select,
+          orderBy: { createdAt: 'asc' },
+        });
+
+    const byKey = new Map<string, SuggestionQuestion[]>();
+    for (const question of rows) {
+      if (!allowed.has(question.workspaceId)) continue;
+      const key = isEnem ? (question.sourceId ?? '') : `${question.examNumber}:`;
+      byKey.set(key, [...(byKey.get(key) ?? []), question]);
+    }
+
+    const picked = new Map<string, SuggestionQuestion>();
+    const missing: { number: number; language: string }[] = [];
+    for (const ref of refs) {
+      const key = isEnem ? enemQuestionSourceId(exam.year!, dto.day!, ref) : `${ref.number}:`;
+      const question = pickAccessibleQuestion(byKey.get(key) ?? [], bankWorkspaceId);
+      if (question) picked.set(`${ref.number}:${ref.language}`, question);
+      else missing.push(ref);
+    }
+    return { picked, missing, isEnem };
+  }
+
+  /**
+   * Gabarito sugerido por IA. Para cada questão acessível:
+   * - se o banco já tem exatamente uma alternativa correta, usa essa resposta
+   *   com confiança 1 (é cálculo, não palpite);
+   * - se não tem, pede à LuminIA uma alternativa + justificativa e deixa a
+   *   confiança nula (não há base para calcular);
+   * - questão com imagem, sem alternativas ou ambígua é pulada com o motivo.
+   *
+   * O gabarito nasce em rascunho, com todos os itens pendentes. Só o professor
+   * valida e publica; o aluno vê os pendentes em amarelo e eles não contam.
+   */
+  async suggestWithAi(viewer: Viewer, dto: SuggestAnswerKeyDto) {
+    if (!TEACHER_ACCOUNT_TYPES.includes(viewer.accountType)) {
+      throw new ForbiddenException('Só professores e a gestão podem gerar gabarito sugerido por IA.');
+    }
+    const exam = await this.prisma.exam.findUnique({ where: { id: dto.examId }, select: { id: true, name: true, year: true } });
+    if (!exam) throw new BadRequestException('Prova não encontrada.');
+    const isEnemExam = /enem/i.test(exam.name);
+    if (isEnemExam && !exam.year) throw new BadRequestException('A prova do Enem está sem ano cadastrado.');
+    const application = dto.application?.trim() || 'Regular';
+    const day = dto.day ?? null;
+    const bookletColor = dto.bookletColor?.trim() || null;
+    // No Enem a ordem das questões muda com o caderno: sem a cor, o gabarito
+    // sugerido poderia ser aplicado ao caderno errado.
+    if (isEnemExam && !bookletColor) throw new BadRequestException('Informe a cor do caderno do Enem para gerar o gabarito sugerido.');
+    const official = await this.prisma.answerKey.findFirst({
+      where: {
+        examId: exam.id,
+        origin: AnswerKeyOrigin.OFFICIAL,
+        status: { not: AnswerKeyStatus.ARCHIVED },
+        application,
+        day,
+        ...(bookletColor ? { bookletColor: { equals: bookletColor, mode: 'insensitive' as const } } : { bookletColor: null }),
+      },
+      select: { id: true },
+    });
+    if (official) throw new ConflictException('Esta prova já tem gabarito oficial: use o oficial em vez de gerar sugestões.');
+
+    const bank = await this.prisma.workspace.findFirst({
+      where: { institution: { email: QUESTION_BANK_INSTITUTION_EMAIL } },
+      select: { id: true },
+    });
+    const allowed = await this.allowedWorkspaceIds(viewer.id);
+    const { picked, missing, isEnem } = await this.suggestionQuestions(exam, dto, allowed, bank?.id ?? null);
+    if (!picked.size) {
+      throw new UnprocessableEntityException(`Nenhuma questão acessível do banco foi encontrada para esta prova${isEnem && day ? ` (${day}º dia)` : ''}. Importe o caderno no banco de questões ou confira a prova escolhida.`);
+    }
+
+    const skipped: SuggestionSkip[] = [];
+    const models = new Set<string>();
+    const results = await mapLimit([...picked.entries()], 3, async ([key, question]) => {
+      const [numberText, language] = key.split(':');
+      const number = Number(numberText);
+      const alternatives = question.alternatives.map((a) => ({ position: a.position, text: a.text, isCorrect: a.isCorrect }));
+      if (question.imageUrl) {
+        skipped.push({ number, language, reason: 'A questão depende de imagem e a LuminIA não lê a imagem; a sugestão não seria confiável.' });
+        return null;
+      }
+      if (alternatives.length < 2) {
+        skipped.push({ number, language, reason: 'A questão não tem alternativas suficientes para sugerir uma resposta.' });
+        return null;
+      }
+      const correct = correctPositions(alternatives);
+      const area = isEnem ? enemArea(number) : (dto.area?.trim() || question.subject);
+      if (correct.length === 1) {
+        const position = correct[0];
+        return {
+          number,
+          language,
+          answer: position,
+          area,
+          questionId: question.id,
+          justification: `Alternativa ${positionLetter(position)} já registrada como correta no banco de questões.`,
+          confidence: 1,
+          validated: false as const,
+        };
+      }
+      if (correct.length > 1) {
+        skipped.push({ number, language, reason: 'Mais de uma alternativa está marcada como correta no banco; corrija o cadastro antes de sugerir.' });
+        return null;
+      }
+      if (!this.ai) {
+        skipped.push({ number, language, reason: 'A IA não está configurada neste ambiente.' });
+        return null;
+      }
+      try {
+        const result = await this.ai.generateStructured({
+          system: SUGGESTION_SYSTEM_PROMPT,
+          prompt: suggestionPrompt({ stem: question.stem, subject: question.subject, area, alternatives: alternatives.map((a) => ({ position: a.position, text: a.text })) }),
+          maxTokens: 500,
+          timeoutMs: 30_000,
+          temperature: 0.1,
+        });
+        if (!result?.text?.trim()) {
+          skipped.push({ number, language, reason: 'A IA não devolveu uma sugestão.' });
+          return null;
+        }
+        const parsed = parseSuggestedAnswer(result.text, alternatives);
+        if (!parsed) {
+          skipped.push({ number, language, reason: 'A IA não conseguiu decidir com segurança ou devolveu uma resposta inválida.' });
+          return null;
+        }
+        models.add(result.model);
+        return {
+          number,
+          language,
+          answer: parsed.position,
+          area,
+          questionId: question.id,
+          justification: parsed.justification,
+          confidence: null,
+          validated: false as const,
+        };
+      } catch (error) {
+        this.logger.warn(`LuminIA não sugeriu a questão ${number} do gabarito ${exam.name}: ${error instanceof Error ? error.message : String(error)}`);
+        skipped.push({ number, language, reason: 'A IA falhou ao analisar esta questão.' });
+        return null;
+      }
+    });
+
+    const suggested = results.filter((i): i is NonNullable<typeof i> => Boolean(i));
+    skipped.sort((a, b) => a.number - b.number || a.language.localeCompare(b.language));
+
+    // Toda questão pedida entra no rascunho. Quando a IA não sugere (imagem,
+    // ambiguidade, falha) ou a questão não está no banco, o item fica pendente
+    // com resposta nula e o motivo — o professor preenche. Não inventamos uma
+    // alternativa só para o gabarito parecer completo.
+    const placeholders = [
+      ...missing.map((ref) => ({
+        number: ref.number,
+        language: ref.language,
+        answer: null,
+        area: isEnem ? enemArea(ref.number) : (dto.area?.trim() || null),
+        questionId: null,
+        justification: 'Sem questão acessível no banco; preencha a resposta manualmente.',
+        confidence: null,
+        validated: false as const,
+      })),
+      ...skipped.map((s) => {
+        const question = picked.get(`${s.number}:${s.language}`);
+        return {
+          number: s.number,
+          language: s.language,
+          answer: null,
+          area: isEnem ? enemArea(s.number) : (dto.area?.trim() || question?.subject || null),
+          questionId: question?.id ?? null,
+          justification: `Sem sugestão: ${s.reason}`,
+          confidence: null,
+          validated: false as const,
+        };
+      }),
+    ];
+    const items = [...suggested, ...placeholders].sort((a, b) => a.number - b.number || a.language.localeCompare(b.language));
+
+    const membership = await this.prisma.workspaceMember.findFirst({ where: { userId: viewer.id, status: 'ACTIVE' }, select: { workspaceId: true } });
+    const created = await this.prisma.answerKey.create({
+      data: {
+        examId: exam.id,
+        application,
+        day,
+        bookletColor,
+        area: dto.area?.trim() || null,
+        origin: AnswerKeyOrigin.AI_SUGGESTED,
+        status: AnswerKeyStatus.DRAFT,
+        sourceName: 'LuminIA — sugestão',
+        workspaceId: membership?.workspaceId ?? null,
+        createdBy: viewer.id,
+        items: { create: items },
+      },
+      select: { id: true },
+    });
+    const detail = await this.get(viewer, created.id, true);
+    const aiCount = suggested.filter((i) => i.confidence === null).length;
+    const knownCount = suggested.filter((i) => i.confidence === 1).length;
+    return {
+      answerKey: detail,
+      counts: { ai: aiCount, known: knownCount, skipped: skipped.length, missing: missing.length },
+      skipped,
+      missing,
+      models: [...models],
+    };
+  }
+
+  /**
+   * Validação do professor: confirma (ou corrige) respostas do gabarito
+   * sugerido. Os itens enviados passam a `validated: true`; a versão sobe
+   * quando algo muda, para as conferências antigas avisarem. Itens não
+   * enviados continuam pendentes e não contam para o aluno.
+   */
+  async validateItems(viewer: Viewer, id: string, dto: ValidateAnswerKeyItemsDto) {
+    const row = await this.assertCanEdit(viewer, id);
+    if (row.origin !== AnswerKeyOrigin.AI_SUGGESTED && row.origin !== AnswerKeyOrigin.TEACHER) {
+      throw new BadRequestException('Só itens de gabaritos de professor ou sugeridos por IA podem ser validados por aqui.');
+    }
+    const items = await this.prisma.answerKeyItem.findMany({
+      where: { answerKeyId: id },
+      select: { id: true, number: true, language: true, answer: true, justification: true, validated: true },
+    });
+    if (!items.length) throw new BadRequestException('Este gabarito ainda não tem itens.');
+
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
+    const seen = new Set<string>();
+    let changed = false;
+    for (const input of dto.items) {
+      const language = input.language ?? '';
+      const key = `${input.number}:${language}`;
+      if (seen.has(key)) throw new BadRequestException(`Questão ${input.number}${language ? ` (${language})` : ''} repetida na validação.`);
+      seen.add(key);
+      const item = items.find((i) => i.number === input.number && i.language === language);
+      if (!item) throw new BadRequestException(`A questão ${input.number}${language ? ` (${language})` : ''} não existe neste gabarito.`);
+      const answer = input.answer === undefined ? item.answer : input.answer;
+      const justification = input.justification === undefined ? item.justification : (input.justification?.trim() || null);
+      const answerChanged = input.answer !== undefined && input.answer !== item.answer;
+      const justificationChanged = input.justification !== undefined && justification !== item.justification;
+      if (!item.validated || answerChanged || justificationChanged) changed = true;
+      updates.push(this.prisma.answerKeyItem.update({
+        where: { id: item.id },
+        data: {
+          validated: true,
+          answer,
+          justification,
+          ...(answerChanged ? { confidence: null } : {}),
+        },
+      }));
+    }
+    if (!updates.length) throw new BadRequestException('Informe os itens a validar.');
+    if (changed) updates.push(this.prisma.answerKey.update({ where: { id }, data: { version: { increment: 1 } } }));
+    await this.prisma.$transaction(updates);
+    return this.get(viewer, id, true);
   }
 
   /**
@@ -824,6 +1167,20 @@ export class AnswerKeysService {
       }, new Map<string, (typeof missed)[number] & { misses: number }>()).values()].sort((a, b) => b.misses - a.misses || a.number - b.number).slice(0, 40),
     };
   }
+}
+
+/** Executa promessas com no máximo `limit` em paralelo, preservando a ordem. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 /** O que falta para o gabarito do INEP valer como oficial completo. */

@@ -2172,8 +2172,8 @@ export interface AnswerKeySummary {
   mine: boolean;
   updatedAt: string;
 }
-export interface AnswerKeyItem { number: number; language: string; area: string | null; validated: boolean; answer?: number | null; justification?: string | null; questionId?: string | null }
-export interface AnswerKeyDetail extends AnswerKeySummary { needsLanguage: boolean; numbers: number[]; linkedQuestions: number; items: AnswerKeyItem[] }
+export interface AnswerKeyItem { number: number; language: string; area: string | null; validated: boolean; answer?: number | null; justification?: string | null; confidence?: number | null; questionId?: string | null }
+export interface AnswerKeyDetail extends AnswerKeySummary { needsLanguage: boolean; languages: string[]; numbers: number[]; linkedQuestions: number; items: AnswerKeyItem[] }
 export interface AnswerKeyAreaResult { area: string; correct: number; wrong: number; blank: number; scored: number; percent: number }
 export interface AnswerKeyCheckResult {
   id: string;
@@ -2212,6 +2212,28 @@ export interface CreateAnswerKeyPayload {
   origin: AnswerKeyOrigin; sourceName?: string; sourceUrl?: string; publishedAt?: string; publish?: boolean;
   items: { number: number; answer: number | null; language?: string }[];
 }
+export interface SuggestAnswerKeyPayload {
+  examId: string;
+  application?: string;
+  day?: number | null;
+  bookletColor?: string | null;
+  area?: string | null;
+  numbers?: number[];
+  language?: 'INGLES' | 'ESPANHOL';
+}
+export interface AnswerKeySuggestionResult {
+  answerKey: AnswerKeyDetail;
+  counts: { ai: number; known: number; skipped: number; missing: number };
+  skipped: { number: number; language: string; reason: string }[];
+  missing: { number: number; language: string }[];
+  models: string[];
+}
+export interface ValidateAnswerKeyItemPayload {
+  number: number;
+  language?: string;
+  answer?: number | null;
+  justification?: string | null;
+}
 
 export const apiAnswerKeys = (token: string, filters: { examId?: string; year?: number; day?: number } = {}): Promise<AnswerKeySummary[]> => {
   const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]));
@@ -2220,6 +2242,10 @@ export const apiAnswerKeys = (token: string, filters: { examId?: string; year?: 
 export const apiAnswerKeyExams = (token: string): Promise<AnswerKeyExam[]> => request('/answer-keys/exams', { headers: authHeaders(token) });
 export const apiAnswerKey = (token: string, id: string, withAnswers = false): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}${withAnswers ? '?answers=true' : ''}`, { headers: authHeaders(token) });
 export const apiCreateAnswerKey = (token: string, payload: CreateAnswerKeyPayload): Promise<AnswerKeyDetail> => request('/answer-keys', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiSuggestAnswerKey = (token: string, payload: SuggestAnswerKeyPayload): Promise<AnswerKeySuggestionResult> =>
+  request('/answer-keys/ai-suggestions', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiValidateAnswerKeyItems = (token: string, id: string, items: ValidateAnswerKeyItemPayload[]): Promise<AnswerKeyDetail> =>
+  request(`/answer-keys/${id}/items/validate`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ items }) });
 export const apiSetAnswerKeyStatus = (token: string, id: string, status: AnswerKeyStatus): Promise<AnswerKeyDetail> => request(`/answer-keys/${id}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
 export const apiCheckAnswerKey = (token: string, id: string, answers: Record<string, number | null>, language?: string | null, inputMode: 'MANUAL' | 'PHOTO' = 'MANUAL'): Promise<AnswerKeyCheckResult> => request(`/answer-keys/${id}/checks`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answers, language: language ?? undefined, inputMode }) });
 export const apiAnswerKeyCheck = (token: string, checkId: string): Promise<AnswerKeyCheckResult> => request(`/answer-keys/checks/${checkId}`, { headers: authHeaders(token) });

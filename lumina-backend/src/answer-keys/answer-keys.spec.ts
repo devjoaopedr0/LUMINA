@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, BadRequestException, Unprocessab
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { enemArea, gradeAnswers, GradingError, GradingItem, letterToPosition } from './answer-key.grading';
-import { enemQuestionSourceId, fallbackExplanation, pickQuestion, plainExplanation } from './answer-key.questions';
+import { correctPositions, enemQuestionSourceId, fallbackExplanation, parseSuggestedAnswer, pickAccessibleQuestion, pickQuestion, plainExplanation } from './answer-key.questions';
 import { parseOfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { grayImagesToPdf } from '../simulations/omr/pdf';
 import { answerKeySheetBits, answerKeySheetLayout } from './answer-key-sheet';
@@ -97,8 +97,203 @@ describe('Gabarito Inteligente — cadastro e permissões', () => {
       { origin: 'OFFICIAL', status: 'PUBLISHED' },
       { origin: 'COMMUNITY', status: 'PUBLISHED' },
       { createdBy: 'aluno', status: { not: 'ARCHIVED' } },
-      { origin: 'TEACHER', status: 'PUBLISHED', createdBy: { in: ['prof-1', 'prof-2'] } },
+      { origin: { in: ['TEACHER', 'AI_SUGGESTED'] }, status: 'PUBLISHED', createdBy: { in: ['prof-1', 'prof-2'] } },
     ]);
+  });
+});
+
+describe('Gabarito Inteligente — sugestão por IA', () => {
+  const alternatives = [
+    { position: 1, text: 'Alternativa A' },
+    { position: 2, text: 'Alternativa B' },
+    { position: 3, text: 'Alternativa C' },
+    { position: 4, text: 'Alternativa D' },
+    { position: 5, text: 'Alternativa E' },
+  ];
+
+  it('lê a resposta e a justificativa do JSON, inclusive com cerca de markdown', () => {
+    expect(parseSuggestedAnswer('{"answer":"C","justification":"O texto afirma que a célula produz energia."}', alternatives)).toEqual({
+      position: 3,
+      justification: 'O texto afirma que a célula produz energia.',
+    });
+    expect(parseSuggestedAnswer('```json\n{"answer":2,"justification":"A alternativa B retoma o comando."}\n```', alternatives)?.position).toBe(2);
+  });
+
+  it('não sugere sem alternativa válida ou sem justificativa', () => {
+    expect(parseSuggestedAnswer('{"answer":"F","justification":"Não existe."}', alternatives)).toBeNull();
+    expect(parseSuggestedAnswer('{"answer":"A","justification":"ok"}', alternatives)).toBeNull();
+    expect(parseSuggestedAnswer('{"answer":null,"justification":"Falta a imagem."}', alternatives)).toBeNull();
+    expect(parseSuggestedAnswer('resposta: A', alternatives)).toBeNull();
+  });
+
+  it('só usa resposta pronta quando há exatamente uma alternativa correta', () => {
+    expect(correctPositions([{ position: 1, isCorrect: true }, { position: 2, isCorrect: false }])).toEqual([1]);
+    expect(correctPositions([{ position: 1, isCorrect: false }, { position: 2, isCorrect: false }])).toEqual([]);
+    expect(correctPositions([{ position: 1, isCorrect: true }, { position: 2, isCorrect: true }])).toEqual([1, 2]);
+  });
+
+  it('prefere a questão do banco público quando há duplicata acessível', () => {
+    expect(pickAccessibleQuestion([{ id: 'particular', workspaceId: 'w1' }, { id: 'publica', workspaceId: 'bank' }], 'bank')?.id).toBe('publica');
+    expect(pickAccessibleQuestion([{ id: 'particular', workspaceId: 'w1' }], 'bank')?.id).toBe('particular');
+    expect(pickAccessibleQuestion([], 'bank')).toBeNull();
+  });
+
+  it('usa resposta do banco com confiança 1, chama a IA só quando falta e pula questão com imagem', async () => {
+    const questions = [
+      {
+        id: 'q1', workspaceId: 'w1', examNumber: 1, sourceId: null, stem: 'Questão com resposta no banco.', subject: 'Biologia', imageUrl: null,
+        alternatives: [
+          { position: 1, text: 'Certa', isCorrect: true },
+          { position: 2, text: 'Errada', isCorrect: false },
+        ],
+      },
+      {
+        id: 'q2', workspaceId: 'w1', examNumber: 2, sourceId: null, stem: 'Questão sem resposta no banco.', subject: 'Biologia', imageUrl: null,
+        alternatives: [
+          { position: 1, text: 'A', isCorrect: false },
+          { position: 2, text: 'B', isCorrect: false },
+          { position: 3, text: 'C', isCorrect: false },
+        ],
+      },
+      {
+        id: 'q3', workspaceId: 'w1', examNumber: 3, sourceId: null, stem: 'Questão com gráfico.', subject: 'Biologia', imageUrl: 'https://exemplo.test/grafico.png',
+        alternatives: [
+          { position: 1, text: 'A', isCorrect: false },
+          { position: 2, text: 'B', isCorrect: false },
+        ],
+      },
+    ];
+    const prisma = {
+      exam: { findUnique: vi.fn().mockResolvedValue({ id: 'exam-1', name: 'Simulado', year: 2026 }) },
+      answerKey: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'key-1' }) },
+      workspace: { findFirst: vi.fn().mockResolvedValue({ id: 'bank' }) },
+      workspaceMember: {
+        findMany: vi.fn().mockResolvedValue([{ workspaceId: 'w1' }]),
+        findFirst: vi.fn().mockResolvedValue({ workspaceId: 'w1' }),
+      },
+      question: { findMany: vi.fn().mockResolvedValue(questions) },
+    };
+    const ai = { generateStructured: vi.fn().mockResolvedValue({ text: '{"answer":"C","justification":"A alternativa C explica o processo descrito."}', model: 'modelo-teste' }) };
+    const s = new AnswerKeysService(prisma as never, undefined, ai as never);
+    vi.spyOn(s, 'get').mockResolvedValue({ id: 'key-1' } as never);
+
+    const result = await s.suggestWithAi({ id: 'prof', accountType: 'TEACHER' }, { examId: 'exam-1', numbers: [1, 2, 3] });
+
+    expect(ai.generateStructured).toHaveBeenCalledTimes(1);
+    expect(result.counts).toEqual({ ai: 1, known: 1, skipped: 1, missing: 0 });
+    expect(result.models).toEqual(['modelo-teste']);
+    expect(result.skipped[0].reason).toMatch(/imagem/);
+    const created = prisma.answerKey.create.mock.calls[0][0].data;
+    expect(created.origin).toBe('AI_SUGGESTED');
+    expect(created.status).toBe('DRAFT');
+    expect(created.items.create).toEqual([
+      expect.objectContaining({ number: 1, answer: 1, confidence: 1, validated: false, questionId: 'q1' }),
+      expect.objectContaining({ number: 2, answer: 3, confidence: null, validated: false, questionId: 'q2' }),
+      expect.objectContaining({ number: 3, answer: null, confidence: null, validated: false, questionId: 'q3' }),
+    ]);
+    expect(created.items.create[2].justification).toMatch(/imagem/);
+  });
+
+  it('recusa gerar sugestão quando já existe gabarito oficial', async () => {
+    const prisma = {
+      exam: { findUnique: vi.fn().mockResolvedValue({ id: 'exam-1', name: 'ENEM', year: 2024 }) },
+      answerKey: { findFirst: vi.fn().mockResolvedValue({ id: 'oficial' }) },
+    };
+    const s = new AnswerKeysService(prisma as never);
+    await expect(s.suggestWithAi({ id: 'prof', accountType: 'TEACHER' }, { examId: 'exam-1', day: 2, bookletColor: 'Amarelo' })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('valida a resposta corrigida pelo professor e sobe a versão', async () => {
+    const prisma = {
+      answerKey: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'key-1', origin: 'AI_SUGGESTED', createdBy: 'prof', exam: { name: 'Simulado' } }),
+        update: vi.fn().mockReturnValue({ kind: 'key-update' }),
+      },
+      answerKeyItem: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'i1', number: 1, language: '', answer: 2, justification: 'Justificativa da IA.', validated: false }]),
+        update: vi.fn().mockReturnValue({ kind: 'item-update' }),
+      },
+      $transaction: vi.fn().mockResolvedValue([]),
+    };
+    const s = new AnswerKeysService(prisma as never);
+    vi.spyOn(s, 'get').mockResolvedValue({ id: 'key-1' } as never);
+
+    await s.validateItems({ id: 'prof', accountType: 'TEACHER' }, 'key-1', { items: [{ number: 1, answer: 3 }] });
+
+    expect(prisma.answerKeyItem.update).toHaveBeenCalledWith({
+      where: { id: 'i1' },
+      data: { validated: true, answer: 3, justification: 'Justificativa da IA.', confidence: null },
+    });
+    expect(prisma.answerKey.update).toHaveBeenCalledWith({ where: { id: 'key-1' }, data: { version: { increment: 1 } } });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('não deixa outro professor validar o gabarito alheio', async () => {
+    const prisma = {
+      answerKey: { findUnique: vi.fn().mockResolvedValue({ id: 'key-1', origin: 'AI_SUGGESTED', createdBy: 'prof', exam: { name: 'Simulado' } }) },
+    };
+    const s = new AnswerKeysService(prisma as never);
+    await expect(s.validateItems({ id: 'outro', accountType: 'TEACHER' }, 'key-1', { items: [{ number: 1 }] })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('mantém no rascunho a questão que não existe no banco, pendente para o professor', async () => {
+    const prisma = {
+      exam: { findUnique: vi.fn().mockResolvedValue({ id: 'exam-1', name: 'Simulado', year: 2026 }) },
+      answerKey: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'key-1' }) },
+      workspace: { findFirst: vi.fn().mockResolvedValue({ id: 'bank' }) },
+      workspaceMember: {
+        findMany: vi.fn().mockResolvedValue([{ workspaceId: 'w1' }]),
+        findFirst: vi.fn().mockResolvedValue({ workspaceId: 'w1' }),
+      },
+      question: {
+        findMany: vi.fn().mockResolvedValue([{
+          id: 'q1', workspaceId: 'w1', examNumber: 1, sourceId: null, stem: 'Questão existente.', subject: 'Biologia', imageUrl: null,
+          alternatives: [
+            { position: 1, text: 'Certa', isCorrect: true },
+            { position: 2, text: 'Errada', isCorrect: false },
+          ],
+        }]),
+      },
+    };
+    const s = new AnswerKeysService(prisma as never);
+    vi.spyOn(s, 'get').mockResolvedValue({ id: 'key-1' } as never);
+
+    const result = await s.suggestWithAi({ id: 'prof', accountType: 'TEACHER' }, { examId: 'exam-1', numbers: [1, 99] });
+
+    const created = prisma.answerKey.create.mock.calls[0][0].data;
+    expect(created.items.create).toEqual([
+      expect.objectContaining({ number: 1, answer: 1, confidence: 1, questionId: 'q1' }),
+      expect.objectContaining({ number: 99, answer: null, confidence: null, questionId: null, validated: false }),
+    ]);
+    expect(created.items.create[1].justification).toMatch(/Sem questão/);
+    expect(result.counts).toEqual({ ai: 0, known: 1, skipped: 0, missing: 1 });
+  });
+
+  it('exige a cor do caderno no Enem', async () => {
+    const prisma = { exam: { findUnique: vi.fn().mockResolvedValue({ id: 'exam-1', name: 'ENEM', year: 2024 }) } };
+    const s = new AnswerKeysService(prisma as never);
+    await expect(s.suggestWithAi({ id: 'prof', accountType: 'TEACHER' }, { examId: 'exam-1', day: 2 })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('não sobe a versão quando o professor confirma um item já validado sem mudar nada', async () => {
+    const prisma = {
+      answerKey: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'key-1', origin: 'AI_SUGGESTED', createdBy: 'prof', exam: { name: 'Simulado' } }),
+        update: vi.fn().mockReturnValue({ kind: 'key-update' }),
+      },
+      answerKeyItem: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'i1', number: 1, language: '', answer: 2, justification: 'Justificativa da IA.', validated: true }]),
+        update: vi.fn().mockReturnValue({ kind: 'item-update' }),
+      },
+      $transaction: vi.fn().mockResolvedValue([]),
+    };
+    const s = new AnswerKeysService(prisma as never);
+    vi.spyOn(s, 'get').mockResolvedValue({ id: 'key-1' } as never);
+
+    await s.validateItems({ id: 'prof', accountType: 'TEACHER' }, 'key-1', { items: [{ number: 1, answer: 2, justification: 'Justificativa da IA.' }] });
+
+    expect(prisma.answerKey.update).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -6,7 +6,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { QuestionsModule } from '../questions/questions.module';
 import { UserWithProfile } from '../users/users.repository';
 import { EnemImportService } from '../questions/import/enem/enem-import.service';
-import { CheckAnswersDto, CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ListAnswerKeysQuery, ReadAnswerSheetDto, ReviseAnswerKeyDto, SetAnswerKeyStatusDto } from './answer-keys.dto';
+import { CheckAnswersDto, CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ListAnswerKeysQuery, ReadAnswerSheetDto, ReviseAnswerKeyDto, SetAnswerKeyStatusDto, SuggestAnswerKeyDto, ValidateAnswerKeyItemsDto } from './answer-keys.dto';
 import { AnswerKeysService } from './answer-keys.service';
 
 const viewer = (user: UserWithProfile) => ({ id: user.id, accountType: user.accountType });
@@ -25,10 +25,12 @@ export class AnswerKeysController {
   @Get('checks/:checkId') getCheck(@CurrentUser() user: UserWithProfile, @Param('checkId', ParseUUIDPipe) checkId: string) { return this.service.getCheck(viewer(user), checkId); }
   @Get(':id') get(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query('answers') answers?: string) { return this.service.get(viewer(user), id, answers === 'true'); }
   @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateAnswerKeyDto) { return this.service.create(viewer(user), dto); }
+  @Post('ai-suggestions') suggestWithAi(@CurrentUser() user: UserWithProfile, @Body() dto: SuggestAnswerKeyDto) { return this.service.suggestWithAi(viewer(user), dto); }
   @Post('community/contributions') contribute(@CurrentUser() user: UserWithProfile, @Body() dto: CommunityContributionDto) { return this.service.contribute(viewer(user), dto); }
   @Delete(':id/votes/:userId') removeVotes(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string) { return this.service.removeVotes(viewer(user), id, userId); }
   @Post('import/inep') importInep(@CurrentUser() user: UserWithProfile, @Body() dto: ImportInepAnswerKeyDto) { return this.service.importFromInep(viewer(user), dto); }
   @Put(':id/items') revise(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReviseAnswerKeyDto) { return this.service.revise(viewer(user), id, dto); }
+  @Patch(':id/items/validate') validateItems(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ValidateAnswerKeyItemsDto) { return this.service.validateItems(viewer(user), id, dto); }
   @Patch(':id/status') setStatus(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetAnswerKeyStatusDto) { return this.service.setStatus(viewer(user), id, dto.status); }
   @Get(':id/stats') stats(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.stats(viewer(user), id); }
   @Post(':id/link-questions') linkQuestions(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.service.linkQuestions(viewer(user), id); }

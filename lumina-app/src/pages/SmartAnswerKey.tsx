@@ -22,14 +22,18 @@ import {
   apiLinkAnswerKeyQuestions,
   apiReadAnswerKeySheet,
   apiSetAnswerKeyStatus,
+  apiSuggestAnswerKey,
+  apiValidateAnswerKeyItems,
   ApiError,
   type AnswerKeyCheckResult,
   type AnswerKeyCheckStatus,
   type AnswerKeyDetail,
   type AnswerKeyExam,
   type AnswerKeyExplanation,
+  type AnswerKeyItem,
   type AnswerKeyPerformance,
   type AnswerKeyStats,
+  type AnswerKeySuggestionResult,
   type AnswerKeySummary,
 } from '@/lib/api';
 
@@ -70,7 +74,7 @@ function OriginBadge({ k }: { k: AnswerKeySummary }) {
 function KeySource({ k }: { k: AnswerKeySummary }) {
   return (
     <p className="mt-1 text-xs text-graphite-500">
-      {k.official ? <>Fonte: {k.sourceUrl ? <a className="underline" href={k.sourceUrl} target="_blank" rel="noreferrer">{k.sourceName ?? 'banca'}</a> : k.sourceName}{k.publishedAt ? ` · publicado em ${new Date(k.publishedAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}</> : k.origin === 'COMMUNITY' ? <>Resposta mais votada pelos alunos da Lumina, sem validação. Some quando o oficial sair.</> : <>Cadastrado por {k.author ?? 'professor'} — confira com o gabarito oficial quando ele sair.</>}
+      {k.official ? <>Fonte: {k.sourceUrl ? <a className="underline" href={k.sourceUrl} target="_blank" rel="noreferrer">{k.sourceName ?? 'banca'}</a> : k.sourceName}{k.publishedAt ? ` · publicado em ${new Date(k.publishedAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}</> : k.origin === 'COMMUNITY' ? <>Resposta mais votada pelos alunos da Lumina, sem validação. Some quando o oficial sair.</> : k.origin === 'AI_SUGGESTED' ? <>Sugerido pela LuminIA para {k.author ?? 'professor'}. Itens pendentes aparecem em amarelo e só contam depois da validação do professor.</> : <>Cadastrado por {k.author ?? 'professor'} — confira com o gabarito oficial quando ele sair.</>}
       {k.version > 1 ? ` · versão ${k.version}${k.correctionNote ? ` (${k.correctionNote})` : ''}` : ''}
       {k.status === 'DRAFT' ? ' · rascunho (só você vê)' : ''}
     </p>
@@ -146,8 +150,8 @@ function ResultView({ result, onBack }: { result: AnswerKeyCheckResult; onBack: 
       </p>
       {result.pending ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Estimativa pelo gabarito {result.answerKey.origin === 'COMMUNITY' ? 'comunitário' : 'não validado'} (não oficial)</p>
-          <p className="mt-1">{result.provisional.matches} das suas respostas batem com a mais votada, {result.provisional.differs} diferem e {result.provisional.blank} ficaram em branco. Não é resultado: confira de novo quando o gabarito oficial sair.</p>
+          <p className="font-semibold">Estimativa pelo gabarito {result.answerKey.origin === 'COMMUNITY' ? 'comunitário' : result.answerKey.origin === 'AI_SUGGESTED' ? 'sugerido por IA' : 'não validado'} (não oficial)</p>
+          <p className="mt-1">{result.provisional.matches} das suas respostas batem com {result.answerKey.origin === 'COMMUNITY' ? 'a mais votada' : 'a sugestão'}, {result.provisional.differs} diferem e {result.provisional.blank} ficaram em branco. Não é resultado: confira de novo quando o professor validar ou o gabarito oficial sair.</p>
         </div>
       ) : null}
       {result.byArea.length > 1 || result.byArea[0]?.area !== 'Geral' ? (
@@ -239,7 +243,7 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
     setSelected({
       id: '', exam, application: 'Regular', day, bookletColor: cColor.trim() || null, area: null, origin: 'COMMUNITY', official: false, status: 'PUBLISHED',
       sourceName: null, sourceUrl: null, publishedAt: null, version: 1, correctionNote: null, questionCount: count, author: null, mine: false, updatedAt: '',
-      needsLanguage: enem && day === 1, numbers, linkedQuestions: 0, items: numbers.map((n) => ({ number: n, language: '', area: area(n), validated: false })),
+      needsLanguage: enem && day === 1, languages: enem && day === 1 ? ['INGLES', 'ESPANHOL'] : [], numbers, linkedQuestions: 0, items: numbers.map((n) => ({ number: n, language: '', area: area(n), validated: false })),
     });
     setAnswers({}); setLanguage(''); setPaste(''); setConfirming(false); setFromPhoto(false); setReview(new Set()); setPhotoNote(''); setThanks('');
   }
@@ -252,7 +256,7 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
     setError(''); setBusy(true);
     try {
       const detail = await apiAnswerKey(token(), k.id);
-      setSelected(detail); setContribution(null); setAnswers({}); setLanguage(''); setPaste(''); setConfirming(false); setFromPhoto(false); setReview(new Set()); setPhotoNote(''); setThanks('');
+      setSelected(detail); setContribution(null); setAnswers({}); setLanguage(detail.languages.length === 1 ? detail.languages[0] : ''); setPaste(''); setConfirming(false); setFromPhoto(false); setReview(new Set()); setPhotoNote(''); setThanks('');
     } catch (e) { setError(errorText(e, 'Não foi possível abrir o gabarito.')); }
     finally { setBusy(false); }
   }
@@ -321,7 +325,8 @@ function CheckTab({ onResult }: { onResult: (r: AnswerKeyCheckResult) => void })
           {selected.needsLanguage ? (
             <label className="text-sm">Língua estrangeira
               <select className="mt-1 block rounded-lg border px-3 py-2" value={language} onChange={(e) => setLanguage(e.target.value)}>
-                <option value="">Escolha…</option><option value="INGLES">Inglês</option><option value="ESPANHOL">Espanhol</option>
+                <option value="">Escolha…</option>
+                {(selected.languages.length ? selected.languages : ['INGLES', 'ESPANHOL']).map((lang) => <option key={lang} value={lang}>{lang === 'INGLES' ? 'Inglês' : 'Espanhol'}</option>)}
               </select>
             </label>
           ) : null}
@@ -637,6 +642,306 @@ function CreateTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+// ------------------------------------------------------------------ gabarito sugerido por IA
+
+function AiSuggestTab() {
+  const [exams, setExams] = useState<AnswerKeyExam[]>([]);
+  const [examId, setExamId] = useState('');
+  const [application, setApplication] = useState('Regular');
+  const [day, setDay] = useState('');
+  const [color, setColor] = useState('');
+  const [area, setArea] = useState('');
+  const [numbers, setNumbers] = useState('');
+  const [language, setLanguage] = useState<'' | 'INGLES' | 'ESPANHOL'>('');
+  const [busy, setBusy] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [result, setResult] = useState<AnswerKeySuggestionResult | null>(null);
+  const [draft, setDraft] = useState<Record<string, { answer: number | null; justification: string }>>({});
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
+  const [showSkipped, setShowSkipped] = useState(false);
+  const field = 'mt-1 block w-full rounded-lg border px-3 py-2';
+
+  useEffect(() => { apiAnswerKeyExams(token()).then(setExams).catch(() => undefined); }, []);
+
+  const exam = exams.find((x) => x.id === examId) ?? null;
+  const enem = exam ? /enem/i.test(exam.name) : false;
+  const keyOf = (item: AnswerKeyItem) => `${item.number}:${item.language}`;
+  const pending = result ? result.answerKey.items.filter((i) => !i.validated).length : 0;
+  const unsaved = dirty.size;
+
+  /** "1-30, 35, 40-45" → números; vazio = todas as questões que o backend encontrar. */
+  function parseNumbers(value: string): number[] | undefined {
+    const text = value.trim();
+    if (!text) return undefined;
+    const out = new Set<number>();
+    for (const part of text.split(',')) {
+      const piece = part.trim();
+      if (!piece) continue;
+      const range = /^(\d+)\s*[-–]\s*(\d+)$/.exec(piece);
+      if (range) {
+        const start = Number(range[1]);
+        const end = Number(range[2]);
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end - start > 500) throw new Error(`Intervalo inválido: ${piece}.`);
+        for (let n = start; n <= end; n++) out.add(n);
+      } else if (/^\d+$/.test(piece)) {
+        const n = Number(piece);
+        if (n < 1 || n > 999) throw new Error(`Questão inválida: ${piece}.`);
+        out.add(n);
+      } else {
+        throw new Error(`Trecho inválido em "Questões": ${piece}. Use, por exemplo, 1-30, 35, 40-45.`);
+      }
+    }
+    const list = [...out].sort((a, b) => a - b);
+    if (list.length > 400) throw new Error('Máximo de 400 questões por geração.');
+    return list;
+  }
+
+  function resetDraft(next: AnswerKeySuggestionResult) {
+    setDraft(Object.fromEntries(next.answerKey.items.map((i) => [keyOf(i), { answer: i.answer ?? null, justification: i.justification ?? '' }])));
+    setDirty(new Set());
+  }
+
+  async function generate(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true); setMessage(null); setResult(null); setDraft({}); setDirty(new Set()); setShowSkipped(false);
+    try {
+      if (!examId) throw new Error('Escolha a prova que já está no banco de questões.');
+      if (enem && !day) throw new Error('Escolha o dia da prova do Enem.');
+      if (enem && !color.trim()) throw new Error('Informe a cor do caderno do Enem.');
+      const next = await apiSuggestAnswerKey(token(), {
+        examId,
+        application: application.trim() || 'Regular',
+        day: day ? Number(day) : null,
+        bookletColor: color.trim() || null,
+        area: area.trim() || null,
+        numbers: parseNumbers(numbers),
+        language: enem && day === '1' && language ? language : undefined,
+      });
+      setResult(next);
+      resetDraft(next);
+      const withoutSuggestion = next.counts.skipped + next.counts.missing;
+      setMessage({ ok: true, text: `Sugestões geradas: ${next.counts.ai} da LuminIA, ${next.counts.known} já estavam no banco. ${next.answerKey.items.length} questões no rascunho${withoutSuggestion ? `; ${withoutSuggestion} sem sugestão ficaram pendentes para preencher e validar` : ''}.` });
+    } catch (err) {
+      setMessage({ ok: false, text: errorText(err, 'Não foi possível gerar as sugestões.') });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function validateAll() {
+    if (!result) return;
+    setValidating(true); setMessage(null);
+    try {
+      // Item pendente sem resposta fica pendente: validar em lote com resposta
+      // nula o transformaria em questão anulada sem o professor querer. Para
+      // anular de propósito, use "Validar" na própria linha.
+      const items = result.answerKey.items.flatMap((item) => {
+        const edited = draft[keyOf(item)] ?? { answer: item.answer ?? null, justification: item.justification ?? '' };
+        if (edited.answer === null && !item.validated) return [];
+        return [{
+          number: item.number,
+          language: item.language,
+          answer: edited.answer,
+          justification: edited.justification,
+        }];
+      });
+      if (!items.length) throw new Error('Preencha as respostas pendentes antes de validar em lote.');
+      const updated = await apiValidateAnswerKeyItems(token(), result.answerKey.id, items);
+      const left = result.answerKey.items.length - items.length;
+      const sent = new Set(items.map((i) => `${i.number}:${i.language ?? ''}`));
+      setResult({ ...result, answerKey: updated });
+      setDirty((prev) => new Set([...prev].filter((key) => !sent.has(key))));
+      setMessage({ ok: true, text: `Respostas validadas.${left ? ` ${left} questão(ões) sem resposta continuam pendentes.` : ''} Revise a lista e publique para as turmas quando estiver pronto.` });
+    } catch (err) {
+      setMessage({ ok: false, text: errorText(err, 'Não foi possível validar as respostas.') });
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function validateOne(item: AnswerKeyItem) {
+    if (!result) return;
+    setValidating(true); setMessage(null);
+    try {
+      const edited = draft[keyOf(item)] ?? { answer: item.answer ?? null, justification: item.justification ?? '' };
+      const updated = await apiValidateAnswerKeyItems(token(), result.answerKey.id, [{
+        number: item.number,
+        language: item.language,
+        answer: edited.answer,
+        justification: edited.justification,
+      }]);
+      setResult({ ...result, answerKey: updated });
+      setDirty((prev) => { const next = new Set(prev); next.delete(keyOf(item)); return next; });
+      setMessage({ ok: true, text: `Questão ${item.number}${item.language ? ` (${item.language})` : ''} validada.` });
+    } catch (err) {
+      setMessage({ ok: false, text: errorText(err, 'Não foi possível validar esta questão.') });
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function publish() {
+    if (!result || dirty.size) return;
+    setPublishing(true); setMessage(null);
+    try {
+      const updated = await apiSetAnswerKeyStatus(token(), result.answerKey.id, 'PUBLISHED');
+      setResult({ ...result, answerKey: updated });
+      setMessage({ ok: true, text: 'Gabarito publicado para as turmas. Itens ainda pendentes aparecem em amarelo e não entram no percentual.' });
+    } catch (err) {
+      setMessage({ ok: false, text: errorText(err, 'Não foi possível publicar o gabarito.') });
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  return (
+    <section className="mt-6 space-y-5">
+      <div className="rounded-xl border bg-white p-5">
+        <h2 className="flex items-center gap-2 font-semibold"><Sparkles size={18} />Gabarito sugerido por IA</h2>
+        <p className="mt-1 max-w-3xl text-sm text-graphite-500">
+          A LuminIA lê o enunciado e as alternativas reais do banco. Quando o banco já tem exatamente uma resposta correta, ela é usada com confiança 1,0; quando não tem, a IA sugere uma alternativa com justificativa e <strong>sem confiança inventada</strong>. O gabarito nasce em rascunho: o professor revisa, valida e publica. Itens pendentes não contam para o aluno.
+        </p>
+        <form onSubmit={(e) => void generate(e)} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="text-sm sm:col-span-2">Prova
+            <select
+              className={field}
+              value={examId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setExamId(id);
+                const chosen = exams.find((x) => x.id === id);
+                if (!chosen || !/enem/i.test(chosen.name)) { setDay(''); setLanguage(''); }
+              }}
+            >
+              <option value="">Escolha uma prova com questões no banco…</option>
+              {exams.map((x) => <option key={x.id} value={x.id}>{x.name} {x.year ?? ''}{x.institution ? ` · ${x.institution}` : ''}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">Aplicação<input className={field} value={application} onChange={(e) => setApplication(e.target.value)} placeholder="Regular" /></label>
+          <label className="text-sm">Cor do caderno{enem ? ' (obrigatória)' : ' (opcional)'}<input className={field} value={color} onChange={(e) => setColor(e.target.value)} placeholder="Azul…" /></label>
+          <label className="text-sm">Dia{enem ? ' (obrigatório)' : ' (opcional)'}
+            <select className={field} value={day} onChange={(e) => setDay(e.target.value)}>
+              <option value="">{enem ? 'Escolha o dia…' : 'Único'}</option><option value="1">1º</option><option value="2">2º</option>
+            </select>
+          </label>
+          <label className="text-sm">Área (opcional)<input className={field} value={area} onChange={(e) => setArea(e.target.value)} placeholder={enem ? 'O Enem já preenche por numeração' : 'Ex.: Biologia'} /></label>
+          <label className="text-sm sm:col-span-2">Questões (opcional)
+            <input className={field} value={numbers} onChange={(e) => setNumbers(e.target.value)} placeholder={enem ? (day === '2' ? 'Vazio = 91–180; ex.: 91-120, 150' : 'Vazio = 1–90; ex.: 1-30, 45') : 'Vazio = todas as questões numeradas da prova; ex.: 1-30'} />
+          </label>
+          {enem && day === '1' ? (
+            <label className="text-sm sm:col-span-2">Questões 1–5 de língua estrangeira
+              <select className={field} value={language} onChange={(e) => setLanguage(e.target.value as '' | 'INGLES' | 'ESPANHOL')}>
+                <option value="">Inglês e espanhol</option><option value="INGLES">Só inglês</option><option value="ESPANHOL">Só espanhol</option>
+              </select>
+            </label>
+          ) : null}
+          {message && !result ? <p role={message.ok ? 'status' : 'alert'} className={`rounded-lg p-3 text-sm sm:col-span-2 ${message.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{message.text}</p> : null}
+          <div className="sm:col-span-2">
+            <Button disabled={busy}><Sparkles size={17} />{busy ? 'Gerando sugestões…' : 'Gerar sugestões com a LuminIA'}</Button>
+            <p className="mt-2 text-xs text-graphite-500">A geração consulta uma questão por vez, com até 3 em paralelo. Em provas grandes pode levar alguns minutos. Cada geração cria um rascunho novo; se já houver gabarito oficial para a mesma prova, a geração é recusada.</p>
+          </div>
+        </form>
+      </div>
+
+      {result ? (
+        <div className="rounded-xl border bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">{keyTitle(result.answerKey)}</h3>
+              <div className="mt-1 flex flex-wrap items-center gap-2"><OriginBadge k={result.answerKey} /><span className="text-xs text-graphite-500">{result.answerKey.items.length} questões no rascunho</span></div>
+            </div>
+            <div className="text-right text-xs text-graphite-500">
+              <p>{result.counts.ai} da IA · {result.counts.known} do banco</p>
+              <p>{result.counts.skipped} puladas · {result.counts.missing} sem questão</p>
+              {result.models.length ? <p className="mt-1">Modelo(s): {result.models.join(', ')}</p> : null}
+            </div>
+          </div>
+          <p className="mt-3 rounded-lg bg-surface-card p-3 text-xs text-graphite-500">
+            Confiança só aparece quando há base calculável. “Banco · 1,0” significa que a alternativa já estava marcada como correta no cadastro; “Sem base” significa que a resposta foi sugerida ou preenchida sem um número honesto de confiança; “Sem sugestão” indica questão que a IA não respondeu e o professor precisa preencher. Ao mudar uma resposta, revise a justificativa antes de validar.
+          </p>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="text-xs text-graphite-400"><tr><th className="py-1">Questão</th><th>Língua</th><th>Resposta</th><th>Confiança</th><th>Justificativa</th><th>Status</th></tr></thead>
+              <tbody className="divide-y align-top">
+                {result.answerKey.items.map((item) => {
+                  const edited = draft[keyOf(item)] ?? { answer: item.answer ?? null, justification: item.justification ?? '' };
+                  const rowDirty = dirty.has(keyOf(item));
+                  const status = rowDirty ? 'Alterado' : item.validated ? 'Validado' : 'Pendente';
+                  return (
+                    <tr key={keyOf(item)}>
+                      <td className="py-2 font-semibold">{item.number}</td>
+                      <td className="py-2 text-xs">{item.language === 'INGLES' ? 'Inglês' : item.language === 'ESPANHOL' ? 'Espanhol' : '—'}</td>
+                      <td className="py-2">
+                        <select
+                          className="rounded-lg border px-2 py-1"
+                          value={edited.answer === null ? '' : String(edited.answer)}
+                          onChange={(e) => {
+                            const key = keyOf(item);
+                            setDraft((prev) => ({ ...prev, [key]: { ...edited, answer: e.target.value ? Number(e.target.value) : null } }));
+                            setDirty((prev) => new Set(prev).add(key));
+                          }}
+                        >
+                          <option value="">— em branco —</option>
+                          {LETTERS.map((letterValue, index) => <option key={letterValue} value={index + 1}>{letterValue}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-2 text-xs">{item.answer === null && item.confidence == null ? 'Sem sugestão' : item.confidence == null ? 'Sem base' : item.confidence === 1 ? 'Banco · 1,0' : item.confidence.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
+                      <td className="py-2 pr-3">
+                        <textarea
+                          className="w-72 rounded-lg border px-2 py-1 text-xs"
+                          rows={2}
+                          value={edited.justification}
+                          onChange={(e) => {
+                            const key = keyOf(item);
+                            setDraft((prev) => ({ ...prev, [key]: { ...edited, justification: e.target.value } }));
+                            setDirty((prev) => new Set(prev).add(key));
+                          }}
+                          placeholder="Justificativa da sugestão…"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rowDirty ? 'bg-amber-100 text-amber-800' : item.validated ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{status}</span>
+                        {(!item.validated || rowDirty) ? (
+                          <button type="button" className="mt-1 block text-xs font-semibold underline disabled:opacity-50" disabled={validating} onClick={() => void validateOne(item)} title="Validar esta questão; resposta em branco marca como anulada">Validar</button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {message ? <p role={message.ok ? 'status' : 'alert'} className={`mt-4 rounded-lg p-3 text-sm ${message.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{message.text}</p> : null}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => void validateAll()} disabled={validating || !result.answerKey.items.length}>{validating ? 'Validando…' : unsaved ? `Validar e salvar ${unsaved} alteração${unsaved > 1 ? 'ões' : ''}` : 'Validar todas as respostas'}</Button>
+            <Button size="sm" variant="outline" onClick={() => void publish()} disabled={publishing || unsaved > 0}>{publishing ? 'Publicando…' : unsaved ? 'Salve as alterações antes de publicar' : pending ? `Publicar (${pending} pendente${pending > 1 ? 's' : ''})` : 'Publicar para as turmas'}</Button>
+            {result.answerKey.status === 'PUBLISHED' ? <span className="text-xs font-semibold text-emerald-700">Publicado</span> : null}
+          </div>
+          <p className="mt-2 text-xs text-graphite-500">
+            {unsaved ? `${unsaved} alteração(ões) local(is) ainda não salva(s): clique em “Validar e salvar” para gravar a resposta e a justificativa.` : pending ? `${pending} questão(ões) ainda pendente(s): elas aparecem em amarelo para o aluno e não entram no percentual até você validar.` : 'Todas as questões estão validadas e já podem contar para os alunos.'}
+          </p>
+
+          {result.skipped.length || result.missing.length ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <button type="button" className="font-semibold underline" onClick={() => setShowSkipped((v) => !v)}>{showSkipped ? 'Ocultar' : 'Ver'} questões não sugeridas ({result.skipped.length + result.missing.length})</button>
+              {showSkipped ? (
+                <div className="mt-2 space-y-2">
+                  {result.missing.length ? <p><strong>Sem questão acessível no banco:</strong> {result.missing.slice(0, 30).map((m) => m.language ? `${m.number} (${m.language})` : String(m.number)).join(', ')}{result.missing.length > 30 ? '…' : ''}</p> : null}
+                  {result.skipped.map((s) => <p key={`${s.number}:${s.language}`}><strong>Q{s.number}{s.language ? ` (${s.language})` : ''}:</strong> {s.reason}</p>)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ------------------------------------------------------------------ painel do professor
 
 function ClassStatsTab() {
@@ -704,7 +1009,7 @@ function ClassStatsTab() {
 export function SmartAnswerKey() {
   const { user } = useAuth();
   const staff = STAFF.includes(user?.accountType ?? '');
-  const [tab, setTab] = useState<'check' | 'performance' | 'create' | 'classes'>('check');
+  const [tab, setTab] = useState<'check' | 'performance' | 'create' | 'suggest' | 'classes'>('check');
   const [result, setResult] = useState<AnswerKeyCheckResult | null>(null);
   const [error, setError] = useState('');
 
@@ -716,7 +1021,7 @@ export function SmartAnswerKey() {
   const tabs: { id: typeof tab; label: string }[] = [
     { id: 'check', label: 'Conferir prova' },
     { id: 'performance', label: 'Meu desempenho' },
-    ...(staff ? [{ id: 'create' as const, label: 'Cadastrar gabarito' }, { id: 'classes' as const, label: 'Desempenho das turmas' }] : []),
+    ...(staff ? [{ id: 'create' as const, label: 'Cadastrar gabarito' }, { id: 'suggest' as const, label: 'Sugerir com IA' }, { id: 'classes' as const, label: 'Desempenho das turmas' }] : []),
   ];
 
   return (
@@ -731,7 +1036,7 @@ export function SmartAnswerKey() {
             <div className="mt-6 flex gap-2 border-b" role="tablist">
               {tabs.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} type="button" onClick={() => setTab(t.id)} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === t.id ? 'border-primary text-graphite' : 'border-transparent text-graphite-400'}`}>{t.label}</button>)}
             </div>
-            {tab === 'check' ? <CheckTab onResult={setResult} /> : tab === 'performance' ? <PerformanceTab onOpen={(id) => void openCheck(id)} /> : tab === 'classes' ? <ClassStatsTab /> : <CreateTab isAdmin={user?.accountType === 'ADMIN'} />}
+            {tab === 'check' ? <CheckTab onResult={setResult} /> : tab === 'performance' ? <PerformanceTab onOpen={(id) => void openCheck(id)} /> : tab === 'classes' ? <ClassStatsTab /> : tab === 'suggest' ? <AiSuggestTab /> : <CreateTab isAdmin={user?.accountType === 'ADMIN'} />}
           </>
         )}
       </div>
