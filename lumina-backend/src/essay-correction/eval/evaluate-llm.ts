@@ -30,7 +30,7 @@ import { analyzeEssayText } from '../analysis/text-analysis';
 import { applyCalibrationFn, CalibrationFn, fitCalibration } from '../grading/calibration';
 import { EssayGrader, GRADER_PROMPT_VERSION, IDENTITY_CALIBRATION, LlmCalibration } from '../grading/essay-grader';
 import { extractFeatures, FeatureModelWeights, predictWithFeatureModel, snapToLevel } from '../grading/feature-model';
-import { CompetencyId, COMPETENCY_IDS } from '../knowledge/inep-cartilha-2025';
+import { CompetencyId, COMPETENCY_IDS } from '../knowledge';
 import { EssayMcpClient } from '../mcp/essay-mcp-client';
 import { essayModels } from '../essay-correction.service';
 import { CACHE_DIR, GradedEssay, loadEssayBr, stratifiedSample } from './dataset';

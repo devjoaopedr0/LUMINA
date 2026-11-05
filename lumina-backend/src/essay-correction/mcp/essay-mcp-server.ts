@@ -15,12 +15,13 @@
  * - verificar_nota_zero   condições de anulação da cartilha
  * - corrigir_redacao      correção completa (só quando há corretor injetado)
  *
- * Recurso: cartilha://enem-2025/{id} — um trecho da base pelo id.
+ * Recursos: cartilha://enem-2026/{id} (vigente) e cartilha://enem-2025/{id}
+ * (arquivo, apenas para auditoria).
  */
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { analyzeEssayText } from '../analysis/text-analysis';
-import { CARTILHA_REFERENCE, COMPETENCY_IDS, KNOWLEDGE_BASE } from '../knowledge/inep-cartilha-2025';
+import { CARTILHA_REFERENCE, COMPETENCY_IDS, KNOWLEDGE_BASE } from '../knowledge';
 import { citationOf, EssayKnowledgeBase } from '../rag/knowledge-base';
 
 export const ESSAY_MCP_SERVER_NAME = 'lumina-redacao';
@@ -44,9 +45,10 @@ export function createEssayMcpServer(deps: EssayMcpDependencies = {}): McpServer
     { name: ESSAY_MCP_SERVER_NAME, version: ESSAY_MCP_SERVER_VERSION },
     {
       instructions:
-        'Ferramentas para corrigir redações do Enem pela Matriz de Referência do Inep. Fonte: ' +
-        `"${CARTILHA_REFERENCE.title}" (${CARTILHA_REFERENCE.publisher}). Antes de dar nota a uma competência, ` +
-        'consulte grade_competencia e buscar_cartilha e cite a página. Trechos com source "lumina" são critérios ' +
+        'Ferramentas para corrigir redações do Enem pela Matriz de Referência do Inep. Fonte vigente: ' +
+        `"${CARTILHA_REFERENCE.title}" (${CARTILHA_REFERENCE.publisher}, ${CARTILHA_REFERENCE.version}). Antes de dar nota a uma competência, ` +
+        'consulte grade_competencia e buscar_cartilha e cite o documento e a página. A edição de 2025 é arquivo de auditoria: ' +
+        'só use se o pedido indicar explicitamente essa versão. Trechos com source "lumina" são critérios ' +
         'operacionais da Lumina, não texto do Inep — nunca os apresente como se fossem da cartilha.',
     },
   );
@@ -54,22 +56,39 @@ export function createEssayMcpServer(deps: EssayMcpDependencies = {}): McpServer
   server.registerTool(
     'buscar_cartilha',
     {
-      title: 'Buscar na cartilha do Inep',
+      title: 'Buscar na base oficial do Inep',
       description:
-        'Busca trechos da Cartilha do Participante — A redação no Enem 2025 (Inep) relevantes para a consulta. ' +
-        'Use para fundamentar a nota de uma competência ou responder dúvidas sobre os critérios. Cada trecho vem com a página para citação.',
+        'Busca trechos de "A redação no Enem 2026 — Cartilha do Participante" (Inep) e dos manuais oficiais de correção, ' +
+        'com prioridade para a edição vigente. Use para fundamentar a nota de uma competência ou responder dúvidas sobre os critérios. ' +
+        'Cada trecho vem com documento, versão e página para citação. A base de 2025 é arquivo e só aparece com documento_versao explícito.',
       inputSchema: {
         consulta: z.string().min(2).max(500).describe('O que procurar, ex.: "repertório de bolso", "tangenciamento", "agente da proposta".'),
         competencia: competencySchema.optional().describe('Restringe a uma competência (C1 a C5).'),
         incluir_gerais: z.boolean().optional().describe('Com competência definida, inclui também regras gerais (nota zero, discrepância).'),
         limite: z.number().int().min(1).max(12).optional().describe('Quantidade de trechos (padrão 4).'),
+        documento_versao: z.string().max(80).optional().describe('Consulta explícita a uma versão/documento (ex.: "inep-cartilha-2025"). Sem isso, usa a base vigente.'),
       },
     },
-    async ({ consulta, competencia, incluir_gerais, limite }) => {
-      const hits = knowledge.search(consulta, { scope: competencia, includeGeneral: incluir_gerais, limit: limite });
+    async ({ consulta, competencia, incluir_gerais, limite, documento_versao }) => {
+      const hits = knowledge.search(consulta, { scope: competencia, includeGeneral: incluir_gerais, limit: limite, documentId: documento_versao });
+      const source = documento_versao
+        ? knowledge.documents().find((document) => document.id === documento_versao)
+        : knowledge.currentDocument();
       return json({
-        fonte: CARTILHA_REFERENCE,
-        trechos: hits.map((hit) => ({ id: hit.id, titulo: hit.title, escopo: hit.scope, citacao: hit.citation, origem: hit.source, relevancia: hit.score, texto: hit.text })),
+        fonte: source ? { ...source, url: source.sourceUrl } : CARTILHA_REFERENCE,
+        trechos: hits.map((hit) => ({
+          id: hit.id,
+          titulo: hit.title,
+          escopo: hit.scope,
+          citacao: hit.citation,
+          origem: hit.source,
+          documento: hit.documentId,
+          versao: hit.documentVersion,
+          publicado_em: hit.publishedAt,
+          competencias: hit.competencies,
+          relevancia: hit.score,
+          texto: hit.text,
+        })),
       });
     },
   );
@@ -78,15 +97,19 @@ export function createEssayMcpServer(deps: EssayMcpDependencies = {}): McpServer
     'grade_competencia',
     {
       title: 'Grade de níveis de uma competência',
-      description: 'Devolve os seis níveis oficiais (0, 40, 80, 120, 160 e 200 pontos) de uma competência, com o texto literal da cartilha 2025.',
+      description: 'Devolve os seis níveis oficiais (0, 40, 80, 120, 160 e 200 pontos) de uma competência, com o texto literal da cartilha vigente.',
       inputSchema: { competencia: competencySchema },
     },
     async ({ competencia }) => {
       const grid = knowledge.grid(competencia);
+      const gradeChunk = knowledge.get(`${competencia.toLowerCase()}-niveis`);
       return json({
         competencia,
         descricao: grid.name,
-        citacao: `Cartilha do Participante Enem 2025 (Inep), p. ${grid.page}`,
+        documento: gradeChunk?.documentId ?? CARTILHA_REFERENCE.id,
+        versao: gradeChunk?.documentVersion ?? CARTILHA_REFERENCE.version,
+        publicado_em: gradeChunk?.publishedAt ?? CARTILHA_REFERENCE.publishedAt,
+        citacao: gradeChunk ? citationOf(gradeChunk) : `${CARTILHA_REFERENCE.title} (Inep), ${CARTILHA_REFERENCE.version}, p. ${grid.page}`,
         niveis: ([200, 160, 120, 80, 40, 0] as const).map((nota) => ({ nota, descritor: grid.levels[nota] })),
       });
     },
@@ -114,8 +137,9 @@ export function createEssayMcpServer(deps: EssayMcpDependencies = {}): McpServer
     {
       title: 'Verificar condições de nota zero',
       description:
-        'Confere as condições de anulação da cartilha que dá para medir no texto (em branco, até 7 linhas, possível identificação, ' +
-        'trecho desconectado, poucos termos do tema) e devolve os trechos da cartilha que as definem. Fuga ao tema e tipo textual exigem leitura: aqui só há o alerta.',
+        'Confere as condições de anulação da cartilha que dá para medir no texto (em branco, até 7 linhas, possível identificação e ' +
+        'trecho desconectado) e devolve os trechos que as definem. Fuga ao tema, tangenciamento e tipo textual exigem leitura global: ' +
+        'a cobertura lexical é apenas sinal auxiliar e nunca conclui anulação.',
       inputSchema: {
         texto: z.string().max(20000),
         tema: z.string().max(300).optional(),
@@ -156,25 +180,32 @@ export function createEssayMcpServer(deps: EssayMcpDependencies = {}): McpServer
     );
   }
 
-  server.registerResource(
-    'trecho-cartilha',
-    new ResourceTemplate('cartilha://enem-2025/{id}', {
-      list: async () => ({
-        resources: KNOWLEDGE_BASE.map((chunk) => ({
-          uri: `cartilha://enem-2025/${chunk.id}`,
-          name: chunk.title,
-          description: citationOf(chunk),
-          mimeType: 'text/plain',
-        })),
+  const resourceChunks = (documentId: string) => KNOWLEDGE_BASE.filter((chunk) => chunk.documentId === documentId);
+
+  const registerResourceFor = (name: string, uriPrefix: string, documentId: string, title: string) => {
+    server.registerResource(
+      name,
+      new ResourceTemplate(`${uriPrefix}/{id}`, {
+        list: async () => ({
+          resources: resourceChunks(documentId).map((chunk) => ({
+            uri: `${uriPrefix}/${chunk.id}`,
+            name: chunk.title,
+            description: citationOf(chunk),
+            mimeType: 'text/plain',
+          })),
+        }),
       }),
-    }),
-    { title: 'Trecho da cartilha do Inep', description: 'Um trecho da base de conhecimento da correção.', mimeType: 'text/plain' },
-    async (uri, { id }) => {
-      const chunk = knowledge.get(String(id));
-      if (!chunk) throw new Error(`Trecho não encontrado: ${String(id)}`);
-      return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: `${chunk.title}\n${citationOf(chunk)}\n\n${chunk.text}` }] };
-    },
-  );
+      { title, description: 'Um trecho da base de conhecimento da correção.', mimeType: 'text/plain' },
+      async (uri, { id }) => {
+        const chunk = knowledge.get(String(id));
+        if (!chunk || chunk.documentId !== documentId) throw new Error(`Trecho não encontrado: ${String(id)}`);
+        return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: `${chunk.title}\n${citationOf(chunk)}\n\n${chunk.text}` }] };
+      },
+    );
+  };
+
+  registerResourceFor('trecho-cartilha-2026', 'cartilha://enem-2026', 'inep-cartilha-2026', 'Trecho da cartilha vigente (Enem 2026)');
+  registerResourceFor('trecho-cartilha-2025', 'cartilha://enem-2025', 'inep-cartilha-2025', 'Trecho arquivado da cartilha (Enem 2025)');
 
   return server;
 }

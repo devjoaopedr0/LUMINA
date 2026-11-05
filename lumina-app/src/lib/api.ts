@@ -97,10 +97,20 @@ export interface EssayCompetencyResult {
   score: number;
   level: string;
   justification: string | null;
+  /** Pontos fortes observados no texto. */
+  strengths?: string[];
+  /** Problemas observados no texto. */
+  problems?: string[];
+  /** Por que o nível escolhido descreve o texto. */
+  levelExplanation?: string | null;
   /** O que faria a nota subir nesta competência. */
   tip?: string | null;
   evidence: string[];
   citations: { id: string; title: string; citation: string }[];
+}
+export interface EssayKnowledgeInfo {
+  activeDocument: { id: string; title: string; version: string; publishedAt: string; sourceUrl: string };
+  documents: { id: string; title: string; version: string; publishedAt: string; status: 'current' | 'archived' | 'reference' | 'internal' }[];
 }
 export interface EssayCorrection {
   essayId: string;
@@ -114,6 +124,7 @@ export interface EssayCorrection {
   method?: 'dois-avaliadores' | 'tres-avaliadores' | 'modelo-estatistico' | 'regra' | null;
   calibrated?: boolean;
   discrepancy?: { total: number; maxCompetency: number; thirdEvaluator: boolean; competencies?: string[] } | null;
+  knowledge?: EssayKnowledgeInfo | null;
   evaluators?: { evaluator: string; model: string | null; total: number }[];
   analysis?: { lines: number; linesSource: 'ocr' | 'estimativa'; words: number; paragraphs: number; warnings: string[] } | null;
   competencies?: EssayCompetencyResult[];

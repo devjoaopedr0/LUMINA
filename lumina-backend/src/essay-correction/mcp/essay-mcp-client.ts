@@ -7,7 +7,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { EssayTextAnalysis } from '../analysis/text-analysis';
-import type { CompetencyId } from '../knowledge/inep-cartilha-2025';
+import type { CompetencyId } from '../knowledge';
 import { createEssayMcpServer, EssayMcpDependencies } from './essay-mcp-server';
 
 export interface CartilhaHit {
@@ -15,7 +15,11 @@ export interface CartilhaHit {
   titulo: string;
   escopo: string;
   citacao: string;
-  origem: 'inep-cartilha-2025' | 'lumina';
+  origem: 'inep-cartilha-2025' | 'inep-cartilha-2026' | 'inep-manual-c2-2019' | 'inep-manual-c4-2019' | 'lumina';
+  documento: string;
+  versao: string;
+  publicado_em: string;
+  competencias: string[];
   relevancia: number;
   texto: string;
 }
@@ -23,6 +27,9 @@ export interface CartilhaHit {
 export interface CompetencyGrade {
   competencia: CompetencyId;
   descricao: string;
+  documento: string;
+  versao: string;
+  publicado_em: string;
   citacao: string;
   niveis: { nota: number; descritor: string }[];
 }
@@ -36,7 +43,7 @@ export interface ZeroCheck {
 
 /** Interface que o corretor usa — permite trocar o transporte nos testes. */
 export interface EssayTools {
-  buscarCartilha(args: { consulta: string; competencia?: CompetencyId; incluir_gerais?: boolean; limite?: number }): Promise<CartilhaHit[]>;
+  buscarCartilha(args: { consulta: string; competencia?: CompetencyId; incluir_gerais?: boolean; limite?: number; documento_versao?: string }): Promise<CartilhaHit[]>;
   gradeCompetencia(competencia: CompetencyId): Promise<CompetencyGrade>;
   analisarRedacao(args: { texto: string; tema?: string; linhas_ocr?: number }): Promise<EssayTextAnalysis>;
   verificarNotaZero(args: { texto: string; tema?: string; linhas_ocr?: number }): Promise<ZeroCheck>;
@@ -72,7 +79,7 @@ export class EssayMcpClient implements EssayTools {
     return JSON.parse(text) as T;
   }
 
-  async buscarCartilha(args: { consulta: string; competencia?: CompetencyId; incluir_gerais?: boolean; limite?: number }) {
+  async buscarCartilha(args: { consulta: string; competencia?: CompetencyId; incluir_gerais?: boolean; limite?: number; documento_versao?: string }) {
     return (await this.call<{ trechos: CartilhaHit[] }>('buscar_cartilha', args)).trechos;
   }
 

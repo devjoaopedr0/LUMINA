@@ -118,6 +118,19 @@ export function EssayCorrectionView({ correction, onRetry, retrying }: { correct
                 </div>
                 {c.level ? <p className="mt-3 text-sm italic text-graphite-500">{c.score % 40 === 0 ? 'Nível da cartilha' : `Entre os níveis ${Math.floor(c.score / 40) * 40} e ${Math.ceil(c.score / 40) * 40} (média dos avaliadores) — nível garantido`}: “{c.level}”</p> : null}
                 {c.justification ? <p className="mt-2 text-sm text-graphite-700">{c.justification}</p> : null}
+                {c.levelExplanation ? <p className="mt-2 text-sm text-graphite-600"><span className="font-semibold">Por que este nível: </span>{c.levelExplanation}</p> : null}
+                {c.strengths?.length ? (
+                  <div className="mt-2 text-sm text-graphite-700">
+                    <p className="font-semibold text-emerald-700">Pontos fortes</p>
+                    <ul className="list-disc pl-5">{c.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+                  </div>
+                ) : null}
+                {c.problems?.length ? (
+                  <div className="mt-2 text-sm text-graphite-700">
+                    <p className="font-semibold text-amber-700">O que impede uma nota maior</p>
+                    <ul className="list-disc pl-5">{c.problems.map((item) => <li key={item}>{item}</li>)}</ul>
+                  </div>
+                ) : null}
                 {c.tip && c.score < 200 ? (
                   <p className="mt-2 rounded-lg bg-primary/10 px-3 py-2 text-sm text-graphite-700">
                     <span className="font-semibold">Para subir: </span>
@@ -154,7 +167,7 @@ export function EssayCorrectionView({ correction, onRetry, retrying }: { correct
         </Card>
       ) : null}
       <p className="text-xs text-graphite-400">
-        Correção automática baseada na Cartilha do Participante — A redação no Enem 2025 (Inep). É uma estimativa para estudo: a nota oficial é dada pela banca do Enem.
+        Correção automática baseada em {correction.knowledge?.activeDocument.title ?? 'A redação no Enem 2026 — Cartilha do Participante'} (Inep{correction.knowledge?.activeDocument.publishedAt ? `, publicada em ${correction.knowledge.activeDocument.publishedAt}` : ''}). É uma estimativa para estudo: a nota oficial é dada pela banca do Enem.
       </p>
     </section>
   );

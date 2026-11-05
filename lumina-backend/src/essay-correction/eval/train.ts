@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { analyzeEssayText } from '../analysis/text-analysis';
-import { CompetencyId, COMPETENCY_IDS } from '../knowledge/inep-cartilha-2025';
+import { CompetencyId, COMPETENCY_IDS } from '../knowledge';
 import { extractFeatures, FEATURE_NAMES, FeatureModelWeights, fitRidge, predictWithFeatureModel, snapToLevel, standardize } from '../grading/feature-model';
 import { CACHE_DIR, GradedEssay, loadEssayBr } from './dataset';
 import { agreementReport, ScoredPair } from './metrics';

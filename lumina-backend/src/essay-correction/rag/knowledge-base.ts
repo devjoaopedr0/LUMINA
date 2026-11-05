@@ -1,40 +1,62 @@
 import {
   COMPETENCY_GRID,
   CompetencyId,
+  DEFAULT_SEARCH_DOCUMENT_IDS,
   KNOWLEDGE_BASE,
+  KNOWLEDGE_DOCUMENTS,
   KnowledgeChunk,
+  KnowledgeDocument,
   KnowledgeScope,
-} from '../knowledge/inep-cartilha-2025';
+} from '../knowledge';
 import { Bm25Index } from './bm25';
 
 export interface RetrievedChunk extends KnowledgeChunk {
   score: number;
-  /** Referência legível para citar ao aluno: "Cartilha Enem 2025, p. 26". */
+  /** Referência legível para citar ao aluno: "Cartilha Enem 2026, p. 27". */
   citation: string;
 }
 
-export function citationOf(chunk: KnowledgeChunk): string {
-  return chunk.source === 'lumina'
-    ? 'Critério operacional da Lumina (não consta da cartilha)'
-    : `Cartilha do Participante Enem 2025 (Inep), p. ${chunk.page}`;
+export interface SearchOptions {
+  scope?: KnowledgeScope;
+  limit?: number;
+  includeGeneral?: boolean;
+  /** Restringe a um documento específico (ex.: "inep-cartilha-2025"). */
+  documentId?: string;
+  /** Inclui documentos arquivados na busca. Padrão: false. */
+  includeArchived?: boolean;
 }
 
-/** Busca na base da cartilha. Sem `scope`, procura em tudo. */
+export function citationOf(chunk: KnowledgeChunk): string {
+  if (chunk.source === 'lumina') return 'Critério operacional da Lumina (não consta da cartilha)';
+  const document = KNOWLEDGE_DOCUMENTS.find((d) => d.id === chunk.documentId);
+  const title = document?.title ?? `Documento ${chunk.documentId}`;
+  const year = chunk.documentVersion;
+  return `${title} (Inep), ${year}, p. ${chunk.page}`;
+}
+
+/** Documentos que podem ser citados como base da correção. */
+export function knowledgeDocumentsForAudit(): KnowledgeDocument[] {
+  return KNOWLEDGE_DOCUMENTS.filter((document) => document.status !== 'archived');
+}
+
+/** Busca na base versionada. Sem `documentId`, usa a edição vigente + referências. */
 export class EssayKnowledgeBase {
   private readonly byId = new Map(KNOWLEDGE_BASE.map((chunk) => [chunk.id, chunk]));
+  private readonly documentsById = new Map(KNOWLEDGE_DOCUMENTS.map((document) => [document.id, document]));
   // Título entra duas vezes: é o resumo mais denso do trecho.
   private readonly index = new Bm25Index(
     KNOWLEDGE_BASE.map((chunk) => ({ id: chunk.id, text: `${chunk.title} ${chunk.title} ${chunk.text}` })),
   );
 
-  search(query: string, options: { scope?: KnowledgeScope; limit?: number; includeGeneral?: boolean } = {}): RetrievedChunk[] {
+  search(query: string, options: SearchOptions = {}): RetrievedChunk[] {
     const limit = Math.min(Math.max(options.limit ?? 4, 1), 12);
-    const filter = options.scope
-      ? (id: string) => {
-          const scope = this.byId.get(id)?.scope;
-          return scope === options.scope || (options.includeGeneral === true && scope === 'GERAL');
-        }
-      : undefined;
+    const filter = (id: string) => {
+      const chunk = this.byId.get(id);
+      if (!chunk) return false;
+      if (options.documentId && chunk.documentId !== options.documentId) return false;
+      if (!options.documentId && !options.includeArchived && !DEFAULT_SEARCH_DOCUMENT_IDS.has(chunk.documentId)) return false;
+      return !options.scope || chunk.scope === options.scope || (options.includeGeneral === true && chunk.scope === 'GERAL');
+    };
     return this.index.search(query, limit, filter).map((hit) => {
       const chunk = this.byId.get(hit.id)!;
       return { ...chunk, score: Number(hit.score.toFixed(3)), citation: citationOf(chunk) };
@@ -43,6 +65,14 @@ export class EssayKnowledgeBase {
 
   get(id: string): KnowledgeChunk | undefined {
     return this.byId.get(id);
+  }
+
+  documents(): KnowledgeDocument[] {
+    return [...KNOWLEDGE_DOCUMENTS];
+  }
+
+  currentDocument(): KnowledgeDocument {
+    return this.documentsById.get('inep-cartilha-2026')!;
   }
 
   grid(competency: CompetencyId) {
