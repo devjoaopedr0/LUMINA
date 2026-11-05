@@ -2,6 +2,14 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 05/11/2026 — Redação v3: calibração auditável, execução parcial protegida e retry de 503
+
+- **Calibração anterior preservada:** ao gravar uma calibração de prompt novo, `model/llm-calibration.json` não é mais sobrescrito sem histórico; a versão anterior é copiada para `model/archive/llm-calibration.<promptVersion>.json`. A calibração `v2-competencia` (174 redações, `gemini:gemini-3.5-flash-lite`) está em `model/archive/llm-calibration.v2-competencia.json`, e o arquivo ativo foi restaurado para v2. Enquanto não houver calibração v3 válida, a correção com `v3-c2-c4-oficial-2026` usa a identidade.
+- **Execução parcial não grava calibração:** `essay:eval` agora exige pelo menos 10 redações de **teste** medidas para gravar a calibração final. Antes, uma execução interrompida por cota gravava uma função ajustada só na amostra de calibração. Em 05/11/2026, o Gemini respondeu 503 e o Nemotron gratuito do OpenRouter atingiu 429 após 10 redações de calibração; a execução parou sem teste. A calibração parcial de 10 redações foi descartada e o arquivo ativo restaurado para v2; com a guarda nova, uma execução assim não grava.
+- **Retry de 5xx:** o `AiService` repete a mesma chamada em 502/503/504 com esperas de 2 s e 5 s antes de passar ao próximo modelo. Isso cobre o 503 "high demand" do Gemini sem transformar toda falha transitória em erro para o aluno.
+- **Testes:** backend com **817 testes em 52 arquivos**, incluindo o arquivamento da calibração, a guarda contra calibração parcial e o retry de 503. `tsc --noEmit` e `tsc -p tsconfig.build.json` passam. **Sem migration.**
+- **Pendente:** retomar o `essay:eval` com o cache existente quando a cota dos modelos gratuitos voltar. A medição do v3 continua com **um avaliador**, para comparar com a mesma metodologia da linha de base v2; depois, validar a produção com os dois avaliadores. A calibração v3 só é gravada depois da amostra de teste.
+
 ## Atualização de 04/11/2026 — Redação: calibração ampliada para 180 redações
 
 - **Amostra:** 90 redações de calibração + 90 de teste (temas inéditos), contra 99 antes. Ficaram 87 + 87 completas; 6 foram descartadas por 503/timeout do Gemini e não entraram nos números. Custo: 395 chamadas em 33,5 min, mediana de 2,8 s/chamada.
