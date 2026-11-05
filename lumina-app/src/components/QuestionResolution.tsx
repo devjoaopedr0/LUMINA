@@ -5,6 +5,7 @@ import {
   Lightbulb,
   Loader2,
   RotateCcw,
+  Sparkles,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +16,7 @@ import {
   type AttemptResult,
   type QuestionHint,
 } from "@/lib/api";
+import { askAi } from "@/lib/ai-chat";
 import { getAccessToken } from "@/lib/auth";
 import { positionLetter } from "@/lib/question-labels";
 
@@ -108,6 +110,18 @@ export function QuestionResolution({
     setSelectedPosition(null);
     setResult(null);
     setError(null);
+  }
+
+  /** Abre a LuminIA já com a questão como contexto. Antes de responder, o
+   *  servidor recebe a instrução de não entregar o gabarito; depois, ele
+   *  recebe a alternativa marcada e o comentário para explicar o erro/acerto. */
+  function askLuminia() {
+    const message = result
+      ? result.isCorrect
+        ? "Explique por que a minha resposta está correta e qual é o conceito por trás desta questão."
+        : "Explique por que a minha resposta está errada e como chegar à alternativa correta nesta questão."
+      : "Me ajude a resolver esta questão, sem entregar a resposta.";
+    askAi({ message, questionId });
   }
 
   function alternativeStyle(position: number): string {
@@ -234,25 +248,29 @@ export function QuestionResolution({
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        {result ? (
-          <span />
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={askHint}
-            disabled={hintLoading || semMaisDicas}
-          >
-            {hintLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Lightbulb className="h-4 w-4" />
-            )}
-            {hints.length === 0 ? "Pedir dica" : semMaisDicas ? "Sem mais dicas" : "Outra dica"}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={askLuminia}>
+            <Sparkles className="h-4 w-4" />
+            Pedir ajuda à LuminIA
           </Button>
-        )}
+          {!result && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={askHint}
+              disabled={hintLoading || semMaisDicas}
+            >
+              {hintLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Lightbulb className="h-4 w-4" />
+              )}
+              {hints.length === 0 ? "Pedir dica" : semMaisDicas ? "Sem mais dicas" : "Outra dica"}
+            </Button>
+          )}
+        </div>
         {result ? (
           <Button type="button" variant="outline" size="sm" onClick={reset}>
             <RotateCcw className="h-4 w-4" />

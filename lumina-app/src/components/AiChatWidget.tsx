@@ -11,6 +11,11 @@ const INITIAL_MESSAGE: AiChatMessage = {
     "Olá! Eu sou a LuminIA. Pergunte sobre suas dúvidas de matéria, sobre redação, sobre o cronograma ou sobre qualquer questão que você errou.",
 };
 
+type ChatContextOptions = {
+  scheduleTaskId?: string;
+  questionId?: string;
+};
+
 export function AiChatWidget() {
   const { user } = useAuth();
   const location = useLocation();
@@ -29,7 +34,16 @@ export function AiChatWidget() {
 
   // A última versão de `send` fica numa ref: o ouvinte do evento é
   // registrado uma vez só e mesmo assim enxerga o histórico atual.
-  const sendRef = useRef<(content: string, options?: { scheduleTaskId?: string }) => void>(() => undefined);
+  const sendRef = useRef<(content: string, options?: ChatContextOptions) => void>(() => undefined);
+
+  // Quando a ajuda vem de uma questão, mantém o id nas mensagens seguintes:
+  // o aluno costuma continuar perguntando sobre a mesma questão. Ao trocar de
+  // tela, o contexto some para não contaminar uma conversa nova.
+  const activeQuestionIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    activeQuestionIdRef.current = undefined;
+  }, [location.pathname]);
 
   // Outras telas abrem a conversa já com uma pergunta (ex.: o cronograma
   // pergunta "por que essa tarefa está no meu dia?" passando o id da tarefa).
@@ -37,21 +51,28 @@ export function AiChatWidget() {
     function onAsk(event: Event) {
       const detail = (event as CustomEvent<AskAiDetail>).detail;
       if (!detail?.message) return;
+      activeQuestionIdRef.current = detail.questionId;
       setOpen(true);
-      sendRef.current(detail.message, { scheduleTaskId: detail.scheduleTaskId });
+      sendRef.current(detail.message, {
+        scheduleTaskId: detail.scheduleTaskId,
+        questionId: detail.questionId,
+      });
     }
     window.addEventListener(ASK_AI_EVENT, onAsk);
     return () => window.removeEventListener(ASK_AI_EVENT, onAsk);
   }, []);
 
-  async function send(content: string, options: { scheduleTaskId?: string } = {}) {
+  async function send(content: string, options: ChatContextOptions = {}) {
     if (!content || sending) return;
     const userMessage: AiChatMessage = { id: crypto.randomUUID(), role: "user", content };
     const nextHistory = [...messages, userMessage];
     setMessages(nextHistory);
     setSending(true);
     try {
-      const response = await sendAiChatMessage(content, nextHistory, options);
+      const response = await sendAiChatMessage(content, nextHistory, {
+        ...options,
+        questionId: options.questionId ?? activeQuestionIdRef.current,
+      });
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: response }]);
     } catch (error) {
       setMessages((current) => [

@@ -63,6 +63,7 @@ describe('QuestionsService', () => {
     questionAttemptsRepository = {
       create: vi.fn(),
       countsByQuestionIds: vi.fn().mockResolvedValue(new Map()),
+      findLatestForUser: vi.fn().mockResolvedValue(null),
     };
     questionAccessService = {
       getPersonalWorkspaceOrThrow: vi.fn().mockResolvedValue(baseWorkspace),
@@ -644,6 +645,45 @@ describe('QuestionsService', () => {
       questionsRepository.findById.mockResolvedValue(null);
 
       await expect(service.hint('user-1', 'question-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('contexto para a LuminIA', () => {
+    it('não revela o gabarito antes de o aluno responder', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionAttemptsRepository.findLatestForUser.mockResolvedValue(null);
+
+      const context = await service.tutorContext('user-1', 'question-1');
+
+      expect(context).toContain(baseQuestion.stem);
+      expect(context).toContain('ainda não respondeu');
+      expect(context).not.toContain('(correta)');
+      expect(context).not.toContain('Alternativa correta:');
+      expect(questionAttemptsRepository.findLatestForUser).toHaveBeenCalledWith(
+        'user-1',
+        'question-1',
+      );
+    });
+
+    it('inclui a alternativa marcada e o gabarito depois da tentativa', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      questionAttemptsRepository.findLatestForUser.mockResolvedValue({
+        selectedPosition: 1,
+        isCorrect: false,
+      });
+
+      const context = await service.tutorContext('user-1', 'question-1');
+
+      expect(context).toContain('Alternativa correta: C) 8');
+      expect(context).toContain('Alternativa marcada pelo aluno: A) 4');
+      expect(context).toContain('Resultado: errou');
+      expect(context).toContain('tropeçou');
+    });
+
+    it('devolve null para questão inacessível, sem quebrar a conversa', async () => {
+      questionsRepository.findById.mockResolvedValue(null);
+
+      await expect(service.tutorContext('user-1', 'question-1')).resolves.toBeNull();
     });
   });
 

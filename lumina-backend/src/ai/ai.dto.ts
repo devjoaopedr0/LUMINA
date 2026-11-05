@@ -35,6 +35,15 @@ export class AiChatRequestDto {
   @IsOptional()
   @IsUUID()
   scheduleTaskId?: string;
+
+  /** Questão sobre a qual o aluno pediu ajuda ("me explica essa questão").
+   *  O cliente manda só o id: enunciado, alternativas e última tentativa são
+   *  carregados no servidor, e o gabarito só entra no contexto depois que o
+   *  aluno já respondeu. */
+  @ApiProperty({ required: false, format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  questionId?: string;
 }
 
 export class AiChatResponseDto {
