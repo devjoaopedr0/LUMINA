@@ -12,6 +12,12 @@ import {
   type ExamPaperPage,
   type ExamPaperQuestion,
 } from '@/lib/api';
+import {
+  adjacentPage,
+  pageByNumber,
+  pagePosition,
+  questionsOnPage,
+} from '@/lib/exam-paper-navigation';
 
 const token = () => getAccessToken() ?? '';
 
@@ -56,6 +62,11 @@ export function PastExams() {
     ? papers.filter((item) => item.examId === paper.examId && item.id !== paper.id)
     : [];
 
+  const pagePositionInfo = currentPage ? pagePosition(pages, currentPage.pageNumber) : null;
+  const previousPage = currentPage ? adjacentPage(pages, currentPage.pageNumber, -1) : null;
+  const nextPage = currentPage ? adjacentPage(pages, currentPage.pageNumber, 1) : null;
+  const currentPageQuestions = currentPage ? questionsOnPage(questions, currentPage.pageNumber) : [];
+
   async function handleCompare() {
     if (!baseId || !compareId) { setCompareError('Escolha as duas edições.'); return; }
     setCompareError('');
@@ -86,6 +97,17 @@ export function PastExams() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function openPage(page: ExamPaperPage) {
+    setCurrentPage(page);
+    setView('page');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openPageNumber(pageNumber: number) {
+    const page = pageByNumber(pages, pageNumber);
+    if (page) openPage(page);
   }
 
   function backToList() {
@@ -207,9 +229,15 @@ export function PastExams() {
                         <button
                           key={page.id}
                           type="button"
-                          onClick={() => { setCurrentPage(page); setView('page'); }}
+                          onClick={() => openPage(page)}
                           className="rounded-lg border border-surface-line p-3 text-left hover:border-primary hover:bg-primary/5"
                         >
+                          <img
+                            src={page.imageUrl}
+                            alt={`Miniatura da página ${page.pageNumber}`}
+                            loading="lazy"
+                            className="mb-2 aspect-[3/4] w-full rounded border border-surface-line bg-surface-card object-contain"
+                          />
                           <p className="font-medium">Página {page.pageNumber}</p>
                           {page.textContent && (
                             <p className="text-xs text-graphite-400">com texto extraído</p>
@@ -238,7 +266,18 @@ export function PastExams() {
                             {question.area && (
                               <span className="rounded bg-surface-card px-2 py-0.5">{question.area}</span>
                             )}
-                            <span>pág. {question.pageNumber}</span>
+                            {pageByNumber(pages, question.pageNumber) ? (
+                              <button
+                                type="button"
+                                onClick={() => openPageNumber(question.pageNumber)}
+                                title={`Abrir a página ${question.pageNumber}`}
+                                className="rounded bg-surface-card px-2 py-0.5 font-medium hover:underline"
+                              >
+                                pág. {question.pageNumber}
+                              </button>
+                            ) : (
+                              <span>pág. {question.pageNumber}</span>
+                            )}
                           </div>
                         </li>
                       ))}
@@ -314,12 +353,61 @@ export function PastExams() {
 
             {view === 'page' && currentPage && (
               <section className="mt-6 rounded-xl border bg-white p-5">
-                <h3 className="font-bold">Página {currentPage.pageNumber}</h3>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div aria-live="polite">
+                    <h3 className="font-bold">Página {currentPage.pageNumber}</h3>
+                    {pagePositionInfo && (
+                      <p className="text-sm text-graphite-400">
+                        {pagePositionInfo.index} de {pagePositionInfo.total} páginas
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 print:hidden">
+                    <button
+                      type="button"
+                      onClick={() => previousPage && openPage(previousPage)}
+                      disabled={!previousPage}
+                      className="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      ← Anterior
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nextPage && openPage(nextPage)}
+                      disabled={!nextPage}
+                      className="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      Próxima →
+                    </button>
+                  </div>
+                </div>
+
                 <img
                   src={currentPage.imageUrl}
                   alt={`Página ${currentPage.pageNumber} da prova`}
                   className="mt-4 max-h-[70vh] w-full rounded-lg border object-contain"
                 />
+
+                {currentPageQuestions.length > 0 && (
+                  <div className="mt-4 rounded-lg bg-surface-card p-4">
+                    <p className="font-medium">Questões nesta página</p>
+                    <ul className="mt-2 flex flex-wrap gap-2">
+                      {currentPageQuestions.map((question) => (
+                        <li key={question.id} className="rounded-full bg-white px-3 py-1 text-sm">
+                          Questão {question.number}
+                          {question.area ? ` · ${question.area}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {currentPageQuestions.length === 0 && questions.length > 0 && (
+                  <p className="mt-4 text-sm text-graphite-400">
+                    Nenhuma questão do banco está mapeada nesta página.
+                  </p>
+                )}
+
                 {currentPage.textContent && (
                   <details className="mt-4">
                     <summary className="cursor-pointer font-medium text-primary-700">
