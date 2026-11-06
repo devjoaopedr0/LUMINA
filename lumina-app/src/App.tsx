@@ -32,6 +32,7 @@ import { SmartAnswerKeySheet } from "@/pages/SmartAnswerKeySheet";
 import { EssayReviewQueuePage } from "@/pages/EssayReviewQueuePage";
 import { EssayReviewWorkspacePage } from "@/pages/EssayReviewWorkspacePage";
 import { EssayReviewDivergencesPage } from "@/pages/EssayReviewDivergencesPage";
+import { MasteryMap } from "@/pages/MasteryMap";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
@@ -117,6 +118,14 @@ function App() {
           element={
             <ProtectedRoute>
               <StudySchedulePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/dominio"
+          element={
+            <ProtectedRoute>
+              <MasteryMap />
             </ProtectedRoute>
           }
         />

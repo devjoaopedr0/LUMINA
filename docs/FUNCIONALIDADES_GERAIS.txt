@@ -337,7 +337,7 @@
     -  Reforço de pré-requisitos
     -  Mudança de dificuldade
     -  Próxima atividade sugerida automaticamente
-30. 30. Mapa de domínio
+30. 30. Mapa de domínio [ENTREGUE EM 06/11/2026 - MATÉRIA, ASSUNTO, ESTADOS E MAPA DE CALOR; SUBCATEGORIAS/HABILIDADE AINDA NÃO EXISTEM NO MODELO]
     -  Mostrar domínio por matéria
     -  Assunto
     -  Subassunto

@@ -2,6 +2,16 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 06/11/2026 — Mapa de domínio por matéria e assunto (item 30)
+
+- **Nova página `/app/dominio`:** consome `GET /users/me/topic-mastery` e mostra o domínio já registrado por matéria e assunto, com resumo de dominados, atenção, crítico e revisão pendente.
+- **Mapa de calor:** cada assunto tem cor por `masteryScore` (0, 1–24, 25–49, 50–74, 75–100), com número, percentual de acerto e próxima revisão visíveis; a cor nunca é a única informação. Clicar no assunto abre o banco de questões filtrado por `subjectId`/`topicId`.
+- **Filtros e leitura:** matéria, estado (`Dominado`, `Em progresso`, `Atenção`, `Crítico`, `Não estudado`), busca sem acento/caixa e “só revisão pendente”. O cabeçalho de cada matéria mostra média, total e revisões vencidas.
+- **Estados vazios:** sem tentativas registradas, a página explica que o mapa nasce das respostas e oferece banco de questões, simulado e cronograma — não inventa domínio.
+- **Integração:** atalho “Ver mapa completo de domínio” no painel de domínio do cronograma e item “Mapa de domínio” na navegação.
+- **Sem migration e sem mudança de backend:** o endpoint e o cálculo já existiam. Subassunto e habilidade não existem no modelo atual (`Subject` → `Topic`) e não foram simulados na interface; histórico diário fica para o próximo incremento.
+- **Testes:** novo `lumina-app/test/mapa-dominio.check.ts` cobre faixas, calor, revisão, resumo, filtros e agrupamento; `npm test`, `npm run typecheck`, `npm run build` e `npm run lint` do app passando. Detalhes em [docs/MAPA_DOMINIO.md](docs/MAPA_DOMINIO.md).
+
 ## Atualização de 05/11/2026 — Gabarito Inteligente: sugestão por IA medida em prova inteira
 
 ## Atualização de 05/11/2026 — Revisão humana da redação (human-in-the-loop)
