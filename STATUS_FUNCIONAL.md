@@ -2,6 +2,15 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+
+## Atualização de 05/11/2026 — Provas anteriores: navegação por páginas
+
+- **Leitura da prova:** a lista de páginas agora mostra miniaturas e abre a página em tamanho de leitura; cada página traz a posição (`2 de 4`) e os botões **Anterior** / **Próxima**, desabilitados nos limites.
+- **Questão → página:** na lista de questões mapeadas, `pág. X` virou atalho para abrir a página correspondente; se a página não estiver no acervo, o texto continua simples.
+- **Questões na página:** a página mostra quais questões do banco estão mapeadas nela, sem repetir a lista inteira.
+- **Testes:** novo check puro `lumina-app/test/provas-anteriores.check.ts` cobre primeira/última página, página inexistente, prova vazia, posição e filtro de questões; incluído em `npm test`. Typecheck, lint, checks e build do app passando. Sem migration e sem mudança de backend.
+- **Ainda pendente:** visualizador de PDF embutido e importação em lote de PDFs oficiais. O botão **Abrir PDF** continua condicionado a `ExamPaper.pdfUrl`; o acervo de demonstração usa páginas em SVG. Detalhes em [docs/PROVAS_ANTERIORES.md](docs/PROVAS_ANTERIORES.md).
+
 ## Atualização de 05/11/2026 — Redação v3 medida em 29+30: sem ganho, calibração não gravada
 
 - **Amostra:** 30 redações de calibração + 30 de teste com `gemini:gemini-3.5-flash-lite`; ficaram **29 + 30** (uma de calibração falhou por 503). Foram 174 chamadas em 795 s (mediana de 2,7 s/chamada). Execução com `--write false`; nenhuma calibração v3 foi persistida.
@@ -18,6 +27,7 @@
 - **Retry de 5xx:** o `AiService` repete a mesma chamada em 502/503/504 com esperas de 2 s e 5 s antes de passar ao próximo modelo. Isso cobre o 503 "high demand" do Gemini sem transformar toda falha transitória em erro para o aluno.
 - **Testes:** backend com **817 testes em 52 arquivos**, incluindo o arquivamento da calibração, a guarda contra calibração parcial e o retry de 503. `tsc --noEmit` e `tsc -p tsconfig.build.json` passam. **Sem migration.**
 - **Medição concluída:** a amostra 29+30 foi medida com **um avaliador**, para comparar com a mesma metodologia da linha de base v2; a v3 não mostrou ganho e a calibração não foi gravada. A validação da produção com os dois avaliadores continua sendo uma etapa separada.
+
 
 ## Atualização de 04/11/2026 — Redação: calibração ampliada para 180 redações
 

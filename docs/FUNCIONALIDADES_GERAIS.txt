@@ -203,7 +203,7 @@
     -  Explicação pela LuminIA
     -  Buscar questões semelhantes
     -  Adicionar ao caderno de estudos
-19. 19. Provas anteriores [INTEGRADA EM 27/09/2026 - MIGRAÇÃO E MODELOS; UI PENDENTE]
+19. 19. Provas anteriores [ACERVO E NAVEGAÇÃO POR PÁGINAS EM 05/11/2026 - VER docs/PROVAS_ANTERIORES.md]
     -  ENEM
     -  Vestibulares
     -  UECE
