@@ -4,11 +4,13 @@ import { SchedulesModule } from '../schedules/schedules.module';
 import { AiService } from './ai.service';
 import { AiController } from './ai.controller';
 import { TopicLessonsService } from './topic-lessons.service';
+import { SimilarQuestionController } from './similar-question.controller';
+import { SimilarQuestionService } from './similar-question.service';
 
 @Module({
   imports: [SchedulesModule, QuestionsModule],
-  controllers: [AiController],
-  providers: [AiService, TopicLessonsService],
+  controllers: [AiController, SimilarQuestionController],
+  providers: [AiService, TopicLessonsService, SimilarQuestionService],
   exports: [AiService],
 })
 export class AiModule {}

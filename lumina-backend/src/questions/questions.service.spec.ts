@@ -902,4 +902,127 @@ describe('QuestionsService', () => {
       );
     });
   });
+
+  describe('similarQuestionSource', () => {
+    it('devolve o gabarito e as explicações apenas para a camada de IA', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+
+      const result = await service.similarQuestionSource('user-1', 'question-1');
+
+      expect(result).toMatchObject({
+        id: 'question-1',
+        subject: 'Matemática',
+        topic: 'Funções exponenciais',
+        difficulty: QuestionDifficulty.MEDIA,
+        hasImage: false,
+      });
+      expect(result.alternatives).toEqual([
+        { text: '4', isCorrect: false, explanation: undefined },
+        { text: '6', isCorrect: false, explanation: undefined },
+        { text: '8', isCorrect: true, explanation: undefined },
+        { text: '10', isCorrect: false, explanation: undefined },
+      ]);
+    });
+
+    it('recusa referência com menos de duas alternativas', async () => {
+      questionsRepository.findById.mockResolvedValue({
+        ...baseQuestion,
+        alternatives: [alternatives[2]],
+      });
+
+      await expect(
+        service.similarQuestionSource('user-1', 'question-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('recusa referência sem exatamente uma alternativa correta', async () => {
+      questionsRepository.findById.mockResolvedValue({
+        ...baseQuestion,
+        alternatives: alternatives.map((alternative) => ({ ...alternative, isCorrect: true })),
+      });
+
+      await expect(
+        service.similarQuestionSource('user-1', 'question-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('createGeneratedQuestion', () => {
+    const generatedInput = {
+      sourceQuestionId: 'question-1',
+      subject: 'Matemática',
+      topic: 'Funções exponenciais',
+      subjectId: 'subject-1',
+      topicId: 'topic-1',
+      difficulty: QuestionDifficulty.MEDIA,
+      stem: 'Uma cultura começa com 3 bactérias e dobra a cada hora. Quantas haverá após 3 horas?',
+      explanation: 'A população é 3 · 2^t. Para t = 3, temos 24.',
+      alternatives: [
+        { text: '9', isCorrect: false, explanation: 'Não representa as dobras.' },
+        { text: '12', isCorrect: false, explanation: 'Representa duas horas.' },
+        { text: '24', isCorrect: true, explanation: '3 · 2^3 = 24.' },
+        { text: '48', isCorrect: false, explanation: 'Representa quatro horas.' },
+      ],
+      metadata: {
+        generator: 'LUMINIA',
+        generatedFromQuestionId: 'question-1',
+        promptVersion: 'similar-question-2026-11-06',
+      },
+    };
+
+    it('salva como questão gerada no workspace pessoal e esconde o gabarito na resposta', async () => {
+      questionsRepository.create.mockResolvedValue({
+        ...baseQuestion,
+        id: 'generated-1',
+        sourceType: 'GENERATED',
+        sourceName: 'LuminIA',
+        sourceId: 'question-1',
+        exam: 'LuminIA',
+        year: null,
+        examNumber: null,
+        stem: generatedInput.stem,
+        explanation: generatedInput.explanation,
+        alternatives: generatedInput.alternatives.map((alternative, index) => ({
+          id: `generated-alt-${index + 1}`,
+          questionId: 'generated-1',
+          text: alternative.text,
+          position: index + 1,
+          isCorrect: alternative.isCorrect,
+          explanation: alternative.explanation,
+        })),
+      });
+
+      const result = await service.createGeneratedQuestion('user-1', generatedInput);
+
+      expect(questionsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: 'ws-1',
+          createdBy: 'user-1',
+          sourceType: 'GENERATED',
+          sourceName: 'LuminIA',
+          sourceId: 'question-1',
+          exam: 'LuminIA',
+          year: null,
+          subjectId: 'subject-1',
+          topicId: 'topic-1',
+          metadata: generatedInput.metadata,
+        }),
+      );
+      expect(result.id).toBe('generated-1');
+      expect(result.canManage).toBe(true);
+      expect(result.alternatives[0]).not.toHaveProperty('isCorrect');
+    });
+
+    it('recusa alternativas repetidas antes de gravar', async () => {
+      await expect(
+        service.createGeneratedQuestion('user-1', {
+          ...generatedInput,
+          alternatives: generatedInput.alternatives.map((alternative, index) =>
+            index === 1 ? { ...alternative, text: ' 9 ' } : alternative,
+          ),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(questionsRepository.create).not.toHaveBeenCalled();
+    });
+  });
 });

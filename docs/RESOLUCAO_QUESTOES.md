@@ -2,8 +2,9 @@
 
 Ferramentas de estudo em volta da resolução de uma questão: entender **por que
 errou** (explicação de cada alternativa), **retomar** o que marcou para revisar,
-**destravar** sem ver o gabarito (dicas progressivas) e **pedir ajuda
-contextual à LuminIA**.
+**destravar** sem ver o gabarito (dicas progressivas), **pedir ajuda
+contextual à LuminIA** e **criar uma questão parecida** para praticar o mesmo
+conteúdo.
 
 ## Endpoints
 
@@ -15,6 +16,7 @@ contextual à LuminIA**.
 | `DELETE` | `/questions/:id/review`       | Remove a marcação                                       |
 | `GET`    | `/users/me/questions/review`  | Fila de retomada (o que o aluno marcou)                |
 | `POST`   | `/ai/chat`                    | Chat da LuminIA; aceita `questionId` (e `scheduleTaskId`) |
+| `POST`   | `/ai/questions/similar`       | Cria e salva uma variação inédita da questão com a LuminIA |
 
 As rotas de questão exigem autenticação (`Authorization: Bearer <accessToken>`)
 e respeitam o escopo de workspaces: 404 para questão que o aluno não pode ver,
@@ -165,6 +167,39 @@ O endpoint também aceita `scheduleTaskId` (contexto do cronograma). Quando os
 dois ids vêm juntos, os contextos são concatenados. A rota exige autenticação
 e o DTO só aceita UUID nos dois campos.
 
+## Criar questão parecida (`POST /ai/questions/similar`)
+
+O botão **Criar questão parecida** pede ao servidor uma variação inédita da
+questão aberta. O cliente envia **somente** `{ "questionId": "<uuid>" }`; o
+enunciado, as alternativas, o gabarito, a disciplina e a dificuldade são
+carregados no backend, com a mesma checagem de workspace da resolução.
+
+1. O servidor lê a questão de referência e exige exatamente uma alternativa
+   correta. O gabarito e as explicações entram no prompt como **dados**, nunca
+   como instruções — o conteúdo de uma questão criada por aluno não pode mudar
+   as regras do modelo.
+2. A LuminIA recebe o prompt versionado `similar-question-2026-11-06` e deve
+   devolver apenas JSON: enunciado, explicação geral e alternativas com uma
+   única correta e uma justificativa por alternativa.
+3. A resposta é validada antes de qualquer gravação: JSON válido, mesma
+   quantidade de alternativas da referência, exatamente uma correta, sem
+   alternativas repetidas e sem copiar o enunciado. Resposta inválida vira 502
+   e **nada** é salvo.
+4. A questão aprovada é persistida no workspace pessoal como
+   `sourceType = GENERATED`, `sourceName = LuminIA`. Ela não recebe ano, número
+   de prova ou vínculo com exame oficial; o campo `exam` fica `LuminIA` para não
+   ser confundida com uma questão do ENEM. Os metadados guardam o modelo, a
+   versão do prompt, a questão de origem, a data e `reviewStatus = UNREVIEWED`.
+5. A resposta ao cliente é a visão pública da questão (sem `isCorrect` nem
+   explicações das alternativas). A tela mostra o aviso de que a questão foi
+   gerada por IA, não é oficial e não passou por revisão humana; o aluno pode
+   respondê-la ali mesmo, com dica e ajuda contextual.
+
+Sem provedor configurado (`AI_PROVIDER=mock`), a rota devolve **503** em vez de
+inventar uma questão. Se o provedor falhar, a resposta é **502** com uma mensagem
+sem detalhes técnicos. A questão gerada não oferece nova geração em cascata na
+interface.
+
 ## Interface
 
 `/app/questoes` (Banco de questões), no cartão de cada questão:
@@ -178,6 +213,9 @@ e o DTO só aceita UUID nos dois campos.
 - botão **Pedir ajuda à LuminIA**: antes de responder, abre o chat pedindo uma
   ajuda socrática; depois, abre o chat para explicar o erro ou o acerto com a
   questão como contexto;
+- botão **Criar questão parecida**: gera uma variação no servidor e a mostra
+  logo abaixo, com o aviso de conteúdo gerado por IA, para responder sem sair da
+  tela; a questão fica salva no banco pessoal do aluno;
 - depois de responder, o painel **Por que cada alternativa está assim**, com a
   marcação `(sua resposta)` na alternativa escolhida, o **Gabarito comentado** e
   **Responder novamente** (que preserva as dicas já pedidas).
@@ -204,6 +242,20 @@ e o DTO só aceita UUID nos dois campos.
 - `src/ai/ai.controller.spec.ts` — o controller envia o contexto da questão,
   combina com o do cronograma quando os dois ids chegam, não busca questão sem
   `questionId` e segue sem contexto quando a questão não é acessível.
+- `src/ai/similar-question.spec.ts` — prompt como dado, JSON puro e em Markdown,
+  quantidade de alternativas, exatamente uma correta, alternativas repetidas,
+  cópia do enunciado e resposta sem JSON.
+- `src/ai/similar-question.service.spec.ts` — orquestração do sucesso com
+  metadados de auditoria, 503 sem provedor, 502 para questão inválida e falha do
+  provedor sem vazar o erro técnico.
+- `src/ai/similar-question.controller.spec.ts` — a rota entrega ao serviço
+  apenas o usuário autenticado e o id de referência.
+- `src/questions/questions.service.spec.ts` — leitura do gabarito para a camada
+  de IA, recusa de referência sem uma correta, persistência como `GENERATED` no
+  workspace pessoal, resposta pública sem gabarito e recusa de alternativas
+  repetidas.
+- `lumina-app/test/luminia-similar-question.check.ts` — o cliente envia apenas
+  `questionId`, usa a rota certa e recusa id vazio.
 - `test/questions.e2e-spec.ts` — visão de responder nunca entrega a explicação,
   visão de autor entrega, tentativa devolve as justificativas, dica sem revelar
   a alternativa correta, nível inválido 400, dica não conta como tentativa,
@@ -216,8 +268,9 @@ e o DTO só aceita UUID nos dois campos.
 
 ## O que ainda não está aqui
 
-- **Criar questão semelhante** a partir da conversa com a LuminIA (item 22 do
-  inventário): a ajuda contextual já explica a questão, mas ainda não gera uma
-  variação.
+- **Revisão humana da questão gerada**: a variação nasce como `UNREVIEWED` e
+  fica restrita ao workspace pessoal; ainda não existe fila docente nem
+  promoção para o banco central. Isso é intencional enquanto a qualidade da
+  geração não tiver medição.
 - O **caderno de erros** (itens 12/13) foi entregue depois desta página; o
   estado atual está em [STATUS_FUNCIONAL.md](../STATUS_FUNCIONAL.md).

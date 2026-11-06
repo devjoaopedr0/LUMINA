@@ -24,7 +24,7 @@ A **LuminIA** é a camada que conecta tudo: entende onde o aluno está e recomen
 
 O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). Groups e Marketplace estão documentados para orientar decisões de arquitetura de hoje, não para competir com as prioridades atuais.
 
-## 2. Estado atual (resumo em 03/11/2026)
+## 2. Estado atual (resumo em 06/11/2026)
 
 | Área | Status | Observação |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
 | Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente: **em andamento** (03/11, sem commit) |
-| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 (contexto da questão montado no servidor) |
+| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
 | Caderno de erros com motivo do erro | Implementado | |
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
 | Simulado adaptativo | Implementado | IRT simplificado |
@@ -41,7 +41,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Revisão humana da redação (chat, evidências, validação e aprendizado) | Implementado | Ver [REVISAO_HUMANA_REDACAO.md](REVISAO_HUMANA_REDACAO.md) |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
 | Cálculo mental | Implementado | |
-| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e videoaulas planejados |
+| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; criação de questão parecida entregue em 06/11/2026; modo socrático e videoaulas planejados |
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |

@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Lightbulb,
   Loader2,
+  Plus,
   RotateCcw,
   Sparkles,
   XCircle,
@@ -11,9 +12,11 @@ import {
 import { Button } from "@/components/ui/Button";
 import {
   apiAnswerQuestion,
+  apiGenerateSimilarQuestion,
   apiGetQuestionHint,
   ApiError,
   type AttemptResult,
+  type Question,
   type QuestionHint,
 } from "@/lib/api";
 import { askAi } from "@/lib/ai-chat";
@@ -36,6 +39,8 @@ export interface QuestionResolutionProps {
   onAnswered?: (result: AttemptResult) => void;
   /** Texto do botão de responder (o caderno escreve "Tentar de novo"). */
   answerLabel?: string;
+  /** A questão gerada pela LuminIA não oferece nova geração em cascata. */
+  allowSimilarQuestion?: boolean;
 }
 
 /**
@@ -53,6 +58,7 @@ export function QuestionResolution({
   explanation,
   onAnswered,
   answerLabel = "Responder",
+  allowSimilarQuestion = true,
 }: QuestionResolutionProps) {
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [result, setResult] = useState<AttemptResult | null>(null);
@@ -61,6 +67,9 @@ export function QuestionResolution({
   const [hints, setHints] = useState<QuestionHint[]>([]);
   const [hintLoading, setHintLoading] = useState(false);
   const [hintError, setHintError] = useState<string | null>(null);
+  const [similar, setSimilar] = useState<Question | null>(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
 
   /** O servidor informa o teto de dicas. Chegou nele, não há o que pedir. */
   const semMaisDicas =
@@ -122,6 +131,32 @@ export function QuestionResolution({
         : "Explique por que a minha resposta está errada e como chegar à alternativa correta nesta questão."
       : "Me ajude a resolver esta questão, sem entregar a resposta.";
     askAi({ message, questionId });
+  }
+
+  /** Pede ao servidor uma variação inédita da questão. O cliente não manda
+   *  enunciado, alternativas nem gabarito: a referência é carregada e validada
+   *  no backend, e a nova questão fica salva no workspace pessoal. */
+  async function createSimilar() {
+    setSimilarLoading(true);
+    setSimilarError(null);
+    const token = getAccessToken() ?? "";
+    try {
+      const generated = await apiGenerateSimilarQuestion(token, questionId);
+      setSimilar(generated);
+    } catch (err) {
+      setSimilarError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível criar uma questão parecida agora. Tente novamente."
+      );
+    } finally {
+      setSimilarLoading(false);
+    }
+  }
+
+  function closeSimilar() {
+    setSimilar(null);
+    setSimilarError(null);
   }
 
   function alternativeStyle(position: number): string {
@@ -254,6 +289,22 @@ export function QuestionResolution({
             <Sparkles className="h-4 w-4" />
             Pedir ajuda à LuminIA
           </Button>
+          {allowSimilarQuestion && !similar && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={createSimilar}
+              disabled={similarLoading}
+            >
+              {similarLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {similarLoading ? "Criando questão..." : "Criar questão parecida"}
+            </Button>
+          )}
           {!result && (
             <Button
               type="button"
@@ -287,6 +338,49 @@ export function QuestionResolution({
           </Button>
         )}
       </div>
+
+      {similarError && !similar && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{similarError}</span>
+        </div>
+      )}
+
+      {similar && (
+        <section
+          aria-live="polite"
+          className="mt-5 rounded-2xl border border-primary/25 bg-primary/5 p-4"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-primary-700">
+                <Sparkles className="h-4 w-4" />
+                Questão parecida
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-graphite-500">
+                Gerada pela LuminIA e salva no seu banco pessoal. Ela não é uma
+                questão oficial e não passou por revisão humana.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeSimilar}
+              className="shrink-0 text-xs font-medium text-graphite-400 transition-colors hover:text-graphite"
+            >
+              Fechar
+            </button>
+          </div>
+          <p className="mt-4 whitespace-pre-line text-[15px] leading-relaxed text-graphite">
+            {similar.stem}
+          </p>
+          <QuestionResolution
+            questionId={similar.id}
+            alternatives={similar.alternatives}
+            explanation={similar.explanation}
+            allowSimilarQuestion={false}
+          />
+        </section>
+      )}
     </div>
   );
 }

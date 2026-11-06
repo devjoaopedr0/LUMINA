@@ -649,6 +649,7 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
         questionId={question.id}
         alternatives={question.alternatives}
         explanation={question.explanation}
+        allowSimilarQuestion={question.sourceType !== "GENERATED"}
       />
 
       {showSimilar && (
