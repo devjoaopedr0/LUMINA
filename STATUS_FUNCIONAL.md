@@ -2,6 +2,15 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 05/11/2026 — Gabarito Inteligente: sugestão por IA medida em prova inteira
+
+- **O que foi medido:** o caminho generativo do gabarito sugerido por IA foi executado no ENEM 2024 (2º dia, Amarelo) com as 75 questões oficiais que têm texto no banco. O prompt foi o mesmo do serviço, mas **sem informar a alternativa correta do banco**; a comparação com o gabarito oficial foi feita depois. Modelo: `gemini-3.1-flash-lite` (o 3.5 Flash Lite estava com a cota diária esgotada).
+- **Resultado:** 59 questões receberam sugestão e 44 estavam corretas — **74,6% das respondidas e 58,7% do total**. Das 16 sem sugestão, 13 foram recusas motivadas por figura/esquema/dados que não vieram na extração e 3 foram 429/timeout. Sobre o total, o acerto foi 74,4% em Ciências da Natureza e 41,7% em Matemática. **A IA pode errar; a validação docente continua obrigatória e a sugestão nunca vira gabarito oficial sozinha.**
+- **Teste do serviço real:** em 3 questões (91–93), com as respostas do banco temporariamente ocultadas, a rota criou o rascunho, recebeu 2 sugestões e 1 pendência por timeout, validou itens e publicou; ao final, o gabarito temporário foi apagado e as respostas originais do banco foram restauradas.
+- **Correção de UX:** quando a IA devolve `answer: null` com uma justificativa (por exemplo, “falta a imagem”), o backend agora preserva esse motivo no item pendente, em vez de trocá-lo por “a IA falhou”. A resposta continua nula e o item continua fora do percentual até a validação.
+- **Testes:** `answer-keys.spec.ts` com **43 casos** (2 novos: preservação do motivo da IA e leitura do JSON com resposta nula); `npm run typecheck` do backend e do app passando. **Sem migration.**
+- **Pendente:** repetir a medição com o modelo padrão de produção (`AI_PROVIDER`/`AI_MODEL`) quando a cota permitir; confirmar a data de publicação do gabarito importado (20/11/2024).
+
 ## Atualização de 04/11/2026 — Redação: calibração ampliada para 180 redações
 
 - **Amostra:** 90 redações de calibração + 90 de teste (temas inéditos), contra 99 antes. Ficaram 87 + 87 completas; 6 foram descartadas por 503/timeout do Gemini e não entraram nos números. Custo: 395 chamadas em 33,5 min, mediana de 2,8 s/chamada.
@@ -20,7 +29,7 @@
 - **Sem migration:** o campo `AnswerKeyItem.questionId` já existia; não houve alteração de schema.
 - **Dados reais (04/11/2026):** o caderno do ENEM 2024 (2º dia, Amarelo) foi importado no workspace público com **75 das 90 questões** (0 duplicatas, 0 erros; 15 puladas com motivo). Ficaram de fora, com motivo explícito: 9 dependem de imagem/figura ou de layout não separável com segurança (100, 106, 109, 110, 135, 146, 153, 156, 162), 5 têm fórmulas/figuras ilegíveis (139, 147, 149, 179, 180) e 1 foi anulada (102). O vínculo ficou em **75/90** e a explicação foi validada ponta a ponta com a IA real (questão 91, `source: ai`) e com 422 na questão sem vínculo (100).
 - **Parser do ENEM 2024:** passou a aceitar o marcador de alternativa de uma letra (o PDF de 2023 usa duas) e a descartar rodapé/cabeçalho de página que contaminava questões que atravessam páginas; alternativas que viram “sopa de números” são puladas em vez de importadas.
-- **Pendente:** o gabarito sugerido por IA; confirmar a data de publicação do gabarito importado (20/11/2024).
+- **Pendente naquela entrega:** o gabarito sugerido por IA (medido em 05/11/2026; ver entrada acima); confirmar a data de publicação do gabarito importado (20/11/2024).
 
 ## Atualização de 03/11/2026 — Documentação da visão do ecossistema (só documentação)
 
@@ -41,7 +50,7 @@
 - **Bug corrigido no importador de questões do ENEM:** as questões 1–9 do 1º dia ficavam sem gabarito, e as de língua (1–5) colidiam no `sourceId`.
 - **Testes:** validação no navegador sem erros. Backend com 774 testes (22 do Gabarito Inteligente); app com verificação de tipos real (`tsc -b`), lint e checks.
 - **Migrations aplicadas:** `20261103150000_answer_keys` e `20261103200000_answer_key_votes`.
-- **Pendente:** confirmar a data de publicação usada no gabarito importado (20/11/2024); gabarito sugerido por IA e LuminIA por questão (dependem de ligar as questões do caderno ao gabarito).
+- **Pendente naquela entrega:** confirmar a data de publicação usada no gabarito importado (20/11/2024); LuminIA por questão (feito em 04/11) e gabarito sugerido por IA (medido em 05/11/2026; ver entrada acima).
 
 ## Atualização de 03/11/2026 — Em andamento (sem commit)
 

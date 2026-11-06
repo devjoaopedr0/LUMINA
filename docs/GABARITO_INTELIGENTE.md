@@ -1,6 +1,6 @@
 # Gabarito Inteligente
 
-> **Status: Em andamento.** Fase 1, importação do INEP, cartão por foto, painel do professor e gabarito comunitário estão no código e foram **validados no navegador em 03/11/2026**, com o gabarito real do ENEM 2024 (2º dia, Amarelo). As migrations `20261103150000_answer_keys` e `20261103200000_answer_key_votes` estão aplicadas. O vínculo do gabarito com o banco de questões e a **explicação da LuminIA por questão** entraram no código em 04/11/2026; no mesmo dia, o caderno do ENEM 2024 (2º dia) foi importado (75 das 90 questões) e o vínculo e a explicação foram **validados ponta a ponta com a IA real** (75/90 itens ligados; questão 91 explicada, questão sem vínculo devolvendo 422). O **gabarito sugerido por IA** também entrou no código em 04/11/2026, com validação do professor; falta validá-lo com a IA real em uma prova inteira. **A data de publicação do gabarito importado (20/11/2024) precisa ser confirmada.**
+> **Status: Em andamento.** Fase 1, importação do INEP, cartão por foto, painel do professor e gabarito comunitário estão no código e foram **validados no navegador em 03/11/2026**, com o gabarito real do ENEM 2024 (2º dia, Amarelo). As migrations `20261103150000_answer_keys` e `20261103200000_answer_key_votes` estão aplicadas. O vínculo do gabarito com o banco de questões e a **explicação da LuminIA por questão** entraram no código em 04/11/2026; no mesmo dia, o caderno do ENEM 2024 (2º dia) foi importado (75 das 90 questões) e o vínculo e a explicação foram **validados ponta a ponta com a IA real** (75/90 itens ligados; questão 91 explicada, questão sem vínculo devolvendo 422). O **gabarito sugerido por IA** também entrou no código em 04/11/2026, com validação do professor; em 05/11/2026 o caminho da IA foi **medido com um modelo real em uma prova inteira** (ENEM 2024, 2º dia, Amarelo: 44/59 sugestões corretas entre as respondidas; 16 questões ficaram pendentes), confirmando que a revisão docente é obrigatória. **A data de publicação do gabarito importado (20/11/2024) precisa ser confirmada.**
 
 O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, brancos e desempenho por área, com histórico. O gabarito oficial aparece marcado como **Oficial**, com fonte e data. Os demais aparecem sempre como **não oficiais**.
 
@@ -39,7 +39,7 @@ O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, branco
 | DELETE | `/answer-keys/:id/votes/:userId` | Moderação: remove os votos de um usuário (ADMIN) |
 
 - **Código:** `lumina-backend/src/answer-keys/` (a lógica de correção pura está em `answer-key.grading.ts` e o vínculo/prompt em `answer-key.questions.ts`) e `lumina-app/src/pages/SmartAnswerKey.tsx` (rota `/app/gabarito-inteligente`).
-- **Testes:** `answer-keys.spec.ts`, com 41 casos (7 sobre o gabarito sugerido por IA, 4 sobre a importação do INEP, 2 sobre o cartão por foto e 8 sobre vínculo, explicação e limpeza do texto da IA).
+- **Testes:** `answer-keys.spec.ts`, com 43 casos (9 sobre o gabarito sugerido por IA, 4 sobre a importação do INEP, 2 sobre o cartão por foto e 8 sobre vínculo, explicação e limpeza do texto da IA).
 
 ## Importação do gabarito oficial do INEP
 O administrador cola o link do PDF do gabarito (ex.: `.../provas_e_gabaritos/2024_GB_impresso_D2_CD5.pdf`) e informa a data de publicação, que o PDF não traz.
@@ -83,8 +83,10 @@ A administração vê todos. Os alunos não veem o painel (403).
 - **Enem:** exige a cor do caderno, porque a ordem das questões muda entre cadernos; se já existe gabarito oficial para a mesma prova, aplicação, dia e cor, a geração é recusada.
 - **Resposta pronta:** quando o banco já tem exatamente uma alternativa marcada como correta, a sugestão usa essa resposta com confiança **1** — é cálculo, não palpite.
 - **Sugestão da IA:** quando o banco não tem a resposta, a LuminIA recebe somente enunciado e alternativas e devolve uma alternativa + justificativa curta. A confiança fica **nula**, porque não há base para calculá-la.
-- **O que é pulado:** questão com imagem (a LuminIA não lê a imagem), sem alternativas suficientes, com mais de uma alternativa correta no banco ou com resposta inválida da IA. O item fica pendente com o motivo explícito, em vez de receber uma resposta inventada.
+- **O que é pulado:** questão com imagem (a LuminIA não lê a imagem), sem alternativas suficientes, com mais de uma alternativa correta no banco ou com resposta inválida da IA. O item fica pendente com o motivo explícito, em vez de receber uma resposta inventada. Quando a própria IA devolve `answer: null` e explica o que faltou (por exemplo, uma figura que não veio na extração), essa justificativa é preservada no item pendente.
 - **Validação docente:** o professor confirma ou corrige cada item em `PATCH /answer-keys/:id/items/validate`. Só itens validados contam para o aluno; os pendentes aparecem em amarelo. Se a resposta muda, a versão do gabarito sobe e as conferências antigas avisam.
+- **Medição real (05/11/2026):** no ENEM 2024 (2º dia, Amarelo), com as 75 questões oficiais que têm texto no banco, o mesmo prompt do serviço foi executado **sem informar a alternativa correta do banco** e comparado depois com o gabarito oficial. Modelo usado: `gemini-3.1-flash-lite` (o 3.5 Flash Lite estava com a cota diária esgotada). Das 75 questões, 59 receberam sugestão e 44 estavam corretas (**74,6% das respondidas; 58,7% do total**); 15 erraram e 16 ficaram sem sugestão (13 por falta de figura, esquema ou dados que não vieram na extração e 3 por 429/timeout). Sobre o total, o acerto foi 74,4% em Ciências da Natureza e 41,7% em Matemática. É uma medição de um modelo, não uma garantia: a revisão docente continua obrigatória.
+- **Teste do serviço real:** em 3 questões (91–93) com as respostas do banco temporariamente ocultadas, o fluxo criou o rascunho, recebeu 2 sugestões e 1 pendência por timeout, validou os itens e publicou; os dados originais foram restaurados em seguida. Nenhum gabarito oficial ou resposta do banco foi alterado ao final.
 - **Honestidade:** a IA pode errar. O fluxo foi desenhado para que a sugestão seja sempre revisada por um professor antes de valer.
 
 ## LuminIA por questão
@@ -104,12 +106,14 @@ O gabarito oficial do ENEM 2024 (2º dia, Amarelo) está no banco e o caderno do
 
 O vínculo ficou em **75/90** — exatamente as questões importadas. Os 15 itens sem questão continuam funcionando para conferir a resposta; a explicação por questão fica indisponível e a interface diz isso, em vez de inventar enunciado. O parser do PDF de 2024 foi corrigido para aceitar o marcador de alternativa de uma letra (o de 2023 usa duas) e para descartar o rodapé/cabeçalho de página que contaminava questões que atravessam páginas.
 
+As 75 questões importadas já têm exatamente uma alternativa correta no banco. Por isso, no uso normal do ENEM 2024, a geração de gabarito usa a resposta do banco com confiança 1 e **não chama a IA**; o caminho generativo foi medido separadamente, ocultando essa resposta, como descrito acima.
+
 Os demais `exam_papers` com gabarito continuam sendo dados de exemplo (o ENEM 2023, por exemplo, tem 5 respostas) e não foram migrados para cá. Os oficiais entram pela importação do INEP ou pelo cadastro manual do administrador.
 
 ## Próximas fases
 1. ~~Importar o gabarito oficial do PDF do INEP~~ (feito).
 2. ~~Foto do cartão-resposta para preencher as respostas~~ (feito; ver abaixo).
-3. ~~Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor~~ (feito em 04/11/2026; ver acima). Falta a validação com a IA real em uma prova inteira.
+3. ~~Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor~~ (feito em 04/11/2026; caminho da IA medido no ENEM 2024 em 05/11/2026, ver acima). Repetir a medição com o modelo padrão de produção quando a cota permitir; a revisão docente continua obrigatória.
 4. ~~Gabarito comunitário~~ (feito; ver abaixo).
 5. ~~LuminIA por questão com o texto real da questão e das alternativas (exige vincular `AnswerKeyItem.questionId` às questões do banco)~~ (feito em 04/11/2026; ver acima).
 6. ~~Painel do professor~~ (feito; ver abaixo).
