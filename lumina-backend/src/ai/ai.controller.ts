@@ -11,6 +11,7 @@ import { AiService } from './ai.service';
 import { TaskLesson, TopicLessonsService } from './topic-lessons.service';
 import { fallbackWeeklyComment, weeklySummaryContext } from '../schedules/schedule-weekly-summary';
 import { luminiaSystemPrompt } from './luminia-persona';
+import { SOCRATIC_GENERAL_CONTEXT, socraticTurnContext } from './socratic-tutor';
 
 @ApiTags('ai')
 @ApiBearerAuth()
@@ -30,6 +31,7 @@ export class AiController {
     @CurrentUser() user: UserWithProfile,
     @Body() dto: AiChatRequestDto,
   ): Promise<AiChatResponseDto> {
+    const socratic = dto.mode === 'SOCRATIC';
     // Tarefa de outro aluno (ou inexistente) e questão inacessível simplesmente
     // não viram contexto: a conversa continua, sem revelar que o item existe.
     const [explanation, questionContext] = await Promise.all([
@@ -37,10 +39,21 @@ export class AiController {
         ? this.scheduleInsights.explainTask(user.id, dto.scheduleTaskId)
         : Promise.resolve(null),
       dto.questionId
-        ? this.questionsService.tutorContext(user.id, dto.questionId)
+        ? this.questionsService.tutorContext(
+            user.id,
+            dto.questionId,
+            socratic ? 'SOCRATIC' : 'DIRECT',
+          )
         : Promise.resolve(null),
     ]);
-    const context = [explanation?.context, questionContext]
+    const context = [
+      explanation?.context,
+      questionContext,
+      socratic && !questionContext && !explanation?.context
+        ? SOCRATIC_GENERAL_CONTEXT
+        : null,
+      socratic ? socraticTurnContext(dto.history) : null,
+    ]
       .filter((part): part is string => Boolean(part))
       .join('\n\n');
     return this.aiService.sendMessage(

@@ -2,6 +2,15 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 06/11/2026 — LuminIA: modo socrático
+
+- **O que mudou:** o chat flutuante ganhou um alternador **Modo socrático**, e cada questão tem o botão de mesmo nome ao lado de “Pedir ajuda à LuminIA”. O aluno recebe uma pergunta por vez e pistas progressivas em vez da resolução pronta.
+- **Como conduz:** o prompt versionado (`socratic-2026-11-06`) começa pelo diagnóstico do que o aluno já entendeu e onde travou; depois avança para conceito, estratégia e acompanhamento. O servidor deriva a etapa do número de mensagens do aluno, sem confiar em estado enviado pelo cliente.
+- **Sem vazar gabarito:** antes da tentativa, o contexto da questão continua sem a alternativa correta e sem o comentário. Depois dela, o resultado pode ser confirmado porque já aparece na tela, mas o aluno precisa explicar o raciocínio antes de receber a explicação. Sem questão vinculada, o modo não presume matéria nem inventa exemplo.
+- **Sem provedor:** o mock devolve um roteiro fixo de perguntas, avisa que a IA não está configurada e não inventa conteúdo.
+- **Testes:** backend com **864 testes em 58 arquivos**, incluindo prompt, progressão por turno, contexto antes/depois da tentativa e fallback; app com o novo check de payload/modo socrático. `npm test`, `npm run typecheck` do backend e do app passando. **Sem migration.**
+- **Documentação:** detalhes em [docs/AI_CHAT.md](docs/AI_CHAT.md).
+
 ## Atualização de 05/11/2026 — Gabarito Inteligente: sugestão por IA medida em prova inteira
 
 ## Atualização de 05/11/2026 — Revisão humana da redação (human-in-the-loop)
