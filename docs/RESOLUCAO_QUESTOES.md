@@ -1,8 +1,9 @@
 # Resolução de questões (item 11)
 
 Ferramentas de estudo em volta da resolução de uma questão: entender **por que
-errou** (explicação de cada alternativa), **retomar** o que marcou para revisar
-e **destravar** sem ver o gabarito (dicas progressivas).
+errou** (explicação de cada alternativa), **retomar** o que marcou para revisar,
+**destravar** sem ver o gabarito (dicas progressivas) e **pedir ajuda
+contextual à LuminIA**.
 
 ## Endpoints
 
@@ -13,10 +14,12 @@ e **destravar** sem ver o gabarito (dicas progressivas).
 | `POST`   | `/questions/:id/review`       | Marca a questão como "para revisar"                    |
 | `DELETE` | `/questions/:id/review`       | Remove a marcação                                       |
 | `GET`    | `/users/me/questions/review`  | Fila de retomada (o que o aluno marcou)                |
+| `POST`   | `/ai/chat`                    | Chat da LuminIA; aceita `questionId` (e `scheduleTaskId`) |
 
-Todos exigem autenticação (`Authorization: Bearer <accessToken>`) e respeitam o
-escopo de workspaces: 404 para questão que o aluno não pode ver, 403 quando
-precisa ser autor dela.
+As rotas de questão exigem autenticação (`Authorization: Bearer <accessToken>`)
+e respeitam o escopo de workspaces: 404 para questão que o aluno não pode ver,
+403 quando precisa ser autor dela. O `/ai/chat` também exige autenticação, mas
+uma questão inacessível apenas não vira contexto — a conversa continua.
 
 ## Explicação de cada alternativa (o "por que errou")
 
@@ -135,6 +138,33 @@ interface, outro `name`) no token `QUESTION_HINTS_PROVIDER`: o serviço não mud
 
 Pedir dica **não** registra tentativa: as estatísticas da questão não mudam.
 
+## Ajuda da LuminIA com a questão
+
+O botão **Pedir ajuda à LuminIA** abre o chat flutuante já com uma pergunta
+sobre a questão. O cliente manda apenas o `questionId` em `POST /ai/chat`; o
+enunciado, as alternativas e a última tentativa são carregados **no servidor**.
+O cliente não envia o texto da questão nem o gabarito, e o contexto é montado
+respeitando o workspace do aluno.
+
+- **Antes de responder:** a alternativa correta e o comentário do gabarito
+  **não entram no contexto**. A instrução é ajudar no raciocínio — o que o
+  enunciado pede, o conceito envolvido e como eliminar distratores — sem
+  entregar a resposta.
+- **Depois de responder:** o contexto inclui a alternativa correta, a que o
+  aluno marcou, o resultado e as explicações disponíveis. A LuminIA explica o
+  erro sem julgamento ou reforça o acerto e o conceito.
+- **Continuidade:** depois de uma pergunta sobre uma questão, o `questionId`
+  continua ativo nas mensagens seguintes da conversa até o aluno trocar de
+  tela. O histórico em memória já existente é reaproveitado.
+- **Questão inacessível:** o contexto é omitido e o chat continua normalmente,
+  sem revelar que a questão existe.
+- **Questão com imagem:** o contexto avisa que a IA não recebeu a imagem e não
+  deve inventar detalhes visuais nem uma resposta que dependa deles.
+
+O endpoint também aceita `scheduleTaskId` (contexto do cronograma). Quando os
+dois ids vêm juntos, os contextos são concatenados. A rota exige autenticação
+e o DTO só aceita UUID nos dois campos.
+
 ## Interface
 
 `/app/questoes` (Banco de questões), no cartão de cada questão:
@@ -145,6 +175,9 @@ Pedir dica **não** registra tentativa: as estatísticas da questão não mudam.
 - botão **Pedir dica** → **Outra dica** → **Sem mais dicas** (desabilitado no
   limite), com as dicas empilhadas em numeração e a nota de que elas não revelam
   a alternativa correta;
+- botão **Pedir ajuda à LuminIA**: antes de responder, abre o chat pedindo uma
+  ajuda socrática; depois, abre o chat para explicar o erro ou o acerto com a
+  questão como contexto;
 - depois de responder, o painel **Por que cada alternativa está assim**, com a
   marcação `(sua resposta)` na alternativa escolhida, o **Gabarito comentado** e
   **Responder novamente** (que preserva as dicas já pedidas).
@@ -162,7 +195,15 @@ Pedir dica **não** registra tentativa: as estatísticas da questão não mudam.
 - `src/questions/questions.service.spec.ts` — marcar para revisar sem mexer no
   favorito, alternância sem preferência, 404 em questão inacessível, dica sem
   gravar tentativa, explicações no resultado da tentativa e a ausência delas na
-  visão de responder, `progress` em lote na listagem.
+  visão de responder, `progress` em lote na listagem, contexto da LuminIA sem
+  gabarito antes da resposta e com gabarito depois da tentativa.
+- `src/questions/question-tutor-context.spec.ts` — contexto puro: alternativas,
+  ausência de gabarito antes da resposta, inclusão da marcada/correta e dos
+  comentários depois da tentativa, acerto, questão com imagem e posição
+  desconhecida.
+- `src/ai/ai.controller.spec.ts` — o controller envia o contexto da questão,
+  combina com o do cronograma quando os dois ids chegam, não busca questão sem
+  `questionId` e segue sem contexto quando a questão não é acessível.
 - `test/questions.e2e-spec.ts` — visão de responder nunca entrega a explicação,
   visão de autor entrega, tentativa devolve as justificativas, dica sem revelar
   a alternativa correta, nível inválido 400, dica não conta como tentativa,
@@ -175,9 +216,8 @@ Pedir dica **não** registra tentativa: as estatísticas da questão não mudam.
 
 ## O que ainda não está aqui
 
-- **Caderno de erros** (revisar em lote as questões erradas e registrar o motivo
-  do erro): é o item 12/13 do inventário. O campo `marked_for_review` já é a
-  base da fila.
-- **Ajuda da LuminIA** durante a resolução: depende do backend de IA
-  (`docs/AI_CHAT.md`); hoje o provedor de dicas é o das regras, sem chamada
-  externa.
+- **Criar questão semelhante** a partir da conversa com a LuminIA (item 22 do
+  inventário): a ajuda contextual já explica a questão, mas ainda não gera uma
+  variação.
+- O **caderno de erros** (itens 12/13) foi entregue depois desta página; o
+  estado atual está em [STATUS_FUNCIONAL.md](../STATUS_FUNCIONAL.md).

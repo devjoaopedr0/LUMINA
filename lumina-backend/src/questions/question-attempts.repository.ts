@@ -48,6 +48,19 @@ export class QuestionAttemptsRepository {
     });
   }
 
+  /** Última tentativa do usuário numa questão. A LuminIA usa isto para saber
+   * se pode comentar o gabarito e qual alternativa o aluno marcou. */
+  findLatestForUser(
+    userId: string,
+    questionId: string,
+    db: Db = this.prisma,
+  ): Promise<QuestionAttempt | null> {
+    return db.questionAttempt.findFirst({
+      where: { userId, questionId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /** Histórico de tentativas do usuário nos workspaces acessíveis (pessoal +
    * banco central), com a classificação da questão — base para as estatísticas
    * de desempenho por disciplina/assunto. */

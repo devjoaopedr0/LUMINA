@@ -128,7 +128,7 @@
     -  Classificação automática da questão
     -  Possibilidade de salvar no banco interno
     -  Respeito a direitos autorais e condições de uso
-11. 11. Resolução de questões [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026 - SUBITEM "PEDIR AJUDA À LUMINIA" (DEPENDE DO BACKEND DE IA) PENDENTE; SUBITEM "ADICIONAR AO CADERNO DE ERROS" ENTREGUE NO ITEM 12]
+11. 11. Resolução de questões [INTEGRADA E VALIDADA VISUALMENTE EM 26/09/2026; SUBITEM "PEDIR AJUDA À LUMINIA" ENTREGUE EM 05/11/2026; SUBITEM "ADICIONAR AO CADERNO DE ERROS" ENTREGUE NO ITEM 12]
     -  Responder dentro da plataforma
     -  Correção automática
     -  Feedback imediato
@@ -203,7 +203,7 @@
     -  Explicação pela LuminIA
     -  Buscar questões semelhantes
     -  Adicionar ao caderno de estudos
-19. 19. Provas anteriores [INTEGRADA EM 27/09/2026 - MIGRAÇÃO E MODELOS; UI PENDENTE]
+19. 19. Provas anteriores [ACERVO E NAVEGAÇÃO POR PÁGINAS EM 05/11/2026 - VER docs/PROVAS_ANTERIORES.md]
     -  ENEM
     -  Vestibulares
     -  UECE
@@ -269,7 +269,7 @@
     -  Analogias
     -  Exercícios após a explicação
     -  Ajustar nível da explicação ao aluno
-22. 22. LuminIA — explicação de questões
+22. 22. LuminIA — explicação de questões [PARCIAL: AJUDA CONTEXTUAL NA RESOLUÇÃO ENTREGUE EM 05/11/2026; CRIAR QUESTÃO SEMELHANTE AINDA PENDENTE]
     -  Identificar o que a questão cobra
     -  Identificar conteúdo necessário
     -  Explicar como pensar

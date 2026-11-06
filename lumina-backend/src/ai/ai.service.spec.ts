@@ -106,6 +106,16 @@ describe('AiService', () => {
       );
     });
 
+    it('o mock não confunde o contexto da questão com o do cronograma', async () => {
+      const res = await service.sendMessage(
+        question,
+        'CONTEXTO DA QUESTÃO (dados do sistema):\nEnunciado:\n2 + 2 = ?',
+      );
+
+      expect(res.message).toContain('modo de demonstração');
+      expect(res.message).not.toContain('Reagendar');
+    });
+
     it('o prompt de sistema traz a persona, a conversa-modelo e o nome do aluno', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ choices: [{ message: { content: 'Oi, Ana.' } }] }), { status: 200 }),
@@ -260,6 +270,34 @@ describe('AiService', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(2);
       const [, secondInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
       expect(JSON.parse(String(secondInit.body)).model).toBe('modelo-que-da-certo');
+    });
+
+    it('repete o mesmo modelo quando o provedor responde 503 transitório', async () => {
+      vi.useFakeTimers();
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response('{"error":{"message":"high demand"}}', { status: 503 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: 'Resposta depois do 503.' } }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+
+      const service = withConfig({
+        AI_PROVIDER: 'openrouter',
+        OPENAI_API_KEY: 'sk-or-test',
+        AI_MODEL: 'modelo-instavel',
+      });
+
+      const pending = service.sendMessage(prompt);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(pending).resolves.toEqual({ message: 'Resposta depois do 503.' });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      const [, secondInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+      expect(JSON.parse(String(secondInit.body)).model).toBe('modelo-instavel');
+      vi.useRealTimers();
+      fetchSpy.mockRestore();
     });
 
     it('trata resposta 200 sem texto como falha e tenta o próximo modelo', async () => {
