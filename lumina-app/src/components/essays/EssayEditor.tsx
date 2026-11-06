@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, History, Save, ScanLine, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, History, MessageSquare, Save, ScanLine, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EssayCorrectionView } from '@/components/essays/EssayCorrectionPanel';
@@ -144,7 +144,7 @@ export function EssayEditor({ initial, userId }: { initial: Essay; userId: strin
   const inputClass = 'w-full rounded-xl border border-surface-line bg-white p-3 focus:outline-primary disabled:opacity-60';
   return <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8"><div className="mx-auto max-w-6xl">
     <button type="button" onClick={() => void leave()} disabled={state.busy || !!state.error || !!preview || panelBusy} className="inline-flex items-center gap-2 text-sm font-semibold disabled:opacity-40"><ArrowLeft size={16} />Salvar e voltar às redações</button>
-    <header className="my-7 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-bold">Seu espaço de escrita</h1><p role="status" className="mt-2 text-sm text-graphite-500">{state.busy ? 'Salvando na sua conta…' : state.error ? 'Texto ainda não salvo na conta' : dirty ? 'Alterações aguardando salvamento…' : `Salvo na sua conta · Versão ${state.version}`}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={download}><Download size={16} />Baixar texto</Button><Button variant="outline" disabled={state.busy || panelBusy || !!preview} onClick={() => setShowHistory(value => !value)}><History size={16} />Versões</Button><Button disabled={!ready || !dirty || state.busy || !!preview || panelBusy || !!state.error} onClick={() => void saver.save()}><Save size={16} />Salvar agora</Button></div></header>
+    <header className="my-7 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-bold">Seu espaço de escrita</h1><p role="status" className="mt-2 text-sm text-graphite-500">{state.busy ? 'Salvando na sua conta…' : state.error ? 'Texto ainda não salvo na conta' : dirty ? 'Alterações aguardando salvamento…' : `Salvo na sua conta · Versão ${state.version}`}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={download}><Download size={16} />Baixar texto</Button><Button variant="outline" onClick={() => navigate(`/app/redacoes/${initial.id}/revisao`)}><MessageSquare size={16} />Revisão humana</Button><Button variant="outline" disabled={state.busy || panelBusy || !!preview} onClick={() => setShowHistory(value => !value)}><History size={16} />Versões</Button><Button disabled={!ready || !dirty || state.busy || !!preview || panelBusy || !!state.error} onClick={() => void saver.save()}><Save size={16} />Salvar agora</Button></div></header>
     {notice ? <p role="status" className="mb-4 rounded-xl bg-primary/10 p-3 text-sm">{notice}</p> : null}
     <section aria-label="Importar redação" className="mb-5 rounded-xl border border-surface-line bg-white p-4">
       <label htmlFor="essay-import" className="block text-sm font-semibold">Importar texto (.txt)</label>

@@ -44,6 +44,7 @@ Cada projeto também pode ser rodado isoladamente (`npm run dev` dentro dele, ou
 ### Funcionalidades
 - [Chat LuminIA e guia de integração](docs/AI_CHAT.md)
 - [Correção de redação por foto (scanner, RAG e MCP)](docs/CORRECAO_REDACAO_SCANNER.md)
+- [Revisão humana da redação (human-in-the-loop)](docs/REVISAO_HUMANA_REDACAO.md)
 - [Scanner de cartão-resposta (leitura óptica)](docs/SCANNER_GABARITO.md)
 - [Gabarito Inteligente (em andamento)](docs/GABARITO_INTELIGENTE.md)
 - [Cronograma adaptativo (design)](docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md)

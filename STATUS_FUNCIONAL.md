@@ -3,6 +3,17 @@
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
 
+## Atualização de 05/11/2026 — Revisão humana da redação (human-in-the-loop)
+
+- **Fluxo vertical:** fila de revisões, workspace do avaliador com texto/OCR, notas da IA, evidências destacadas, notas editáveis, decisão por competência e nota final, chat contextual e histórico. A seleção de um trecho ancora a pergunta e a evidência. O autor vê apenas revisões validadas, em modo somente leitura.
+- **Chat técnico:** a LuminIA separa critério oficial do Inep, interpretação do avaliador e interpretação da IA; cita trechos oficiais e só aceita evidência literal da redação. Sem provedor, o fallback determinístico não cria nota e pede critério + evidência. Prompt versionado em `REVIEW_CHAT_PROMPT_VERSION`.
+- **Aprendizado estruturado:** `RECEIVED → STRUCTURED → VALIDATED → CONSOLIDATED`, por competência, com critério, notas, evidências, justificativas, divergência, confiança, aplicabilidade e origem. Editar revisão validada rebaixa para `STRUCTURED`, arquiva versões anteriores e registra `REVIEW_RESET`. Consolidação exige validação independente, consentimento e anonimização.
+- **RAG e correção futura:** só aprendizados validados/consolidados, anonimizados, consentidos e não arquivados entram na recuperação; a redação em correção é excluída. A correção por competência passou a receber até três exemplos por competência e registra na auditoria quais foram usados. Isso evita contaminação treino/teste e impede que uma mensagem isolada vire regra.
+- **Governança:** permissões `ESSAY_REVIEW`/`ESSAY_VALIDATE`, cargos canônicos, autor não revisa nem valida a própria redação, auditoria append-only com snapshot completo das notas/justificativas, filtros de privacidade no endpoint por id e revisão por redação separa treino/teste.
+- **Relatórios:** taxa de concordância, diferença média/assinada por C1–C5, critérios recorrentes e exemplos de divergência. O relatório é descritivo e não reduz a decisão à média.
+- **Medição held-out:** harness `essay:human-eval` agrupa por redação, calibra só no treino e mede MAE/viés/concordância Inep antes e depois no teste. Sem duas redações validadas distintas, ele informa a insuficiência e não inventa métrica. O teste sintético prova o desenho e a ausência de vazamento; a medição real fica registrada quando houver amostra de produção.
+- **Testes:** 16 cenários de revisão/chat/governança, ranking do RAG validado e desenho held-out; backend `npm test` e `npm run typecheck` passando. Migrations `20261105120000_essay_human_review` e `20261105130000_essay_review_permissions` aplicadas. Detalhes em [docs/REVISAO_HUMANA_REDACAO.md](docs/REVISAO_HUMANA_REDACAO.md).
+
 ## Atualização de 05/11/2026 — Provas anteriores: navegação por páginas
 
 - **Leitura da prova:** a lista de páginas agora mostra miniaturas e abre a página em tamanho de leitura; cada página traz a posição (`2 de 4`) e os botões **Anterior** / **Próxima**, desabilitados nos limites.

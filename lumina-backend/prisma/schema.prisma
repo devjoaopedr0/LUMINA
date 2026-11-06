@@ -44,6 +44,12 @@ model User {
   essays                 Essay[]
   essayScans             EssayScan[]
   essayCorrectionUsages  EssayCorrectionUsage[]
+  essayReviews           EssayReview[]               @relation("EssayReviewEvaluator")
+  essayReviewsValidated  EssayReview[]               @relation("EssayReviewValidator")
+  essayReviewMessages    EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
+  essayLearningCreated   EssayLearningRecord[]       @relation("EssayLearningCreatedBy")
+  essayLearningValidated EssayLearningRecord[]       @relation("EssayLearningValidatedBy")
+  essayAuditEvents       EssayAuditEvent[]
   teacherProfile         TeacherProfile?
   authoredEssayThemes    EssayTheme[]
   createdSimulations     Simulation[]
@@ -113,6 +119,9 @@ model Essay {
   feedbacks        EssayFeedback[]
   scans            EssayScan[]
   correctionUsages EssayCorrectionUsage[]
+  reviews          EssayReview[]
+  reviewMessages   EssayReviewMessage[]
+  learningRecords  EssayLearningRecord[]
 
   @@index([userId, updatedAt])
   @@map("essays")
@@ -1836,6 +1845,9 @@ model EssayCorrection {
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")
   details          EssayCorrectionDetail[]
+  reviews          EssayReview[]
+  reviewMessages   EssayReviewMessage[]
+  learningRecords  EssayLearningRecord[]
 
   @@map("essay_corrections")
 }
@@ -1910,6 +1922,210 @@ model EssayFeedback {
 
   @@index([essayId, createdAt])
   @@map("essay_feedbacks")
+}
+
+// =============================================================================
+// Item 21: avaliação humana colaborativa e aprendizagem contínua
+// =============================================================================
+
+/// Revisão de uma correção por um avaliador humano. A correção da IA continua
+/// sendo a referência; a revisão é uma contribuição versionada e auditável.
+/// O snapshot das notas da IA evita que uma nova correção sobrescreva o
+/// histórico de uma revisão já feita.
+model EssayReview {
+  id                 String                @id @default(uuid()) @db.Uuid
+  essayId            String                @map("essay_id") @db.Uuid
+  essay              Essay                 @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  correctionId       String                @map("correction_id") @db.Uuid
+  correction         EssayCorrection       @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+  essayVersion       Int                   @map("essay_version")
+  evaluatorId        String                @map("evaluator_id") @db.Uuid
+  evaluator          User                  @relation("EssayReviewEvaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
+  evaluatorRole      AccountType           @map("evaluator_role")
+  status             EssayReviewStatus     @default(DRAFT)
+  decision           EssayReviewDecision?
+  /// Snapshot da correção da IA no momento da revisão: { C1: 120, ... }.
+  aiCompetenciesJson Json                  @map("ai_competencies_json")
+  aiTotalScore       Int                   @map("ai_total_score")
+  aiGeneralFeedback  String?               @map("ai_general_feedback")
+  /// Notas propostas pelo avaliador: { C1: 160, ... }.
+  competenciesJson   Json                  @map("competencies_json")
+  totalScore         Int                   @map("total_score")
+  generalFeedback    String?               @map("general_feedback")
+  /// Divergências calculadas: total, por competência e se é discrepante.
+  divergenceJson     Json?                 @map("divergence_json")
+  /// Nível de validação do conhecimento gerado pela revisão.
+  validationLevel    EssayLearningLevel    @default(RECEIVED) @map("validation_level")
+  validatedBy        String?               @map("validated_by") @db.Uuid
+  validatedByUser    User?                 @relation("EssayReviewValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
+  validatedAt        DateTime?             @map("validated_at")
+  validationNotes    String?               @map("validation_notes")
+  submittedAt        DateTime?             @map("submitted_at")
+  supersededAt       DateTime?             @map("superseded_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  details            EssayReviewDetail[]
+  messages           EssayReviewMessage[]
+  learningRecords    EssayLearningRecord[]
+
+  @@unique([correctionId, evaluatorId, essayVersion])
+  @@index([essayId, status])
+  @@index([validationLevel, updatedAt])
+  @@map("essay_reviews")
+}
+
+/// Nota e justificativa do avaliador por competência, sempre acompanhadas da
+/// nota original da IA para que a divergência não dependa de outra tabela.
+model EssayReviewDetail {
+  id              String                @id @default(uuid()) @db.Uuid
+  reviewId        String                @map("review_id") @db.Uuid
+  review          EssayReview           @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  competency      String                @db.VarChar(2)
+  aiScore         Int                   @map("ai_score")
+  humanScore      Int                   @map("human_score")
+  decision        EssayReviewDecision
+  /// Critério discutido: "desenvolvimento argumentativo", "coesão", etc.
+  criterion       String?               @db.VarChar(240)
+  justification   String?
+  /// Evidências textuais e âncoras selecionadas pelo avaliador.
+  evidenceJson    Json?                 @map("evidence_json")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  learningRecords EssayLearningRecord[]
+
+  @@unique([reviewId, competency])
+  @@index([reviewId])
+  @@map("essay_review_details")
+}
+
+/// Mensagem do chat contextual avaliador ↔ LuminIA. O histórico bruto fica
+/// separado dos aprendizados estruturados (EssayLearningRecord).
+model EssayReviewMessage {
+  id            String                 @id @default(uuid()) @db.Uuid
+  essayId       String                 @map("essay_id") @db.Uuid
+  essay         Essay                  @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  correctionId  String?                @map("correction_id") @db.Uuid
+  correction    EssayCorrection?       @relation(fields: [correctionId], references: [id], onDelete: SetNull)
+  reviewId      String?                @map("review_id") @db.Uuid
+  review        EssayReview?           @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  authorId      String?                @map("author_id") @db.Uuid
+  author        User?                  @relation("EssayReviewMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  role          EssayReviewMessageRole
+  content       String
+  /// Referências oficiais e exemplos validados usados na resposta.
+  citationsJson Json?                  @map("citations_json")
+  /// Trecho da redação selecionado pelo avaliador.
+  anchorJson    Json?                  @map("anchor_json")
+  model         String?                @db.VarChar(200)
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  @@index([essayId, createdAt])
+  @@index([reviewId, createdAt])
+  @@map("essay_review_messages")
+}
+
+/// Aprendizado estruturado extraído de uma revisão ou de uma interação.
+/// Não é uma regra global: nasce como RECEIVED/STRUCTURED e só entra na
+/// recuperação (RAG) depois de VALIDATED/CONSOLIDATED, com consentimento e
+/// anonimização registrados.
+model EssayLearningRecord {
+  id                 String                @id @default(uuid()) @db.Uuid
+  essayId            String                @map("essay_id") @db.Uuid
+  essay              Essay                 @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  correctionId       String?               @map("correction_id") @db.Uuid
+  correction         EssayCorrection?      @relation(fields: [correctionId], references: [id], onDelete: SetNull)
+  reviewId           String?               @map("review_id") @db.Uuid
+  review             EssayReview?          @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  reviewDetailId     String?               @map("review_detail_id") @db.Uuid
+  reviewDetail       EssayReviewDetail?    @relation(fields: [reviewDetailId], references: [id], onDelete: SetNull)
+  competency         String                @db.VarChar(2)
+  criterion          String?               @db.VarChar(240)
+  aiScore            Int?                  @map("ai_score")
+  humanScore         Int?                  @map("human_score")
+  evidence           String?
+  aiJustification    String?               @map("ai_justification")
+  humanJustification String?               @map("human_justification")
+  divergenceReason   String?               @map("divergence_reason")
+  decision           EssayReviewDecision?
+  /// Lição destilada, legível por humanos e usada no contexto da IA.
+  learning           String
+  confidence         Float?
+  applicability      String?
+  level              EssayLearningLevel    @default(RECEIVED)
+  origin             String                @default("HUMAN_REVIEW") @db.VarChar(40)
+  anonymized         Boolean               @default(false)
+  consentAt          DateTime?             @map("consent_at")
+  version            Int                   @default(1)
+  supersedesId       String?               @map("supersedes_id") @db.Uuid
+  supersedes         EssayLearningRecord?  @relation("EssayLearningVersions", fields: [supersedesId], references: [id], onDelete: SetNull)
+  versions           EssayLearningRecord[] @relation("EssayLearningVersions")
+  createdBy          String                @map("created_by") @db.Uuid
+  createdByUser      User                  @relation("EssayLearningCreatedBy", fields: [createdBy], references: [id], onDelete: Cascade)
+  validatedBy        String?               @map("validated_by") @db.Uuid
+  validatedByUser    User?                 @relation("EssayLearningValidatedBy", fields: [validatedBy], references: [id], onDelete: SetNull)
+  validatedAt        DateTime?             @map("validated_at")
+  archivedAt         DateTime?             @map("archived_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  @@index([competency, level, archivedAt])
+  @@index([essayId, createdAt])
+  @@map("essay_learning_records")
+}
+
+/// Trilha append-only de decisões sensíveis (quem revisou, validou, alterou
+/// nível ou gerou aprendizado). Nunca é atualizada nem apagada pelo serviço.
+model EssayAuditEvent {
+  id           String           @id @default(uuid()) @db.Uuid
+  actorId      String?          @map("actor_id") @db.Uuid
+  actor        User?            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action       EssayAuditAction
+  entity       String           @db.VarChar(60)
+  entityId     String           @map("entity_id") @db.VarChar(80)
+  beforeJson   Json?            @map("before_json")
+  afterJson    Json?            @map("after_json")
+  metadataJson Json?            @map("metadata_json")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([entity, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("essay_audit_events")
+}
+
+enum EssayReviewStatus {
+  DRAFT
+  SUBMITTED
+  ACCEPTED
+  DISPUTED
+  SUPERSEDED
+}
+
+enum EssayReviewDecision {
+  AGREE
+  DISAGREE
+  ADJUST
+}
+
+enum EssayReviewMessageRole {
+  EVALUATOR
+  AI
+  SYSTEM
+}
+
+enum EssayLearningLevel {
+  RECEIVED
+  STRUCTURED
+  VALIDATED
+  CONSOLIDATED
+}
+
+enum EssayAuditAction {
+  REVIEW_SUBMITTED
+  REVIEW_VALIDATED
+  REVIEW_CONSOLIDATED
+  REVIEW_RESET
+  LEARNING_CREATED
+  LEARNING_ARCHIVED
+  MESSAGE_CREATED
 }
 
 enum EssayCorrectionStatus {

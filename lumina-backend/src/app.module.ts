@@ -11,6 +11,7 @@ import { SchedulesModule } from './schedules/schedules.module';
 import { MentalMathModule } from './mental-math/mental-math.module';
 import { EssaysModule } from './essays/essays.module';
 import { EssayCorrectionModule } from './essay-correction/essay-correction.module';
+import { EssayReviewModule } from './essay-review/essay-review.module';
 import { SimulationsModule } from './simulations/simulations.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
@@ -45,6 +46,7 @@ import { AnswerKeysModule } from './answer-keys/answer-keys.module';
     MentalMathModule,
     EssaysModule,
     EssayCorrectionModule,
+    EssayReviewModule,
     SimulationsModule,
     SearchModule,
     AiModule,

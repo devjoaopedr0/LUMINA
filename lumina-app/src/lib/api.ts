@@ -161,6 +161,257 @@ export async function apiEssayScanPageUrl(token: string, id: string, index: numb
 export const apiEssayCorrectionRequest = (token: string, essayId: string): Promise<EssayCorrection> => request(`/essays/${essayId}/correction`, { method: 'POST', headers: essayHeaders(token) });
 export const apiEssayCorrection = (token: string, essayId: string): Promise<EssayCorrection> => request(`/essays/${essayId}/correction`, { headers: essayHeaders(token) });
 
+// ---- Item 21: revisão humana, chat contextual e aprendizagem validada ----
+export type EssayReviewStatus = 'DRAFT' | 'SUBMITTED' | 'ACCEPTED' | 'DISPUTED' | 'SUPERSEDED';
+export type EssayReviewDecision = 'AGREE' | 'DISAGREE' | 'ADJUST';
+export type EssayLearningLevel = 'RECEIVED' | 'STRUCTURED' | 'VALIDATED' | 'CONSOLIDATED';
+export type EssayCompetencyId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+export const ESSAY_COMPETENCY_LABELS: Record<EssayCompetencyId, string> = {
+  C1: 'Domínio da escrita formal',
+  C2: 'Compreensão do tema e repertório',
+  C3: 'Seleção e organização dos argumentos',
+  C4: 'Coesão e mecanismos linguísticos',
+  C5: 'Proposta de intervenção',
+};
+export const ESSAY_SCORE_LEVELS = [0, 40, 80, 120, 160, 200] as const;
+
+export interface EssayReviewEvidence {
+  evidence?: string[];
+  anchorText?: string | null;
+  level?: string;
+  strengths?: string[];
+  problems?: string[];
+  levelExplanation?: string;
+  citations?: { id: string; title: string; citation: string }[];
+}
+export interface EssayReviewCorrectionDetail {
+  competency: EssayCompetencyId;
+  score: number;
+  justification: string | null;
+  evidenceJson: EssayReviewEvidence | null;
+}
+export interface EssayReviewCorrection {
+  id: string;
+  status: EssayCorrectionStatus;
+  totalScore: number;
+  generalFeedback: string | null;
+  essayVersion: number | null;
+  updatedAt: string;
+  confidence: number | null;
+  annulmentJson: { code: string; explanation: string; citation: string } | null;
+  auditJson: {
+    method?: string;
+    discrepancy?: { total: number; maxCompetency: number; thirdEvaluator: boolean; competencies?: string[] } | null;
+    calibrated?: boolean;
+    runs?: { evaluator: string; method: string; model: string | null; total: number; scores?: Record<string, number> }[];
+    analysis?: { lines?: number; linesSource?: string; words?: number; paragraphs?: number; warnings?: string[] } | null;
+    knowledge?: { activeDocument?: { id: string; title: string; version: string; publishedAt: string; sourceUrl: string } | null };
+  } | null;
+  competenciesJson: Record<string, number>;
+  details: EssayReviewCorrectionDetail[];
+}
+export interface EssayReviewScan {
+  id: string;
+  status: 'PROCESSING' | 'READY' | 'CONFIRMED' | 'FAILED';
+  transcribedText: string | null;
+  lineCount: number | null;
+  illegibleWords: number | null;
+  ocrConfidence: number | null;
+  warnings: string[];
+  createdAt: string;
+}
+export interface EssayReviewEssay {
+  id: string;
+  title: string;
+  theme: string;
+  content: string;
+  version: number;
+  wordCount: number;
+  createdAt: string;
+  updatedAt: string;
+  scans: EssayReviewScan[];
+  owner: { id: string; name: string; accountType: ApiUser['accountType'] };
+}
+export interface EssayReviewDetail {
+  id: string;
+  competency: EssayCompetencyId;
+  aiScore: number;
+  humanScore: number;
+  decision: EssayReviewDecision;
+  criterion: string | null;
+  justification: string | null;
+  evidenceJson: EssayReviewEvidence | null;
+  createdAt: string;
+}
+export interface EssayReview {
+  id: string;
+  essayId: string;
+  correctionId: string;
+  essayVersion: number;
+  status: EssayReviewStatus;
+  decision: EssayReviewDecision | null;
+  aiTotalScore: number;
+  totalScore: number;
+  aiCompetenciesJson: Record<string, number>;
+  competenciesJson: Record<string, number>;
+  divergenceJson: { total: number; maxCompetency: number; diffs: Record<string, number>; discrepant: boolean } | null;
+  generalFeedback: string | null;
+  validationLevel: EssayLearningLevel;
+  validatedAt: string | null;
+  validationNotes: string | null;
+  submittedAt: string | null;
+  evaluator: { id: string; accountType: ApiUser['accountType']; name: string };
+  validatedBy: { id: string; name: string } | null;
+  details: EssayReviewDetail[];
+}
+export interface EssayReviewCitation { id: string; title: string; citation: string; page: number | null }
+export interface EssayReviewMessage {
+  id: string;
+  essayId: string;
+  correctionId: string | null;
+  reviewId: string | null;
+  authorId: string | null;
+  role: 'EVALUATOR' | 'AI' | 'SYSTEM';
+  content: string;
+  citationsJson: EssayReviewCitation[] | null;
+  anchorJson: { text: string } | null;
+  model: string | null;
+  createdAt: string;
+  author?: { id: string; profile: { firstName: string; lastName: string | null } | null } | null;
+}
+export interface EssayLearningRecord {
+  id: string;
+  essayId: string;
+  correctionId: string | null;
+  reviewId: string | null;
+  reviewDetailId: string | null;
+  competency: EssayCompetencyId;
+  criterion: string | null;
+  aiScore: number | null;
+  humanScore: number | null;
+  evidence: string | null;
+  aiJustification: string | null;
+  humanJustification: string | null;
+  divergenceReason: string | null;
+  decision: EssayReviewDecision | null;
+  learning: string;
+  confidence: number | null;
+  applicability: string | null;
+  level: EssayLearningLevel;
+  origin: string;
+  anonymized: boolean;
+  consentAt: string | null;
+  version: number;
+  validatedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdByUser?: { id: string; profile: { firstName: string; lastName: string | null } | null } | null;
+  validatedByUser?: { id: string; profile: { firstName: string; lastName: string | null } | null } | null;
+}
+export interface EssayReviewWorkspace {
+  essay: EssayReviewEssay;
+  correction: EssayReviewCorrection | null;
+  reviews: EssayReview[];
+  messages: EssayReviewMessage[];
+  learning: EssayLearningRecord[];
+  canReview: boolean;
+  canValidate: boolean;
+  latestReview: EssayReview | null;
+  knowledge: { activeDocument: { id: string; title: string; version: string; publishedAt: string; sourceUrl: string } | null; promptVersion: string };
+}
+export interface EssayReviewQueueItem {
+  id: string;
+  status: EssayReviewStatus;
+  validationLevel: EssayLearningLevel;
+  totalScore: number;
+  aiTotalScore: number;
+  divergence: EssayReview['divergenceJson'];
+  updatedAt: string;
+  evaluator: { id: string; name: string };
+  essay: { id: string; title: string; theme: string; version: number; owner: string };
+  competencies: { competency: EssayCompetencyId; aiScore: number; humanScore: number; decision: EssayReviewDecision }[];
+}
+export interface EssayReviewCompetencyInput {
+  competency: EssayCompetencyId;
+  score: number;
+  decision?: EssayReviewDecision;
+  criterion?: string;
+  justification?: string;
+  evidence?: string[];
+  anchorText?: string;
+}
+export interface EssayReviewSubmission {
+  decision?: EssayReviewDecision;
+  generalFeedback?: string;
+  competencies: EssayReviewCompetencyInput[];
+}
+export interface EssayReviewChatInput {
+  message: string;
+  competency?: EssayCompetencyId;
+  anchorText?: string;
+  reviewId?: string;
+}
+export interface EssayReviewValidationInput {
+  level: 'VALIDATED' | 'CONSOLIDATED';
+  notes?: string;
+  consentConfirmed?: boolean;
+}
+export interface EssayReviewLearningInput {
+  competency: EssayCompetencyId;
+  learning: string;
+  criterion?: string;
+  evidence?: string;
+  justification?: string;
+  applicability?: string;
+  confidence?: number;
+}
+export interface EssayReviewDivergenceBucket {
+  competency: EssayCompetencyId;
+  label: string;
+  reviews: number;
+  disagreements: number;
+  averageDifference: number;
+  averageSignedDifference: number;
+  maxDifference: number;
+  criteria: Record<string, number>;
+  examples: { reviewId: string; essayId: string; aiScore: number; humanScore: number; justification: string | null }[];
+}
+export interface EssayReviewDivergenceReport {
+  summary: {
+    reviews: number;
+    disputed: number;
+    validated: number;
+    consolidated: number;
+    averageTotalDifference: number;
+    topCriteria: { criterion: string; count: number }[];
+  };
+  byCompetency: EssayReviewDivergenceBucket[];
+  note: string;
+}
+export const apiEssayReviewWorkspace = (token: string, essayId: string): Promise<EssayReviewWorkspace> =>
+  request(`/essays/${essayId}/review`, { headers: essayHeaders(token) });
+export const apiEssayReviewSubmit = (token: string, essayId: string, data: EssayReviewSubmission): Promise<EssayReview> =>
+  request(`/essays/${essayId}/reviews`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayReviewChat = (token: string, essayId: string, data: EssayReviewChatInput): Promise<{ messages: EssayReviewMessage[]; citations: EssayReviewCitation[]; model: string | null; promptVersion: string }> =>
+  request(`/essays/${essayId}/review/chat`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayReviewLearning = (token: string, essayId: string, data: EssayReviewLearningInput): Promise<EssayLearningRecord> =>
+  request(`/essays/${essayId}/review/learning`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayReviewQueue = (token: string, status?: EssayReviewStatus): Promise<{ items: EssayReviewQueueItem[] }> =>
+  request(`/essay-reviews/queue${status ? `?status=${encodeURIComponent(status)}` : ''}`, { headers: essayHeaders(token) });
+export const apiEssayReviewDivergences = (token: string): Promise<EssayReviewDivergenceReport> =>
+  request('/essay-reviews/divergences', { headers: essayHeaders(token) });
+export const apiEssayReview = (token: string, reviewId: string): Promise<EssayReview> =>
+  request(`/essay-reviews/${encodeURIComponent(reviewId)}`, { headers: essayHeaders(token) });
+export const apiEssayReviewAudit = (token: string, reviewId: string): Promise<{ reviewId: string; events: { id: string; action: string; entity: string; entityId: string; beforeJson: unknown; afterJson: unknown; metadataJson: unknown; createdAt: string; actor: { id: string; profile: { firstName: string; lastName: string | null } | null } | null }[] }> =>
+  request(`/essay-reviews/${encodeURIComponent(reviewId)}/audit`, { headers: essayHeaders(token) });
+export const apiEssayReviewValidate = (token: string, reviewId: string, data: EssayReviewValidationInput): Promise<EssayReview> =>
+  request(`/essay-reviews/${encodeURIComponent(reviewId)}/validate`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayLearningValidate = (token: string, learningId: string, data: EssayReviewValidationInput): Promise<EssayLearningRecord> =>
+  request(`/essay-learning/${encodeURIComponent(learningId)}/validate`, { method: 'POST', headers: essayHeaders(token), body: JSON.stringify(data) });
+export const apiEssayLearningArchive = (token: string, learningId: string): Promise<{ id: string; archived: boolean }> =>
+  request(`/essay-learning/${encodeURIComponent(learningId)}`, { method: 'DELETE', headers: essayHeaders(token) });
+
 export interface MathSummary { total: number; correct: number; accuracy: number; averageMs: number }
 export interface MathAttempt { left: number; right: number; operation: string; answer: number; submitted: number | null; correct: boolean; elapsedMs: number; level: number }
 export interface MathSession {
