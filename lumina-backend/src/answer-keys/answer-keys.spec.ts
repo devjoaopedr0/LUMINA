@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, BadRequestException, Unprocessab
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { enemArea, gradeAnswers, GradingError, GradingItem, letterToPosition } from './answer-key.grading';
-import { correctPositions, enemQuestionSourceId, fallbackExplanation, parseSuggestedAnswer, pickAccessibleQuestion, pickQuestion, plainExplanation } from './answer-key.questions';
+import { correctPositions, enemQuestionSourceId, fallbackExplanation, parseSuggestedAnswer, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation } from './answer-key.questions';
 import { parseOfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { grayImagesToPdf } from '../simulations/omr/pdf';
 import { answerKeySheetBits, answerKeySheetLayout } from './answer-key-sheet';
@@ -119,6 +119,14 @@ describe('Gabarito Inteligente — sugestão por IA', () => {
     expect(parseSuggestedAnswer('```json\n{"answer":2,"justification":"A alternativa B retoma o comando."}\n```', alternatives)?.position).toBe(2);
   });
 
+  it('preserva o motivo quando a IA devolve resposta nula', () => {
+    expect(parseSuggestedAnswerOutcome('{"answer":null,"justification":"Falta a imagem citada no enunciado."}', alternatives)).toEqual({
+      position: null,
+      justification: 'Falta a imagem citada no enunciado.',
+    });
+    expect(parseSuggestedAnswer('{"answer":null,"justification":"Falta a imagem citada no enunciado."}', alternatives)).toBeNull();
+  });
+
   it('não sugere sem alternativa válida ou sem justificativa', () => {
     expect(parseSuggestedAnswer('{"answer":"F","justification":"Não existe."}', alternatives)).toBeNull();
     expect(parseSuggestedAnswer('{"answer":"A","justification":"ok"}', alternatives)).toBeNull();
@@ -192,6 +200,41 @@ describe('Gabarito Inteligente — sugestão por IA', () => {
       expect.objectContaining({ number: 3, answer: null, confidence: null, validated: false, questionId: 'q3' }),
     ]);
     expect(created.items.create[2].justification).toMatch(/imagem/);
+  });
+
+  it('guarda o motivo da IA quando ela não consegue decidir', async () => {
+    const prisma = {
+      exam: { findUnique: vi.fn().mockResolvedValue({ id: 'exam-1', name: 'Simulado', year: 2026 }) },
+      answerKey: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'key-1' }) },
+      workspace: { findFirst: vi.fn().mockResolvedValue({ id: 'bank' }) },
+      workspaceMember: {
+        findMany: vi.fn().mockResolvedValue([{ workspaceId: 'w1' }]),
+        findFirst: vi.fn().mockResolvedValue({ workspaceId: 'w1' }),
+      },
+      question: {
+        findMany: vi.fn().mockResolvedValue([{
+          id: 'q1', workspaceId: 'w1', examNumber: 1, sourceId: null, stem: 'Questão com gráfico.', subject: 'Biologia', imageUrl: null,
+          alternatives: [
+            { position: 1, text: 'A', isCorrect: false },
+            { position: 2, text: 'B', isCorrect: false },
+          ],
+        }]),
+      },
+    };
+    const ai = { generateStructured: vi.fn().mockResolvedValue({ text: '{"answer":null,"justification":"O enunciado menciona um gráfico que não foi enviado."}', model: 'modelo-teste' }) };
+    const s = new AnswerKeysService(prisma as never, undefined, ai as never);
+    vi.spyOn(s, 'get').mockResolvedValue({ id: 'key-1' } as never);
+
+    const result = await s.suggestWithAi({ id: 'prof', accountType: 'TEACHER' }, { examId: 'exam-1', numbers: [1] });
+
+    expect(result.counts).toEqual({ ai: 0, known: 0, skipped: 1, missing: 0 });
+    expect(result.models).toEqual(['modelo-teste']);
+    expect(result.skipped[0].reason).toMatch(/gráfico/);
+    const created = prisma.answerKey.create.mock.calls[0][0].data;
+    expect(created.items.create[0]).toEqual(expect.objectContaining({
+      number: 1, answer: null, confidence: null, validated: false, questionId: 'q1',
+    }));
+    expect(created.items.create[0].justification).toMatch(/Sem sugestão:.*gráfico/);
   });
 
   it('recusa gerar sugestão quando já existe gabarito oficial', async () => {

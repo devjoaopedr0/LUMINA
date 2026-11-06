@@ -74,13 +74,19 @@ export function suggestionPrompt(params: {
   ].join('\n\n');
 }
 
+export type SuggestedAnswerOutcome =
+  | { position: number; justification: string }
+  | { position: null; justification: string };
+
 /**
  * Lê a sugestão da IA. Só aceita uma alternativa existente e uma justificativa
  * com conteúdo: sem isso, é melhor não sugerir do que preencher com invenção.
+ * Quando a IA devolve `answer: null`, a justificativa é preservada como motivo
+ * da pendência — é ela que explica, por exemplo, que falta a imagem.
  * A confiança não vem daqui — o serviço só a preenche quando há base
  * calculável (resposta já registrada no banco).
  */
-export function parseSuggestedAnswer(text: string, alternatives: SuggestionAlternative[]): { position: number; justification: string } | null {
+export function parseSuggestedAnswerOutcome(text: string, alternatives: SuggestionAlternative[]): SuggestedAnswerOutcome | null {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const body = fenced ? fenced[1] : text;
   const start = body.indexOf('{');
@@ -94,6 +100,10 @@ export function parseSuggestedAnswer(text: string, alternatives: SuggestionAlter
   }
   if (!data || typeof data !== 'object') return null;
   const raw = data as { answer?: unknown; justification?: unknown };
+  const justification = typeof raw.justification === 'string' ? plainExplanation(raw.justification).trim() : '';
+  if (raw.answer === null) {
+    return justification.length >= 10 ? { position: null, justification: justification.slice(0, 800) } : null;
+  }
   let position: number | null = null;
   if (typeof raw.answer === 'number' && Number.isInteger(raw.answer)) position = raw.answer;
   else if (typeof raw.answer === 'string') {
@@ -106,9 +116,14 @@ export function parseSuggestedAnswer(text: string, alternatives: SuggestionAlter
     }
   }
   if (!position || !alternatives.some((a) => a.position === position)) return null;
-  const justification = typeof raw.justification === 'string' ? plainExplanation(raw.justification).trim() : '';
   if (justification.length < 10) return null;
   return { position, justification: justification.slice(0, 800) };
+}
+
+/** Compatibilidade: só devolve sugestão quando há uma alternativa escolhida. */
+export function parseSuggestedAnswer(text: string, alternatives: SuggestionAlternative[]): { position: number; justification: string } | null {
+  const outcome = parseSuggestedAnswerOutcome(text, alternatives);
+  return outcome && outcome.position !== null ? { position: outcome.position, justification: outcome.justification } : null;
 }
 
 /**
