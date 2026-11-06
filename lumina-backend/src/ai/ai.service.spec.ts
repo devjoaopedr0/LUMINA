@@ -106,6 +106,16 @@ describe('AiService', () => {
       );
     });
 
+    it('o mock não confunde o contexto da questão com o do cronograma', async () => {
+      const res = await service.sendMessage(
+        question,
+        'CONTEXTO DA QUESTÃO (dados do sistema):\nEnunciado:\n2 + 2 = ?',
+      );
+
+      expect(res.message).toContain('modo de demonstração');
+      expect(res.message).not.toContain('Reagendar');
+    });
+
     it('o prompt de sistema traz a persona, a conversa-modelo e o nome do aluno', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ choices: [{ message: { content: 'Oi, Ana.' } }] }), { status: 200 }),

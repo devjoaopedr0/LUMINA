@@ -16,6 +16,7 @@ export const ASK_AI_EVENT = "lumina:ask-ai";
 export interface AskAiDetail {
   message: string;
   scheduleTaskId?: string;
+  questionId?: string;
 }
 
 export function askAi(detail: AskAiDetail): void {
@@ -52,7 +53,7 @@ const apiClient = createApiClient({
 export async function sendAiChatMessage(
   message: string,
   history: AiChatMessage[],
-  options: { scheduleTaskId?: string } = {},
+  options: { scheduleTaskId?: string; questionId?: string } = {},
 ): Promise<string> {
   if (!message.trim()) throw new Error("Mensagem vazia.");
   if (message.length > 4000) throw new Error("Mensagem muito longa (máx. 4000 caracteres).");
@@ -69,8 +70,9 @@ export async function sendAiChatMessage(
     body: JSON.stringify({
       message: { role: "user", content: message },
       history: history.map(({ role, content }) => ({ role, content })),
-      // Só o id da tarefa: o contexto do cronograma é montado no servidor.
+      // Só os ids: o contexto do cronograma e da questão é montado no servidor.
       ...(options.scheduleTaskId ? { scheduleTaskId: options.scheduleTaskId } : {}),
+      ...(options.questionId ? { questionId: options.questionId } : {}),
     }),
   });
   return res.message;

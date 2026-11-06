@@ -325,6 +325,15 @@ export class AiService {
     // Simula latência
     await new Promise((r) => setTimeout(r, 800 + Math.random() * 500));
 
+    // Contexto de questão não tem os "motivos" do cronograma. Sem provedor,
+    // devolve um aviso honesto em vez de reaproveitar a resposta de tarefa.
+    if (context?.startsWith('CONTEXTO DA QUESTÃO')) {
+      return {
+        message:
+          'Recebi os dados da questão, mas estou no modo de demonstração sem provedor de IA configurado. Para receber a explicação de verdade, configure `AI_PROVIDER` no backend. Enquanto isso, as dicas progressivas do cartão da questão continuam funcionando.',
+      };
+    }
+
     // Com contexto do cronograma, o mock responde com os próprios motivos —
     // assim a explicação funciona em desenvolvimento, sem provedor externo.
     if (context) {

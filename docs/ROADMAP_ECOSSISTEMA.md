@@ -32,7 +32,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
 | Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente: **em andamento** (03/11, sem commit) |
-| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" pendente |
+| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 (contexto da questão montado no servidor) |
 | Caderno de erros com motivo do erro | Implementado | |
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
 | Simulado adaptativo | Implementado | IRT simplificado |
@@ -40,7 +40,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Correção de redação (foto e texto, IA com RAG e MCP, cota mensal) | Implementado | Calibração em ampliação |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
 | Cálculo mental | Implementado | |
-| LuminIA (chat) | Parcial | Chat com IA real, contexto do cronograma, resumo semanal e de tópicos; falta moderação, persistência da conversa e modo socrático dedicado |
+| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e videoaulas planejados |
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |

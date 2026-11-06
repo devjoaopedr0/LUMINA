@@ -2,6 +2,7 @@ import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Q
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { QuestionsService } from '../questions/questions.service';
 import { ScheduleInsightsService } from '../schedules/schedule-insights.service';
 import { ScoreEstimateService } from '../schedules/score-estimate.service';
 import { UserWithProfile } from '../users/users.repository';
@@ -21,6 +22,7 @@ export class AiController {
     private readonly scheduleInsights: ScheduleInsightsService,
     private readonly lessons: TopicLessonsService,
     private readonly scoreEstimates: ScoreEstimateService,
+    private readonly questionsService: QuestionsService,
   ) {}
 
   @Post('chat')
@@ -28,11 +30,24 @@ export class AiController {
     @CurrentUser() user: UserWithProfile,
     @Body() dto: AiChatRequestDto,
   ): Promise<AiChatResponseDto> {
-    // Tarefa de outro aluno (ou inexistente) simplesmente não vira contexto.
-    const explanation = dto.scheduleTaskId
-      ? await this.scheduleInsights.explainTask(user.id, dto.scheduleTaskId)
-      : null;
-    return this.aiService.sendMessage(dto, explanation?.context, user.profile?.firstName);
+    // Tarefa de outro aluno (ou inexistente) e questão inacessível simplesmente
+    // não viram contexto: a conversa continua, sem revelar que o item existe.
+    const [explanation, questionContext] = await Promise.all([
+      dto.scheduleTaskId
+        ? this.scheduleInsights.explainTask(user.id, dto.scheduleTaskId)
+        : Promise.resolve(null),
+      dto.questionId
+        ? this.questionsService.tutorContext(user.id, dto.questionId)
+        : Promise.resolve(null),
+    ]);
+    const context = [explanation?.context, questionContext]
+      .filter((part): part is string => Boolean(part))
+      .join('\n\n');
+    return this.aiService.sendMessage(
+      dto,
+      context || undefined,
+      user.profile?.firstName,
+    );
   }
 
   /** Resumo de teoria do tópico da tarefa (gerado na primeira abertura). */
