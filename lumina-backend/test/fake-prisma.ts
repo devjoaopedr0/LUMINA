@@ -34,7 +34,7 @@ export function createFakePrisma() {
   const nextId = (_prefix?: string) => randomUUID();
   // Permissões de workspace que o cadastro institucional consulta para
   // compor os cargos de Diretor e Coordenador.
-  const permissions: any[] = ['ROLE_MANAGE', 'MEMBER_MANAGE', 'CLASS_MANAGE', 'REPORT_VIEW']
+  const permissions: any[] = ['ROLE_MANAGE', 'MEMBER_MANAGE', 'CLASS_MANAGE', 'REPORT_VIEW', 'ESSAY_REVIEW', 'ESSAY_VALIDATE']
     .map((code) => ({ id: nextId('permission'), code }));
 
   /** Filtro do `user_question_progress`: usuário, favoritos, revisão e lote de

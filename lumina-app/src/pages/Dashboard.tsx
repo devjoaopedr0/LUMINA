@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { to: "/app/turmas", label: "Turmas", icon: School, onlyWithClasses: true },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
+  { to: "/app/revisoes", label: "Revisões humanas", icon: ClipboardCheck, reviewersOnly: true },
   { to: "/app/redacoes/scanner", label: "Corrigir redação por foto", icon: ScanLine },
   { to: "/app/redacoes/modelos", label: "Modelos nota mil", icon: Award },
   { to: "/app/question-scanner", label: "Scanner de questões", icon: Sparkles },
@@ -67,7 +68,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         <nav className="flex-1 px-4 py-7" aria-label="Navegação principal">
           <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">Estudos</p>
           <div className="mt-3 space-y-1.5">
-            {NAV_ITEMS.filter(item => !(item.onlyWithClasses && independent && !hasClasses)).map(({ to, label, icon: Icon, end }) => (
+            {NAV_ITEMS.filter(item => !(item.onlyWithClasses && independent && !hasClasses) && !(item.reviewersOnly && (user?.accountType === "STUDENT_INDEPENDENT" || user?.accountType === "STUDENT_INSTITUTION"))).map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} onClick={onClose} className={({ isActive }) => `group flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition ${isActive ? "bg-primary text-graphite" : "text-white/65 hover:bg-white/10 hover:text-white"}`}>
                 <Icon className="h-[18px] w-[18px]" /><span>{label}</span><ChevronRight className="ml-auto h-4 w-4 opacity-40 transition group-hover:translate-x-0.5" />
               </NavLink>

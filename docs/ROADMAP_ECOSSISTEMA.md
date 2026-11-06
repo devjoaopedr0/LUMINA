@@ -37,7 +37,8 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
 | Simulado adaptativo | Implementado | IRT simplificado |
 | Scanner de cartão-resposta (OMR) | Implementado | Falta o teste com impressão real; cartão configurável pelo gestor **em andamento** (03/11) |
-| Correção de redação (foto e texto, IA com RAG e MCP, cota mensal) | Implementado | Calibração em ampliação |
+| Correção de redação (foto e texto, IA com RAG e MCP, cota mensal) | Implementado | Revisão humana validada entregue em 05/11/2026; calibração em ampliação e medição held-out aguardando volume validado |
+| Revisão humana da redação (chat, evidências, validação e aprendizado) | Implementado | Ver [REVISAO_HUMANA_REDACAO.md](REVISAO_HUMANA_REDACAO.md) |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
 | Cálculo mental | Implementado | |
 | LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e videoaulas planejados |

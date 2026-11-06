@@ -165,6 +165,26 @@ export interface EssayGradeResult {
   toolCalls: { tool: string; at: string }[];
   calibrated: boolean;
   knowledge: GradeKnowledgeInfo;
+  /** Exemplos validados efetivamente enviados ao prompt (para auditoria). */
+  learningExamples?: ValidatedLearningExample[];
+}
+
+/**
+ * Exemplo de correção humana já validado (VALIDATED/CONSOLIDATED). Entra no
+ * prompt como contexto auxiliar, nunca como critério oficial nem como nota
+ * automática. O registro já chega anonimizado e com consentimento conferido
+ * pelo serviço de revisão.
+ */
+export interface ValidatedLearningExample {
+  id: string;
+  competency: CompetencyId;
+  criterion: string | null;
+  humanScore: number | null;
+  aiScore: number | null;
+  evidence: string | null;
+  learning: string;
+  divergenceReason?: string | null;
+  version?: number;
 }
 
 export interface GradeInput {
@@ -172,8 +192,14 @@ export interface GradeInput {
   theme: string;
   /** Linhas lidas na folha (quando veio de foto). */
   ocrLines?: number;
-  /** Confiança da leitura da foto (0–1); reduz a confiança da nota. */
+  /** Confiança da leitura da foto (0-1); reduz a confiança da nota. */
   ocrConfidence?: number;
+  /**
+   * Exemplos recuperados do aprendizado humano validado. O serviço de
+   * correção preenche este campo; o RAG oficial continua sendo a fonte
+   * primária e a nota final passa pela mesma calibração.
+   */
+  learningExamples?: Partial<Record<CompetencyId, ValidatedLearningExample[]>>;
 }
 
 export interface GraderDependencies {
@@ -365,10 +391,26 @@ Regras específicas da C4:
   C5: '\nProposta que desrespeite os direitos humanos zera a C5: marque "direitos_humanos_desrespeitados" só se for o caso.',
 };
 
+function learningExamplesBlock(competency: CompetencyId, examples: ValidatedLearningExample[] | undefined): string {
+  if (!examples?.length) return '';
+  const lines = examples
+    .slice(0, 3)
+    .map((example) => {
+      const evidence = example.evidence ? ` Evidência anonimizada: ${example.evidence.replace(/\s+/g, ' ').trim().slice(0, 420)}.` : '';
+      const reason = example.divergenceReason ? ` Motivo da divergência: ${example.divergenceReason.trim().slice(0, 240)}.` : '';
+      return `  - Exemplo validado ${example.id.slice(0, 8)} (${example.competency}): IA ${example.aiScore ?? 'não informada'}, humano ${example.humanScore ?? 'não informada'}. Critério: ${example.criterion?.trim() || 'não informado'}. Aprendizado: ${example.learning.replace(/\s+/g, ' ').trim().slice(0, 700)}.${reason}${evidence}`;
+    })
+    .join('\n');
+  return `\n\nEXEMPLOS VALIDADOS POR AVALIADORES HUMANOS — ${competency} (contexto auxiliar, anonimizado):
+${lines}
+Use estes exemplos apenas para calibrar a interpretação do critério. Não os trate como texto oficial do Inep, não copie a nota sem verificar a redação atual e não cite um exemplo validado como se fosse a cartilha.`;
+}
+
 export function buildCompetencyPrompt(input: GradeInput, analysis: EssayTextAnalysis, context: CompetencyContext, zeroAlerts: string[]): string {
   const { competency, grade, chunks } = context;
   const levels = grade.niveis.map((n) => `  ${n.nota}: ${n.descritor}`).join('\n');
   const extra = chunks.map((c) => `  [${c.id}] ${c.titulo} (${c.citacao}): ${c.texto}`).join('\n');
+  const learning = learningExamplesBlock(competency, input.learningExamples?.[competency]);
   const signals = competencySignals(competency, analysis, zeroAlerts);
   return `${COMPETENCY_TASK[competency]}${EXTRA_RULES[competency]}
 
@@ -377,7 +419,7 @@ TEMA: ${input.theme || '(não informado — avalie a coerência interna e não a
 CRITÉRIOS DA CARTILHA — ${competency}: ${grade.descricao}
 [${competency.toLowerCase()}-niveis] Níveis (${grade.citacao}):
 ${levels}
-${extra}
+${extra}${learning}
 
 SINAIS AUTOMÁTICOS DO TEXTO (indícios a conferir, não notas):
 ${signals.join('\n') || '(nenhum)'}

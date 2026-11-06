@@ -15,6 +15,8 @@ function makeTx(overrides: Record<string, unknown> = {}) {
         { id: 'perm-member', code: 'MEMBER_MANAGE' },
         { id: 'perm-class', code: 'CLASS_MANAGE' },
         { id: 'perm-report', code: 'REPORT_VIEW' },
+        { id: 'perm-review', code: 'ESSAY_REVIEW' },
+        { id: 'perm-validate', code: 'ESSAY_VALIDATE' },
       ]),
     },
     role: {
@@ -60,11 +62,11 @@ describe('InstitutionsService', () => {
       const roleNames = tx.role.create.mock.calls.map((call) => call[0].data.name);
       expect(roleNames).toEqual([ROLE_DIRETOR, ROLE_COORDENADOR, ROLE_PROFESSOR, ROLE_ALUNO]);
 
-      // Diretor recebe as 4 permissões; Coordenador recebe 3 (sem ROLE_MANAGE).
+      // Diretor recebe todas as 6 permissões; Coordenador recebe 4 (sem ROLE_MANAGE e sem ESSAY_VALIDATE).
       const diretorCall = tx.role.create.mock.calls[0][0];
-      expect(diretorCall.data.rolePermissions.create).toHaveLength(4);
+      expect(diretorCall.data.rolePermissions.create).toHaveLength(6);
       const coordenadorCall = tx.role.create.mock.calls[1][0];
-      expect(coordenadorCall.data.rolePermissions.create).toHaveLength(3);
+      expect(coordenadorCall.data.rolePermissions.create).toHaveLength(4);
       // Professor e Aluno não recebem nenhuma permissão de workspace.
       expect(tx.role.create.mock.calls[2][0].data.rolePermissions).toBeUndefined();
       expect(tx.role.create.mock.calls[3][0].data.rolePermissions).toBeUndefined();

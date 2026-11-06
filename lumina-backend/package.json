@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "mcp:redacao": "node dist/essay-correction/mcp/stdio.js",
     "essay:train": "node dist/essay-correction/eval/train.js",
-    "essay:eval": "node dist/essay-correction/eval/evaluate-llm.js"
+    "essay:eval": "node dist/essay-correction/eval/evaluate-llm.js",
+    "essay:human-eval": "node dist/essay-review/eval/human-loop-eval.js"
   },
   "keywords": [],
   "author": "",

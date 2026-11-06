@@ -29,6 +29,9 @@ import { Classes } from "@/pages/Classes";
 import { ClassInvite } from "@/pages/ClassInvite";
 import { SmartAnswerKey } from "@/pages/SmartAnswerKey";
 import { SmartAnswerKeySheet } from "@/pages/SmartAnswerKeySheet";
+import { EssayReviewQueuePage } from "@/pages/EssayReviewQueuePage";
+import { EssayReviewWorkspacePage } from "@/pages/EssayReviewWorkspacePage";
+import { EssayReviewDivergencesPage } from "@/pages/EssayReviewDivergencesPage";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
@@ -45,7 +48,9 @@ function App() {
         <Route path="/app/busca-web" element={<ProtectedRoute><WebQuestionSearch /></ProtectedRoute>} />
         <Route path="/app/redacoes" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
         <Route path="/app/redacoes/:id" element={<ProtectedRoute><Essays /></ProtectedRoute>} />
-        <Route path="/app/redacoes/modelos" element={<ProtectedRoute><EssayModels /></ProtectedRoute>} />
+        <Route path="/app/redacoes/:id/revisao" element={<ProtectedRoute><EssayReviewWorkspacePage /></ProtectedRoute>} />
+        <Route path="/app/revisoes" element={<ProtectedRoute><EssayReviewQueuePage /></ProtectedRoute>} />
+        <Route path="/app/revisoes/divergencias" element={<ProtectedRoute><EssayReviewDivergencesPage /></ProtectedRoute>} />        <Route path="/app/redacoes/modelos" element={<ProtectedRoute><EssayModels /></ProtectedRoute>} />
         <Route path="/app/redacoes/scanner" element={<ProtectedRoute><EssayScanner /></ProtectedRoute>} />
         <Route path="/app/redacoes/scanner/:scanId" element={<ProtectedRoute><EssayScanner /></ProtectedRoute>} />
         <Route path="/app/calculo-mental" element={<ProtectedRoute><MentalMath /></ProtectedRoute>} />

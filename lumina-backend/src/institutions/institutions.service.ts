@@ -86,6 +86,7 @@ export class InstitutionsService {
               WORKSPACE_PERMISSIONS.MEMBER_MANAGE,
               WORKSPACE_PERMISSIONS.CLASS_MANAGE,
               WORKSPACE_PERMISSIONS.REPORT_VIEW,
+              WORKSPACE_PERMISSIONS.ESSAY_REVIEW,
             ]
               .map(permissionId)
               .filter((id): id is string => !!id)

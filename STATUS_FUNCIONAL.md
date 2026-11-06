@@ -4,12 +4,42 @@
 
 ## Atualização de 05/11/2026 — Gabarito Inteligente: sugestão por IA medida em prova inteira
 
-- **O que foi medido:** o caminho generativo do gabarito sugerido por IA foi executado no ENEM 2024 (2º dia, Amarelo) com as 75 questões oficiais que têm texto no banco. O prompt foi o mesmo do serviço, mas **sem informar a alternativa correta do banco**; a comparação com o gabarito oficial foi feita depois. Modelo: `gemini-3.1-flash-lite` (o 3.5 Flash Lite estava com a cota diária esgotada).
-- **Resultado:** 59 questões receberam sugestão e 44 estavam corretas — **74,6% das respondidas e 58,7% do total**. Das 16 sem sugestão, 13 foram recusas motivadas por figura/esquema/dados que não vieram na extração e 3 foram 429/timeout. Sobre o total, o acerto foi 74,4% em Ciências da Natureza e 41,7% em Matemática. **A IA pode errar; a validação docente continua obrigatória e a sugestão nunca vira gabarito oficial sozinha.**
-- **Teste do serviço real:** em 3 questões (91–93), com as respostas do banco temporariamente ocultadas, a rota criou o rascunho, recebeu 2 sugestões e 1 pendência por timeout, validou itens e publicou; ao final, o gabarito temporário foi apagado e as respostas originais do banco foram restauradas.
-- **Correção de UX:** quando a IA devolve `answer: null` com uma justificativa (por exemplo, “falta a imagem”), o backend agora preserva esse motivo no item pendente, em vez de trocá-lo por “a IA falhou”. A resposta continua nula e o item continua fora do percentual até a validação.
-- **Testes:** `answer-keys.spec.ts` com **43 casos** (2 novos: preservação do motivo da IA e leitura do JSON com resposta nula); `npm run typecheck` do backend e do app passando. **Sem migration.**
-- **Pendente:** repetir a medição com o modelo padrão de produção (`AI_PROVIDER`/`AI_MODEL`) quando a cota permitir; confirmar a data de publicação do gabarito importado (20/11/2024).
+## Atualização de 05/11/2026 — Revisão humana da redação (human-in-the-loop)
+
+- **Fluxo vertical:** fila de revisões, workspace do avaliador com texto/OCR, notas da IA, evidências destacadas, notas editáveis, decisão por competência e nota final, chat contextual e histórico. A seleção de um trecho ancora a pergunta e a evidência. O autor vê apenas revisões validadas, em modo somente leitura.
+- **Chat técnico:** a LuminIA separa critério oficial do Inep, interpretação do avaliador e interpretação da IA; cita trechos oficiais e só aceita evidência literal da redação. Sem provedor, o fallback determinístico não cria nota e pede critério + evidência. Prompt versionado em `REVIEW_CHAT_PROMPT_VERSION`.
+- **Aprendizado estruturado:** `RECEIVED → STRUCTURED → VALIDATED → CONSOLIDATED`, por competência, com critério, notas, evidências, justificativas, divergência, confiança, aplicabilidade e origem. Editar revisão validada rebaixa para `STRUCTURED`, arquiva versões anteriores e registra `REVIEW_RESET`. Consolidação exige validação independente, consentimento e anonimização.
+- **RAG e correção futura:** só aprendizados validados/consolidados, anonimizados, consentidos e não arquivados entram na recuperação; a redação em correção é excluída. A correção por competência passou a receber até três exemplos por competência e registra na auditoria quais foram usados. Isso evita contaminação treino/teste e impede que uma mensagem isolada vire regra.
+- **Governança:** permissões `ESSAY_REVIEW`/`ESSAY_VALIDATE`, cargos canônicos, autor não revisa nem valida a própria redação, auditoria append-only com snapshot completo das notas/justificativas, filtros de privacidade no endpoint por id e revisão por redação separa treino/teste.
+- **Relatórios:** taxa de concordância, diferença média/assinada por C1–C5, critérios recorrentes e exemplos de divergência. O relatório é descritivo e não reduz a decisão à média.
+- **Medição held-out:** harness `essay:human-eval` agrupa por redação, calibra só no treino e mede MAE/viés/concordância Inep antes e depois no teste. Sem duas redações validadas distintas, ele informa a insuficiência e não inventa métrica. O teste sintético prova o desenho e a ausência de vazamento; a medição real fica registrada quando houver amostra de produção.
+- **Testes:** 16 cenários de revisão/chat/governança, ranking do RAG validado e desenho held-out; backend `npm test` e `npm run typecheck` passando. Migrations `20261105120000_essay_human_review` e `20261105130000_essay_review_permissions` aplicadas. Detalhes em [docs/REVISAO_HUMANA_REDACAO.md](docs/REVISAO_HUMANA_REDACAO.md).
+
+## Atualização de 05/11/2026 — Provas anteriores: navegação por páginas
+
+- **Leitura da prova:** a lista de páginas agora mostra miniaturas e abre a página em tamanho de leitura; cada página traz a posição (`2 de 4`) e os botões **Anterior** / **Próxima**, desabilitados nos limites.
+- **Questão → página:** na lista de questões mapeadas, `pág. X` virou atalho para abrir a página correspondente; se a página não estiver no acervo, o texto continua simples.
+- **Questões na página:** a página mostra quais questões do banco estão mapeadas nela, sem repetir a lista inteira.
+- **Testes:** novo check puro `lumina-app/test/provas-anteriores.check.ts` cobre primeira/última página, página inexistente, prova vazia, posição e filtro de questões; incluído em `npm test`. Typecheck, lint, checks e build do app passando. Sem migration e sem mudança de backend.
+- **Ainda pendente:** visualizador de PDF embutido e importação em lote de PDFs oficiais. O botão **Abrir PDF** continua condicionado a `ExamPaper.pdfUrl`; o acervo de demonstração usa páginas em SVG. Detalhes em [docs/PROVAS_ANTERIORES.md](docs/PROVAS_ANTERIORES.md).
+
+## Atualização de 05/11/2026 — Redação v3 medida em 29+30: sem ganho, calibração não gravada
+
+- **Amostra:** 30 redações de calibração + 30 de teste com `gemini:gemini-3.5-flash-lite`; ficaram **29 + 30** (uma de calibração falhou por 503). Foram 174 chamadas em 795 s (mediana de 2,7 s/chamada). Execução com `--write false`; nenhuma calibração v3 foi persistida.
+- **Teste held-out (30 redações):** v3 bruto 33,3% de concordância pela regra do Inep, MAE 150,7, viés −6,7; v3 calibrado 36,7%, MAE 152,0, viés −45,3. A calibração held-out só mexeu na C3 (reta `a = 1,277`, `b = −60,5`) e piorou a C3 (42,7 → 44,0).
+- **Comparação pareada com a v2 nas mesmas 30 redações:** v2 bruto 46,7%/MAE 129,3; v2 calibrado 43,3%/141,3. A diferença de MAE v3 − v2 foi +21,3 bruto (IC 95%: −2,7 a +46,7) e +10,7 calibrado (IC 95%: −9,3 a +30,7). A v3 não mostrou ganho; a C3 piorou de forma consistente (+12,0; IC 95%: +2,7 a +21,3), a C4 melhorou direcionalmente (−6,7; IC 95%: −14,7 a +1,3) e C2/C5 ficaram no ruído.
+- **Decisão:** manter `v2-competencia` ativa e o prompt `v3-c2-c4-oficial-2026` com identidade. O ajuste final em n=59 escolheu isotônica em C3/C5, mas não foi validado fora da amostra e não foi gravado. Próximo ataque: prompt de C3/C1 (e a instabilidade da C2), não a calibração.
+- **Provedores:** Grok 4.3 via OpenRouter passou num teste isolado, mas a execução completa recebeu **402**; o limite de US$ 1.000 no `/key` é teto de gasto, não crédito disponível. Grok 4.7/4.6/4.5 rejeitam `reasoning: { enabled: false }`; 4.3 é a única opção compatível sem mudar o `AiService`. O OpenRouter gratuito ficou em **429** (50/dia, restante 0, reset em `2026-11-06T00:00:00Z`).
+- **Sem migration.** O cache e o relatório da execução ficam em `.cache/` (não versionados); os números acima são o registro auditável.
+
+## Atualização de 05/11/2026 — Redação v3: calibração auditável, execução parcial protegida e retry de 503
+
+- **Calibração anterior preservada:** ao gravar uma calibração de prompt novo, `model/llm-calibration.json` não é mais sobrescrito sem histórico; a versão anterior é copiada para `model/archive/llm-calibration.<promptVersion>.json`. A calibração `v2-competencia` (174 redações, `gemini:gemini-3.5-flash-lite`) está em `model/archive/llm-calibration.v2-competencia.json`, e o arquivo ativo foi restaurado para v2. Enquanto não houver calibração v3 válida, a correção com `v3-c2-c4-oficial-2026` usa a identidade.
+- **Execução parcial não grava calibração:** `essay:eval` agora exige pelo menos 10 redações de **teste** medidas para gravar a calibração final. Antes, uma execução interrompida por cota gravava uma função ajustada só na amostra de calibração. Em 05/11/2026, o Gemini respondeu 503 e o Nemotron gratuito do OpenRouter atingiu 429 após 10 redações de calibração; a execução parou sem teste. A calibração parcial de 10 redações foi descartada e o arquivo ativo restaurado para v2; com a guarda nova, uma execução assim não grava. A segunda tentativa em 05/11/2026 (30 redações de calibração + 30 de teste) foi retomada e concluída; o resultado está na entrada mais recente acima e nenhuma calibração v3 foi gravada.
+- **Retry de 5xx:** o `AiService` repete a mesma chamada em 502/503/504 com esperas de 2 s e 5 s antes de passar ao próximo modelo. Isso cobre o 503 "high demand" do Gemini sem transformar toda falha transitória em erro para o aluno.
+- **Testes:** backend com **817 testes em 52 arquivos**, incluindo o arquivamento da calibração, a guarda contra calibração parcial e o retry de 503. `tsc --noEmit` e `tsc -p tsconfig.build.json` passam. **Sem migration.**
+- **Medição concluída:** a amostra 29+30 foi medida com **um avaliador**, para comparar com a mesma metodologia da linha de base v2; a v3 não mostrou ganho e a calibração não foi gravada. A validação da produção com os dois avaliadores continua sendo uma etapa separada.
+
 
 ## Atualização de 04/11/2026 — Redação: calibração ampliada para 180 redações
 

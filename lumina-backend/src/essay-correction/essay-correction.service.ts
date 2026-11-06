@@ -7,14 +7,15 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EssayCorrectionStatus, EssayScanStatus, Prisma } from '@prisma/client';
+import { EssayCorrectionStatus, EssayLearningLevel, EssayScanStatus, Prisma } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../database/prisma.service';
 import { countWords } from '../essays/essays.dto';
-import { EssayGradeResult, EssayGrader, GradeKnowledgeInfo, GRADER_PROMPT_VERSION, LlmCalibration } from './grading/essay-grader';
+import { EssayGradeResult, EssayGrader, GradeKnowledgeInfo, GRADER_PROMPT_VERSION, LlmCalibration, ValidatedLearningExample } from './grading/essay-grader';
 import { CARTILHA_2025, KNOWLEDGE_DOCUMENTS } from './knowledge';
 import { FeatureModelWeights } from './grading/feature-model';
 import { EssayMcpClient } from './mcp/essay-mcp-client';
+import { selectValidatedLearningExamples, ValidatedLearningCandidate } from './rag/validated-learning';
 import featureModelJson from './model/feature-model.json';
 import calibrationJson from './model/llm-calibration.json';
 import { transcribeEssayPages } from './ocr/essay-ocr';
@@ -293,7 +294,15 @@ export class EssayCorrectionService {
   }
 
   /** Correção completa — usada também pela ferramenta MCP `corrigir_redacao`. */
-  async gradeText(input: { text: string; theme: string; ocrLines?: number; ocrConfidence?: number }): Promise<EssayGradeResult> {
+  async gradeText(input: {
+    text: string;
+    theme: string;
+    ocrLines?: number;
+    ocrConfidence?: number;
+    /** Exclui a própria redação da recuperação de exemplos validados. */
+    essayId?: string;
+  }): Promise<EssayGradeResult> {
+    const learningExamples = await this.validatedLearningExamples(input.text, input.theme, input.essayId);
     const tools = await EssayMcpClient.connect();
     try {
       const grader = new EssayGrader({
@@ -304,15 +313,59 @@ export class EssayCorrectionService {
         llm: ({ system, prompt, temperature, maxTokens }) =>
           this.ai.generateStructured({ system, prompt, temperature, maxTokens, timeoutMs: CORRECTION_TIMEOUT_MS, models: essayModels() }),
       });
-      return await grader.grade(input);
+      const result = await grader.grade({ ...input, learningExamples });
+      const used =
+        result.method === 'regra' || result.method === 'modelo-estatistico'
+          ? []
+          : (Object.values(learningExamples).flat() as ValidatedLearningExample[]);
+      return used.length ? { ...result, learningExamples: used } : result;
     } finally {
       await tools.close();
     }
   }
 
+  /**
+   * RAG do aprendizado humano validado. Só entram registros VALIDATED ou
+   * CONSOLIDATED, anonimizados, com consentimento e sem arquivamento. A
+   * redação em correção é excluída para não contaminar treino e teste.
+   */
+  private async validatedLearningExamples(text: string, theme: string, essayId?: string) {
+    try {
+      const records = await this.prisma.essayLearningRecord.findMany({
+        where: {
+          level: { in: [EssayLearningLevel.VALIDATED, EssayLearningLevel.CONSOLIDATED] },
+          archivedAt: null,
+          anonymized: true,
+          consentAt: { not: null },
+          ...(essayId ? { essayId: { not: essayId } } : {}),
+        },
+        orderBy: { validatedAt: 'desc' },
+        take: 120,
+        select: {
+          id: true,
+          competency: true,
+          criterion: true,
+          humanScore: true,
+          aiScore: true,
+          evidence: true,
+          learning: true,
+          divergenceReason: true,
+          version: true,
+          validatedAt: true,
+        },
+      });
+      return selectValidatedLearningExamples(records as ValidatedLearningCandidate[], text, theme);
+    } catch (error) {
+      // A correção continua sem os exemplos se a tabela ainda não existir em
+      // um ambiente antigo; a ausência é registrada, não silenciada.
+      this.logger.warn(`Exemplos validados indisponíveis nesta correção: ${error instanceof Error ? error.message : String(error)}`);
+      return {};
+    }
+  }
+
   private async runCorrection(essayId: string, text: string, theme: string, ocr: { ocrLines?: number; ocrConfidence?: number }, usageId: string) {
     try {
-      const result = await this.gradeText({ text, theme, ...ocr });
+      const result = await this.gradeText({ text, theme, ...ocr, essayId });
       if (NO_AI_METHODS.has(result.method)) await this.refund(usageId);
       const competencies = Object.fromEntries(result.competencies.map((c) => [c.competency, c.score]));
       await this.prisma.$transaction(async (tx) => {
@@ -332,6 +385,13 @@ export class EssayCorrectionService {
               runs: result.runs.map((r) => ({ evaluator: r.evaluator, method: r.method, model: r.model, total: r.total, annulment: r.annulment, tangencia: r.tangencia, scores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.score])), rawScores: Object.fromEntries(Object.entries(r.competencies).map(([k, v]) => [k, v.rawScore ?? null])) })),
               promptVersion: GRADER_PROMPT_VERSION,
               knowledge: result.knowledge,
+              validatedLearning: (result.learningExamples ?? []).map((example) => ({
+                id: example.id,
+                competency: example.competency,
+                version: example.version,
+                humanScore: example.humanScore,
+                aiScore: example.aiScore,
+              })),
               toolCalls: result.toolCalls,
               analysis: result.analysis,
               ocr,
