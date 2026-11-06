@@ -11,7 +11,7 @@ import { ANSWER_KEY_SHEET_CODE, answerKeySheetBits, answerKeySheetLayout, readin
 import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
 import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto, SuggestAnswerKeyDto, ValidateAnswerKeyItemsDto } from './answer-keys.dto';
-import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswer, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, suggestionPrompt } from './answer-key.questions';
+import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, suggestionPrompt } from './answer-key.questions';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
@@ -626,12 +626,16 @@ export class AnswerKeysService {
           skipped.push({ number, language, reason: 'A IA não devolveu uma sugestão.' });
           return null;
         }
-        const parsed = parseSuggestedAnswer(result.text, alternatives);
+        if (result.model) models.add(result.model);
+        const parsed = parseSuggestedAnswerOutcome(result.text, alternatives);
         if (!parsed) {
           skipped.push({ number, language, reason: 'A IA não conseguiu decidir com segurança ou devolveu uma resposta inválida.' });
           return null;
         }
-        models.add(result.model);
+        if (parsed.position === null) {
+          skipped.push({ number, language, reason: parsed.justification });
+          return null;
+        }
         return {
           number,
           language,
