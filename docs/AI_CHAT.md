@@ -2,45 +2,48 @@
 
 ## Estado atual
 
-O chat flutuante aparece no canto inferior direito de todas as rotas iniciadas por `/app` quando há um usuário autenticado. A interface oferece:
+O chat flutuante aparece no canto inferior direito de todas as rotas iniciadas por `/app` quando há um usuário autenticado. A interface oferece abertura e minimização do painel, histórico em memória durante a navegação, envio por formulário, estado de carregamento, mensagens de erro, layout responsivo e foco automático no campo de mensagem.
 
-- abertura e minimização do painel;
-- histórico em memória durante a navegação da sessão;
-- envio por formulário, estado de carregamento e mensagens de erro;
-- layout responsivo para desktop e celular;
-- rótulos acessíveis e foco automático no campo de mensagem.
+O chat **chama o backend de verdade**. A tela usa `sendAiChatMessage()`, que envia `POST /ai/chat` pelo mesmo cliente HTTP do resto do app (com renovação de token). O backend valida o JWT, monta o contexto e chama o provedor configurado; se o provedor falhar, a resposta de erro chega à interface em vez de uma mensagem inventada.
 
-O chat ainda **não chama um modelo de IA**. Enquanto a integração não for configurada, mensagens enviadas recebem um aviso explícito de que a conexão está pendente.
+## Fluxo
 
-## Arquitetura
+1. `lumina-app/src/components/AiChatWidget.tsx` mantém as mensagens da sessão.
+2. `lumina-app/src/lib/ai-chat.ts` envia `{ message, history, scheduleTaskId? }` para `/ai/chat`.
+3. `lumina-backend/src/ai/ai.controller.ts` valida o usuário e, quando há `scheduleTaskId`, monta no servidor o contexto da tarefa do cronograma.
+4. `lumina-backend/src/ai/ai.service.ts` chama o provedor (Gemini, OpenRouter, Groq, OpenAI ou mock), respeita o limite por minuto de cada modelo e tenta os modelos de reserva em caso de falha.
+5. A resposta normalizada (`{ message }`) volta para o widget.
 
-- `lumina-app/src/components/AiChatWidget.tsx`: interface e estado da conversa.
-- `lumina-app/src/lib/ai-chat.ts`: contrato e ponto único de integração.
-- `lumina-app/src/App.tsx`: montagem global do widget dentro do contexto autenticado.
+O DTO limita cada mensagem a 4.000 caracteres e aceita apenas `user`/`assistant` no histórico; o serviço usa as 10 mensagens mais recentes como contexto. O limite global de requisições por IP fica em `RateLimitMiddleware` (padrão: 100 por minuto, configurável por `RATE_LIMIT_MAX` e `RATE_LIMIT_TTL_MS`).
 
-## Como integrar a IA
+## Outros endpoints da LuminIA
 
-Implemente `sendAiChatMessage()` em `lumina-app/src/lib/ai-chat.ts`. A função recebe a mensagem atual e o histórico da sessão e deve retornar apenas o texto da resposta.
+- `GET /ai/lessons/task/:taskId`: resumo de teoria do tópico da tarefa, gerado na primeira abertura.
+- `GET /ai/weekly-comment`: comentário sobre a semana de estudos. Os fatos vêm do resumo do servidor; sem provedor, a resposta é um comentário determinístico com os mesmos fatos.
 
-A integração recomendada é feita pelo backend:
+## Configuração
 
-1. criar uma rota autenticada, por exemplo `POST /ai/chat`;
-2. validar o JWT e limitar tamanho/frequência das mensagens;
-3. enviar ao provedor apenas o contexto necessário;
-4. manter chaves e credenciais exclusivamente no backend;
-5. retornar uma resposta normalizada, como `{ "message": "..." }`;
-6. substituir o erro provisório de `sendAiChatMessage()` pela chamada a essa rota.
+- `AI_PROVIDER` e `AI_MODEL` definem o provedor e o modelo principal.
+- `AI_FALLBACK_MODELS` define a ordem de reserva.
+- `AI_PROVIDER=mock` atende testes e desenvolvimento sem chave externa.
+- Chaves e credenciais ficam somente no backend; não use variáveis `VITE_*` para segredos.
 
-Não coloque chaves de provedor em variáveis `VITE_*`, pois elas são expostas no bundle do navegador.
+## Limites e pendências
+
+- O histórico existe **somente em memória** durante a sessão; recarregar a página perde a conversa.
+- Não há moderação de conteúdo nem proteção específica contra prompt injection além do isolamento do prompt de sistema e do contexto montado no servidor.
+- A disponibilidade depende da cota e da latência dos provedores gratuitos. O `AiService` repete 502/503/504 no mesmo modelo e depois tenta o próximo; se todos falharem, a interface mostra o erro.
+- A resposta é uma orientação de estudo, não uma correção oficial; a interface deve deixar claro que a IA pode errar.
 
 ## Persistência futura
 
-O histórico atual existe somente em memória. Para conversas persistentes, adicione entidades de conversa e mensagem no backend, sempre vinculadas ao usuário autenticado. Defina também retenção, exclusão, limites de contexto e tratamento de dados pessoais antes de ativar o recurso em produção.
+Para conversas persistentes, adicione entidades de conversa e mensagem no backend, sempre vinculadas ao usuário autenticado. Defina retenção, exclusão, limites de contexto e tratamento de dados pessoais antes de ativar o recurso em produção.
 
 ## Critérios antes da produção
 
-- autenticação e autorização na rota;
-- rate limiting, timeout e cancelamento;
+- autenticação e autorização na rota (já implementadas);
+- rate limiting global e limite por minuto do provedor (já implementados);
+- timeout no provedor e fallback entre modelos (já implementados no `AiService`); cancelamento pelo usuário ainda pendente;
 - moderação e proteção contra prompt injection;
 - observabilidade sem registrar conteúdo sensível por padrão;
 - política de privacidade e retenção;

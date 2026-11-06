@@ -44,7 +44,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Faltam visualizador de PDF e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
-| Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); falta o gabarito sugerido por IA; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
+| Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código em 04/11, faltando validar com a IA real em uma prova inteira; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
 | Gamificação, metas, notificações, flashcards, revisão espaçada, agenda | Planejado | Itens 30–52 do inventário |
 | Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
 | Lumina Groups | Planejado | Fase 2 |

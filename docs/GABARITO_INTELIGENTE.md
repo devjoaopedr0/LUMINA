@@ -1,6 +1,6 @@
 # Gabarito Inteligente
 
-> **Status: Em andamento.** Fase 1, importação do INEP, cartão por foto, painel do professor e gabarito comunitário estão no código e foram **validados no navegador em 03/11/2026**, com o gabarito real do ENEM 2024 (2º dia, Amarelo). As migrations `20261103150000_answer_keys` e `20261103200000_answer_key_votes` estão aplicadas. O vínculo do gabarito com o banco de questões e a **explicação da LuminIA por questão** entraram no código em 04/11/2026; no mesmo dia, o caderno do ENEM 2024 (2º dia) foi importado (75 das 90 questões) e o vínculo e a explicação foram **validados ponta a ponta com a IA real** (75/90 itens ligados; questão 91 explicada, questão sem vínculo devolvendo 422). Falta o gabarito sugerido por IA. **A data de publicação do gabarito importado (20/11/2024) precisa ser confirmada.**
+> **Status: Em andamento.** Fase 1, importação do INEP, cartão por foto, painel do professor e gabarito comunitário estão no código e foram **validados no navegador em 03/11/2026**, com o gabarito real do ENEM 2024 (2º dia, Amarelo). As migrations `20261103150000_answer_keys` e `20261103200000_answer_key_votes` estão aplicadas. O vínculo do gabarito com o banco de questões e a **explicação da LuminIA por questão** entraram no código em 04/11/2026; no mesmo dia, o caderno do ENEM 2024 (2º dia) foi importado (75 das 90 questões) e o vínculo e a explicação foram **validados ponta a ponta com a IA real** (75/90 itens ligados; questão 91 explicada, questão sem vínculo devolvendo 422). O **gabarito sugerido por IA** também entrou no código em 04/11/2026, com validação do professor; falta validá-lo com a IA real em uma prova inteira. **A data de publicação do gabarito importado (20/11/2024) precisa ser confirmada.**
 
 O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, brancos e desempenho por área, com histórico. O gabarito oficial aparece marcado como **Oficial**, com fonte e data. Os demais aparecem sempre como **não oficiais**.
 
@@ -9,7 +9,7 @@ O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, branco
   - `OFFICIAL`: só o administrador cadastra, e só com fonte (banca e link) e data de publicação. É único por prova, aplicação, dia e cor (índice parcial no banco). Quando a banca publica uma correção, a versão sobe e as conferências antigas avisam que o gabarito mudou.
   - `TEACHER`: professor, coordenação ou direção cadastra. Quando publicado, fica visível aos alunos das turmas dele.
   - `COMMUNITY`: nasce dos votos dos alunos (ver abaixo). Itens sempre pendentes (amarelo), nunca oficiais.
-  - `AI_SUGGESTED`: previsto no banco; ainda não existe.
+  - `AI_SUGGESTED`: rascunho gerado pela LuminIA para professor/gestão, sempre pendente até a validação docente (ver abaixo). Nunca é oficial.
 - **Seleção:** prova (`Exam` existente, ou nova sem duplicar nome + ano), ano, aplicação, dia, cor do caderno e área. Áreas do Enem preenchidas pela numeração (1–45 LC, 46–90 CH, 91–135 CN, 136–180 MT).
 - **Língua estrangeira (Enem, 1º dia):** um item por língua nas questões 1–5, e o aluno escolhe a dele.
 - **Conferência:** grade A–E (ou colar a sequência), revisão antes de confirmar e correção. As cores são verde (acerto), vermelho (erro), cinza (em branco) e amarelo (pendente de validação). Anulada e pendente não entram no percentual. **O percentual não é convertido em nota TRI.**
@@ -22,8 +22,10 @@ O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, branco
 | GET | `/answer-keys/exams` | Provas cadastradas |
 | GET | `/answer-keys/:id?answers=true` | Detalhe; as respostas só vêm com `answers=true` |
 | POST | `/answer-keys` | Cadastro (oficial: ADMIN, com fonte e data; professor: staff) |
+| POST | `/answer-keys/ai-suggestions` | Gera um rascunho `AI_SUGGESTED` com respostas e justificativas (professor/gestão; não substitui o oficial) |
 | POST | `/answer-keys/import/inep` | Importa o gabarito oficial do PDF do INEP (ADMIN; só `download.inep.gov.br`) |
 | PUT | `/answer-keys/:id/items` | Correção do gabarito (sobe a versão, com nota) |
+| PATCH | `/answer-keys/:id/items/validate` | Valida ou corrige itens de um gabarito de professor/IA; itens não enviados continuam pendentes |
 | PATCH | `/answer-keys/:id/status` | Publicar, voltar a rascunho, arquivar |
 | GET | `/answer-keys/:id/sheet` | Cartão-resposta da Lumina para imprimir e marcar |
 | POST | `/answer-keys/:id/read-sheet` | Lê a foto do cartão (PDF de 1 página) e devolve as respostas; não grava nada |
@@ -37,7 +39,7 @@ O aluno escolhe a prova, marca as respostas e vê na hora acertos, erros, branco
 | DELETE | `/answer-keys/:id/votes/:userId` | Moderação: remove os votos de um usuário (ADMIN) |
 
 - **Código:** `lumina-backend/src/answer-keys/` (a lógica de correção pura está em `answer-key.grading.ts` e o vínculo/prompt em `answer-key.questions.ts`) e `lumina-app/src/pages/SmartAnswerKey.tsx` (rota `/app/gabarito-inteligente`).
-- **Testes:** `answer-keys.spec.ts`, com 30 casos (4 sobre a importação do INEP, 2 sobre o cartão por foto e 8 sobre vínculo, explicação e limpeza do texto da IA).
+- **Testes:** `answer-keys.spec.ts`, com 41 casos (7 sobre o gabarito sugerido por IA, 4 sobre a importação do INEP, 2 sobre o cartão por foto e 8 sobre vínculo, explicação e limpeza do texto da IA).
 
 ## Importação do gabarito oficial do INEP
 O administrador cola o link do PDF do gabarito (ex.: `.../provas_e_gabaritos/2024_GB_impresso_D2_CD5.pdf`) e informa a data de publicação, que o PDF não traz.
@@ -74,6 +76,17 @@ A administração vê todos. Os alunos não veem o painel (403).
 - **Moderação:** só a administração arquiva o comunitário e remove os votos de um usuário, e os itens são recalculados.
 - **Banco:** um comunitário por prova, aplicação, dia e cor (índice parcial). Migration `20261103200000_answer_key_votes` (tabela `answer_key_votes` e coluna `answer_key_items.votes`), aplicada em 03/11/2026.
 
+## Gabarito sugerido por IA
+
+- **Quem pode gerar:** professor, coordenação e direção. A sugestão nasce como rascunho `AI_SUGGESTED`, com todos os itens pendentes; não é publicada e não substitui um gabarito oficial.
+- **Pré-requisito:** a prova precisa ter questões acessíveis no banco (de preferência no banco público). Sem texto de questão, não há sugestão.
+- **Enem:** exige a cor do caderno, porque a ordem das questões muda entre cadernos; se já existe gabarito oficial para a mesma prova, aplicação, dia e cor, a geração é recusada.
+- **Resposta pronta:** quando o banco já tem exatamente uma alternativa marcada como correta, a sugestão usa essa resposta com confiança **1** — é cálculo, não palpite.
+- **Sugestão da IA:** quando o banco não tem a resposta, a LuminIA recebe somente enunciado e alternativas e devolve uma alternativa + justificativa curta. A confiança fica **nula**, porque não há base para calculá-la.
+- **O que é pulado:** questão com imagem (a LuminIA não lê a imagem), sem alternativas suficientes, com mais de uma alternativa correta no banco ou com resposta inválida da IA. O item fica pendente com o motivo explícito, em vez de receber uma resposta inventada.
+- **Validação docente:** o professor confirma ou corrige cada item em `PATCH /answer-keys/:id/items/validate`. Só itens validados contam para o aluno; os pendentes aparecem em amarelo. Se a resposta muda, a versão do gabarito sobe e as conferências antigas avisam.
+- **Honestidade:** a IA pode errar. O fluxo foi desenhado para que a sugestão seja sempre revisada por um professor antes de valer.
+
 ## LuminIA por questão
 - **Vínculo:** cada item do gabarito pode apontar para uma questão do banco (`AnswerKeyItem.questionId`). O vínculo automático roda ao criar/importar/corrigir um gabarito e ao recalcular o comunitário; também há o botão **“Vincular questões”** em “Meus gabaritos”.
 - **Só o banco público:** o vínculo usa apenas questões do workspace `banco@lumina.app`. Fora dele a questão não é ligada, porque a explicação precisa funcionar para qualquer aluno autenticado — não só para quem tem acesso ao workspace de quem importou o caderno.
@@ -96,7 +109,7 @@ Os demais `exam_papers` com gabarito continuam sendo dados de exemplo (o ENEM 20
 ## Próximas fases
 1. ~~Importar o gabarito oficial do PDF do INEP~~ (feito).
 2. ~~Foto do cartão-resposta para preencher as respostas~~ (feito; ver abaixo).
-3. Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor. **Depende de ter o texto das questões ligado ao gabarito** (ver item 5).
+3. ~~Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor~~ (feito em 04/11/2026; ver acima). Falta a validação com a IA real em uma prova inteira.
 4. ~~Gabarito comunitário~~ (feito; ver abaixo).
 5. ~~LuminIA por questão com o texto real da questão e das alternativas (exige vincular `AnswerKeyItem.questionId` às questões do banco)~~ (feito em 04/11/2026; ver acima).
 6. ~~Painel do professor~~ (feito; ver abaixo).
