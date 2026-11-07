@@ -1403,6 +1403,69 @@ export function apiRemoveErrorNotebookEntry(
 }
 
 // =============================================================================
+// Central de revisões (item 31)
+// =============================================================================
+
+export type ReviewQueueKind = "TOPIC" | "ERROR_NOTEBOOK" | "MARKED_QUESTION";
+
+export interface ReviewQueueItem {
+  kind: ReviewQueueKind;
+  id: string;
+  questionId: string | null;
+  subjectId: string | null;
+  subject: string;
+  topicId: string | null;
+  topic: string;
+  dueAt: string | null;
+  masteryScore: number | null;
+  status: string | null;
+  attempts: number | null;
+  correctAttempts: number | null;
+  accuracy: number | null;
+  wrongAttempts: number | null;
+  correctStreak: number | null;
+  difficulty: QuestionDifficulty | null;
+  exam: string | null;
+  year: number | null;
+  stem: string | null;
+  lastAttemptAt: string | null;
+}
+
+export interface ReviewQueueDue {
+  total: number;
+  topics: number;
+  errorNotebook: number;
+  items: ReviewQueueItem[];
+  truncated: boolean;
+}
+
+export interface ReviewQueueManual {
+  total: number;
+  items: ReviewQueueItem[];
+  truncated: boolean;
+}
+
+export interface ReviewQueueResponse {
+  generatedAt: string;
+  due: ReviewQueueDue;
+  manual: ReviewQueueManual;
+  nextReviewAt: string | null;
+}
+
+/**
+ * Fila unificada de revisões. `limit` limita cada seção no servidor; os
+ * contadores continuam sendo o total real, para o aviso do painel não mentir.
+ */
+export function apiGetReviewQueue(
+  accessToken: string,
+  limit = 20
+): Promise<ReviewQueueResponse> {
+  return request(`/users/me/review-queue?limit=${limit}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+// =============================================================================
 // Nota de corte do Sisu (meta de nota do aluno)
 // =============================================================================
 

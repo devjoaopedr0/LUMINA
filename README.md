@@ -50,6 +50,7 @@ Cada projeto também pode ser rodado isoladamente (`npm run dev` dentro dele, ou
 - [Cronograma adaptativo (design)](docs/CRONOGRAMA_ADAPTATIVO_DESIGN.md)
 - [Resolução de questões](docs/RESOLUCAO_QUESTOES.md)
 - [Caderno de erros](docs/CADERNO_DE_ERROS.md)
+- [Revisão espaçada (fila unificada)](docs/REVISAO_ESPACADA.md)
 - [Busca de questões na web](docs/BUSCA_WEB.md)
 - [Importação de questões](docs/IMPORTACAO_QUESTOES.md)
 - [Nota de corte do Sisu](docs/NOTA_DE_CORTE_SISU.md)

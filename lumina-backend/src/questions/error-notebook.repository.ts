@@ -5,6 +5,7 @@ import {
   ERROR_NOTEBOOK_EVOLUTION_LIMIT,
   ERROR_NOTEBOOK_MASTERED_STREAK,
 } from './dto/error-notebook.dto';
+import { nextErrorReviewAt } from './review-schedule';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -109,6 +110,12 @@ export class ErrorNotebookRepository {
     db: Db = this.prisma,
   ): Promise<ErrorNotebookRow> {
     const now = new Date();
+    const reviewScheduledAt = nextErrorReviewAt(
+      now,
+      'WRONG',
+      0,
+      ERROR_NOTEBOOK_MASTERED_STREAK,
+    );
     const entry = await db.errorNotebookEntry.upsert({
       where: { userId_questionId: { userId, questionId } },
       create: {
@@ -121,6 +128,7 @@ export class ErrorNotebookRepository {
         lastWrongAt: now,
         status: 'ABERTA',
         resolvedAt: null,
+        reviewScheduledAt,
       },
       update: {
         wrongAttempts: { increment: 1 },
@@ -128,6 +136,7 @@ export class ErrorNotebookRepository {
         status: 'ABERTA',
         resolvedAt: null,
         lastWrongAt: now,
+        reviewScheduledAt,
       },
       include: QUESTION_INCLUDE,
     });
@@ -148,14 +157,23 @@ export class ErrorNotebookRepository {
     const current = await this.find(userId, questionId, db);
     if (!current) return null;
 
+    const now = new Date();
     const streak = current.correctStreak + 1;
     const mastered = streak >= ERROR_NOTEBOOK_MASTERED_STREAK;
     const updated = await db.errorNotebookEntry.update({
       where: { id: current.id },
       data: {
         correctStreak: streak,
+        // A revisão também é recalculada no acerto: um acerto isolado ainda
+        // pede uma nova passada em três dias; dois seguidos encerram a fila.
+        reviewScheduledAt: nextErrorReviewAt(
+          now,
+          'CORRECT',
+          streak,
+          ERROR_NOTEBOOK_MASTERED_STREAK,
+        ),
         ...(mastered
-          ? { status: 'DOMINADA' as const, resolvedAt: current.resolvedAt ?? new Date() }
+          ? { status: 'DOMINADA' as const, resolvedAt: current.resolvedAt ?? now }
           : {}),
       },
       include: QUESTION_INCLUDE,
@@ -192,6 +210,14 @@ export class ErrorNotebookRepository {
         questionId,
         reason: data.reason ?? null,
         notes: data.notes ?? null,
+        // Inclusão manual também entra na fila: sem data, a questão ficaria
+        // aberta para sempre e nunca apareceria na central de revisões.
+        reviewScheduledAt: nextErrorReviewAt(
+          new Date(),
+          'WRONG',
+          0,
+          ERROR_NOTEBOOK_MASTERED_STREAK,
+        ),
       },
       include: QUESTION_INCLUDE,
     });

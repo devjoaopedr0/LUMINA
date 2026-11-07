@@ -2,6 +2,16 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 07/11/2026 — Revisão espaçada unificada
+
+- **Fila única:** `GET /users/me/review-queue` reúne tópicos com domínio vencido, entradas abertas do caderno de erros e questões marcadas para revisar. A fila manual fica separada do total do dia e não repete uma questão já aberta no caderno.
+- **Agendamento automático:** erro no caderno volta no dia seguinte; primeiro acerto empurra para três dias; dois acertos seguidos encerram a revisão como `DOMINADA`. Inclusão manual e scanner de questões também recebem a primeira data. O agendamento manual continua possível, mas a próxima tentativa recalcula a data.
+- **Central do aluno:** nova rota `/app/revisao-espacada`, com resumo por origem, ordenação pela revisão mais antiga, resolução inline das questões e atalho para o banco filtrado por tópico. O painel exibe um aviso in-app quando há itens pendentes.
+- **Integração com o caderno:** a central abre o caderno já filtrado por vencidas, matéria e assunto. Tópicos levam ao banco de questões com `subjectId` e `topicId`.
+- **Escopo honesto:** flashcards dependem do item 32 e não foram simulados. A notificação é in-app; não há push ou e-mail. A entrega não exige migration.
+- **Testes:** 12 testes de backend para regras de data, repositório e agregação da fila; check de frontend para vencimento, origem e detalhe dos itens. Backend e app passam em `typecheck`; o app passa em `test` e `build`.
+- **Documentação:** regras e limites em [docs/REVISAO_ESPACADA.md](docs/REVISAO_ESPACADA.md).
+
 ## Atualização de 05/11/2026 — Gabarito Inteligente: sugestão por IA medida em prova inteira
 
 ## Atualização de 05/11/2026 — Revisão humana da redação (human-in-the-loop)

@@ -10,6 +10,7 @@ import { ResetPassword } from "@/pages/ResetPassword";
 import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
 import { ErrorNotebookPage } from "@/pages/ErrorNotebook";
+import { ReviewCenterPage } from "@/pages/ReviewCenterPage";
 import { WebQuestionSearch } from "@/pages/WebQuestionSearch";
 import { StudySchedulePage } from "@/pages/StudySchedulePage";
 import { Profile } from "@/pages/Profile";
@@ -101,6 +102,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ErrorNotebookPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/revisao-espacada"
+          element={
+            <ProtectedRoute>
+              <ReviewCenterPage />
             </ProtectedRoute>
           }
         />
