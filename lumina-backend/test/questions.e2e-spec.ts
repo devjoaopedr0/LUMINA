@@ -743,6 +743,19 @@ describe('Questions (e2e)', () => {
         .set(header)
         .query({ due: 'true' });
       expect(semVencidas.body.items).toHaveLength(0);
+
+      // Limpar a data não esconde a dívida: a entrada aberta continua pendente.
+      const semData = await request(app.getHttpServer())
+        .patch(`/users/me/error-notebook/${questionId}`)
+        .set(header)
+        .send({ reviewScheduledOn: null });
+      expect(semData.body.reviewScheduledAt).toBeNull();
+      expect(semData.body.due).toBe(true);
+      const pendente = await request(app.getHttpServer())
+        .get('/users/me/error-notebook')
+        .set(header)
+        .query({ due: 'true' });
+      expect(pendente.body.items.map((e: any) => e.questionId)).toEqual([questionId]);
     });
 
     it('motivo inválido, data inválida e filtro inválido são recusados (400)', async () => {

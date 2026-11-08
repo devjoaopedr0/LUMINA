@@ -5,6 +5,7 @@ import {
   ERROR_NOTEBOOK_EVOLUTION_LIMIT,
   ERROR_NOTEBOOK_MASTERED_STREAK,
 } from './dto/error-notebook.dto';
+import { nextErrorReviewAt } from './review-schedule';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -109,6 +110,12 @@ export class ErrorNotebookRepository {
     db: Db = this.prisma,
   ): Promise<ErrorNotebookRow> {
     const now = new Date();
+    const reviewScheduledAt = nextErrorReviewAt(
+      now,
+      'WRONG',
+      0,
+      ERROR_NOTEBOOK_MASTERED_STREAK,
+    );
     const entry = await db.errorNotebookEntry.upsert({
       where: { userId_questionId: { userId, questionId } },
       create: {
@@ -121,6 +128,7 @@ export class ErrorNotebookRepository {
         lastWrongAt: now,
         status: 'ABERTA',
         resolvedAt: null,
+        reviewScheduledAt,
       },
       update: {
         wrongAttempts: { increment: 1 },
@@ -128,6 +136,7 @@ export class ErrorNotebookRepository {
         status: 'ABERTA',
         resolvedAt: null,
         lastWrongAt: now,
+        reviewScheduledAt,
       },
       include: QUESTION_INCLUDE,
     });
@@ -148,19 +157,37 @@ export class ErrorNotebookRepository {
     const current = await this.find(userId, questionId, db);
     if (!current) return null;
 
-    const streak = current.correctStreak + 1;
-    const mastered = streak >= ERROR_NOTEBOOK_MASTERED_STREAK;
+    const now = new Date();
+    // O incremento é atômico: duas requisições concorrentes não podem ler o
+    // mesmo `correctStreak` e gravar 1 duas vezes. A primeira gravação apenas
+    // estica a revisão; se a sequência resultante fechar o critério, uma
+    // segunda gravação encerra a entrada com base no valor devolvido pelo banco.
     const updated = await db.errorNotebookEntry.update({
       where: { id: current.id },
       data: {
-        correctStreak: streak,
-        ...(mastered
-          ? { status: 'DOMINADA' as const, resolvedAt: current.resolvedAt ?? new Date() }
-          : {}),
+        correctStreak: { increment: 1 },
+        reviewScheduledAt: nextErrorReviewAt(
+          now,
+          'CORRECT',
+          1,
+          ERROR_NOTEBOOK_MASTERED_STREAK,
+        ),
       },
       include: QUESTION_INCLUDE,
     });
-    return this.appendEvolution(updated, 'A', db);
+    const mastered = updated.correctStreak >= ERROR_NOTEBOOK_MASTERED_STREAK;
+    const final = mastered
+      ? await db.errorNotebookEntry.update({
+          where: { id: updated.id },
+          data: {
+            status: 'DOMINADA',
+            resolvedAt: updated.resolvedAt ?? now,
+            reviewScheduledAt: null,
+          },
+          include: QUESTION_INCLUDE,
+        })
+      : updated;
+    return this.appendEvolution(final, 'A', db);
   }
 
   /** Acréscimo de 'E' ou 'A' na linha do tempo, mantendo o tamanho limitado. */
@@ -192,6 +219,14 @@ export class ErrorNotebookRepository {
         questionId,
         reason: data.reason ?? null,
         notes: data.notes ?? null,
+        // Inclusão manual também entra na fila: sem data, a questão ficaria
+        // aberta para sempre e nunca apareceria na central de revisões.
+        reviewScheduledAt: nextErrorReviewAt(
+          new Date(),
+          'WRONG',
+          0,
+          ERROR_NOTEBOOK_MASTERED_STREAK,
+        ),
       },
       include: QUESTION_INCLUDE,
     });

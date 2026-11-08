@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -395,7 +395,15 @@ function EntradaCaderno({ entrada, hoje, aoSalvar, aoRemover, aoResponder }: Ent
 export function ErrorNotebookPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [filtros, setFiltros] = useState<FiltrosCaderno>(FILTROS_VAZIOS);
+  const [searchParams] = useSearchParams();
+  // A central de revisões chega com o recorte pronto (?due=true&subject=...
+  // &topic=...). O caderno continua editável: isso só define o estado inicial.
+  const [filtros, setFiltros] = useState<FiltrosCaderno>(() => ({
+    ...FILTROS_VAZIOS,
+    materia: searchParams.get("subject") ?? "",
+    assunto: searchParams.get("topic") ?? "",
+    soVencidas: searchParams.get("due") === "true",
+  }));
   const [pagina, setPagina] = useState(1);
   const [dados, setDados] = useState<ErrorNotebookPage | null>(null);
   const [resumo, setResumo] = useState<ErrorNotebookSummary | null>(null);

@@ -97,13 +97,23 @@ export function createFakePrisma() {
     if (where.userId && entry.userId !== where.userId) return false;
     if (where.status && entry.status !== where.status) return false;
     if (where.reason !== undefined && entry.reason !== where.reason) return false;
-    if (where.reviewScheduledAt) {
+    if ('reviewScheduledAt' in where) {
       const filtro = where.reviewScheduledAt;
-      // `not: null` no Prisma significa "a coluna não é nula".
-      if (filtro.not === null && entry.reviewScheduledAt === null) return false;
-      if (filtro.lte && !(entry.reviewScheduledAt && entry.reviewScheduledAt <= filtro.lte)) {
-        return false;
+      // `null` literal no Prisma significa "a coluna é nula"; é um dos ramos do
+      // filtro "para hoje" (entrada aberta sem data continua pendente).
+      if (filtro === null) {
+        if (entry.reviewScheduledAt !== null) return false;
+      } else if (filtro) {
+        // `not: null` no Prisma significa "a coluna não é nula".
+        if (filtro.not === null && entry.reviewScheduledAt === null) return false;
+        if (filtro.lte && !(entry.reviewScheduledAt && entry.reviewScheduledAt <= filtro.lte)) {
+          return false;
+        }
       }
+    }
+    // Cláusula OR: ao menos um dos ramos precisa casar com a entrada.
+    if (Array.isArray(where.OR)) {
+      if (!where.OR.some((clause: any) => matchesNotebookWhere(clause, entry))) return false;
     }
     if (where.question) {
       const question = questions.find((q) => q.id === entry.questionId);

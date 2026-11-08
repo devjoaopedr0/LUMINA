@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, PrismaClient, QuestionDifficulty, ErrorReason } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
+import { nextErrorReviewAt } from '../questions/review-schedule';
+import { ERROR_NOTEBOOK_MASTERED_STREAK } from '../questions/dto/error-notebook.dto';
 
 interface QuestionScanProcessingResult {
   stemText: string | null;
@@ -299,7 +301,12 @@ export class QuestionScanService {
         wrongAttempts: 1,
         correctStreak: 0,
         evolution: 'E',
-        reviewScheduledAt: null,
+        reviewScheduledAt: nextErrorReviewAt(
+          new Date(),
+          'WRONG',
+          0,
+          ERROR_NOTEBOOK_MASTERED_STREAK,
+        ),
         firstWrongAt: new Date(),
         lastWrongAt: new Date(),
       },

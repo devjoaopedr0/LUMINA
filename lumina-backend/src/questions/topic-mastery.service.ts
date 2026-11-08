@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, TopicMasteryStatus, type TopicMastery } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { isReviewDayDue, reviewDay } from './review-day';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -29,14 +30,10 @@ const REVIEW_RESET_INTERVAL_DAYS = 1;
  * tocado) fica de fora do score em si — ela importa para PRIORIZAR o que
  * revisar (fase 2, no gerador), não para medir o domínio atual.
  */
-/** Brasília está 3 horas atrás do UTC (sem horário de verão). */
-const BRAZIL_UTC_OFFSET_MS = 3 * 3_600_000;
-
 /** Dia do histórico para um instante: a data em Brasília, como meia-noite UTC
  *  (é assim que o Prisma lê e grava uma coluna DATE). */
 export function masteryHistoryDay(instant: Date): Date {
-  const local = new Date(instant.getTime() - BRAZIL_UTC_OFFSET_MS);
-  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+  return reviewDay(instant);
 }
 
 @Injectable()
@@ -116,9 +113,7 @@ export class TopicMasteryService {
     }
 
     const now = new Date();
-    const nextReviewAt = new Date(now);
-    nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays!);
-    nextReviewAt.setUTCHours(0, 0, 0, 0);
+    const nextReviewAt = reviewDay(now, reviewIntervalDays!);
 
     const values = {
       masteryScore,
@@ -174,10 +169,8 @@ export class TopicMasteryService {
     });
     const now = new Date();
     const reviewIntervalDays = existing?.reviewIntervalDays ?? REVIEW_INITIAL_INTERVAL_DAYS;
-    const reviewIsDue = !existing?.nextReviewAt || existing.nextReviewAt <= now;
-    const nextReviewAt = new Date(now);
-    nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + reviewIntervalDays);
-    nextReviewAt.setUTCHours(0, 0, 0, 0);
+    const reviewIsDue = !existing?.nextReviewAt || isReviewDayDue(existing.nextReviewAt, now);
+    const nextReviewAt = reviewDay(now, reviewIntervalDays);
 
     const saved = await db.topicMastery.upsert({
       where: { userId_topicId: { userId, topicId } },
@@ -223,7 +216,7 @@ export class TopicMasteryService {
       status: row.status,
       lastStudiedAt: row.lastStudiedAt,
       nextReviewAt: row.nextReviewAt,
-      due: row.nextReviewAt ? row.nextReviewAt <= new Date() : false,
+      due: isReviewDayDue(row.nextReviewAt),
     }));
   }
 }

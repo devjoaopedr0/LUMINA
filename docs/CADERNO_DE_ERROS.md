@@ -246,7 +246,9 @@ Totais e recortes — descrito na seção "Resumo do caderno" acima.
   - Enunciado truncado.
   - **Motivo**: select com os 8 motivos + "Sem motivo" (primeira opção).
   - **Revisão combinada**: campo de data + 4 atalhos (Hoje, Amanhã, Em 3 dias,
-    Em 1 semana) + botão "Sem data". A data vira meia-noite UTC.
+    Em 1 semana) + botão "Sem data". A data vira meia-noite UTC do dia de
+    Brasília; limpar a data não esconde a dívida, porque a entrada aberta sem
+    data continua pendente na central.
   - **Observação**: textarea; botão "Salvar observação" **só aparece quando há
     texto novo** — depois de salvar, some e a observação persiste.
   - **Rever questão**: abre o componente `QuestionResolution` (resposta,
@@ -315,7 +317,7 @@ Item "Caderno de erros" com ícone `NotebookPen` → `/app/caderno-de-erros`.
   - Acerto evolui a entrada e dois acertos seguidos dominam a questão.
   - Errar de novo reabre a questão dominada.
   - Revisão combinada: data digitada, "Hoje", "Amanhã", "Sem data".
-  - Filtro `due=true` mostra só o vencido.
+  - Filtro `due=true` mostra o vencido e a entrada aberta sem data.
   - Observação gravada e persistida.
   - Recortes por matéria/assunto/dificuldade/motivo/situação.
   - Recorte vazio diz "Nenhuma questão neste recorte".
@@ -372,7 +374,8 @@ antes de cada carga pesada.
    recortes por motivo aparecem e filtram (CHUTE → 1, SEM_MOTIVO → 1, limpo → 2).
 3. **Revisão combinada**: "Amanhã" lido como amanhã, "Hoje" vira alerta de
    vencida, resumo conta "Para revisar hoje", filtro "só o vencido" isola a
-   de hoje, data digitada (24/12/2026) respeitada, "Sem data" limpa.
+   de hoje, data digitada (24/12/2026) respeitada, "Sem data" limpa a data mas
+   mantém a entrada aberta pendente.
 4. **Observação**: começa vazia, botão só aparece com texto, grava no servidor,
    persiste na tela, botão some.
 5. **Filtros**: matérias/assuntos/dificuldades do caderno viram opções; filtro

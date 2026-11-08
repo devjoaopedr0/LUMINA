@@ -32,8 +32,9 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
 | Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente: **em andamento** (03/11, sem commit) |
-| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
-| Caderno de erros com motivo do erro | Implementado | |
+| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" em 05/11/2026, modo socrático e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
+| Caderno de erros com motivo do erro | Implementado | Revisão espaçada automática integrada em 07/11/2026 |
+| Revisão espaçada unificada | Parcial | Fila única, recálculo automático e aviso in-app entregues em 07/11/2026; flashcards dependem do item 32 |
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
 | Simulado adaptativo | Implementado | IRT simplificado |
 | Scanner de cartão-resposta (OMR) | Implementado | Falta o teste com impressão real; cartão configurável pelo gestor **em andamento** (03/11) |
@@ -47,7 +48,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
 | Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetir com o modelo padrão de produção; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
-| Gamificação, metas, notificações, flashcards, revisão espaçada, agenda | Planejado | Itens 31–52 do inventário |
+| Gamificação, metas, flashcards, agenda e notificações push/e-mail | Planejado | Itens 32–52 do inventário; revisão espaçada e notificação in-app já entregues |
 | Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
 | Lumina Groups | Planejado | Fase 2 |
 | Lumina Marketplace | Futuro | Fase 4 |

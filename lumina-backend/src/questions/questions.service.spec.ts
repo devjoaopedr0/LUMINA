@@ -518,6 +518,27 @@ describe('QuestionsService', () => {
       expect(result.errorNotebook).toEqual({ questionId: 'question-1' });
     });
 
+    it('remove a marcação manual quando a questão é dominada no caderno', async () => {
+      questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
+      errorNotebookService.registerAttempt.mockResolvedValue({
+        id: 'entry-1',
+        questionId: 'question-1',
+        status: 'DOMINADA',
+      });
+      errorNotebookService.toEntryDto.mockReturnValue({ questionId: 'question-1' });
+
+      await service.answer('user-1', 'question-1', { selectedPosition: 3 });
+
+      // Sem isso, a questão reapareceria na fila manual depois de já ter sido
+      // revisada e dominada no caderno.
+      expect(questionProgressRepository.setMarkedForReview).toHaveBeenCalledWith(
+        'user-1',
+        'question-1',
+        false,
+        prisma,
+      );
+    });
+
     it('retorna erro quando a posição escolhida não é a correta', async () => {
       questionsRepository.findById.mockResolvedValue({ ...baseQuestion, alternatives });
 

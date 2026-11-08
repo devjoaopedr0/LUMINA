@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import {
   ACERTOS_PARA_DOMINAR,
   contarFiltrosAtivos,
-  dataLocal,
   diasEntre,
   descreverEvolucao,
   descreverRevisao,
@@ -17,6 +16,7 @@ import {
   somarDias,
   type FiltrosCaderno,
 } from '../src/lib/error-notebook.ts';
+import { dataBrasilia } from '../src/lib/review-date.ts';
 import {
   CLASSE_DIFICULDADE,
   origemDaQuestao,
@@ -56,7 +56,7 @@ const entrada = (overrides: Partial<ErrorNotebookEntry> = {}): ErrorNotebookEntr
   ...overrides,
 });
 
-const HOJE = new Date(2026, 8, 26, 9, 30); // 26/09/2026, 09:30 no fuso do navegador
+const HOJE = new Date('2026-09-26T12:30:00.000Z'); // 26/09/2026, 09:30 em Brasília
 
 // --- Motivo do erro (item 13) -------------------------------------------------
 // Todo motivo da lista tem rótulo e todo rótulo é distinto: nenhum motivo pode
@@ -97,9 +97,23 @@ assert.deepEqual(opcoesRevisao(HOJE), [
 ]);
 
 // Fim de mês e virada de ano: somar dias tem de virar o calendário, não 31.
-assert.equal(dataLocal(somarDias(new Date(2026, 8, 30), 3)), '2026-10-03');
-assert.equal(dataLocal(somarDias(new Date(2026, 11, 31), 1)), '2027-01-01');
-assert.equal(dataLocal(new Date(2026, 0, 5)), '2026-01-05');
+assert.equal(dataBrasilia(somarDias(new Date('2026-09-30T15:00:00.000Z'), 3)), '2026-10-03');
+assert.equal(dataBrasilia(somarDias(new Date('2026-12-31T15:00:00.000Z'), 1)), '2027-01-01');
+assert.equal(dataBrasilia(new Date('2026-01-05T15:00:00.000Z')), '2026-01-05');
+
+// Às 20:59 e às 21:00 de Brasília ainda é 06/11 no calendário local. "Amanhã"
+// tem de continuar sendo 07/11 nos dois casos — não pular para 08/11 quando o
+// UTC vira.
+const antesDaViradaUtc = new Date('2026-11-06T23:59:00.000Z');
+const depoisDaViradaUtc = new Date('2026-11-07T00:00:00.000Z');
+assert.deepEqual(opcoesRevisao(antesDaViradaUtc).slice(0, 2), [
+  { label: 'Hoje', value: '2026-11-06' },
+  { label: 'Amanhã', value: '2026-11-07' },
+]);
+assert.deepEqual(opcoesRevisao(depoisDaViradaUtc).slice(0, 2), [
+  { label: 'Hoje', value: '2026-11-06' },
+  { label: 'Amanhã', value: '2026-11-07' },
+]);
 
 // A revisão é um dia de calendário, não um instante: a comparação não tem fuso
 // no meio (o servidor grava à meia-noite UTC do dia escolhido).
@@ -110,6 +124,10 @@ assert.equal(diasEntre('2026-03-01', '2026-02-28'), 1);
 assert.equal(formatarData('2026-09-27T00:00:00.000Z'), '27/09/2026');
 
 assert.equal(descreverRevisao(entrada(), HOJE), 'Sem revisão marcada');
+assert.equal(
+  descreverRevisao(entrada({ due: true }), HOJE),
+  'Sem data — pendente para hoje',
+);
 assert.equal(
   descreverRevisao(entrada({ reviewScheduledAt: '2026-09-26T00:00:00.000Z', due: true }), HOJE),
   'Revisão para hoje',

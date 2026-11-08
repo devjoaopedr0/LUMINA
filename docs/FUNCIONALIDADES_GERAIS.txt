@@ -348,13 +348,13 @@
       -  atenção
       -  crítico
     -  Mapa de calor
-31. 31. Revisão espaçada
-    -  Agendar revisão automaticamente
-    -  Recalcular próxima revisão conforme desempenho
-    -  Integrar questões
-    -  Integrar flashcards
-    -  Integrar caderno de erros
-    -  Notificar quando for hora de revisar
+31. 31. Revisão espaçada — base entregue em 07/11/2026
+    -  Agendar revisão automaticamente [IMPLEMENTADO: erro no caderno volta em 1 dia; inclusão manual e scanner também recebem data]
+    -  Recalcular próxima revisão conforme desempenho [IMPLEMENTADO: primeiro acerto em 3 dias; dois acertos encerram como dominada; tópicos usam 3/30/1 dias]
+    -  Integrar questões [IMPLEMENTADO: GET /users/me/review-queue une tópicos, caderno e questões marcadas]
+    -  Integrar flashcards [PENDENTE: depende do item 32; nenhum item de flashcard é simulado na fila]
+    -  Integrar caderno de erros [IMPLEMENTADO: fila usa ErrorNotebookEntry.reviewScheduledAt e abre o caderno já filtrado]
+    -  Notificar quando for hora de revisar [IMPLEMENTADO: aviso in-app no painel; push/e-mail continuam pendentes]
 32. 32. Flashcards
     -  Criar manualmente
     -  Criar com IA
