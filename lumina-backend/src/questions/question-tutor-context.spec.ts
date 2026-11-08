@@ -80,6 +80,38 @@ describe('buildQuestionTutorContext', () => {
 
     expect(context).toContain('posição 9');
   });
+
+  it('no modo socrático antes da resposta não entrega o gabarito e pede diagnóstico', () => {
+    const context = buildQuestionTutorContext(question, null, 'SOCRATIC');
+
+    expect(context).toContain('ainda não respondeu');
+    expect(context).toContain('modo socrático');
+    expect(context).toContain('pergunta de diagnóstico');
+    expect(context).not.toContain('(correta)');
+    expect(context).not.toContain('Alternativa correta:');
+  });
+
+  it('no modo socrático depois do erro não entrega a resolução pronta', () => {
+    const context = buildQuestionTutorContext(question, {
+      selectedPosition: 1,
+      isCorrect: false,
+    }, 'SOCRATIC');
+
+    expect(context).toContain('Alternativa correta: C) 8');
+    expect(context).toContain('Não entregue a resolução pronta');
+    expect(context).toContain('pergunte em qual passo');
+    expect(context).not.toContain('Mostre onde o raciocínio do aluno tropeçou');
+  });
+
+  it('no modo socrático depois do acerto pede que o aluno explique o porquê', () => {
+    const context = buildQuestionTutorContext(question, {
+      selectedPosition: 3,
+      isCorrect: true,
+    }, 'SOCRATIC');
+
+    expect(context).toContain('peça que ele explique com as próprias palavras');
+    expect(context).not.toContain('Explique por que a resposta do aluno está correta');
+  });
 });
 
 describe('tutorPositionLetter', () => {

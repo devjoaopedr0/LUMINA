@@ -1,6 +1,10 @@
 import { API_URL } from "@/lib/config";
 import { clearTokens, getRefreshToken, setTokens } from "@/lib/auth";
 import { ApiError, createApiClient } from "@/lib/api-client-core";
+import {
+  buildSimilarQuestionPayload,
+  SIMILAR_QUESTION_ENDPOINT,
+} from "@/lib/similar-question-payload";
 
 export { ApiError } from "@/lib/api-client-core";
 
@@ -529,6 +533,7 @@ export function apiUpdateProfile(
 }
 
 export type QuestionDifficulty = "FACIL" | "MEDIA" | "DIFICIL";
+export type QuestionSourceType = "OFFICIAL" | "PARTNER" | "GENERATED" | "IMPORTED";
 
 export interface QuestionAlternative {
   id: string;
@@ -552,6 +557,8 @@ export interface QuestionUserProgress {
 
 export interface Question {
   id: string;
+  sourceType?: QuestionSourceType;
+  sourceName?: string;
   subject: string;
   topic: string;
   subjectId?: string | null;
@@ -1030,6 +1037,20 @@ export function apiGetSimilarQuestions(
 ): Promise<SimilarQuestions> {
   return request(`/questions/${id}/similar?limit=${limit}`, {
     headers: authHeaders(accessToken),
+  });
+}
+
+/** Cria uma variação inédita da questão com a LuminIA. O servidor carrega o
+ * contexto, valida a resposta da IA e salva a nova questão no workspace
+ * pessoal antes de devolvê-la já no formato de resolução. */
+export function apiGenerateSimilarQuestion(
+  accessToken: string,
+  questionId: string
+): Promise<Question> {
+  return request(SIMILAR_QUESTION_ENDPOINT, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: buildSimilarQuestionPayload(questionId),
   });
 }
 

@@ -2,6 +2,9 @@ import { getAccessToken } from "@/lib/auth";
 import { createApiClient } from "@/lib/api-client-core";
 import { clearTokens, getRefreshToken, setTokens } from "@/lib/auth";
 import { API_URL } from "@/lib/config";
+import { buildAiChatPayload, type AiChatMode } from "@/lib/ai-chat-payload";
+
+export type { AiChatMode };
 
 export interface AiChatMessage {
   id: string;
@@ -17,6 +20,8 @@ export interface AskAiDetail {
   message: string;
   scheduleTaskId?: string;
   questionId?: string;
+  /** Abre a conversa no modo socrático em vez de pedir uma explicação direta. */
+  socratic?: boolean;
 }
 
 export function askAi(detail: AskAiDetail): void {
@@ -53,7 +58,7 @@ const apiClient = createApiClient({
 export async function sendAiChatMessage(
   message: string,
   history: AiChatMessage[],
-  options: { scheduleTaskId?: string; questionId?: string } = {},
+  options: { scheduleTaskId?: string; questionId?: string; mode?: AiChatMode } = {},
 ): Promise<string> {
   if (!message.trim()) throw new Error("Mensagem vazia.");
   if (message.length > 4000) throw new Error("Mensagem muito longa (máx. 4000 caracteres).");
@@ -64,16 +69,7 @@ export async function sendAiChatMessage(
   const res = await apiClient.request<{ message: string }>("/ai/chat", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
-    // O histórico local carrega um `id` por mensagem (o React precisa dele
-    // como key), mas o DTO do backend roda com forbidNonWhitelisted e
-    // recusaria o campo extra com 400. Enviamos só o que ele aceita.
-    body: JSON.stringify({
-      message: { role: "user", content: message },
-      history: history.map(({ role, content }) => ({ role, content })),
-      // Só os ids: o contexto do cronograma e da questão é montado no servidor.
-      ...(options.scheduleTaskId ? { scheduleTaskId: options.scheduleTaskId } : {}),
-      ...(options.questionId ? { questionId: options.questionId } : {}),
-    }),
+    body: buildAiChatPayload(message, history, options),
   });
   return res.message;
 }

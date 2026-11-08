@@ -31,7 +31,7 @@ describe('AiController.chat', () => {
 
     await controller.chat(user, { ...baseDto, questionId: 'question-1' });
 
-    expect(questionsService.tutorContext).toHaveBeenCalledWith('user-1', 'question-1');
+    expect(questionsService.tutorContext).toHaveBeenCalledWith('user-1', 'question-1', 'DIRECT');
     expect(aiService.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ questionId: 'question-1' }),
       'CONTEXTO DA QUESTÃO',
@@ -77,5 +77,37 @@ describe('AiController.chat', () => {
       undefined,
       'Maria',
     );
+  });
+
+  it('pede ao contexto da questão o modo socrático e envia a etapa atual', async () => {
+    const { controller, aiService, questionsService } = makeController();
+    questionsService.tutorContext.mockResolvedValue('CONTEXTO DA QUESTÃO');
+
+    await controller.chat(user, {
+      ...baseDto,
+      questionId: 'question-1',
+      mode: 'SOCRATIC',
+    });
+
+    expect(questionsService.tutorContext).toHaveBeenCalledWith(
+      'user-1',
+      'question-1',
+      'SOCRATIC',
+    );
+    const context = aiService.sendMessage.mock.calls[0][1] as string;
+    expect(context).toContain('CONTEXTO DA QUESTÃO');
+    expect(context).toContain('ANDAMENTO DO MODO SOCRÁTICO');
+    expect(context).toContain('O aluno já enviou 0 mensagens');
+  });
+
+  it('orienta o modo socrático mesmo sem questão vinculada', async () => {
+    const { controller, aiService } = makeController();
+
+    await controller.chat(user, { ...baseDto, mode: 'SOCRATIC' });
+
+    const context = aiService.sendMessage.mock.calls[0][1] as string;
+    expect(context).toContain('CONTEXTO DO MODO SOCRÁTICO');
+    expect(context).toContain('não há questão vinculada');
+    expect(context).toContain('ANDAMENTO DO MODO SOCRÁTICO');
   });
 });
