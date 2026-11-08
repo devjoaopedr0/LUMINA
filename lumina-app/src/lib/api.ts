@@ -1989,6 +1989,28 @@ export function apiRefreshDay(accessToken: string, date: string): Promise<DailyS
 
 export type TopicMasteryStatus = "NAO_ESTUDADO" | "APRENDENDO" | "PRATICANDO" | "DOMINADO" | "PRECISA_REFORCO";
 
+/** Uma linha de domínio por tópico já estudado, para o mapa de domínio. */
+export interface TopicMasteryEntry {
+  id: string;
+  subjectId: string;
+  subject: string;
+  topicId: string;
+  topic: string;
+  masteryScore: number;
+  attempts: number;
+  correctAttempts: number;
+  correctStreak: number;
+  status: TopicMasteryStatus;
+  lastStudiedAt: string | null;
+  nextReviewAt: string | null;
+  /** Revisão espaçada vencida no momento em que a API respondeu. */
+  due: boolean;
+}
+
+export function apiGetTopicMastery(accessToken: string): Promise<TopicMasteryEntry[]> {
+  return request("/users/me/topic-mastery", { headers: authHeaders(accessToken) });
+}
+
 export type TopicLevel = "BASE" | "INTERMEDIARIO" | "AVANCADO";
 
 /** Tópicos de uma matéria do cronograma, com a situação do aluno em cada um. */

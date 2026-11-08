@@ -184,6 +184,9 @@ function MasteryPanel({ mastery }: { mastery: StudyMasterySummary }) {
             {mastery.dominados} dominados · {emEstudo} em estudo
             {mastery.precisaReforco > 0 ? ` (${mastery.precisaReforco} precisam de reforço)` : ""} · {mastery.naoEstudados} ainda não vistos
           </p>
+          <Link to="/app/dominio" className="mt-2 inline-flex text-xs font-semibold text-primary-700">
+            Ver mapa completo de domínio →
+          </Link>
         </div>
       </div>
     </Card>
