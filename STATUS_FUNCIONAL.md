@@ -2,6 +2,15 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 06/11/2026 — LuminIA: criar questão parecida
+
+- **O que mudou:** a resolução de questões ganhou o botão **Criar questão parecida**. A LuminIA gera uma variação inédita da questão aberta, mostra-a logo abaixo para responder sem sair da tela e a salva no banco pessoal do aluno. O recurso aparece no Banco de Questões e no Caderno de Erros, porque os dois usam o mesmo componente de resolução.
+- **Contexto no servidor:** o cliente envia somente `{ questionId }` em `POST /ai/questions/similar`. Enunciado, alternativas, gabarito, disciplina e dificuldade são carregados no backend com a mesma checagem de workspace; o navegador não consegue ditar o conteúdo da referência.
+- **Validação antes de gravar:** o prompt versionado `similar-question-2026-11-06` devolve JSON, e o servidor exige a mesma quantidade de alternativas, exatamente uma correta, alternativas não repetidas e enunciado diferente do original. Resposta inválida vira 502 e nada é salvo; sem provedor configurado, 503.
+- **Governança e transparência:** a questão nasce como `GENERATED`/`LuminIA`, sem ano, número ou vínculo com prova oficial, e com metadados de modelo, prompt e questão de origem. A interface avisa que é conteúdo gerado por IA, não oficial e sem revisão humana (`UNREVIEWED`); não há geração em cascata.
+- **Testes:** backend com **872 testes em 60 arquivos**, incluindo prompt, validação estrutural, orquestração, controller e persistência; app com o novo check de payload (só `questionId`). `npm test`, `npm run typecheck` e `npm run build` do backend e do app passando; `npm run lint` do app sem erros. **Sem migration.**
+- **Documentação:** detalhes em [docs/RESOLUCAO_QUESTOES.md](docs/RESOLUCAO_QUESTOES.md) e [docs/AI_CHAT.md](docs/AI_CHAT.md).
+
 ## Atualização de 06/11/2026 — LuminIA: modo socrático
 
 - **O que mudou:** o chat flutuante ganhou um alternador **Modo socrático**, e cada questão tem o botão de mesmo nome ao lado de “Pedir ajuda à LuminIA”. O aluno recebe uma pergunta por vez e pistas progressivas em vez da resolução pronta.

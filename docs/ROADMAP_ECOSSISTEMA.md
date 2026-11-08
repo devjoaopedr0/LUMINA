@@ -32,7 +32,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
 | Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente: **em andamento** (03/11, sem commit) |
-| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 (contexto da questão montado no servidor) |
+| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
 | Caderno de erros com motivo do erro | Implementado | |
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
 | Simulado adaptativo | Implementado | IRT simplificado |
@@ -41,7 +41,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Revisão humana da redação (chat, evidências, validação e aprendizado) | Implementado | Ver [REVISAO_HUMANA_REDACAO.md](REVISAO_HUMANA_REDACAO.md) |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
 | Cálculo mental | Implementado | |
-| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático entregue em 06/11/2026; videoaulas planejadas |
+| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e criação de questão parecida entregues em 06/11/2026; videoaulas planejadas |
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |

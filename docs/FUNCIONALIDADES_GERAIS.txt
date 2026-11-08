@@ -269,7 +269,7 @@
     -  Analogias
     -  Exercícios após a explicação
     -  Ajustar nível da explicação ao aluno
-22. 22. LuminIA — explicação de questões [PARCIAL: AJUDA CONTEXTUAL NA RESOLUÇÃO ENTREGUE EM 05/11/2026; CRIAR QUESTÃO SEMELHANTE AINDA PENDENTE]
+22. 22. LuminIA — explicação de questões [ENTREGUE EM 06/11/2026 - AJUDA CONTEXTUAL NA RESOLUÇÃO, CRIAÇÃO DE QUESTÃO PARECIDA COM VALIDAÇÃO E PERSISTÊNCIA NO BANCO PESSOAL]
     -  Identificar o que a questão cobra
     -  Identificar conteúdo necessário
     -  Explicar como pensar

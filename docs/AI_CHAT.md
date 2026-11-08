@@ -30,6 +30,7 @@ O DTO limita cada mensagem a 4.000 caracteres e aceita apenas `user`/`assistant`
 
 - `GET /ai/lessons/task/:taskId`: resumo de teoria do tópico da tarefa, gerado na primeira abertura.
 - `GET /ai/weekly-comment`: comentário sobre a semana de estudos. Os fatos vêm do resumo do servidor; sem provedor, a resposta é um comentário determinístico com os mesmos fatos.
+- `POST /ai/questions/similar`: gera uma questão parecida a partir de uma referência acessível. O cliente envia só `{ questionId }`; o servidor carrega enunciado, alternativas e gabarito, valida o JSON da IA e salva a variação no workspace pessoal como `GENERATED`/`UNREVIEWED`. Sem provedor devolve 503; resposta estruturalmente inválida devolve 502 sem gravar nada. Detalhes em [RESOLUCAO_QUESTOES.md](RESOLUCAO_QUESTOES.md).
 
 ## Configuração
 
@@ -44,6 +45,7 @@ O DTO limita cada mensagem a 4.000 caracteres e aceita apenas `user`/`assistant`
 - Não há moderação de conteúdo nem proteção específica contra prompt injection além do isolamento do prompt de sistema e do contexto montado no servidor.
 - A disponibilidade depende da cota e da latência dos provedores gratuitos. O `AiService` repete 502/503/504 no mesmo modelo e depois tenta o próximo; se todos falharem, a interface mostra o erro.
 - A resposta é uma orientação de estudo, não uma correção oficial; a interface deve deixar claro que a IA pode errar.
+- A questão parecida é conteúdo gerado, não oficial e sem revisão humana. Ela fica marcada como `UNREVIEWED` nos metadados e restrita ao workspace pessoal; não entra no banco central automaticamente.
 
 ## Persistência futura
 
