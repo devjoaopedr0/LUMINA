@@ -158,27 +158,36 @@ export class ErrorNotebookRepository {
     if (!current) return null;
 
     const now = new Date();
-    const streak = current.correctStreak + 1;
-    const mastered = streak >= ERROR_NOTEBOOK_MASTERED_STREAK;
+    // O incremento é atômico: duas requisições concorrentes não podem ler o
+    // mesmo `correctStreak` e gravar 1 duas vezes. A primeira gravação apenas
+    // estica a revisão; se a sequência resultante fechar o critério, uma
+    // segunda gravação encerra a entrada com base no valor devolvido pelo banco.
     const updated = await db.errorNotebookEntry.update({
       where: { id: current.id },
       data: {
-        correctStreak: streak,
-        // A revisão também é recalculada no acerto: um acerto isolado ainda
-        // pede uma nova passada em três dias; dois seguidos encerram a fila.
+        correctStreak: { increment: 1 },
         reviewScheduledAt: nextErrorReviewAt(
           now,
           'CORRECT',
-          streak,
+          1,
           ERROR_NOTEBOOK_MASTERED_STREAK,
         ),
-        ...(mastered
-          ? { status: 'DOMINADA' as const, resolvedAt: current.resolvedAt ?? now }
-          : {}),
       },
       include: QUESTION_INCLUDE,
     });
-    return this.appendEvolution(updated, 'A', db);
+    const mastered = updated.correctStreak >= ERROR_NOTEBOOK_MASTERED_STREAK;
+    const final = mastered
+      ? await db.errorNotebookEntry.update({
+          where: { id: updated.id },
+          data: {
+            status: 'DOMINADA',
+            resolvedAt: updated.resolvedAt ?? now,
+            reviewScheduledAt: null,
+          },
+          include: QUESTION_INCLUDE,
+        })
+      : updated;
+    return this.appendEvolution(final, 'A', db);
   }
 
   /** Acréscimo de 'E' ou 'A' na linha do tempo, mantendo o tamanho limitado. */

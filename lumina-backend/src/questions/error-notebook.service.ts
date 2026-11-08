@@ -8,6 +8,7 @@ import {
 } from './error-notebook.repository';
 import { QuestionAccessService } from './question-access.service';
 import { QuestionsRepository } from './questions.repository';
+import { isReviewDayDue, reviewDayOn, reviewToday } from './review-day';
 import {
   ERROR_REASON_LABELS,
   ErrorNotebookEntryDto,
@@ -112,7 +113,7 @@ export class ErrorNotebookService {
       total: slices.length,
       open: open.length,
       mastered: mastered.length,
-      dueToday: open.filter((slice) => isDue(slice.reviewScheduledAt, now)).length,
+      dueToday: open.filter((slice) => isEntryDue(slice, now)).length,
       withoutReason: open.filter((slice) => !slice.reason).length,
       bySubject: facets(slices, (slice) => slice.subject, (slice) => slice.subject),
       // Questão sem assunto entra no recorte da própria matéria: agrupar por
@@ -220,7 +221,13 @@ export class ErrorNotebookService {
     }
     if (query.due === 'true') {
       where.status = 'ABERTA';
-      where.reviewScheduledAt = { not: null, lte: new Date() };
+      // Entrada aberta sem data continua sendo dívida: o aluno pode tê-la
+      // criado antes do agendamento automático ou limpado a data de propósito.
+      // Ela entra na fila como pendente em vez de desaparecer da central.
+      where.OR = [
+        { reviewScheduledAt: null },
+        { reviewScheduledAt: { lte: reviewToday() } },
+      ];
     }
 
     return where;
@@ -247,7 +254,7 @@ export class ErrorNotebookService {
       correctStreak: row.correctStreak,
       evolution: row.evolution,
       reviewScheduledAt: row.reviewScheduledAt ? row.reviewScheduledAt.toISOString() : null,
-      due: isDue(row.reviewScheduledAt, now),
+      due: isEntryDue(row, now),
       firstWrongAt: row.firstWrongAt.toISOString(),
       lastWrongAt: row.lastWrongAt.toISOString(),
       resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
@@ -255,8 +262,15 @@ export class ErrorNotebookService {
   }
 }
 
-function isDue(scheduledAt: Date | null, now: Date): boolean {
-  return scheduledAt !== null && scheduledAt.getTime() <= now.getTime();
+/** Uma entrada aberta é dívida mesmo sem data marcada. As dominadas nunca
+ *  entram na fila, com ou sem data. */
+function isEntryDue(
+  entry: { status: string; reviewScheduledAt: Date | null },
+  now: Date,
+): boolean {
+  if (entry.status !== ErrorNotebookStatus.ABERTA) return false;
+  if (entry.reviewScheduledAt === null) return true;
+  return isReviewDayDue(entry.reviewScheduledAt, now);
 }
 
 /** Rótulo do motivo. Entrada sem classificação aparece como "Sem motivo" —
@@ -275,12 +289,18 @@ function reasonLabel(reason: string | null): string {
 function parseReviewDate(value: string | null | undefined): Date | null {
   const raw = (value ?? '').trim();
   if (!raw) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) {
     throw new BadRequestException('Data da revisão inválida. Use o formato AAAA-MM-DD.');
   }
-  const date = new Date(`${raw}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) {
-    throw new BadRequestException('Data da revisão inválida. Use o formato AAAA-MM-DD.');
+  const [, year, month, day] = match;
+  const date = reviewDayOn(raw);
+  const valid =
+    date.getUTCFullYear() === Number(year) &&
+    date.getUTCMonth() === Number(month) - 1 &&
+    date.getUTCDate() === Number(day);
+  if (!valid) {
+    throw new BadRequestException('Data da revisão inválida. Use uma data real no formato AAAA-MM-DD.');
   }
   return date;
 }

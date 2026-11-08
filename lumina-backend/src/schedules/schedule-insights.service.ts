@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { SCHEDULE_CONTEXT_GUIDANCE } from '../ai/luminia-persona';
 import { CutoffsService } from '../cutoffs/cutoffs.service';
 import { QuestionsService } from '../questions/questions.service';
+import { isReviewDayDue } from '../questions/review-day';
 import type { QuestionResponseDto } from '../questions/dto/question-response.dto';
 import { SchedulesRepository } from './schedules.repository';
 import { SchedulesService } from './schedules.service';
@@ -168,7 +169,7 @@ export class ScheduleInsightsService {
       praticando: count(TopicMasteryStatus.PRATICANDO),
       dominados: count(TopicMasteryStatus.DOMINADO),
       precisaReforco: count(TopicMasteryStatus.PRECISA_REFORCO),
-      paraRevisar: studied.filter((m) => m.nextReviewAt && m.nextReviewAt <= now).length,
+      paraRevisar: studied.filter((m) => isReviewDayDue(m.nextReviewAt, now)).length,
     };
   }
 
@@ -221,7 +222,7 @@ export class ScheduleInsightsService {
                 correctAttempts: mastery?.correctAttempts ?? 0,
                 due:
                   status !== TopicMasteryStatus.NAO_ESTUDADO &&
-                  Boolean(mastery?.nextReviewAt && mastery.nextReviewAt <= now),
+                  isReviewDayDue(mastery?.nextReviewAt, now),
                 questionCount: questionCount.get(t.id) ?? 0,
                 included: !excluded.has(t.id),
               };

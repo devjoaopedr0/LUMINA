@@ -70,10 +70,12 @@ export class ErrorNotebookEntryDto {
   @ApiProperty({ description: 'Linha do tempo: "E" = erro, "A" = acerto.' })
   evolution: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ nullable: true, description: 'Data-calendário da revisão (meia-noite UTC do dia de Brasília).' })
   reviewScheduledAt: string | null;
 
-  @ApiProperty({ description: 'true quando há revisão combinada para hoje ou antes.' })
+  @ApiProperty({
+    description: 'true quando a entrada está aberta e a revisão é para hoje/antes ou está sem data.',
+  })
   due: boolean;
 
   @ApiProperty()
@@ -130,7 +132,9 @@ export class ErrorNotebookSummaryDto {
   @ApiProperty()
   mastered: number;
 
-  @ApiProperty({ description: 'Itens abertos com revisão combinada para hoje ou antes.' })
+  @ApiProperty({
+    description: 'Itens abertos com revisão para hoje/antes ou sem data (dívida pendente).',
+  })
   dueToday: number;
 
   @ApiProperty({ description: 'Itens abertos sem motivo classificado ainda.' })

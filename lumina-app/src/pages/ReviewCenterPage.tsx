@@ -85,10 +85,16 @@ function ReviewItemCard({ item, agora, aoResponder, aoAtualizar }: ReviewItemCar
       setAberta(false);
       return;
     }
-    setAberta(true);
-    if (questao) return;
+    if (questao) {
+      setAberta(true);
+      return;
+    }
     const token = getAccessToken();
-    if (!token) return;
+    if (!token) {
+      setErro("Sua sessão expirou. Entre novamente para abrir a questão.");
+      return;
+    }
+    setAberta(true);
     setCarregandoQuestao(true);
     setErro(null);
     try {
@@ -107,12 +113,24 @@ function ReviewItemCard({ item, agora, aoResponder, aoAtualizar }: ReviewItemCar
 
   async function responder(_resultado: AttemptResult) {
     setRespondida(true);
-    // A questão marcada manualmente sai da fila assim que é respondida; o
-    // caderno de erros se atualiza sozinho pela própria tentativa.
-    if (item.kind === "MARKED_QUESTION" && item.questionId) {
+    // A questão sai da fila manual assim que é respondida aqui; o caderno de
+    // erros se atualiza sozinho pela própria tentativa. Uma falha ao limpar a
+    // marcação não pode passar em silêncio: sem isso a questão reapareceria
+    // como se a revisão não tivesse acontecido.
+    if (item.questionId && (item.kind === "MARKED_QUESTION" || item.kind === "ERROR_NOTEBOOK")) {
       const token = getAccessToken();
-      if (token) {
-        await apiSetQuestionReview(token, item.questionId, false).catch(() => undefined);
+      if (!token) {
+        setErro("Resposta registrada, mas sua sessão expirou. Entre novamente para atualizar a fila.");
+      } else {
+        try {
+          await apiSetQuestionReview(token, item.questionId, false);
+        } catch (err) {
+          setErro(
+            err instanceof ApiError
+              ? `Resposta registrada; não foi possível remover a marcação: ${err.message}`
+              : "Resposta registrada, mas não foi possível remover a marcação de revisão."
+          );
+        }
       }
     }
     aoResponder(item);
@@ -139,11 +157,15 @@ function ReviewItemCard({ item, agora, aoResponder, aoAtualizar }: ReviewItemCar
             {ROTULO_DIFICULDADE[item.difficulty]}
           </span>
         )}
-        {item.dueAt && (
+        {item.dueAt ? (
           <span className="ml-auto rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-600">
             {descreverVencimento(item.dueAt, agora)}
           </span>
-        )}
+        ) : item.kind === "ERROR_NOTEBOOK" ? (
+          <span className="ml-auto rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-600">
+            Sem data
+          </span>
+        ) : null}
       </div>
 
       <p className="mt-3 text-sm text-graphite-500">{detalheDoItem(item)}</p>
@@ -251,7 +273,11 @@ export function ReviewCenterPage() {
 
   const carregar = useCallback(async () => {
     const token = getAccessToken();
-    if (!token) return;
+    if (!token) {
+      setErro("Sua sessão expirou. Entre novamente para carregar a fila.");
+      setCarregando(false);
+      return;
+    }
     setCarregando(true);
     setErro(null);
     try {

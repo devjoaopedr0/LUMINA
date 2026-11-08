@@ -62,9 +62,7 @@ describe('ReviewQueueService', () => {
         findFirst: vi.fn().mockResolvedValue(null),
       },
       errorNotebookEntry: {
-        findMany: vi.fn().mockImplementation((args: any) =>
-          Promise.resolve(args.take ? [] : []),
-        ),
+        findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
         findFirst: vi.fn().mockResolvedValue(null),
       },
@@ -84,9 +82,7 @@ describe('ReviewQueueService', () => {
     prisma.topicMastery.findMany.mockResolvedValue([topicRow]);
     prisma.topicMastery.count.mockResolvedValue(1);
     prisma.topicMastery.findFirst.mockResolvedValue({ nextReviewAt: future });
-    prisma.errorNotebookEntry.findMany.mockImplementation((args: any) =>
-      Promise.resolve(args.take ? [errorRow] : [{ questionId: 'question-1' }]),
-    );
+    prisma.errorNotebookEntry.findMany.mockResolvedValue([errorRow]);
     prisma.errorNotebookEntry.count.mockResolvedValue(1);
     prisma.userQuestionProgress.findMany.mockResolvedValue([markedRow('marked-1')]);
     prisma.userQuestionProgress.count.mockResolvedValue(1);
@@ -110,28 +106,56 @@ describe('ReviewQueueService', () => {
     prisma.errorNotebookEntry.findFirst.mockResolvedValue({
       reviewScheduledAt: new Date('2026-11-07T00:00:00.000Z'),
     });
-    prisma.errorNotebookEntry.findMany.mockImplementation((args: any) =>
-      Promise.resolve(args.take ? [] : [{ questionId: 'question-1' }]),
-    );
-    prisma.userQuestionProgress.findMany.mockImplementation(({ where }: any) => {
-      const excluded: string[] = where.questionId?.notIn ?? [];
-      return Promise.resolve(
-        [markedRow('question-1'), markedRow('marked-2')].filter(
-          (row) => !excluded.includes(row.questionId),
-        ),
-      );
-    });
+    prisma.userQuestionProgress.findMany.mockResolvedValue([markedRow('marked-2')]);
     prisma.userQuestionProgress.count.mockResolvedValue(1);
 
     const result = await service.getQueue('user-1');
 
-    expect(prisma.userQuestionProgress.findMany.mock.calls[0][0].where.questionId.notIn).toEqual([
-      'question-1',
-    ]);
+    // A exclusão é feita pela relação no banco, sem carregar todos os erros
+    // abertos do aluno a cada leitura da fila.
+    expect(prisma.userQuestionProgress.findMany.mock.calls[0][0].where).toMatchObject({
+      markedForReview: true,
+      question: {
+        errorNotebook: {
+          none: { userId: 'user-1', status: 'ABERTA' },
+        },
+      },
+    });
     expect(result.manual.items.map((item) => item.id)).toEqual(['marked-2']);
     expect(result.manual.total).toBe(1);
     expect(result.manual.truncated).toBe(false);
     expect(result.nextReviewAt).toBe('2026-11-07T00:00:00.000Z');
+  });
+
+  it('inclui entrada aberta sem data em vez de escondê-la da central', async () => {
+    prisma.errorNotebookEntry.findMany.mockResolvedValue([
+      { ...errorRow, reviewScheduledAt: null },
+    ]);
+    prisma.errorNotebookEntry.count.mockResolvedValue(1);
+
+    const result = await service.getQueue('user-1');
+
+    expect(prisma.errorNotebookEntry.findMany.mock.calls[0][0].where.OR).toEqual([
+      { reviewScheduledAt: null },
+      { reviewScheduledAt: { not: null, lte: expect.any(Date) } },
+    ]);
+    expect(result.due.total).toBe(1);
+    expect(result.due.items[0]).toMatchObject({
+      kind: 'ERROR_NOTEBOOK',
+      dueAt: null,
+    });
+  });
+
+  it('trunca o enunciado que vai para a fila', async () => {
+    prisma.errorNotebookEntry.findMany.mockResolvedValue([
+      { ...errorRow, question: { ...question, stem: 'x'.repeat(400) } },
+    ]);
+    prisma.errorNotebookEntry.count.mockResolvedValue(1);
+
+    const result = await service.getQueue('user-1');
+
+    expect(result.due.items[0].stem).toHaveLength(221);
+    expect(result.due.items[0].stem?.endsWith('…')).toBe(true);
   });
 
   it('conta o total real da fila manual mesmo quando a lista vem truncada', async () => {
@@ -155,9 +179,7 @@ describe('ReviewQueueService', () => {
   it('corta a lista no limite e informa que há mais itens vencidos', async () => {
     prisma.topicMastery.findMany.mockResolvedValue([topicRow]);
     prisma.topicMastery.count.mockResolvedValue(3);
-    prisma.errorNotebookEntry.findMany.mockImplementation((args: any) =>
-      Promise.resolve(args.take ? [errorRow] : []),
-    );
+    prisma.errorNotebookEntry.findMany.mockResolvedValue([errorRow]);
     prisma.errorNotebookEntry.count.mockResolvedValue(2);
 
     const result = await service.getQueue('user-1', { limit: 1 });

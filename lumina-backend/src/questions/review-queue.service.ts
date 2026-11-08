@@ -9,9 +9,11 @@ import {
   ReviewQueueItemDto,
   ReviewQueueResponseDto,
 } from './dto/review-queue.dto';
+import { reviewToday } from './review-day';
 
 const DEFAULT_QUEUE_LIMIT = 20;
 const MAX_QUEUE_LIMIT = 100;
+const STEM_PREVIEW = 220;
 
 const QUESTION_SELECT = {
   id: true,
@@ -87,16 +89,22 @@ export class ReviewQueueService {
       ? Math.min(MAX_QUEUE_LIMIT, Math.max(1, Math.trunc(requested!)))
       : DEFAULT_QUEUE_LIMIT;
     const now = new Date();
+    const today = reviewToday(now);
 
     const dueTopicWhere: Prisma.TopicMasteryWhereInput = {
       userId,
       status: { not: TopicMasteryStatus.NAO_ESTUDADO },
-      nextReviewAt: { not: null, lte: now },
+      nextReviewAt: { not: null, lte: today },
     };
     const dueErrorWhere: Prisma.ErrorNotebookEntryWhereInput = {
       userId,
       status: ErrorNotebookStatus.ABERTA,
-      reviewScheduledAt: { not: null, lte: now },
+      // Entrada aberta sem data é dívida antiga ou revisão que o aluno limpou:
+      // continua pendente em vez de sumir da central.
+      OR: [
+        { reviewScheduledAt: null },
+        { reviewScheduledAt: { not: null, lte: today } },
+      ],
     };
     const markedWhere: Prisma.UserQuestionProgressWhereInput = {
       userId,
@@ -110,7 +118,6 @@ export class ReviewQueueService {
       errorNotebook,
       nextTopic,
       nextError,
-      openErrorRows,
     ] = await Promise.all([
       this.prisma.topicMastery.findMany({
         where: dueTopicWhere,
@@ -130,7 +137,7 @@ export class ReviewQueueService {
         where: {
           userId,
           status: { not: TopicMasteryStatus.NAO_ESTUDADO },
-          nextReviewAt: { gt: now },
+          nextReviewAt: { gt: today },
         },
         select: { nextReviewAt: true },
         orderBy: { nextReviewAt: 'asc' },
@@ -139,23 +146,24 @@ export class ReviewQueueService {
         where: {
           userId,
           status: ErrorNotebookStatus.ABERTA,
-          reviewScheduledAt: { gt: now },
+          reviewScheduledAt: { gt: today },
         },
         select: { reviewScheduledAt: true },
         orderBy: { reviewScheduledAt: 'asc' },
       }),
-      // A fila manual não deve repetir uma questão que já está no caderno de
-      // erros: o caderno tem o histórico que explica por que ela voltou.
-      this.prisma.errorNotebookEntry.findMany({
-        where: { userId, status: ErrorNotebookStatus.ABERTA },
-        select: { questionId: true },
-      }),
     ]);
 
-    const openErrorIds = [...new Set(openErrorRows.map((row) => row.questionId))];
-    const manualWhere: Prisma.UserQuestionProgressWhereInput = openErrorIds.length
-      ? { ...markedWhere, questionId: { notIn: openErrorIds } }
-      : markedWhere;
+    // A fila manual não repete uma questão que já está aberta no caderno de
+    // erros. O filtro por relação resolve isso no banco, sem carregar todos os
+    // ids de erros abertos para depois excluí-los em memória.
+    const manualWhere: Prisma.UserQuestionProgressWhereInput = {
+      ...markedWhere,
+      question: {
+        errorNotebook: {
+          none: { userId, status: ErrorNotebookStatus.ABERTA },
+        },
+      },
+    };
     const [markedRows, markedTotal] = await Promise.all([
       this.prisma.userQuestionProgress.findMany({
         where: manualWhere,
@@ -241,7 +249,7 @@ function toErrorItem(row: ErrorQueueRow): ReviewQueueItemDto {
     difficulty: row.question.difficulty,
     exam: row.question.exam,
     year: row.question.year,
-    stem: row.question.stem,
+    stem: truncate(row.question.stem, STEM_PREVIEW),
     lastAttemptAt: null,
   };
 }
@@ -266,9 +274,13 @@ function toMarkedItem(row: MarkedQueueRow): ReviewQueueItemDto {
     difficulty: row.question.difficulty,
     exam: row.question.exam,
     year: row.question.year,
-    stem: row.question.stem,
+    stem: truncate(row.question.stem, STEM_PREVIEW),
     lastAttemptAt: row.lastAttemptAt?.toISOString() ?? null,
   };
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
 function compareDue(a: ReviewQueueItemDto, b: ReviewQueueItemDto): number {

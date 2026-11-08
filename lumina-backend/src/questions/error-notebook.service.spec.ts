@@ -132,12 +132,14 @@ describe('ErrorNotebookService', () => {
       });
     });
 
-    it('"para hoje" restringe a abertas com revisão vencida', async () => {
+    it('"para hoje" inclui abertas sem data, que continuam pendentes', async () => {
       await service.list('user-1', { status: 'TODAS', due: 'true' });
       const where = repository.countByUser.mock.calls[0][1];
       expect(where.status).toBe('ABERTA');
-      expect(where.reviewScheduledAt.not).toBeNull();
-      expect(where.reviewScheduledAt.lte).toBeInstanceOf(Date);
+      expect(where.OR).toEqual([
+        { reviewScheduledAt: null },
+        { reviewScheduledAt: { lte: expect.any(Date) } },
+      ]);
     });
 
     it('recusa filtro inválido em vez de devolver tudo sem avisar', async () => {
@@ -182,8 +184,9 @@ describe('ErrorNotebookService', () => {
       expect(resumo.total).toBe(4);
       expect(resumo.open).toBe(3);
       expect(resumo.mastered).toBe(1);
-      // Só a primeira está vencida: a última foi agendada para o ano 2999.
-      expect(resumo.dueToday).toBe(1);
+      // A primeira está vencida e a segunda é uma aberta sem data: as duas são
+      // dívida de revisão. A última foi agendada para o ano 2999 e não conta.
+      expect(resumo.dueToday).toBe(2);
       // A única entrada sem motivo já foi dominada, então não pesa na conta do
       // que ainda falta classificar.
       expect(resumo.withoutReason).toBe(0);
@@ -299,6 +302,11 @@ describe('ErrorNotebookService', () => {
       await expect(
         service.update('user-1', 'question-1', { reviewScheduledOn: '2026-13-40' }),
       ).rejects.toBeInstanceOf(BadRequestException);
+      // O formato está certo, mas o dia não existe: o Date normalizaria para
+      // 03/03 e o aluno revisaria uma data que nunca escolheu.
+      await expect(
+        service.update('user-1', 'question-1', { reviewScheduledOn: '2026-02-31' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(repository.update).not.toHaveBeenCalled();
     });
 
@@ -356,7 +364,8 @@ describe('ErrorNotebookService', () => {
         exam: 'ENEM',
         year: 2023,
         examNumber: 47,
-        due: false,
+        // Entrada aberta sem data é pendente: não pode sumir da fila.
+        due: true,
       });
       expect(typeof dto.firstWrongAt).toBe('string');
       expect(dto.resolvedAt).toBeNull();

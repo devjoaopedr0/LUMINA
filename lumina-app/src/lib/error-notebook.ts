@@ -1,4 +1,12 @@
 import type { ErrorNotebookEntry, ErrorReason } from './api';
+import {
+  dataBrasilia,
+  diasEntre,
+  formatarData,
+  somarDiasNaData,
+} from './review-date.ts';
+
+export { diasEntre, formatarData, somarDias, somarDiasNaData } from './review-date.ts';
 
 /**
  * Leitura do caderno de erros (itens 12 e 13) sem navegador e sem servidor:
@@ -51,47 +59,18 @@ export function rotuloMotivo(motivo: string | null | undefined): string {
  *  escrever a frase "1 de 2 acertos seguidos". */
 export const ACERTOS_PARA_DOMINAR = 2;
 
-const DIA_MS = 86_400_000;
-
-/** AAAA-MM-DD no fuso do navegador: o formato que o `<input type="date">` dá e
- *  que a API entende. */
-export function dataLocal(data: Date): string {
-  const mes = String(data.getMonth() + 1).padStart(2, '0');
-  const dia = String(data.getDate()).padStart(2, '0');
-  return `${data.getFullYear()}-${mes}-${dia}`;
-}
-
-export function somarDias(data: Date, dias: number): Date {
-  const copia = new Date(data.getTime());
-  copia.setDate(copia.getDate() + dias);
-  return copia;
-}
-
-/** Atalhos de revisão combinada. A data é o DIA da revisão (o servidor grava a
- *  meia-noite UTC dele), então "hoje" já nasce vencido e "amanhã" só vence
- *  amanhã. */
+/** Atalhos de revisão combinada. A data é o DIA da revisão no calendário de
+ *  Brasília (o servidor grava a meia-noite UTC dele), então "hoje" já nasce
+ *  vencido e "amanhã" só vence amanhã — inclusive às 21:00, quando o UTC já
+ *  virou o dia seguinte. */
 export function opcoesRevisao(hoje = new Date()): { label: string; value: string }[] {
+  const hojeKey = dataBrasilia(hoje);
   return [
-    { label: 'Hoje', value: dataLocal(hoje) },
-    { label: 'Amanhã', value: dataLocal(somarDias(hoje, 1)) },
-    { label: 'Em 3 dias', value: dataLocal(somarDias(hoje, 3)) },
-    { label: 'Em 1 semana', value: dataLocal(somarDias(hoje, 7)) },
+    { label: 'Hoje', value: hojeKey },
+    { label: 'Amanhã', value: somarDiasNaData(hojeKey, 1) },
+    { label: 'Em 3 dias', value: somarDiasNaData(hojeKey, 3) },
+    { label: 'Em 1 semana', value: somarDiasNaData(hojeKey, 7) },
   ];
-}
-
-/** Dias inteiros entre dois dias de calendário. A revisão é um dia, não um
- *  instante: a comparação é feita sobre as datas, sem fuso no meio. */
-export function diasEntre(de: string, ate: string): number {
-  const instante = (iso: string) => {
-    const [ano, mes, dia] = iso.slice(0, 10).split('-').map(Number);
-    return Date.UTC(ano, mes - 1, dia);
-  };
-  return Math.round((instante(de) - instante(ate)) / DIA_MS);
-}
-
-export function formatarData(iso: string): string {
-  const [ano, mes, dia] = iso.slice(0, 10).split('-');
-  return `${dia}/${mes}/${ano}`;
 }
 
 /** A frase que o cartão mostra sobre a revisão: para hoje, vencida ontem,
@@ -100,9 +79,11 @@ export function descreverRevisao(
   entrada: Pick<ErrorNotebookEntry, 'reviewScheduledAt' | 'due'>,
   hoje = new Date(),
 ): string {
-  if (!entrada.reviewScheduledAt) return 'Sem revisão marcada';
+  if (!entrada.reviewScheduledAt) {
+    return entrada.due ? 'Sem data — pendente para hoje' : 'Sem revisão marcada';
+  }
   const alvo = entrada.reviewScheduledAt.slice(0, 10);
-  const dias = diasEntre(alvo, dataLocal(hoje));
+  const dias = diasEntre(alvo, dataBrasilia(hoje));
   if (dias === 0) return entrada.due ? 'Revisão para hoje' : 'Revisão marcada para hoje';
   if (dias < 0) {
     return dias === -1

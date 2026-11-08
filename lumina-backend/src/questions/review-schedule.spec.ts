@@ -5,6 +5,7 @@ import {
   errorReviewDay,
   nextErrorReviewAt,
 } from './review-schedule';
+import { isReviewDayDue } from './review-day';
 
 /**
  * O relógio da revisão é a decisão mais fácil de errar sem ninguém perceber:
@@ -36,5 +37,30 @@ describe('revisão espaçada do caderno de erros', () => {
     const late = new Date('2026-11-06T23:59:59.999Z');
 
     expect(errorReviewDay(late, 1).toISOString()).toBe('2026-11-07T00:00:00.000Z');
+  });
+
+  it('não pula um dia quando o UTC vira antes de Brasília', () => {
+    // 20:59 e 21:00 de Brasília ainda são 06/11 no calendário local. "Amanhã"
+    // é 07/11 nos dois casos; o segundo instante já é 07/11 em UTC.
+    expect(errorReviewDay(new Date('2026-11-06T23:59:00.000Z'), 1).toISOString()).toBe(
+      '2026-11-07T00:00:00.000Z',
+    );
+    expect(errorReviewDay(new Date('2026-11-07T00:00:00.000Z'), 1).toISOString()).toBe(
+      '2026-11-07T00:00:00.000Z',
+    );
+    // À meia-noite de Brasília (03:00 UTC), sim: o dia local virou.
+    expect(errorReviewDay(new Date('2026-11-07T03:00:00.000Z'), 1).toISOString()).toBe(
+      '2026-11-08T00:00:00.000Z',
+    );
+  });
+
+  it('vence no dia local, não quando o UTC chega à meia-noite', () => {
+    const amanha = new Date('2026-11-07T00:00:00.000Z');
+
+    expect(isReviewDayDue(amanha, new Date('2026-11-06T23:59:00.000Z'))).toBe(false);
+    expect(isReviewDayDue(amanha, new Date('2026-11-07T00:00:00.000Z'))).toBe(false);
+    expect(isReviewDayDue(amanha, new Date('2026-11-07T02:59:59.999Z'))).toBe(false);
+    expect(isReviewDayDue(amanha, new Date('2026-11-07T03:00:00.000Z'))).toBe(true);
+    expect(isReviewDayDue(new Date('2026-11-06T00:00:00.000Z'), new Date('2026-11-06T23:59:00.000Z'))).toBe(true);
   });
 });

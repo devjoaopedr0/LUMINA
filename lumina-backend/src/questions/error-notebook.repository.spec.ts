@@ -66,23 +66,38 @@ describe('ErrorNotebookRepository — agendamento automático', () => {
 
   it('recalcula a revisão para três dias no primeiro acerto', async () => {
     db.errorNotebookEntry.findUnique.mockResolvedValue(entry({ correctStreak: 0 }));
+    db.errorNotebookEntry.update
+      .mockResolvedValueOnce(entry({ correctStreak: 1 }))
+      .mockResolvedValueOnce(entry({ correctStreak: 1, evolution: 'A' }));
 
     await repository.registerCorrectAttempt('user-1', 'question-1');
 
     const data = db.errorNotebookEntry.update.mock.calls[0][0].data;
-    expect(data.correctStreak).toBe(1);
+    // O incremento vai para o banco: duas requisições concorrentes não podem
+    // ler o mesmo valor e gravar "1" duas vezes.
+    expect(data.correctStreak).toEqual({ increment: 1 });
     expect(data.reviewScheduledAt.toISOString()).toBe('2026-11-09T00:00:00.000Z');
     expect(data.status).toBeUndefined();
   });
 
   it('remove a revisão quando a questão é dominada', async () => {
     db.errorNotebookEntry.findUnique.mockResolvedValue(entry({ correctStreak: 1 }));
+    db.errorNotebookEntry.update
+      .mockResolvedValueOnce(entry({ correctStreak: 2 }))
+      .mockResolvedValueOnce(
+        entry({ correctStreak: 2, status: 'DOMINADA', reviewScheduledAt: null, evolution: 'A' }),
+      )
+      .mockResolvedValueOnce(
+        entry({ correctStreak: 2, status: 'DOMINADA', reviewScheduledAt: null, evolution: 'AA' }),
+      );
 
     await repository.registerCorrectAttempt('user-1', 'question-1');
 
-    const data = db.errorNotebookEntry.update.mock.calls[0][0].data;
-    expect(data.correctStreak).toBe(2);
-    expect(data.reviewScheduledAt).toBeNull();
-    expect(data.status).toBe('DOMINADA');
+    const [increment, final] = db.errorNotebookEntry.update.mock.calls.map((call: any[]) => call[0]);
+    expect(increment.data.correctStreak).toEqual({ increment: 1 });
+    // A decisão usa o valor devolvido pelo banco, não o que foi lido antes.
+    expect(final.data.correctStreak).toBeUndefined();
+    expect(final.data.reviewScheduledAt).toBeNull();
+    expect(final.data.status).toBe('DOMINADA');
   });
 });

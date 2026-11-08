@@ -14,7 +14,7 @@ import type { ReviewQueueItem, ReviewQueueKind } from '../src/lib/api.ts';
  * que cada origem tem um detalhe próprio.
  */
 
-const HOJE = new Date(2026, 10, 6, 9, 30); // 06/11/2026, 09:30 local
+const HOJE = new Date('2026-11-06T12:30:00.000Z'); // 06/11/2026, 09:30 em Brasília
 
 const item = (
   kind: ReviewQueueKind,
@@ -53,6 +53,18 @@ assert.equal(descreverVencimento('2026-11-06T00:00:00.000Z', HOJE), 'Vence hoje'
 assert.equal(descreverVencimento('2026-11-07T00:00:00.000Z', HOJE), 'Amanhã');
 assert.equal(descreverVencimento('2026-11-09T00:00:00.000Z', HOJE), 'Em 3 dias');
 assert.equal(descreverVencimento('2026-11-20T00:00:00.000Z', HOJE), 'Em 20/11/2026');
+
+// 20:59 e 21:00 de Brasília ainda são 06/11 localmente. A revisão de 07/11 é
+// "Amanhã" nos dois instantes; só à meia-noite de Brasília (03:00 UTC) vira
+// "Vence hoje".
+const antesDaViradaUtc = new Date('2026-11-06T23:59:00.000Z');
+const depoisDaViradaUtc = new Date('2026-11-07T00:00:00.000Z');
+const meiaNoiteBrasilia = new Date('2026-11-07T03:00:00.000Z');
+assert.equal(descreverVencimento('2026-11-07T00:00:00.000Z', antesDaViradaUtc), 'Amanhã');
+assert.equal(descreverVencimento('2026-11-07T00:00:00.000Z', depoisDaViradaUtc), 'Amanhã');
+assert.equal(descreverVencimento('2026-11-07T00:00:00.000Z', meiaNoiteBrasilia), 'Vence hoje');
+assert.equal(diasAte('2026-11-07T00:00:00.000Z', depoisDaViradaUtc), 1);
+assert.equal(diasAte('2026-11-07T00:00:00.000Z', meiaNoiteBrasilia), 0);
 
 assert.equal(rotuloOrigem('TOPIC'), 'Tópico');
 assert.equal(rotuloOrigem('ERROR_NOTEBOOK'), 'Caderno de erros');

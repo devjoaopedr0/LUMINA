@@ -62,7 +62,8 @@ model TopicMastery {
   status            TopicMasteryStatus @default(NAO_ESTUDADO)
   lastStudiedAt     DateTime?    @map("last_studied_at")
   /// Próxima revisão espaçada — mesmo campo/semântica de
-  /// ErrorNotebookEntry.reviewScheduledAt (comparação por dia, meia-noite UTC).
+  /// ErrorNotebookEntry.reviewScheduledAt (comparação por dia de Brasília,
+  /// gravado como meia-noite UTC).
   nextReviewAt      DateTime?    @map("next_review_at")
   /// Intervalo de dias da última revisão (1, 3, 7, 14, 30, ...) — cresce
   /// quando o aluno acerta a revisão, volta ao início quando erra.

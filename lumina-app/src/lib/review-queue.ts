@@ -1,4 +1,5 @@
 import type { ReviewQueueItem, ReviewQueueKind } from './api';
+import { dataBrasilia, diasEntre, formatarData } from './review-date.ts';
 
 /**
  * Leitura da central de revisões (item 31) sem navegador: a frase de
@@ -7,25 +8,10 @@ import type { ReviewQueueItem, ReviewQueueKind } from './api';
  * nos checks.
  */
 
-const DIA_MS = 86_400_000;
-
-function diaLocal(data: Date): number {
-  return Date.UTC(data.getFullYear(), data.getMonth(), data.getDate());
-}
-
-function diaDoIso(iso: string): number {
-  const [ano, mes, dia] = iso.slice(0, 10).split('-').map(Number);
-  return Date.UTC(ano, mes - 1, dia);
-}
-
-/** Dias de calendário entre a data e hoje: negativo = venceu, 0 = hoje. */
+/** Dias de calendário entre a data e hoje em Brasília: negativo = venceu,
+ *  0 = hoje. O dia do backend é o prefixo AAAA-MM-DD do date-only anchor. */
 export function diasAte(iso: string, agora = new Date()): number {
-  return Math.round((diaDoIso(iso) - diaLocal(agora)) / DIA_MS);
-}
-
-function formatarData(iso: string): string {
-  const [ano, mes, dia] = iso.slice(0, 10).split('-');
-  return `${dia}/${mes}/${ano}`;
+  return diasEntre(iso.slice(0, 10), dataBrasilia(agora));
 }
 
 /**

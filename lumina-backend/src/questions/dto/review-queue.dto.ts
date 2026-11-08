@@ -28,7 +28,10 @@ export class ReviewQueueItemDto {
   @ApiProperty()
   topic: string;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Data de vencimento em ISO 8601.' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Dia de vencimento como data-calendário (meia-noite UTC do dia de Brasília).',
+  })
   dueAt: string | null;
 
   @ApiPropertyOptional({ nullable: true })

@@ -6,22 +6,22 @@
  * específica: o aluno errou, volta amanhã; acertou uma vez, volta em três
  * dias; acertou duas seguidas, a questão está dominada e sai da fila.
  *
- * A data é sempre o começo do dia em UTC, como as demais datas de revisão da
- * plataforma. Isso evita que "vence hoje" dependa da hora em que o aluno
- * abriu a tela.
+ * A data é um dia de calendário no fuso de Brasília, gravado como meia-noite
+ * UTC desse dia (a convenção de data-calendário da plataforma). Isso evita que
+ * "vence hoje" dependa da hora em que o aluno abriu a tela e que, às 21:00 de
+ * Brasília, o dia já tenha virado em UTC.
  */
+
+import { reviewDay } from './review-day';
 
 export const ERROR_REVIEW_WRONG_INTERVAL_DAYS = 1;
 export const ERROR_REVIEW_FIRST_CORRECT_INTERVAL_DAYS = 3;
 
 export type ErrorReviewOutcome = 'WRONG' | 'CORRECT';
 
-/** Próximo dia de revisão à meia-noite UTC. */
+/** Próximo dia de revisão, como data-calendário de Brasília (meia-noite UTC). */
 export function errorReviewDay(now: Date, days: number): Date {
-  const next = new Date(now);
-  next.setUTCDate(next.getUTCDate() + days);
-  next.setUTCHours(0, 0, 0, 0);
-  return next;
+  return reviewDay(now, days);
 }
 
 /**

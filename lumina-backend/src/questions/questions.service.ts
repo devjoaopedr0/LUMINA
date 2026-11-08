@@ -324,7 +324,20 @@ export class QuestionsService {
         isCorrect,
         tx,
       );
-      if (entry) notebook = this.errorNotebookService.toEntryDto(entry);
+      if (entry) {
+        notebook = this.errorNotebookService.toEntryDto(entry);
+        // A questão dominada no caderno não deve voltar pela fila manual: a
+        // marcação "revisar depois" cumpriu o papel dela. Sem isso, uma questão
+        // marcada antes do erro reapareceria na central depois do segundo acerto.
+        if (entry.status === 'DOMINADA') {
+          await this.questionProgressRepository.setMarkedForReview(
+            userId,
+            question.id,
+            false,
+            tx,
+          );
+        }
+      }
       await this.topicMasteryService.registerAttempt(
         userId,
         question.subjectId,
