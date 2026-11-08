@@ -24,7 +24,7 @@ A **LuminIA** é a camada que conecta tudo: entende onde o aluno está e recomen
 
 O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). Groups e Marketplace estão documentados para orientar decisões de arquitetura de hoje, não para competir com as prioridades atuais.
 
-## 2. Estado atual (resumo em 03/11/2026)
+## 2. Estado atual (resumo em 06/11/2026)
 
 | Área | Status | Observação |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
 | Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente: **em andamento** (03/11, sem commit) |
-| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" entregue em 05/11/2026 (contexto da questão montado no servidor) |
+| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" em 05/11/2026, modo socrático e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
 | Caderno de erros com motivo do erro | Implementado | Revisão espaçada automática integrada em 07/11/2026 |
 | Revisão espaçada unificada | Parcial | Fila única, recálculo automático e aviso in-app entregues em 07/11/2026; flashcards dependem do item 32 |
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
@@ -41,13 +41,14 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Correção de redação (foto e texto, IA com RAG e MCP, cota mensal) | Implementado | Revisão humana validada entregue em 05/11/2026; calibração em ampliação e medição held-out aguardando volume validado |
 | Revisão humana da redação (chat, evidências, validação e aprendizado) | Implementado | Ver [REVISAO_HUMANA_REDACAO.md](REVISAO_HUMANA_REDACAO.md) |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
+| Mapa de domínio (matéria → assunto, estados e calor) | Implementado (básico) | Página `/app/dominio` entregue em 06/11/2026; consome o domínio já calculado; subassunto/habilidade e histórico ficam para próximos incrementos; ver [MAPA_DOMINIO.md](MAPA_DOMINIO.md) |
 | Cálculo mental | Implementado | |
-| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e videoaulas planejados |
+| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e criação de questão parecida entregues em 06/11/2026; videoaulas planejadas |
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
 | Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetir com o modelo padrão de produção; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
-| Gamificação, metas, flashcards, agenda e notificações push/e-mail | Planejado | Itens 30-52 do inventário; notificação in-app já entregue com a revisão espaçada |
+| Gamificação, metas, flashcards, agenda e notificações push/e-mail | Planejado | Itens 32–52 do inventário; revisão espaçada e notificação in-app já entregues |
 | Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
 | Lumina Groups | Planejado | Fase 2 |
 | Lumina Marketplace | Futuro | Fase 4 |

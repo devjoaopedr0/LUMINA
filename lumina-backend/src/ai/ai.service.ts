@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiChatMessageDto, AiChatRequestDto, AiChatResponseDto } from './ai.dto';
 import { humanizeReasons, luminiaSystemPrompt } from './luminia-persona';
+import { socraticSystemPrompt } from './socratic-tutor';
 
 interface ProviderMessage {
   role: 'user' | 'assistant' | 'system';
@@ -111,7 +112,10 @@ export class AiService {
     studentFirstName?: string | null,
   ): Promise<AiChatResponseDto> {
     const { message, history } = dto;
-    const systemPrompt = luminiaSystemPrompt(studentFirstName);
+    const socratic = dto.mode === 'SOCRATIC';
+    const systemPrompt = socratic
+      ? socraticSystemPrompt(studentFirstName)
+      : luminiaSystemPrompt(studentFirstName);
 
     // Validação básica
     if (!message?.content?.trim()) {
@@ -138,7 +142,7 @@ export class AiService {
         return only(this.callGemini(message, history, context, systemPrompt));
       case 'mock':
       default:
-        return this.mockResponse(message, history, context);
+        return this.mockResponse(message, history, context, socratic);
     }
   }
 
@@ -321,9 +325,27 @@ export class AiService {
     message: AiChatMessageDto,
     history: AiChatMessageDto[],
     context?: string,
+    socratic = false,
   ): Promise<AiChatResponseDto> {
     // Simula latência
     await new Promise((r) => setTimeout(r, 800 + Math.random() * 500));
+
+    // Sem provedor, o modo socrático continua sendo um roteiro de perguntas:
+    // não inventa conteúdo nem revela a alternativa correta.
+    if (socratic) {
+      const previousUserTurns = history.filter((item) => item.role === 'user').length;
+      const questionContext = context?.startsWith('CONTEXTO DA QUESTÃO');
+      const prefix = 'O provedor de IA não está configurado, então vou usar um roteiro fixo de perguntas.\n\n';
+      return {
+        message: questionContext
+          ? prefix +
+            (previousUserTurns === 0
+              ? 'Vamos por partes. Para eu saber onde você travou: o que o enunciado está pedindo e qual foi o primeiro passo que você tentou?'
+              : 'Olhe para o passo que você descreveu. Qual parte dele você consegue justificar com o enunciado, e qual ainda parece um chute? Se quiser, eu dou uma pista menor.')
+          : prefix +
+            'Vamos por partes. Me diga o que você já sabe sobre este assunto e qual é o ponto exato em que a explicação deixa de fazer sentido. A partir da sua resposta, eu dou uma pista de cada vez.',
+      };
+    }
 
     // Contexto de questão não tem os "motivos" do cronograma. Sem provedor,
     // devolve um aviso honesto em vez de reaproveitar a resposta de tarefa.

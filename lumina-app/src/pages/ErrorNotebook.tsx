@@ -380,6 +380,7 @@ function EntradaCaderno({ entrada, hoje, aoSalvar, aoRemover, aoResponder }: Ent
                 explanation={questao.explanation}
                 answerLabel="Tentar de novo"
                 onAnswered={aoResponder}
+                allowSimilarQuestion={questao.sourceType !== "GENERATED"}
               />
             </>
           ) : (

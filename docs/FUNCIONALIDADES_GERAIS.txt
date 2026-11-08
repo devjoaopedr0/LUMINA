@@ -269,7 +269,7 @@
     -  Analogias
     -  Exercícios após a explicação
     -  Ajustar nível da explicação ao aluno
-22. 22. LuminIA — explicação de questões [PARCIAL: AJUDA CONTEXTUAL NA RESOLUÇÃO ENTREGUE EM 05/11/2026; CRIAR QUESTÃO SEMELHANTE AINDA PENDENTE]
+22. 22. LuminIA — explicação de questões [ENTREGUE EM 06/11/2026 - AJUDA CONTEXTUAL NA RESOLUÇÃO, CRIAÇÃO DE QUESTÃO PARECIDA COM VALIDAÇÃO E PERSISTÊNCIA NO BANCO PESSOAL]
     -  Identificar o que a questão cobra
     -  Identificar conteúdo necessário
     -  Explicar como pensar
@@ -278,7 +278,7 @@
     -  Explicar alternativas incorretas
     -  Dar dica antes da resposta
     -  Criar questão semelhante
-23. 23. LuminIA — modo socrático
+23. 23. LuminIA — modo socrático [ENTREGUE EM 06/11/2026 - CHAT FLUTUANTE E BOTÃO NA RESOLUÇÃO DE QUESTÕES; PROMPT VERSIONADO E FALLBACK SEM PROVEDOR]
     -  Não entregar imediatamente a resposta
     -  Fazer perguntas
     -  Dar pistas progressivas
@@ -337,7 +337,7 @@
     -  Reforço de pré-requisitos
     -  Mudança de dificuldade
     -  Próxima atividade sugerida automaticamente
-30. 30. Mapa de domínio
+30. 30. Mapa de domínio [ENTREGUE EM 06/11/2026 - MATÉRIA, ASSUNTO, ESTADOS E MAPA DE CALOR; SUBCATEGORIAS/HABILIDADE AINDA NÃO EXISTEM NO MODELO]
     -  Mostrar domínio por matéria
     -  Assunto
     -  Subassunto

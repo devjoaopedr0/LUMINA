@@ -32,7 +32,7 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QUESTION_HINTS_PROVIDER, QuestionHintsService } from './hints/question-hints.service';
 import { HintProvider } from './hints/hint-provider.interface';
 import { QuestionWithAlternatives, QuestionsRepository } from './questions.repository';
-import { buildQuestionTutorContext } from './question-tutor-context';
+import { buildQuestionTutorContext, TutorMode } from './question-tutor-context';
 import { SubjectsRepository } from './subjects.repository';
 import { ExamsRepository } from './exams.repository';
 import { QuestionTextSearchRepository } from './question-text-search.repository';
@@ -44,6 +44,45 @@ interface QuestionClassification {
   subjectId: string | null;
   topicId: string | null;
   examId: string | null;
+}
+
+/** Dados internos da questão usados para gerar uma variação. Inclui o
+ * gabarito e as explicações — por isso este tipo nunca deve ser devolvido
+ * diretamente ao cliente. */
+export interface SimilarQuestionGenerationSource {
+  id: string;
+  subject: string;
+  topic: string;
+  subjectId: string | null;
+  topicId: string | null;
+  difficulty: QuestionDifficulty;
+  exam: string;
+  year: number | null;
+  stem: string;
+  explanation: string | null;
+  hasImage: boolean;
+  alternatives: {
+    text: string;
+    isCorrect: boolean;
+    explanation: string | null;
+  }[];
+}
+
+export interface GeneratedQuestionInput {
+  sourceQuestionId: string;
+  subject: string;
+  topic: string;
+  subjectId: string | null;
+  topicId: string | null;
+  difficulty: QuestionDifficulty;
+  stem: string;
+  explanation: string;
+  alternatives: {
+    text: string;
+    isCorrect: boolean;
+    explanation?: string | null;
+  }[];
+  metadata: Prisma.JsonValue;
 }
 
 @Injectable()
@@ -394,14 +433,18 @@ export class QuestionsService {
    * contexto (null) — a conversa continua, sem revelar que a questão existe.
    * A alternativa correta só entra no texto depois de uma tentativa registrada.
    */
-  async tutorContext(userId: string, questionId: string): Promise<string | null> {
+  async tutorContext(
+    userId: string,
+    questionId: string,
+    mode: TutorMode = 'DIRECT',
+  ): Promise<string | null> {
     try {
       const question = await this.findAccessible(userId, questionId);
       const attempt = await this.questionAttemptsRepository.findLatestForUser(
         userId,
         question.id,
       );
-      return buildQuestionTutorContext(question, attempt);
+      return buildQuestionTutorContext(question, attempt, mode);
     } catch (error) {
       if (error instanceof NotFoundException) return null;
       throw error;
@@ -540,6 +583,113 @@ export class QuestionsService {
       .map((entry) => this.toResponse(entry.question));
 
     return { items, limit: effectiveLimit };
+  }
+
+  /**
+   * Dados completos de uma questão acessível para servir de referência à
+   * geração de uma variação. Só a camada de IA recebe o gabarito; a resposta
+   * do endpoint é a questão gerada na visão pública.
+   */
+  async similarQuestionSource(
+    userId: string,
+    id: string,
+  ): Promise<SimilarQuestionGenerationSource> {
+    const question = await this.findAccessible(userId, id);
+    if (
+      question.alternatives.length < 2 ||
+      question.alternatives.length > QuestionsService.MAX_ALTERNATIVES
+    ) {
+      throw new BadRequestException(
+        `A questão de referência precisa ter entre 2 e ${QuestionsService.MAX_ALTERNATIVES} alternativas.`,
+      );
+    }
+    const correct = question.alternatives.filter((alternative) => alternative.isCorrect);
+    if (correct.length !== 1) {
+      throw new BadRequestException(
+        'A questão de referência precisa ter exatamente uma alternativa correta.',
+      );
+    }
+
+    return {
+      id: question.id,
+      subject: question.subject,
+      topic: question.topic,
+      subjectId: question.subjectId,
+      topicId: question.topicId,
+      difficulty: question.difficulty,
+      exam: question.exam,
+      year: question.year,
+      stem: question.stem,
+      explanation: question.explanation,
+      hasImage: Boolean(question.imageUrl),
+      alternatives: question.alternatives.map((alternative) => ({
+        text: alternative.text,
+        isCorrect: alternative.isCorrect,
+        explanation: alternative.explanation,
+      })),
+    };
+  }
+
+  /**
+   * Persiste uma questão gerada pela LuminIA no workspace pessoal de quem
+   * pediu. Ela nasce como `GENERATED`, sem vínculo com prova oficial, e guarda
+   * nos metadados o modelo, o prompt e a questão de origem para auditoria.
+   */
+  async createGeneratedQuestion(
+    userId: string,
+    input: GeneratedQuestionInput,
+  ): Promise<QuestionResponseDto> {
+    if (
+      input.alternatives.length < 2 ||
+      input.alternatives.length > QuestionsService.MAX_ALTERNATIVES
+    ) {
+      throw new BadRequestException(
+        `A questão gerada precisa ter entre 2 e ${QuestionsService.MAX_ALTERNATIVES} alternativas.`,
+      );
+    }
+    this.validateAlternatives(input.alternatives);
+
+    const uniqueAlternatives = new Set(
+      input.alternatives.map((alternative) =>
+        alternative.text.trim().toLocaleLowerCase('pt-BR'),
+      ),
+    );
+    if (uniqueAlternatives.size !== input.alternatives.length) {
+      throw new BadRequestException('A questão gerada repetiu alternativas.');
+    }
+
+    const stem = input.stem.trim();
+    if (!stem) {
+      throw new BadRequestException('A questão gerada precisa de um enunciado.');
+    }
+
+    const workspace = await this.questionAccessService.getPersonalWorkspaceOrThrow(userId);
+    const question = await this.questionsRepository.create({
+      workspaceId: workspace.id,
+      createdBy: userId,
+      sourceType: QuestionSourceType.GENERATED,
+      sourceName: 'LuminIA',
+      sourceId: input.sourceQuestionId,
+      contentHash: null,
+      subject: input.subject,
+      topic: input.topic,
+      difficulty: input.difficulty,
+      // A variação não pertence à prova de origem; dizer o contrário induziria
+      // o aluno a tratá-la como questão oficial.
+      exam: 'LuminIA',
+      year: null,
+      examNumber: null,
+      stem,
+      explanation: input.explanation.trim() || null,
+      imageUrl: null,
+      subjectId: input.subjectId,
+      topicId: input.topicId,
+      examId: null,
+      metadata: input.metadata,
+      alternatives: this.normalizeAlternatives(input.alternatives),
+    });
+
+    return this.toResponse(question, true);
   }
 
   // ---------------------------------------------------------------------------

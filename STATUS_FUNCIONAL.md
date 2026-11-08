@@ -9,7 +9,7 @@
 - **Dívida visível:** entrada aberta do caderno sem data agora entra na central como “Sem data” e no filtro `due=true`, em vez de desaparecer. A fila manual exclui erros abertos por relação no banco, sem carregar todos os ids.
 - **Validação e privacidade:** datas como `2026-02-31` são recusadas; o enunciado da fila é truncado em 220 caracteres.
 - **Interface:** falha ao limpar a marcação e sessão expirada mostram mensagem; a tela não fica em spinner infinito.
-- **Testes:** suíte de backend com 871 testes e checks do app cobrindo limites 20:59/21:00, data inválida, entrada sem data, truncamento e incremento atômico. App passa em `test`, `typecheck`, `build` e `lint` (9 avisos preexistentes, 0 erros).
+- **Testes:** suíte de backend com 899 testes e checks do app cobrindo limites 20:59/21:00, data inválida, entrada sem data, truncamento e incremento atômico. App passa em `test`, `typecheck`, `build` e `lint` (9 avisos preexistentes, 0 erros).
 - **Sem migration:** os campos e índices existentes continuam suficientes.
 
 ## Atualização de 07/11/2026 — Revisão espaçada unificada
@@ -21,6 +21,34 @@
 - **Escopo honesto:** flashcards dependem do item 32 e não foram simulados. A notificação é in-app; não há push ou e-mail. A entrega não exige migration.
 - **Testes:** 12 testes de backend para regras de data, repositório e agregação da fila; check de frontend para vencimento, origem e detalhe dos itens. Backend e app passam em `typecheck`; o app passa em `test` e `build`.
 - **Documentação:** regras e limites em [docs/REVISAO_ESPACADA.md](docs/REVISAO_ESPACADA.md).
+
+## Atualização de 06/11/2026 — Mapa de domínio por matéria e assunto (item 30)
+
+- **Nova página `/app/dominio`:** consome `GET /users/me/topic-mastery` e mostra o domínio já registrado por matéria e assunto, com resumo de dominados, atenção, crítico e revisão pendente.
+- **Mapa de calor:** cada assunto tem cor por `masteryScore` (0, 1–24, 25–49, 50–74, 75–100), com número, percentual de acerto e próxima revisão visíveis; a cor nunca é a única informação. Clicar no assunto abre o banco de questões filtrado por `subjectId`/`topicId`.
+- **Filtros e leitura:** matéria, estado (`Dominado`, `Em progresso`, `Atenção`, `Crítico`, `Não estudado`), busca sem acento/caixa e “só revisão pendente”. O cabeçalho de cada matéria mostra média, total e revisões vencidas.
+- **Estados vazios:** sem tentativas registradas, a página explica que o mapa nasce das respostas e oferece banco de questões, simulado e cronograma — não inventa domínio.
+- **Integração:** atalho “Ver mapa completo de domínio” no painel de domínio do cronograma e item “Mapa de domínio” na navegação.
+- **Sem migration e sem mudança de backend:** o endpoint e o cálculo já existiam. Subassunto e habilidade não existem no modelo atual (`Subject` → `Topic`) e não foram simulados na interface; histórico diário fica para o próximo incremento.
+- **Testes:** novo `lumina-app/test/mapa-dominio.check.ts` cobre faixas, calor, revisão, resumo, filtros e agrupamento; `npm test`, `npm run typecheck`, `npm run build` e `npm run lint` do app passando. Detalhes em [docs/MAPA_DOMINIO.md](docs/MAPA_DOMINIO.md).
+
+## Atualização de 06/11/2026 — LuminIA: criar questão parecida
+
+- **O que mudou:** a resolução de questões ganhou o botão **Criar questão parecida**. A LuminIA gera uma variação inédita da questão aberta, mostra-a logo abaixo para responder sem sair da tela e a salva no banco pessoal do aluno. O recurso aparece no Banco de Questões e no Caderno de Erros, porque os dois usam o mesmo componente de resolução.
+- **Contexto no servidor:** o cliente envia somente `{ questionId }` em `POST /ai/questions/similar`. Enunciado, alternativas, gabarito, disciplina e dificuldade são carregados no backend com a mesma checagem de workspace; o navegador não consegue ditar o conteúdo da referência.
+- **Validação antes de gravar:** o prompt versionado `similar-question-2026-11-06` devolve JSON, e o servidor exige a mesma quantidade de alternativas, exatamente uma correta, alternativas não repetidas e enunciado diferente do original. Resposta inválida vira 502 e nada é salvo; sem provedor configurado, 503.
+- **Governança e transparência:** a questão nasce como `GENERATED`/`LuminIA`, sem ano, número ou vínculo com prova oficial, e com metadados de modelo, prompt e questão de origem. A interface avisa que é conteúdo gerado por IA, não oficial e sem revisão humana (`UNREVIEWED`); não há geração em cascata.
+- **Testes:** backend com **872 testes em 60 arquivos**, incluindo prompt, validação estrutural, orquestração, controller e persistência; app com o novo check de payload (só `questionId`). `npm test`, `npm run typecheck` e `npm run build` do backend e do app passando; `npm run lint` do app sem erros. **Sem migration.**
+- **Documentação:** detalhes em [docs/RESOLUCAO_QUESTOES.md](docs/RESOLUCAO_QUESTOES.md) e [docs/AI_CHAT.md](docs/AI_CHAT.md).
+
+## Atualização de 06/11/2026 — LuminIA: modo socrático
+
+- **O que mudou:** o chat flutuante ganhou um alternador **Modo socrático**, e cada questão tem o botão de mesmo nome ao lado de “Pedir ajuda à LuminIA”. O aluno recebe uma pergunta por vez e pistas progressivas em vez da resolução pronta.
+- **Como conduz:** o prompt versionado (`socratic-2026-11-06`) começa pelo diagnóstico do que o aluno já entendeu e onde travou; depois avança para conceito, estratégia e acompanhamento. O servidor deriva a etapa do número de mensagens do aluno, sem confiar em estado enviado pelo cliente.
+- **Sem vazar gabarito:** antes da tentativa, o contexto da questão continua sem a alternativa correta e sem o comentário. Depois dela, o resultado pode ser confirmado porque já aparece na tela, mas o aluno precisa explicar o raciocínio antes de receber a explicação. Sem questão vinculada, o modo não presume matéria nem inventa exemplo.
+- **Sem provedor:** o mock devolve um roteiro fixo de perguntas, avisa que a IA não está configurada e não inventa conteúdo.
+- **Testes:** backend com **864 testes em 58 arquivos**, incluindo prompt, progressão por turno, contexto antes/depois da tentativa e fallback; app com o novo check de payload/modo socrático. `npm test`, `npm run typecheck` do backend e do app passando. **Sem migration.**
+- **Documentação:** detalhes em [docs/AI_CHAT.md](docs/AI_CHAT.md).
 
 ## Atualização de 05/11/2026 — Gabarito Inteligente: sugestão por IA medida em prova inteira
 

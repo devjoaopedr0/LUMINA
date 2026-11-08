@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bot, ChevronDown, MessageCircle, Send, Sparkles } from "lucide-react";
+import { Bot, Brain, ChevronDown, MessageCircle, Send, Sparkles } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { ASK_AI_EVENT, AiChatNotConfiguredError, sendAiChatMessage, type AiChatMessage, type AskAiDetail } from "@/lib/ai-chat";
+import { ASK_AI_EVENT, AiChatNotConfiguredError, sendAiChatMessage, type AiChatMessage, type AiChatMode, type AskAiDetail } from "@/lib/ai-chat";
 
 const INITIAL_MESSAGE: AiChatMessage = {
   id: "welcome",
@@ -14,6 +14,7 @@ const INITIAL_MESSAGE: AiChatMessage = {
 type ChatContextOptions = {
   scheduleTaskId?: string;
   questionId?: string;
+  mode?: AiChatMode;
 };
 
 export function AiChatWidget() {
@@ -22,6 +23,7 @@ export function AiChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [socraticMode, setSocraticMode] = useState(false);
   const [messages, setMessages] = useState<AiChatMessage[]>([INITIAL_MESSAGE]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,10 +54,12 @@ export function AiChatWidget() {
       const detail = (event as CustomEvent<AskAiDetail>).detail;
       if (!detail?.message) return;
       activeQuestionIdRef.current = detail.questionId;
+      setSocraticMode(Boolean(detail.socratic));
       setOpen(true);
       sendRef.current(detail.message, {
         scheduleTaskId: detail.scheduleTaskId,
         questionId: detail.questionId,
+        mode: detail.socratic ? "SOCRATIC" : undefined,
       });
     }
     window.addEventListener(ASK_AI_EVENT, onAsk);
@@ -72,6 +76,7 @@ export function AiChatWidget() {
       const response = await sendAiChatMessage(content, nextHistory, {
         ...options,
         questionId: options.questionId ?? activeQuestionIdRef.current,
+        mode: options.mode ?? (socraticMode ? "SOCRATIC" : undefined),
       });
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: response }]);
     } catch (error) {
@@ -109,7 +114,7 @@ export function AiChatWidget() {
         <section aria-label="Conversa com a LuminIA" className="flex h-[min(620px,calc(100vh-48px))] w-[min(390px,calc(100vw-32px))] flex-col overflow-hidden rounded-[24px] border border-surface-line bg-white shadow-2xl shadow-graphite/20">
           <header className="flex items-center gap-3 bg-graphite px-4 py-4 text-white">
             <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-graphite"><Bot className="h-5 w-5" /><span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-graphite bg-success" /></span>
-            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><h2 className="font-semibold">LuminIA</h2><Sparkles className="h-3.5 w-3.5 text-primary" /></div><p className="text-xs text-white/45">Assistente de estudos · online</p></div>
+            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><h2 className="font-semibold">LuminIA</h2><Sparkles className="h-3.5 w-3.5 text-primary" /></div><p className="text-xs text-white/45">{socraticMode ? "Modo socrático · online" : "Assistente de estudos · online"}</p></div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Minimizar conversa" className="rounded-lg p-2 text-white/55 transition hover:bg-white/10 hover:text-white"><ChevronDown className="h-5 w-5" /></button>
           </header>
 
@@ -124,8 +129,23 @@ export function AiChatWidget() {
           </div>
 
           <form onSubmit={handleSubmit} className="border-t border-surface-line bg-white p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setSocraticMode((current) => !current)}
+                aria-pressed={socraticMode}
+                title="A LuminIA pergunta e conduz você até a solução, em vez de entregar a resposta."
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${socraticMode ? "border-primary bg-primary/15 text-primary-700" : "border-surface-line bg-white text-graphite-500 hover:border-graphite/30"}`}
+              >
+                <Brain className="h-3.5 w-3.5" />
+                Modo socrático
+              </button>
+              <span className="text-[10px] text-graphite-400">
+                {socraticMode ? "Uma pergunta por vez" : "Explicação direta"}
+              </span>
+            </div>
             <div className="flex items-center gap-2 rounded-2xl border border-surface-line bg-surface-card p-1.5 pl-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
-              <input ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} maxLength={2000} aria-label="Mensagem para a LuminIA" placeholder="Pergunte sobre seus estudos..." className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-graphite-400" />
+              <input ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} maxLength={2000} aria-label="Mensagem para a LuminIA" placeholder={socraticMode ? "Responda ou diga onde travou..." : "Pergunte sobre seus estudos..."} className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-graphite-400" />
               <button type="submit" disabled={!input.trim() || sending} aria-label="Enviar mensagem" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-graphite transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40"><Send className="h-4 w-4" /></button>
             </div>
             <p className="mt-2 text-center text-[10px] text-graphite-400">A IA pode cometer erros. Revise informações importantes.</p>

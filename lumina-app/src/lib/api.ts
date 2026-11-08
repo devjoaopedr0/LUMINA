@@ -1,6 +1,10 @@
 import { API_URL } from "@/lib/config";
 import { clearTokens, getRefreshToken, setTokens } from "@/lib/auth";
 import { ApiError, createApiClient } from "@/lib/api-client-core";
+import {
+  buildSimilarQuestionPayload,
+  SIMILAR_QUESTION_ENDPOINT,
+} from "@/lib/similar-question-payload";
 
 export { ApiError } from "@/lib/api-client-core";
 
@@ -529,6 +533,7 @@ export function apiUpdateProfile(
 }
 
 export type QuestionDifficulty = "FACIL" | "MEDIA" | "DIFICIL";
+export type QuestionSourceType = "OFFICIAL" | "PARTNER" | "GENERATED" | "IMPORTED";
 
 export interface QuestionAlternative {
   id: string;
@@ -552,6 +557,8 @@ export interface QuestionUserProgress {
 
 export interface Question {
   id: string;
+  sourceType?: QuestionSourceType;
+  sourceName?: string;
   subject: string;
   topic: string;
   subjectId?: string | null;
@@ -1030,6 +1037,20 @@ export function apiGetSimilarQuestions(
 ): Promise<SimilarQuestions> {
   return request(`/questions/${id}/similar?limit=${limit}`, {
     headers: authHeaders(accessToken),
+  });
+}
+
+/** Cria uma variação inédita da questão com a LuminIA. O servidor carrega o
+ * contexto, valida a resposta da IA e salva a nova questão no workspace
+ * pessoal antes de devolvê-la já no formato de resolução. */
+export function apiGenerateSimilarQuestion(
+  accessToken: string,
+  questionId: string
+): Promise<Question> {
+  return request(SIMILAR_QUESTION_ENDPOINT, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: buildSimilarQuestionPayload(questionId),
   });
 }
 
@@ -2030,6 +2051,28 @@ export function apiRefreshDay(accessToken: string, date: string): Promise<DailyS
 }
 
 export type TopicMasteryStatus = "NAO_ESTUDADO" | "APRENDENDO" | "PRATICANDO" | "DOMINADO" | "PRECISA_REFORCO";
+
+/** Uma linha de domínio por tópico já estudado, para o mapa de domínio. */
+export interface TopicMasteryEntry {
+  id: string;
+  subjectId: string;
+  subject: string;
+  topicId: string;
+  topic: string;
+  masteryScore: number;
+  attempts: number;
+  correctAttempts: number;
+  correctStreak: number;
+  status: TopicMasteryStatus;
+  lastStudiedAt: string | null;
+  nextReviewAt: string | null;
+  /** Revisão espaçada vencida no momento em que a API respondeu. */
+  due: boolean;
+}
+
+export function apiGetTopicMastery(accessToken: string): Promise<TopicMasteryEntry[]> {
+  return request("/users/me/topic-mastery", { headers: authHeaders(accessToken) });
+}
 
 export type TopicLevel = "BASE" | "INTERMEDIARIO" | "AVANCADO";
 
