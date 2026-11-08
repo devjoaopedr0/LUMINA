@@ -278,7 +278,7 @@
     -  Explicar alternativas incorretas
     -  Dar dica antes da resposta
     -  Criar questão semelhante
-23. 23. LuminIA — modo socrático
+23. 23. LuminIA — modo socrático [ENTREGUE EM 06/11/2026 - CHAT FLUTUANTE E BOTÃO NA RESOLUÇÃO DE QUESTÕES; PROMPT VERSIONADO E FALLBACK SEM PROVEDOR]
     -  Não entregar imediatamente a resposta
     -  Fazer perguntas
     -  Dar pistas progressivas

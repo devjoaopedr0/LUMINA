@@ -29,6 +29,9 @@ export interface TutorAttempt {
   isCorrect: boolean;
 }
 
+/** `DIRECT` explica; `SOCRATIC` conduz o aluno por perguntas e pistas. */
+export type TutorMode = 'DIRECT' | 'SOCRATIC';
+
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export function tutorPositionLetter(position: number): string {
@@ -52,6 +55,7 @@ function alternativesBlock(question: TutorQuestion, revealAnswer: boolean): stri
 export function buildQuestionTutorContext(
   question: TutorQuestion,
   attempt: TutorAttempt | null,
+  mode: TutorMode = 'DIRECT',
 ): string {
   const answered = attempt !== null;
   const lines = [
@@ -76,7 +80,12 @@ export function buildQuestionTutorContext(
   if (!answered) {
     lines.push(
       '',
-      'O aluno ainda não respondeu esta questão. NÃO diga qual alternativa é a correta, não confirme a escolha dele e não use o comentário do gabarito. Ajude com o raciocínio: destaque o que o enunciado pede, o conceito envolvido e como eliminar distratores.',
+      mode === 'SOCRATIC'
+        ? [
+            'O aluno ainda não respondeu esta questão. NÃO diga qual alternativa é a correta, não confirme a escolha dele e não use o comentário do gabarito.',
+            'Estamos no modo socrático: ainda não entregue a explicação nem elimine alternativas por ele. Faça uma pergunta de diagnóstico sobre o que o enunciado pede e o que ele já tentou.',
+          ].join('\n')
+        : 'O aluno ainda não respondeu esta questão. NÃO diga qual alternativa é a correta, não confirme a escolha dele e não use o comentário do gabarito. Ajude com o raciocínio: destaque o que o enunciado pede, o conceito envolvido e como eliminar distratores.',
     );
     return lines.join('\n');
   }
@@ -117,9 +126,13 @@ export function buildQuestionTutorContext(
 
   lines.push(
     '',
-    attempt.isCorrect
-      ? 'Explique por que a resposta do aluno está correta e reforce o conceito. Termine com uma forma rápida de fixar o aprendizado.'
-      : 'Mostre onde o raciocínio do aluno tropeçou, sem julgamento, e explique o caminho até a alternativa correta. Termine com um próximo passo pequeno.',
+    mode === 'SOCRATIC'
+      ? attempt.isCorrect
+        ? 'O aluno acertou. Não repita a resolução pronta: peça que ele explique com as próprias palavras por que a alternativa correta funciona. Use o comentário do gabarito apenas para conferir a explicação dele.'
+        : 'O aluno errou. Não entregue a resolução pronta: pergunte em qual passo ele chegou à alternativa marcada e ofereça uma pista sobre o ponto em que o raciocínio tropeçou. Só avance depois que ele tentar reformular.'
+      : attempt.isCorrect
+        ? 'Explique por que a resposta do aluno está correta e reforce o conceito. Termine com uma forma rápida de fixar o aprendizado.'
+        : 'Mostre onde o raciocínio do aluno tropeçou, sem julgamento, e explique o caminho até a alternativa correta. Termine com um próximo passo pequeno.',
   );
 
   return lines.join('\n');

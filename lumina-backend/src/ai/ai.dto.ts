@@ -2,6 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, MaxLength, IsArray, ValidateNested, IsOptional, IsIn, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 
+/** Modos de tutoria aceitos pelo chat. O padrão (sem campo) é resposta direta. */
+export type AiChatMode = 'SOCRATIC';
+
 export class AiChatMessageDto {
   @ApiProperty({ enum: ['user', 'assistant'] })
   @IsString()
@@ -44,6 +47,14 @@ export class AiChatRequestDto {
   @IsOptional()
   @IsUUID()
   questionId?: string;
+
+  /** Quando `SOCRATIC`, a LuminIA conduz por perguntas e pistas progressivas
+   *  em vez de entregar a explicação pronta. O contexto da questão continua
+   *  sendo montado no servidor; o cliente não envia gabarito nem instruções. */
+  @ApiProperty({ required: false, enum: ['SOCRATIC'] })
+  @IsOptional()
+  @IsIn(['SOCRATIC'])
+  mode?: AiChatMode;
 }
 
 export class AiChatResponseDto {
