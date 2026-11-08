@@ -84,6 +84,48 @@ describe('AiService', () => {
       });
       expect(typeof res.message).toBe('string');
     });
+
+    it('o mock socrático pergunta antes de ensinar e não vaza a alternativa', async () => {
+      const res = await service.sendMessage(
+        {
+          message: { role: 'user', content: 'Quero resolver com perguntas.' },
+          history: [],
+          mode: 'SOCRATIC',
+        },
+        'CONTEXTO DA QUESTÃO (dados do sistema):\nAlternativas:\nC) 8 (correta)',
+      );
+
+      expect(res.message).toContain('roteiro fixo de perguntas');
+      expect(res.message).toContain('o que o enunciado está pedindo');
+      expect(res.message).not.toContain('C) 8');
+      expect(res.message).not.toContain('(correta)');
+    });
+
+    it('o prompt socrático inclui as regras, a versão e o nome do aluno', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: 'O que você já tentou?' } }] }), { status: 200 }),
+      );
+      const real = new AiService({
+        get: vi.fn((key: string) => ({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test' } as Record<string, string>)[key]),
+      } as never);
+
+      await real.sendMessage(
+        {
+          message: { role: 'user', content: 'Me conduza por perguntas.' },
+          history: [],
+          mode: 'SOCRATIC',
+        },
+        undefined,
+        'Ana',
+      );
+
+      const body = JSON.parse(String((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body));
+      const system = body.messages[0].content as string;
+      expect(system).toContain('MODO SOCRÁTICO');
+      expect(system).toContain('Faça uma pergunta por mensagem');
+      expect(system).toContain('O aluno se chama Ana.');
+      expect(system).toContain('socratic-2026-11-06');
+    });
   });
 
   describe('contexto do cronograma (LuminIA explica a tarefa)', () => {

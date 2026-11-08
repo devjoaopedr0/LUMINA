@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   AlertCircle,
+  Brain,
   CheckCircle2,
   Lightbulb,
   Loader2,
@@ -159,6 +160,17 @@ export function QuestionResolution({
     setSimilarError(null);
   }
 
+  /** Abre o chat no modo socrático: a LuminIA faz perguntas e dá pistas
+   *  progressivas, sem entregar a alternativa correta antes da tentativa. */
+  function askLuminiaSocratic() {
+    const message = result
+      ? result.isCorrect
+        ? "Quero consolidar esta questão com perguntas. Me ajude a explicar por que cheguei à resposta certa, sem repetir a resolução pronta."
+        : "Quero entender onde errei usando perguntas, sem receber a resposta pronta. Me conduza passo a passo."
+      : "Quero resolver esta questão com perguntas, sem receber a resposta. Me conduza com pistas progressivas.";
+    askAi({ message, questionId, socratic: true });
+  }
+
   function alternativeStyle(position: number): string {
     if (result) {
       if (position === result.correctPosition) {
@@ -288,6 +300,10 @@ export function QuestionResolution({
           <Button type="button" variant="outline" size="sm" onClick={askLuminia}>
             <Sparkles className="h-4 w-4" />
             Pedir ajuda à LuminIA
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={askLuminiaSocratic}>
+            <Brain className="h-4 w-4" />
+            Modo socrático
           </Button>
           {allowSimilarQuestion && !similar && (
             <Button

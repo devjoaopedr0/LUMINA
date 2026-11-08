@@ -32,7 +32,7 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QUESTION_HINTS_PROVIDER, QuestionHintsService } from './hints/question-hints.service';
 import { HintProvider } from './hints/hint-provider.interface';
 import { QuestionWithAlternatives, QuestionsRepository } from './questions.repository';
-import { buildQuestionTutorContext } from './question-tutor-context';
+import { buildQuestionTutorContext, TutorMode } from './question-tutor-context';
 import { SubjectsRepository } from './subjects.repository';
 import { ExamsRepository } from './exams.repository';
 import { QuestionTextSearchRepository } from './question-text-search.repository';
@@ -420,14 +420,18 @@ export class QuestionsService {
    * contexto (null) — a conversa continua, sem revelar que a questão existe.
    * A alternativa correta só entra no texto depois de uma tentativa registrada.
    */
-  async tutorContext(userId: string, questionId: string): Promise<string | null> {
+  async tutorContext(
+    userId: string,
+    questionId: string,
+    mode: TutorMode = 'DIRECT',
+  ): Promise<string | null> {
     try {
       const question = await this.findAccessible(userId, questionId);
       const attempt = await this.questionAttemptsRepository.findLatestForUser(
         userId,
         question.id,
       );
-      return buildQuestionTutorContext(question, attempt);
+      return buildQuestionTutorContext(question, attempt, mode);
     } catch (error) {
       if (error instanceof NotFoundException) return null;
       throw error;
