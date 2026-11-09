@@ -1427,7 +1427,7 @@ export function apiRemoveErrorNotebookEntry(
 // Central de revisões (item 31)
 // =============================================================================
 
-export type ReviewQueueKind = "TOPIC" | "ERROR_NOTEBOOK" | "MARKED_QUESTION";
+export type ReviewQueueKind = "TOPIC" | "ERROR_NOTEBOOK" | "FLASHCARD" | "MARKED_QUESTION";
 
 export interface ReviewQueueItem {
   kind: ReviewQueueKind;
@@ -1456,6 +1456,7 @@ export interface ReviewQueueDue {
   total: number;
   topics: number;
   errorNotebook: number;
+  flashcards: number;
   items: ReviewQueueItem[];
   truncated: boolean;
 }
@@ -1482,6 +1483,189 @@ export function apiGetReviewQueue(
   limit = 20
 ): Promise<ReviewQueueResponse> {
   return request(`/users/me/review-queue?limit=${limit}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+// =============================================================================
+// Flashcards e revisão espaçada do cartão (item 32)
+// =============================================================================
+
+export type FlashcardSource = "MANUAL" | "ERROR_NOTEBOOK" | "AI";
+export type FlashcardRating = "AGAIN" | "HARD" | "GOOD" | "EASY";
+
+export interface Flashcard {
+  id: string;
+  source: FlashcardSource;
+  front: string;
+  back: string;
+  subjectId: string | null;
+  subject: string | null;
+  topicId: string | null;
+  topic: string | null;
+  sourceQuestionId: string | null;
+  reviewCount: number;
+  correctCount: number;
+  accuracy: number | null;
+  streak: number;
+  intervalDays: number;
+  easeFactor: number;
+  nextReviewAt: string | null;
+  lastReviewedAt: string | null;
+  due: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlashcardReviewHistory {
+  id: string;
+  rating: FlashcardRating;
+  remembered: boolean;
+  reviewedAt: string;
+  intervalDays: number;
+  easeFactor: number;
+  nextReviewAt: string | null;
+}
+
+export interface FlashcardHistory {
+  flashcard: Flashcard;
+  reviews: FlashcardReviewHistory[];
+}
+
+export interface FlashcardSummary {
+  total: number;
+  due: number;
+  newCards: number;
+  totalReviews: number;
+  rememberedReviews: number;
+  accuracy: number | null;
+  reviewedToday: number;
+}
+
+export interface CreateFlashcardPayload {
+  front: string;
+  back: string;
+  subjectId?: string | null;
+  topicId?: string | null;
+}
+
+export type UpdateFlashcardPayload = Partial<CreateFlashcardPayload>;
+
+export function apiListFlashcards(
+  accessToken: string,
+  options: { due?: boolean; source?: FlashcardSource; subjectId?: string; topicId?: string } = {}
+): Promise<Flashcard[]> {
+  const params = new URLSearchParams();
+  if (options.due) params.set("due", "true");
+  if (options.source) params.set("source", options.source);
+  if (options.subjectId) params.set("subjectId", options.subjectId);
+  if (options.topicId) params.set("topicId", options.topicId);
+  const suffix = params.toString();
+  return request(`/flashcards${suffix ? `?${suffix}` : ""}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiGetFlashcardSummary(accessToken: string): Promise<FlashcardSummary> {
+  return request("/flashcards/summary", { headers: authHeaders(accessToken) });
+}
+
+export function apiCreateFlashcard(
+  accessToken: string,
+  payload: CreateFlashcardPayload
+): Promise<Flashcard> {
+  return request("/flashcards", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface GenerateFlashcardsPayload {
+  content: string;
+  count?: number;
+  subjectId?: string | null;
+  topicId?: string | null;
+}
+
+export interface GenerateFlashcardsFromPdfPayload {
+  /** PDF em data URL. O servidor lê em memória e não armazena o arquivo. */
+  pdf: string;
+  count?: number;
+  subjectId?: string | null;
+  topicId?: string | null;
+}
+
+export function apiGenerateFlashcards(
+  accessToken: string,
+  payload: GenerateFlashcardsPayload
+): Promise<Flashcard[]> {
+  return request("/flashcards/generate", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiGenerateFlashcardsFromPdf(
+  accessToken: string,
+  payload: GenerateFlashcardsFromPdfPayload
+): Promise<Flashcard[]> {
+  return request("/flashcards/generate/from-pdf", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiCreateFlashcardFromError(
+  accessToken: string,
+  questionId: string,
+  payload: { front?: string; back?: string } = {}
+): Promise<Flashcard> {
+  return request(`/flashcards/from-error/${questionId}`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiUpdateFlashcard(
+  accessToken: string,
+  id: string,
+  payload: UpdateFlashcardPayload
+): Promise<Flashcard> {
+  return request(`/flashcards/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiDeleteFlashcard(accessToken: string, id: string): Promise<{ deleted: true; id: string }> {
+  return request(`/flashcards/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function apiReviewFlashcard(
+  accessToken: string,
+  id: string,
+  rating: FlashcardRating
+): Promise<Flashcard> {
+  return request(`/flashcards/${id}/review`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ rating }),
+  });
+}
+
+export function apiGetFlashcardHistory(
+  accessToken: string,
+  id: string
+): Promise<FlashcardHistory> {
+  return request(`/flashcards/${id}/history`, {
     headers: authHeaders(accessToken),
   });
 }

@@ -56,26 +56,41 @@ const MARKED_SELECT = {
   question: { select: QUESTION_SELECT },
 } as const;
 
+const FLASHCARD_SELECT = {
+  id: true,
+  front: true,
+  subjectId: true,
+  topicId: true,
+  reviewCount: true,
+  correctCount: true,
+  nextReviewAt: true,
+  lastReviewedAt: true,
+  subject: { select: { name: true } },
+  topic: { select: { name: true } },
+} as const;
+
 type TopicQueueRow = Prisma.TopicMasteryGetPayload<{ select: typeof TOPIC_SELECT }>;
 type ErrorQueueRow = Prisma.ErrorNotebookEntryGetPayload<{ select: typeof ERROR_SELECT }>;
 type MarkedQueueRow = Prisma.UserQuestionProgressGetPayload<{ select: typeof MARKED_SELECT }>;
+type FlashcardQueueRow = Prisma.FlashcardGetPayload<{ select: typeof FLASHCARD_SELECT }>;
 
 export interface ReviewQueueQuery {
   limit?: number;
 }
 
 /**
- * Central de revisões (item 31). Junta as três dívidas de estudo que já
- * existiam separadas:
+ * Central de revisões (itens 31 e 32). Junta as dívidas de estudo que existiam
+ * separadas:
  *
  * - tópicos com `TopicMastery.nextReviewAt` vencido (cronograma adaptativo);
  * - questões abertas do caderno de erros com `reviewScheduledAt` vencido;
+ * - flashcards com `nextReviewAt` vencido (revisão espaçada do cartão);
  * - questões que o aluno marcou manualmente para revisar.
  *
  * A fila manual não tem data: é um compromisso explícito do aluno, não uma
  * repetição espaçada. Por isso ela aparece separada e não entra no total de
- * "vencidas hoje". Flashcards ainda não existem (item 32); nenhum item falso é
- * criado no lugar deles.
+ * "vencidas hoje". Um flashcard vencido entra no mesmo total e na mesma ordem
+ * por data dos outros itens agendados.
  */
 @Injectable()
 export class ReviewQueueService {
@@ -110,14 +125,21 @@ export class ReviewQueueService {
       userId,
       markedForReview: true,
     };
+    const dueFlashcardWhere: Prisma.FlashcardWhereInput = {
+      userId,
+      nextReviewAt: { lte: today },
+    };
 
     const [
       topicRows,
       errorRows,
+      flashcardRows,
       topics,
       errorNotebook,
+      flashcards,
       nextTopic,
       nextError,
+      nextFlashcard,
     ] = await Promise.all([
       this.prisma.topicMastery.findMany({
         where: dueTopicWhere,
@@ -131,8 +153,15 @@ export class ReviewQueueService {
         orderBy: { reviewScheduledAt: 'asc' },
         take: limit,
       }),
+      this.prisma.flashcard.findMany({
+        where: dueFlashcardWhere,
+        select: FLASHCARD_SELECT,
+        orderBy: { nextReviewAt: 'asc' },
+        take: limit,
+      }),
       this.prisma.topicMastery.count({ where: dueTopicWhere }),
       this.prisma.errorNotebookEntry.count({ where: dueErrorWhere }),
+      this.prisma.flashcard.count({ where: dueFlashcardWhere }),
       this.prisma.topicMastery.findFirst({
         where: {
           userId,
@@ -150,6 +179,11 @@ export class ReviewQueueService {
         },
         select: { reviewScheduledAt: true },
         orderBy: { reviewScheduledAt: 'asc' },
+      }),
+      this.prisma.flashcard.findFirst({
+        where: { userId, nextReviewAt: { gt: today } },
+        select: { nextReviewAt: true },
+        orderBy: { nextReviewAt: 'asc' },
       }),
     ]);
 
@@ -177,19 +211,22 @@ export class ReviewQueueService {
     const dueItems = [
       ...topicRows.map(toTopicItem),
       ...errorRows.map(toErrorItem),
+      ...flashcardRows.map(toFlashcardItem),
     ]
       .sort(compareDue)
       .slice(0, limit);
     const manualItems = markedRows.map(toMarkedItem).slice(0, limit);
+    const dueTotal = topics + errorNotebook + flashcards;
 
     return {
       generatedAt: now.toISOString(),
       due: {
-        total: topics + errorNotebook,
+        total: dueTotal,
         topics,
         errorNotebook,
+        flashcards,
         items: dueItems,
-        truncated: topics + errorNotebook > dueItems.length,
+        truncated: dueTotal > dueItems.length,
       },
       manual: {
         total: markedTotal,
@@ -199,6 +236,7 @@ export class ReviewQueueService {
       nextReviewAt: earliestIso([
         nextTopic?.nextReviewAt ?? null,
         nextError?.reviewScheduledAt ?? null,
+        nextFlashcard?.nextReviewAt ?? null,
       ]),
     };
   }
@@ -251,6 +289,32 @@ function toErrorItem(row: ErrorQueueRow): ReviewQueueItemDto {
     year: row.question.year,
     stem: truncate(row.question.stem, STEM_PREVIEW),
     lastAttemptAt: null,
+  };
+}
+
+function toFlashcardItem(row: FlashcardQueueRow): ReviewQueueItemDto {
+  return {
+    kind: 'FLASHCARD',
+    id: row.id,
+    questionId: null,
+    subjectId: row.subjectId,
+    subject: row.subject?.name ?? 'Sem matéria',
+    topicId: row.topicId,
+    topic: row.topic?.name ?? 'Flashcard',
+    dueAt: row.nextReviewAt?.toISOString() ?? null,
+    masteryScore: null,
+    status: null,
+    attempts: row.reviewCount,
+    correctAttempts: row.correctCount,
+    accuracy:
+      row.reviewCount > 0 ? Math.round((row.correctCount / row.reviewCount) * 100) : null,
+    wrongAttempts: null,
+    correctStreak: null,
+    difficulty: null,
+    exam: null,
+    year: null,
+    stem: truncate(row.front, STEM_PREVIEW),
+    lastAttemptAt: row.lastReviewedAt?.toISOString() ?? null,
   };
 }
 

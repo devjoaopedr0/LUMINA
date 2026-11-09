@@ -66,6 +66,11 @@ describe('ReviewQueueService', () => {
         count: vi.fn().mockResolvedValue(0),
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      flashcard: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       userQuestionProgress: {
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
@@ -156,6 +161,40 @@ describe('ReviewQueueService', () => {
 
     expect(result.due.items[0].stem).toHaveLength(221);
     expect(result.due.items[0].stem?.endsWith('…')).toBe(true);
+  });
+
+  it('inclui o flashcard vencido na mesma fila e no mesmo total do dia', async () => {
+    prisma.flashcard.findMany.mockResolvedValue([
+      {
+        id: 'flashcard-1',
+        front: 'O que é entropia?',
+        subjectId: null,
+        topicId: null,
+        reviewCount: 2,
+        correctCount: 1,
+        nextReviewAt: new Date('2026-11-06T00:00:00.000Z'),
+        lastReviewedAt: new Date('2026-11-05T12:00:00.000Z'),
+        subject: null,
+        topic: null,
+      },
+    ]);
+    prisma.flashcard.count.mockResolvedValue(1);
+    prisma.flashcard.findFirst.mockResolvedValue(null);
+
+    const result = await service.getQueue('user-1');
+
+    expect(result.due.flashcards).toBe(1);
+    expect(result.due.total).toBe(1);
+    expect(result.due.items[0]).toMatchObject({
+      kind: 'FLASHCARD',
+      id: 'flashcard-1',
+      subject: 'Sem matéria',
+      topic: 'Flashcard',
+      attempts: 2,
+      correctAttempts: 1,
+      accuracy: 50,
+      stem: 'O que é entropia?',
+    });
   });
 
   it('conta o total real da fila manual mesmo quando a lista vem truncada', async () => {

@@ -17,7 +17,7 @@ export default defineConfig({
     // junto com os outros arquivos de teste em paralelo — não é lentidão
     // pontual, é o tamanho real do grafo de módulos hoje. Timeout maior
     // evita falso-negativo por timeout de hook.
-    hookTimeout: 30000,
+    hookTimeout: 60000,
     // Idem para o timeout por teste: o DATABASE_URL hoje aponta pro Supabase
     // remoto (não mais um Postgres local em Docker), então cada chamada HTTP
     // do e2e paga uma latência de rede de verdade. Testes que encadeiam

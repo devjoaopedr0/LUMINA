@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, Layers, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
   { to: "/app/cronograma", label: "Cronograma", icon: CalendarDays },
   { to: "/app/revisao-espacada", label: "Revisão espaçada", icon: Clock3 },
+  { to: "/app/flashcards", label: "Flashcards", icon: Layers },
   { to: "/app/dominio", label: "Mapa de domínio", icon: BrainCircuit },
   { to: "/app/questoes", label: "Banco de questões", icon: Database },
   { to: "/app/caderno-de-erros", label: "Caderno de erros", icon: NotebookPen },

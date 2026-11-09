@@ -16,6 +16,9 @@ async function bootstrap() {
   app.use('/answer-sheets/scan', json({ limit: '36mb' }));
   // Foto do cartão do Gabarito Inteligente: um PDF de uma página (~1–3 MB).
   app.use(/^\/answer-keys\/[0-9a-f-]+\/read-sheet$/, json({ limit: '8mb' }));
+  // PDF para gerar flashcards: até 8 MB de arquivo (~11 MB em base64). O
+  // arquivo é processado em memória e não fica armazenado.
+  app.use('/flashcards/generate/from-pdf', json({ limit: '16mb' }));
   app.use(json({ limit: '100kb' }));
   app.use(urlencoded({ extended: true, limit: '100kb' }));
   const configService = app.get(ConfigService);
