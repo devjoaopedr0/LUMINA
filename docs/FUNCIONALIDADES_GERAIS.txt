@@ -429,23 +429,23 @@
     -  Assuntos críticos
     -  Desempenho por habilidade
     -  Histórico
-40. 40. Analytics de professores
+40. 40. Analytics de professores [PRIMEIRA VERSÃO EM 09/11/2026 — SIMULADOS E TEMPO DE ESTUDO]
     -  Desempenho da turma
     -  Média por questão
     -  Questões mais erradas
-    -  Conteúdos críticos
+    -  Conteúdos críticos (por disciplina/questão; tópico ainda não)
     -  Evolução
     -  Participação
     -  Tempo de estudo
     -  Alunos em risco
-41. 41. Alertas pedagógicos
-    -  Queda de desempenho
-    -  Muitos erros seguidos
-    -  Falta de atividade
-    -  Conteúdo com dificuldade coletiva
-    -  Aluno há muitos dias sem estudar
-    -  Meta atrasada
-    -  Recomendação de intervenção
+41. 41. Alertas pedagógicos [PARCIAL EM 09/11/2026 — SINAIS CALCULADOS NA LEITURA, SEM HISTÓRICO]
+    -  Queda de desempenho [PENDENTE — exige comparação com período anterior]
+    -  Muitos erros seguidos [IMPLEMENTADO]
+    -  Falta de atividade [IMPLEMENTADO]
+    -  Conteúdo com dificuldade coletiva [IMPLEMENTADO — POR DISCIPLINA/QUESTÃO]
+    -  Aluno há muitos dias sem estudar [IMPLEMENTADO]
+    -  Meta atrasada [PENDENTE — depende do item 52]
+    -  Recomendação de intervenção [IMPLEMENTADO — TEXTO SUGERIDO, SEM PERSISTÊNCIA]
 42. 42. Plano automático de recuperação
     -  Detectar dificuldade
     -  Escolher conteúdo de reforço

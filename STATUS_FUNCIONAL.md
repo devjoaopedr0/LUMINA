@@ -2,6 +2,17 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
+## Atualização de 09/11/2026 — Fase 3: acompanhamento pedagógico do professor
+
+- **Nova rota `/app/acompanhamento`:** o professor vê participação, média de acerto, tempo de estudo, evolução diária, questões mais difíceis e sinais pedagógicos por turma. O atalho **Acompanhamento analítico** foi adicionado ao painel do professor.
+- **Endpoint `GET /institutional-analytics/teacher`:** aceita `days` (7–180) e `classId` opcional. A consulta parte apenas das turmas em que o professor está vinculado; um `classId` de outra pessoa retorna 404 para não revelar a existência da turma.
+- **Indicadores:** resumo consolidado sem duplicar aluno no total, cartões por turma, tabela de alunos com último acesso, sequência de erros e motivos de risco, agregação por questão/disciplina e evolução por dia de calendário de Brasília. A ausência de respostas aparece como `—`, não como 0%.
+- **Sinais pedagógicos:** desempenho abaixo de 60%, inatividade há mais de 7 dias, sequência de 3+ erros, turma com média baixa e questão com menos de 60% de acerto (mínimo de 3 respostas). Cada sinal traz uma sugestão de intervenção. Nesta entrega os sinais são calculados na leitura, sem tabela, histórico, reconhecimento ou atribuição de responsável.
+- **Exportação:** a tela gera CSV dos alunos da seleção, com acerto, tempo, risco e motivos. O relatório pedagógico persistido e o plano automático de recuperação continuam pendentes.
+- **Privacidade e escopo:** somente perfil de professor acessa o endpoint; coordenação e direção continuam usando os painéis institucionais existentes. Nenhum dado de outro professor é consultado.
+- **Testes:** 6 testes de backend para consolidação, agregação por `questionId`, ausência de dados, bloqueio de aluno e 404 de turma alheia; novo check puro do app para percentuais, minutos, ordenação de sinais e CSV. **Sem migration.**
+- **Documentação:** detalhes em [docs/ACOMPANHAMENTO_PEDAGOGICO.md](docs/ACOMPANHAMENTO_PEDAGOGICO.md).
+
 ## Atualização de 08/11/2026 — Correções da revisão espaçada
 
 - **Fuso correto:** o dia da revisão é o de Brasília, gravado como meia-noite UTC. Vencimento compara data com data, não instante com `new Date()`. Às 20:59/21:00 de Brasília “amanhã” continua sendo o dia seguinte local, sem pular um dia quando o UTC vira.
