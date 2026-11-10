@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   History,
+  Layers,
   Loader2,
   LogOut,
   NotebookPen,
@@ -20,6 +21,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  apiCreateFlashcardFromError,
   apiGetErrorNotebook,
   apiGetErrorNotebookSummary,
   apiGetQuestion,
@@ -95,6 +97,8 @@ function EntradaCaderno({ entrada, hoje, aoSalvar, aoRemover, aoResponder }: Ent
   const [rever, setRever] = useState(false);
   const [questao, setQuestao] = useState<Question | null>(null);
   const [carregandoQuestao, setCarregandoQuestao] = useState(false);
+  const [criandoFlashcard, setCriandoFlashcard] = useState(false);
+  const [flashcardCriado, setFlashcardCriado] = useState(false);
 
   // Depois de salvar, a entrada que vem do servidor é a verdade — inclusive
   // quando o servidor aparou o texto da observação.
@@ -140,6 +144,28 @@ function EntradaCaderno({ entrada, hoje, aoSalvar, aoRemover, aoResponder }: Ent
     if (falha) {
       setErro(falha);
       setSalvando(null);
+    }
+  }
+
+  async function criarFlashcard() {
+    const token = getAccessToken();
+    if (!token) {
+      setErro("Sua sessão expirou. Entre novamente para criar o flashcard.");
+      return;
+    }
+    setCriandoFlashcard(true);
+    setErro(null);
+    try {
+      await apiCreateFlashcardFromError(token, entrada.questionId);
+      setFlashcardCriado(true);
+    } catch (err) {
+      setErro(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível criar o flashcard desta questão."
+      );
+    } finally {
+      setCriandoFlashcard(false);
     }
   }
 
@@ -349,6 +375,20 @@ function EntradaCaderno({ entrada, hoje, aoSalvar, aoRemover, aoResponder }: Ent
           type="button"
           variant="outline"
           size="sm"
+          onClick={() => void criarFlashcard()}
+          disabled={criandoFlashcard || flashcardCriado}
+        >
+          {criandoFlashcard ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Layers className="h-4 w-4" />
+          )}
+          {flashcardCriado ? "Flashcard criado" : "Criar flashcard"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
           onClick={remover}
           disabled={salvando !== null}
           aria-label="Remover do caderno de erros"
@@ -366,6 +406,16 @@ function EntradaCaderno({ entrada, hoje, aoSalvar, aoRemover, aoResponder }: Ent
           entrou no caderno.
         </span>
       </div>
+
+      {flashcardCriado && (
+        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-success/10 px-3 py-2 text-xs font-medium text-success">
+          <CheckCircle2 className="h-4 w-4" />
+          Flashcard criado com o gabarito desta questão.
+          <Link to="/app/flashcards" className="font-semibold underline underline-offset-2">
+            Revisar agora
+          </Link>
+        </p>
+      )}
 
       {rever && (
         <div className="mt-5 border-t border-surface-line pt-5" data-notebook-resolution>

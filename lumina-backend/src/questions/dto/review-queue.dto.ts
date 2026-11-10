@@ -1,13 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * De onde vem o item da central de revisões. `FLASHCARD` fica reservado para
- * quando o item 32 existir; hoje nenhum item é inventado com esse tipo.
+ * De onde vem o item da central de revisões. `FLASHCARD` é a revisão espaçada
+ * do cartão criado no item 32.
  */
-export type ReviewQueueKind = 'TOPIC' | 'ERROR_NOTEBOOK' | 'MARKED_QUESTION';
+export type ReviewQueueKind = 'TOPIC' | 'ERROR_NOTEBOOK' | 'FLASHCARD' | 'MARKED_QUESTION';
 
 export class ReviewQueueItemDto {
-  @ApiProperty({ enum: ['TOPIC', 'ERROR_NOTEBOOK', 'MARKED_QUESTION'] })
+  @ApiProperty({ enum: ['TOPIC', 'ERROR_NOTEBOOK', 'FLASHCARD', 'MARKED_QUESTION'] })
   kind: ReviewQueueKind;
 
   @ApiProperty({ description: 'Identificador estável dentro do tipo (id do domínio ou da questão).' })
@@ -72,7 +72,7 @@ export class ReviewQueueItemDto {
 }
 
 export class ReviewQueueDueDto {
-  @ApiProperty({ description: 'Tópicos vencidos + questões do caderno vencidas.' })
+  @ApiProperty({ description: 'Tópicos vencidos + questões do caderno + flashcards vencidas.' })
   total: number;
 
   @ApiProperty()
@@ -80,6 +80,9 @@ export class ReviewQueueDueDto {
 
   @ApiProperty()
   errorNotebook: number;
+
+  @ApiProperty()
+  flashcards: number;
 
   @ApiProperty({ type: [ReviewQueueItemDto] })
   items: ReviewQueueItemDto[];

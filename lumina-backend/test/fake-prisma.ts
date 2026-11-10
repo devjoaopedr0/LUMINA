@@ -26,6 +26,8 @@ export function createFakePrisma() {
   const exams: any[] = [];
   const progress: any[] = [];
   const notebookEntries: any[] = [];
+  const flashcards: any[] = [];
+  const flashcardReviews: any[] = [];
   const topicMasteries: any[] = [];
   const topicMasteryHistory: any[] = [];
   let counter = 0;
@@ -63,7 +65,19 @@ export function createFakePrisma() {
     for (const [key, value] of Object.entries(select)) {
       if (value === true) out[key] = row[key];
       else if (value && typeof value === 'object' && 'select' in value) {
-        out[key] = project(row[key], value.select);
+        const spec = value as { select: any; where?: { isCorrect?: boolean }; take?: number };
+        let nested = row[key];
+        if (Array.isArray(nested)) {
+          if (spec.where?.isCorrect !== undefined) {
+            nested = nested.filter((item: any) => item.isCorrect === spec.where!.isCorrect);
+          }
+          const take = spec.take ?? Infinity;
+          out[key] = nested
+            .slice(0, take)
+            .map((item: any) => project(item, spec.select));
+        } else {
+          out[key] = project(nested, spec.select);
+        }
       }
     }
     return out;
@@ -76,7 +90,16 @@ export function createFakePrisma() {
     const question = questions.find((q) => q.id === entry.questionId) ?? null;
     const questionSelect = include?.question?.select ?? select?.question?.select;
     const wantsQuestion = Boolean(include?.question) || Boolean(select?.question);
-    const base = wantsQuestion ? { ...entry, question: project(question, questionSelect) } : entry;
+    const source =
+      question && questionSelect?.alternatives
+        ? {
+            ...question,
+            alternatives: alternatives
+              .filter((a) => a.questionId === question.id)
+              .sort((a, b) => a.position - b.position),
+          }
+        : question;
+    const base = wantsQuestion ? { ...entry, question: project(source, questionSelect) } : entry;
     return project(base, select);
   };
 
@@ -88,6 +111,54 @@ export function createFakePrisma() {
           ? (entry[key] ?? 0) + value.increment
           : value;
     }
+  };
+
+  const withFlashcardRefs = (row: any, include: any, select: any) => {
+    const wantsSubject = Boolean(include?.subject || select?.subject);
+    const wantsTopic = Boolean(include?.topic || select?.topic);
+    const subjectSelect = include?.subject?.select ?? select?.subject?.select;
+    const topicSelect = include?.topic?.select ?? select?.topic?.select;
+    const base = {
+      ...row,
+      ...(wantsSubject
+        ? { subject: project(subjects.find((s) => s.id === row.subjectId) ?? null, subjectSelect) }
+        : {}),
+      ...(wantsTopic
+        ? { topic: project(topics.find((t) => t.id === row.topicId) ?? null, topicSelect) }
+        : {}),
+    };
+    return project(base, select);
+  };
+
+  const matchesFlashcardWhere = (where: any, row: any): boolean => {
+    if (!where) return true;
+    if (where.userId && row.userId !== where.userId) return false;
+    if (where.id && row.id !== where.id) return false;
+    if (where.subjectId && row.subjectId !== where.subjectId) return false;
+    if (where.topicId && row.topicId !== where.topicId) return false;
+    if (where.source && row.source !== where.source) return false;
+    if (where.sourceQuestionId && row.sourceQuestionId !== where.sourceQuestionId) return false;
+    if (where.reviewCount !== undefined && row.reviewCount !== where.reviewCount) return false;
+    if ('nextReviewAt' in where) {
+      const filter = where.nextReviewAt;
+      if (filter === null) {
+        if (row.nextReviewAt !== null) return false;
+      } else if (filter) {
+        if (filter.lte && !(row.nextReviewAt && row.nextReviewAt <= filter.lte)) return false;
+        if (filter.gt && !(row.nextReviewAt && row.nextReviewAt > filter.gt)) return false;
+        if (filter.not === null && row.nextReviewAt === null) return false;
+      }
+    }
+    return true;
+  };
+
+  const matchesFlashcardReviewWhere = (where: any, row: any): boolean => {
+    if (!where) return true;
+    if (where.userId && row.userId !== where.userId) return false;
+    if (where.flashcardId && row.flashcardId !== where.flashcardId) return false;
+    if (where.rating?.not && row.rating === where.rating.not) return false;
+    if (where.reviewedAt?.gte && row.reviewedAt < where.reviewedAt.gte) return false;
+    return true;
   };
 
   /** Filtro de `error_notebook_entries`: usuário, situação, motivo, revisão
@@ -727,6 +798,15 @@ export function createFakePrisma() {
         if (!entry) return null;
         return withNotebookQuestion(entry, include, select);
       }),
+      findFirst: vi.fn(async ({ where, include, select }: any) => {
+        const entry = notebookEntries.find(
+          (e) =>
+            (!where?.userId || e.userId === where.userId) &&
+            (!where?.questionId || e.questionId === where.questionId),
+        );
+        if (!entry) return null;
+        return withNotebookQuestion(entry, include, select);
+      }),
       create: vi.fn(async ({ data, include, select }: any) => {
         const now = new Date();
         const entry = {
@@ -813,6 +893,105 @@ export function createFakePrisma() {
       }),
       count: vi.fn(async ({ where }: any) =>
         notebookEntries.filter((e) => matchesNotebookWhere(where, e)).length,
+      ),
+    },
+    flashcard: {
+      create: vi.fn(async ({ data, include, select }: any) => {
+        const now = new Date();
+        const row = {
+          id: nextId('flashcard'),
+          userId: data.userId,
+          subjectId: data.subjectId ?? null,
+          topicId: data.topicId ?? null,
+          sourceQuestionId: data.sourceQuestionId ?? null,
+          source: data.source ?? 'MANUAL',
+          front: data.front,
+          back: data.back,
+          metadata: data.metadata ?? null,
+          reviewCount: data.reviewCount ?? 0,
+          correctCount: data.correctCount ?? 0,
+          streak: data.streak ?? 0,
+          intervalDays: data.intervalDays ?? 0,
+          easeFactor: data.easeFactor ?? 2.5,
+          nextReviewAt: data.nextReviewAt ?? null,
+          lastReviewedAt: data.lastReviewedAt ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        flashcards.push(row);
+        return withFlashcardRefs(row, include, select);
+      }),
+      findFirst: vi.fn(async ({ where, include, select }: any) => {
+        const row = flashcards.find((f) => matchesFlashcardWhere(where, f));
+        return row ? withFlashcardRefs(row, include, select) : null;
+      }),
+      findUnique: vi.fn(async ({ where, include, select }: any) => {
+        const row = flashcards.find((f) => f.id === where.id);
+        return row ? withFlashcardRefs(row, include, select) : null;
+      }),
+      findMany: vi.fn(async ({ where, include, select, take = Infinity }: any) => {
+        const list = flashcards
+          .filter((f) => matchesFlashcardWhere(where, f))
+          .sort((a, b) => {
+            const left = a.nextReviewAt?.getTime() ?? 0;
+            const right = b.nextReviewAt?.getTime() ?? 0;
+            return left - right || b.createdAt.getTime() - a.createdAt.getTime();
+          })
+          .slice(0, take);
+        return list.map((row) => withFlashcardRefs(row, include, select));
+      }),
+      count: vi.fn(async ({ where }: any) =>
+        flashcards.filter((f) => matchesFlashcardWhere(where, f)).length,
+      ),
+      update: vi.fn(async ({ where, data, include, select }: any) => {
+        const row = flashcards.find((f) => f.id === where.id);
+        if (!row) return null;
+        Object.assign(row, data, { updatedAt: new Date() });
+        return withFlashcardRefs(row, include, select);
+      }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        let count = 0;
+        for (const row of flashcards) {
+          if (!matchesFlashcardWhere(where, row)) continue;
+          if (where.updatedAt && row.updatedAt.getTime() !== where.updatedAt.getTime()) continue;
+          Object.assign(row, data, { updatedAt: new Date() });
+          count += 1;
+        }
+        return { count };
+      }),
+      delete: vi.fn(async ({ where }: any) => {
+        const index = flashcards.findIndex((f) => f.id === where.id);
+        if (index < 0) return null;
+        const [row] = flashcards.splice(index, 1);
+        for (let i = flashcardReviews.length - 1; i >= 0; i--) {
+          if (flashcardReviews[i].flashcardId === row.id) flashcardReviews.splice(i, 1);
+        }
+        return row;
+      }),
+    },
+    flashcardReview: {
+      create: vi.fn(async ({ data }: any) => {
+        const row = {
+          id: nextId('flashcard-review'),
+          flashcardId: data.flashcardId,
+          userId: data.userId,
+          rating: data.rating,
+          reviewedAt: data.reviewedAt ?? new Date(),
+          intervalDays: data.intervalDays,
+          easeFactor: data.easeFactor,
+          nextReviewAt: data.nextReviewAt ?? null,
+        };
+        flashcardReviews.push(row);
+        return row;
+      }),
+      findMany: vi.fn(async ({ where, take = Infinity }: any) =>
+        flashcardReviews
+          .filter((r) => matchesFlashcardReviewWhere(where, r))
+          .sort((a, b) => b.reviewedAt.getTime() - a.reviewedAt.getTime())
+          .slice(0, take),
+      ),
+      count: vi.fn(async ({ where }: any) =>
+        flashcardReviews.filter((r) => matchesFlashcardReviewWhere(where, r)).length,
       ),
     },
     topicMastery: {

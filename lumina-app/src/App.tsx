@@ -11,6 +11,7 @@ import { ConfirmEmail } from "@/pages/ConfirmEmail";
 import { QuestionBank } from "@/pages/QuestionBank";
 import { ErrorNotebookPage } from "@/pages/ErrorNotebook";
 import { ReviewCenterPage } from "@/pages/ReviewCenterPage";
+import { FlashcardsPage } from "@/pages/FlashcardsPage";
 import { WebQuestionSearch } from "@/pages/WebQuestionSearch";
 import { StudySchedulePage } from "@/pages/StudySchedulePage";
 import { Profile } from "@/pages/Profile";
@@ -113,6 +114,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ReviewCenterPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/flashcards"
+          element={
+            <ProtectedRoute>
+              <FlashcardsPage />
             </ProtectedRoute>
           }
         />
