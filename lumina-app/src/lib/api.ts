@@ -929,8 +929,126 @@ export interface TeacherDashboard {
     students: Array<{ id: string; name: string; email: string; joinedAt: string; submissions: number; accuracy: number; alert: boolean }>;
     weakSubjects: Array<{ subject: string; attempts: number; accuracy: number }>;
   }>;
-}export const apiSimulationClasses = (token: string): Promise<SimulationClass[]> => request('/simulations/classes', { headers: authHeaders(token) });
+}
+
+export type TeacherAnalyticsRiskLevel = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
+export type TeacherAnalyticsSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type TeacherAnalyticsSignalKind =
+  | 'CLASS_LOW_ACCURACY'
+  | 'STUDENT_LOW_ACCURACY'
+  | 'STUDENT_INACTIVITY'
+  | 'STUDENT_ERROR_STREAK'
+  | 'DIFFICULT_QUESTION';
+
+export interface TeacherAnalyticsRiskReason {
+  kind: TeacherAnalyticsSignalKind;
+  label: string;
+  severity: TeacherAnalyticsSeverity;
+}
+
+export interface TeacherAnalyticsStudent {
+  id: string;
+  name: string;
+  email: string;
+  joinedAt: string;
+  submissions: number;
+  answerCount: number;
+  correctCount: number;
+  accuracy: number | null;
+  studyMinutes: number;
+  lastActivityAt: string | null;
+  errorStreak: number;
+  riskLevel: TeacherAnalyticsRiskLevel;
+  riskReasons: TeacherAnalyticsRiskReason[];
+}
+
+export interface TeacherAnalyticsQuestion {
+  key: string;
+  questionId: string | null;
+  stem: string;
+  subject: string;
+  simulationCount: number;
+  attempts: number;
+  correctCount: number;
+  blankCount: number;
+  accuracy: number | null;
+}
+
+export interface TeacherAnalyticsClass {
+  id: string;
+  name: string;
+  joinCode: string;
+  studentCount: number;
+  activeStudentCount: number;
+  participationRate: number;
+  submissionCount: number;
+  answerCount: number;
+  correctCount: number;
+  accuracy: number | null;
+  studyMinutes: number;
+  studentsAtRisk: number;
+  lastActivityAt: string | null;
+  students: TeacherAnalyticsStudent[];
+  difficultQuestions: TeacherAnalyticsQuestion[];
+}
+
+export interface TeacherAnalyticsSignal {
+  id: string;
+  kind: TeacherAnalyticsSignalKind;
+  severity: TeacherAnalyticsSeverity;
+  classId: string | null;
+  className: string | null;
+  studentId: string | null;
+  studentName: string | null;
+  questionKey: string | null;
+  subject: string | null;
+  title: string;
+  detail: string;
+  recommendation: string;
+  metric: number | null;
+}
+
+export interface TeacherAnalyticsEvolutionPoint {
+  day: string;
+  submissions: number;
+  answers: number;
+  correctCount: number;
+  accuracy: number | null;
+  studyMinutes: number;
+}
+
+export interface TeacherAnalyticsResult {
+  generatedAt: string;
+  period: { days: number; from: string; to: string };
+  summary: {
+    classCount: number;
+    studentCount: number;
+    activeStudentCount: number;
+    participationRate: number;
+    submissionCount: number;
+    answerCount: number;
+    correctCount: number;
+    accuracy: number | null;
+    studyMinutes: number;
+    studentsAtRisk: number;
+    questionCount: number;
+  };
+  classes: TeacherAnalyticsClass[];
+  questions: TeacherAnalyticsQuestion[];
+  subjects: Array<{ subject: string; attempts: number; correctCount: number; accuracy: number | null }>;
+  evolution: TeacherAnalyticsEvolutionPoint[];
+  signals: TeacherAnalyticsSignal[];
+}
+
+export const apiSimulationClasses = (token: string): Promise<SimulationClass[]> => request('/simulations/classes', { headers: authHeaders(token) });
 export const apiTeacherDashboard = (token: string): Promise<TeacherDashboard> => request('/simulations/teacher/dashboard', { headers: authHeaders(token) });
+export const apiTeacherAnalytics = (token: string, params?: { days?: number; classId?: string }): Promise<TeacherAnalyticsResult> => {
+  const query = new URLSearchParams();
+  if (params?.days) query.set('days', String(params.days));
+  if (params?.classId) query.set('classId', params.classId);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request(`/institutional-analytics/teacher${suffix}`, { headers: authHeaders(token) });
+};
 export const apiCoordinatorDashboard = (token: string): Promise<CoordinatorDashboard> => request('/simulations/coordinator/dashboard', { headers: authHeaders(token) });
 export const apiDirectorDashboard = (token: string): Promise<DirectorDashboard> => request('/simulations/director/dashboard', { headers: authHeaders(token) });
 export const apiUpdateDirectorMember = (token: string, memberId: string, data: { status?: 'ACTIVE' | 'SUSPENDED'; accountType?: 'TEACHER' | 'COORDINATOR'; subject?: string }): Promise<{ updated: true }> => request('/simulations/director/members/' + encodeURIComponent(memberId), { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data) });

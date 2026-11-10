@@ -28,6 +28,7 @@ import { EssayScanner } from "@/pages/EssayScanner";
 import { AnswerSheetPrint } from "@/pages/AnswerSheetPrint";
 import { AnswerSheetScanner } from "@/pages/AnswerSheetScanner";
 import { Classes } from "@/pages/Classes";
+import { TeacherAnalyticsPage } from "@/pages/TeacherAnalyticsPage";
 import { ClassInvite } from "@/pages/ClassInvite";
 import { SmartAnswerKey } from "@/pages/SmartAnswerKey";
 import { SmartAnswerKeySheet } from "@/pages/SmartAnswerKeySheet";
@@ -42,6 +43,7 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
+        <Route path="/app/acompanhamento" element={<ProtectedRoute><TeacherAnalyticsPage /></ProtectedRoute>} />
         <Route path="/app/gabarito-inteligente" element={<ProtectedRoute><SmartAnswerKey /></ProtectedRoute>} />
         <Route path="/app/gabarito-inteligente/:id/cartao" element={<ProtectedRoute><SmartAnswerKeySheet /></ProtectedRoute>} />
         <Route path="/app/turmas/convite/:token" element={<ProtectedRoute><ClassInvite /></ProtectedRoute>} />

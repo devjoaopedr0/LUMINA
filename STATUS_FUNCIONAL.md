@@ -2,17 +2,16 @@
 
 > **Como ler este documento.** Cada seção é o registro de uma entrega, da mais nova para a mais antiga, e uma entrada nova pode substituir o que uma antiga dizia. O resumo consolidado do estado atual, a legenda de status (Implementado · Parcial · Em andamento · Planejado · Futuro), a visão de longo prazo (Lumina Groups e Lumina Marketplace) e o roadmap em fases estão em [docs/ROADMAP_ECOSSISTEMA.md](docs/ROADMAP_ECOSSISTEMA.md).
 
-## Atualização de 09/11/2026 — Flashcards (item 32)
+## Atualização de 09/11/2026 — Fase 3: acompanhamento pedagógico do professor
 
-- **Cartão pessoal:** novo modelo `Flashcard` + `FlashcardReview`, sempre filtrado pelo `userId` da sessão. CRUD em `/flashcards`, resumo de domínio e histórico por cartão; cartão de outro aluno responde 404.
-- **Cinco origens:** criação manual, a partir do caderno de erros (gabarito/explicação lidos no servidor), a partir de conteúdo, a partir de PDF e com IA real. O caderno de erros ganhou o botão **Criar flashcard**.
-- **IA sem simulação:** `POST /flashcards/generate` e `/flashcards/generate/from-pdf` chamam o provedor configurado; sem `AI_PROVIDER` real a resposta é 503, e JSON inválido/falha do provedor é 502 sem gravar nada. Prompt versionado e modelo ficam nos metadados de auditoria; o conteúdo nasce `UNREVIEWED` e editável.
-- **PDF em memória:** limite de 8 MB, 40 páginas e 20.000 caracteres, com parser próprio de 16 MB. O arquivo não é armazenado nem versionado; PDF só de imagem não passa por OCR e a tela pede o texto.
-- **Revisão espaçada:** SM-2 simplificado (`AGAIN` 1 dia, `HARD` 1,2×, `GOOD` 1→3→fator, `EASY` 4 dias, facilidade 1,3–3,0), datas de Brasília e transação com versão para impedir revisão dupla. Cartões novos entram na fila de hoje.
-- **Fila unificada:** `GET /users/me/review-queue` passa a devolver `kind = FLASHCARD`, `due.flashcards` e o cartão na central de revisão, que abre `/app/flashcards?card=<id>`.
-- **Interface:** `/app/flashcards` com resumo, filtros, CRUD, revisão com quatro notas, histórico e geração por conteúdo/PDF; navegação no painel e atalho na central de revisões.
-- **Testes:** suíte de backend com **921 testes em 68 arquivos**, todos passando, incluindo algoritmo, geração, PDF, CRUD, histórico, isolamento e fila; app com o novo `flashcards.check.ts` (12º check). `typecheck`, `test`, `build` e `lint` do app passam (9 avisos preexistentes, 0 erros); backend `typecheck` e `test` passam. O `hookTimeout` do Vitest subiu para 60s porque o boot dos E2E passou a estourar 30s sob carga paralela.
-- **Migration:** `20261109120000_flashcards` (tabelas `flashcards` e `flashcard_reviews`, enums e índices). Detalhes em [docs/FLASHCARDS.md](docs/FLASHCARDS.md) e [docs/REVISAO_ESPACADA.md](docs/REVISAO_ESPACADA.md).
+- **Nova rota `/app/acompanhamento`:** o professor vê participação, média de acerto, tempo de estudo, evolução diária, questões mais difíceis e sinais pedagógicos por turma. O atalho **Acompanhamento analítico** foi adicionado ao painel do professor.
+- **Endpoint `GET /institutional-analytics/teacher`:** aceita `days` (7–180) e `classId` opcional. A consulta parte apenas das turmas em que o professor está vinculado; um `classId` de outra pessoa retorna 404 para não revelar a existência da turma.
+- **Indicadores:** resumo consolidado sem duplicar aluno no total, cartões por turma, tabela de alunos com último acesso, sequência de erros e motivos de risco, agregação por questão/disciplina e evolução por dia de calendário de Brasília. A ausência de respostas aparece como `—`, não como 0%.
+- **Sinais pedagógicos:** desempenho abaixo de 60%, inatividade há mais de 7 dias, sequência de 3+ erros, turma com média baixa e questão com menos de 60% de acerto (mínimo de 3 respostas). Cada sinal traz uma sugestão de intervenção. Nesta entrega os sinais são calculados na leitura, sem tabela, histórico, reconhecimento ou atribuição de responsável.
+- **Exportação:** a tela gera CSV dos alunos da seleção, com acerto, tempo, risco e motivos. O relatório pedagógico persistido e o plano automático de recuperação continuam pendentes.
+- **Privacidade e escopo:** somente perfil de professor acessa o endpoint; coordenação e direção continuam usando os painéis institucionais existentes. Nenhum dado de outro professor é consultado.
+- **Testes:** 6 testes de backend para consolidação, agregação por `questionId`, ausência de dados, bloqueio de aluno e 404 de turma alheia; novo check puro do app para percentuais, minutos, ordenação de sinais e CSV. **Sem migration.**
+- **Documentação:** detalhes em [docs/ACOMPANHAMENTO_PEDAGOGICO.md](docs/ACOMPANHAMENTO_PEDAGOGICO.md).
 
 ## Atualização de 08/11/2026 — Correções da revisão espaçada
 

@@ -23,7 +23,7 @@ import { AiModule } from './ai/ai.module';
 import { CutoffsModule } from './cutoffs/cutoffs.module';
 import { NotebooksModule } from './notebooks/notebooks.module';
 import { AnswerKeysModule } from './answer-keys/answer-keys.module';
-import { FlashcardsModule } from './flashcards/flashcards.module';
+import { InstitutionalAnalyticsModule } from './institutional-analytics/institutional-analytics.module';
 
 @Module({
   imports: [
@@ -54,7 +54,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
     CutoffsModule,
     NotebooksModule,
     AnswerKeysModule,
-    FlashcardsModule,
+    InstitutionalAnalyticsModule,
   ],
   providers: [
     RateLimitMiddleware,

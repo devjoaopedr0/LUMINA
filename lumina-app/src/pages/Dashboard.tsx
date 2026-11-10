@@ -477,7 +477,7 @@ export function Dashboard() {
             {coordinatorDashboard && <InviteManagementCard workspaceId={coordinatorDashboard.workspaceId} invites={invites} inviteForm={inviteForm} setInviteForm={setInviteForm} inviteBusy={inviteBusy} inviteError={inviteError} onCreate={createInvite} onRevoke={revokeInvite} />}
           </section>}
           {user?.accountType === 'TEACHER' && <section className="mt-6 space-y-6" aria-label="Painel do professor">
-            <div className="flex items-center justify-between gap-4"><p className="text-xs text-graphite-400">Atualização automática a cada 30 segundos</p><Button size="sm" variant="outline" onClick={exportTeacherReport} disabled={!teacherDashboard?.classes.length}>Exportar relatório CSV</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-graphite-400">Atualização automática a cada 30 segundos</p><div className="flex items-center gap-2"><Link to="/app/acompanhamento"><Button size="sm" variant="outline">Acompanhamento analítico</Button></Link><Button size="sm" variant="outline" onClick={exportTeacherReport} disabled={!teacherDashboard?.classes.length}>Exportar relatório CSV</Button></div></div>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[
               { label: 'Turmas', value: teacherDashboard?.summary.classCount ?? 0, icon: School },
               { label: 'Alunos', value: teacherDashboard?.summary.studentCount ?? 0, icon: Users },
