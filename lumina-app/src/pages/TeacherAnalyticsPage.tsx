@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -29,6 +29,7 @@ import {
 import { getAccessToken } from '@/lib/auth';
 import {
   classesSeveridade,
+  filtrarQuestoesDificeis,
   filtrarSinaisCriticos,
   formatarDataHora,
   formatarMinutos,
@@ -134,14 +135,19 @@ export function TeacherAnalyticsPage() {
   const [classId, setClassId] = useState('');
   const [classes, setClasses] = useState<SimulationClass[]>([]);
   const [data, setData] = useState<TeacherAnalyticsResult | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<{ days: number; classId: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const requestSeq = useRef(0);
 
   const token = getAccessToken();
   const isTeacher = user?.accountType === 'TEACHER';
+  const filtrosAtuais =
+    appliedFilters?.days === days && appliedFilters?.classId === classId;
 
   const carregar = useCallback(async () => {
     if (!token || !isTeacher) return;
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError('');
     try {
@@ -149,15 +155,18 @@ export function TeacherAnalyticsPage() {
         days,
         classId: classId || undefined,
       });
+      if (seq !== requestSeq.current) return;
       setData(result);
+      setAppliedFilters({ days, classId });
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(
         err instanceof ApiError
           ? err.message
           : 'Não foi possível carregar o acompanhamento pedagógico.',
       );
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [classId, days, isTeacher, token]);
 
@@ -183,7 +192,7 @@ export function TeacherAnalyticsPage() {
   const sinais = useMemo(() => (data ? ordenarSinais(data.signals) : []), [data]);
   const sinaisCriticos = useMemo(() => filtrarSinaisCriticos(sinais), [sinais]);
   const questoesDificeis = useMemo(
-    () => (data ? data.questions.filter((question) => question.attempts >= 3).slice(0, 12) : []),
+    () => (data ? filtrarQuestoesDificeis(data.questions) : []),
     [data],
   );
   const evolucao = useMemo(() => (data ? data.evolution.slice(-14) : []), [data]);
@@ -193,16 +202,18 @@ export function TeacherAnalyticsPage() {
   );
 
   function exportarCsv() {
-    if (!data) return;
+    if (!data || !filtrosAtuais) return;
     const blob = new Blob(['\ufeff', gerarCsvAlunos(data)], {
       type: 'text/csv;charset=utf-8',
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `acompanhamento-${data.period.days}d.csv`;
+    link.download = `acompanhamento-${data.period.days}d-${data.period.to.slice(0, 10)}.csv`;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   return (
@@ -221,41 +232,48 @@ export function TeacherAnalyticsPage() {
               Os indicadores usam apenas dados das turmas em que você está vinculado.
             </p>
           </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs font-semibold text-graphite-500">
-              Período
-              <select
-                className="mt-1 block rounded-lg border border-surface-line bg-white px-3 py-2 text-sm font-normal text-graphite"
-                value={days}
-                onChange={(event) => setDays(Number(event.target.value))}
+          {isTeacher && (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs font-semibold text-graphite-500">
+                Período
+                <select
+                  className="mt-1 block rounded-lg border border-surface-line bg-white px-3 py-2 text-sm font-normal text-graphite"
+                  value={days}
+                  onChange={(event) => setDays(Number(event.target.value))}
+                >
+                  {PERIODOS.map((period) => (
+                    <option key={period.value} value={period.value}>{period.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-graphite-500">
+                Turma
+                <select
+                  className="mt-1 block min-w-44 rounded-lg border border-surface-line bg-white px-3 py-2 text-sm font-normal text-graphite"
+                  value={classId}
+                  onChange={(event) => setClassId(event.target.value)}
+                >
+                  <option value="">Todas as minhas turmas</option>
+                  {classes.map((classRoom) => (
+                    <option key={classRoom.id} value={classRoom.id}>{classRoom.name}</option>
+                  ))}
+                </select>
+              </label>
+              <Button type="button" variant="outline" onClick={() => void carregar()} disabled={loading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={exportarCsv}
+                disabled={!data || loading || !filtrosAtuais}
               >
-                {PERIODOS.map((period) => (
-                  <option key={period.value} value={period.value}>{period.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs font-semibold text-graphite-500">
-              Turma
-              <select
-                className="mt-1 block min-w-44 rounded-lg border border-surface-line bg-white px-3 py-2 text-sm font-normal text-graphite"
-                value={classId}
-                onChange={(event) => setClassId(event.target.value)}
-              >
-                <option value="">Todas as minhas turmas</option>
-                {classes.map((classRoom) => (
-                  <option key={classRoom.id} value={classRoom.id}>{classRoom.name}</option>
-                ))}
-              </select>
-            </label>
-            <Button type="button" variant="outline" onClick={() => void carregar()} disabled={loading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
-            <Button type="button" variant="outline" onClick={exportarCsv} disabled={!data}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar alunos
-            </Button>
-          </div>
+                <Download className="mr-2 h-4 w-4" />
+                Exportar alunos
+              </Button>
+            </div>
+          )}
         </div>
 
         {!isTeacher && (
@@ -270,6 +288,14 @@ export function TeacherAnalyticsPage() {
         {error && (
           <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+          </p>
+        )}
+
+        {data && appliedFilters && !filtrosAtuais && (
+          <p role="status" className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Exibindo os dados de {appliedFilters.days} dias
+            {appliedFilters.classId ? ' para a turma selecionada anteriormente' : ' de todas as turmas'}.
+            Atualize para aplicar o novo filtro; a exportação fica bloqueada até a atualização.
           </p>
         )}
 
@@ -340,7 +366,7 @@ export function TeacherAnalyticsPage() {
                 </Card>
               ) : (
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  {sinais.slice(0, 14).map((signal) => (
+                  {sinais.map((signal) => (
                     <SignalCard key={signal.id} signal={signal} />
                   ))}
                 </div>
@@ -374,7 +400,7 @@ export function TeacherAnalyticsPage() {
                         </div>
                         <span className="text-xs text-graphite-400">
                           {formatarPercentual(point.accuracy)} • {formatarMinutos(point.studyMinutes)}
-                          <span className="ml-1 text-graphite-300">({point.submissions} entrega(s))</span>
+                          <span className="ml-1 text-graphite-400">({point.submissions} entrega(s))</span>
                         </span>
                       </div>
                     ))}
@@ -401,7 +427,7 @@ export function TeacherAnalyticsPage() {
                           style={{ height: `${Math.max(4, (point.studyMinutes / maxEstudo) * 100)}%` }}
                           title={`${point.day}: ${formatarMinutos(point.studyMinutes)}`}
                         />
-                        <span className="text-[10px] text-graphite-300">
+                        <span className="text-[10px] text-graphite-400">
                           {new Date(`${point.day}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit' })}
                         </span>
                       </div>
@@ -462,6 +488,14 @@ export function TeacherAnalyticsPage() {
               <p className="text-sm text-graphite-500">
                 {resumoParticipacao(data.summary.activeStudentCount, data.summary.studentCount)} no período selecionado.
               </p>
+              {data.classes.length === 0 && (
+                <Card className="mt-4 bg-white">
+                  <p className="text-sm text-graphite-500">
+                    Nenhuma turma ativa vinculada ao seu perfil. Crie ou entre em uma turma para
+                    começar o acompanhamento.
+                  </p>
+                </Card>
+              )}
               <div className="mt-4 space-y-5">
                 {data.classes.map((classRoom) => (
                   <Card key={classRoom.id} className="bg-white">
