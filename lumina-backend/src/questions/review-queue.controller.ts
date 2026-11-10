@@ -7,10 +7,10 @@ import { ReviewQueueResponseDto } from './dto/review-queue.dto';
 import { ReviewQueueService } from './review-queue.service';
 
 /**
- * Fila diária de revisões do aluno. Lê as três fontes que já existem
- * (domínio por tópico, caderno de erros e marcação manual) em uma resposta só,
- * para a central de revisões e o aviso do painel não precisarem repetir a
- * regra de vencimento em cada tela.
+ * Fila diária de revisões do aluno. Lê as quatro fontes (domínio por tópico,
+ * caderno de erros, flashcards e marcação manual) em uma resposta só, para a
+ * central de revisões e o aviso do painel não precisarem repetir a regra de
+ * vencimento em cada tela.
  */
 @ApiTags('review-queue')
 @Controller('users/me/review-queue')

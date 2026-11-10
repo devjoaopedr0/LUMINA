@@ -70,6 +70,8 @@ model User {
   essayFeedbacks         EssayFeedback[]             @relation("EssayFeedbackAuthor")
   formulas               Formula[]
   repertoires            Repertoire[]
+  flashcards             Flashcard[]
+  flashcardReviews       FlashcardReview[]
 
   @@map("users")
 }
@@ -565,6 +567,7 @@ model Subject {
   topics         Topic[]        @relation("TopicSubject")
   classes        Class[]
   topicMasteries TopicMastery[]
+  flashcards     Flashcard[]
 
   @@map("subjects")
 }
@@ -583,6 +586,7 @@ model Topic {
   masteryHistory TopicMasteryHistory[]
   studyTasks     StudyTask[]
   lesson         TopicLesson?
+  flashcards     Flashcard[]
 
   @@unique([subjectId, name])
   @@index([subjectId])
@@ -740,6 +744,7 @@ model Question {
   scanResults        QuestionScanResult[]
   examPaperQuestions ExamPaperQuestion[]
   answerKeyItems     AnswerKeyItem[]
+  flashcards         Flashcard[]
 
   @@index([workspaceId])
   @@index([workspaceId, subject])
@@ -966,6 +971,79 @@ model ErrorNotebookEntry {
   @@index([userId, reviewScheduledAt])
   @@index([questionId])
   @@map("error_notebook_entries")
+}
+
+/// Item 32 do inventário: flashcard pessoal. O cartão é do aluno, não do
+/// workspace: pode vir de uma questão acessível (erro), de texto digitado ou
+/// de uma geração da LuminIA, mas a revisão é sempre individual.
+enum FlashcardSource {
+  MANUAL
+  ERROR_NOTEBOOK
+  AI
+}
+
+/// Nota da revisão. `AGAIN` significa que o aluno não lembrou; `HARD`,
+/// `GOOD` e `EASY` significam que lembrou, com esforço decrescente.
+enum FlashcardRating {
+  AGAIN
+  HARD
+  GOOD
+  EASY
+}
+
+model Flashcard {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String          @map("user_id") @db.Uuid
+  subjectId        String?         @map("subject_id") @db.Uuid
+  topicId          String?         @map("topic_id") @db.Uuid
+  /// Questão de origem quando o cartão foi criado a partir de um erro.
+  sourceQuestionId String?         @map("source_question_id") @db.Uuid
+  source           FlashcardSource @default(MANUAL)
+  front            String
+  back             String
+  /// Metadados de geração/auditoria (modelo, prompt, status de revisão).
+  metadata         Json?
+  reviewCount      Int             @default(0) @map("review_count")
+  correctCount     Int             @default(0) @map("correct_count")
+  /// Acertos seguidos em GOOD/EASY; AGAIN e HARD reiniciam.
+  streak           Int             @default(0)
+  intervalDays     Int             @default(0) @map("interval_days")
+  easeFactor       Float           @default(2.5) @map("ease_factor")
+  nextReviewAt     DateTime?       @map("next_review_at")
+  lastReviewedAt   DateTime?       @map("last_reviewed_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject          Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topic            Topic?          @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  sourceQuestion   Question?       @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
+  reviews          FlashcardReview[]
+
+  @@unique([userId, sourceQuestionId])
+  @@index([userId, nextReviewAt])
+  @@index([userId, subjectId])
+  @@index([userId, topicId])
+  @@map("flashcards")
+}
+
+/// Histórico de revisões: uma linha por resposta do aluno. É a partir dele que
+/// a interface mostra a curva de retenção e a evolução do intervalo, sem
+/// reescrever o passado quando o cartão é editado.
+model FlashcardReview {
+  id           String          @id @default(uuid()) @db.Uuid
+  flashcardId  String          @map("flashcard_id") @db.Uuid
+  userId       String          @map("user_id") @db.Uuid
+  rating       FlashcardRating
+  reviewedAt   DateTime        @default(now()) @map("reviewed_at")
+  intervalDays Int             @map("interval_days")
+  easeFactor   Float           @map("ease_factor")
+  nextReviewAt DateTime?       @map("next_review_at")
+  flashcard    Flashcard       @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([flashcardId, reviewedAt])
+  @@index([userId, reviewedAt])
+  @@map("flashcard_reviews")
 }
 
 enum UserStatus {

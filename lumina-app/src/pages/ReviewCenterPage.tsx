@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Layers,
   Loader2,
   LogOut,
   NotebookPen,
@@ -182,6 +183,12 @@ function ReviewItemCard({ item, agora, aoResponder, aoAtualizar }: ReviewItemCar
               Praticar tópico <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
+        ) : item.kind === "FLASHCARD" ? (
+          <Link to={`/app/flashcards?card=${encodeURIComponent(item.id)}`}>
+            <Button size="sm">
+              <Layers className="h-4 w-4" /> Revisar cartão
+            </Button>
+          </Link>
         ) : (
           <Button
             size="sm"
@@ -211,6 +218,13 @@ function ReviewItemCard({ item, agora, aoResponder, aoAtualizar }: ReviewItemCar
             className="inline-flex items-center gap-1.5 rounded-xl border border-surface-line px-3 py-2 text-xs font-semibold text-graphite-500 transition hover:border-primary/40 hover:text-graphite"
           >
             Ver no banco <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        ) : item.kind === "FLASHCARD" ? (
+          <Link
+            to="/app/flashcards"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-surface-line px-3 py-2 text-xs font-semibold text-graphite-500 transition hover:border-primary/40 hover:text-graphite"
+          >
+            <Layers className="h-3.5 w-3.5" /> Meus flashcards
           </Link>
         ) : null}
       </div>
@@ -343,8 +357,9 @@ export function ReviewCenterPage() {
               Revisão espaçada
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-graphite-500">
-              O que venceu no domínio por tópico, no caderno de erros e nas
-              questões que você marcou para retomar — em uma fila só.
+              O que venceu no domínio por tópico, no caderno de erros, nos
+              flashcards e nas questões que você marcou para retomar — em uma
+              fila só.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={atualizarFila} disabled={carregando}>
@@ -384,11 +399,12 @@ export function ReviewCenterPage() {
           </section>
         )}
 
-        <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Resumo das revisões">
+        <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Resumo das revisões">
           {[
             { label: "Vencidas hoje", value: fila?.due.total ?? 0, icon: Clock3 },
             { label: "Tópicos", value: fila?.due.topics ?? 0, icon: CalendarClock },
             { label: "Caderno de erros", value: fila?.due.errorNotebook ?? 0, icon: NotebookPen },
+            { label: "Flashcards", value: fila?.due.flashcards ?? 0, icon: Layers },
             { label: "Fila manual", value: fila?.manual.total ?? 0, icon: BookOpenCheck },
           ].map(({ label, value, icon: Icon }) => (
             <Card key={label} className="bg-white p-5">
@@ -447,8 +463,8 @@ export function ReviewCenterPage() {
 
             {fila?.due.truncated && (
               <p className="text-xs text-graphite-400">
-                Mostrando os primeiros itens. Abra o caderno de erros ou o banco
-                de questões para ver o restante da fila.
+                Mostrando os primeiros itens. Abra os flashcards, o caderno de
+                erros ou o banco de questões para ver o restante da fila.
               </p>
             )}
           </div>

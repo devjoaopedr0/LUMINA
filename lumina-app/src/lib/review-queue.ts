@@ -35,6 +35,7 @@ export function descreverVencimento(
 export function rotuloOrigem(kind: ReviewQueueKind): string {
   if (kind === 'TOPIC') return 'Tópico';
   if (kind === 'ERROR_NOTEBOOK') return 'Caderno de erros';
+  if (kind === 'FLASHCARD') return 'Flashcard';
   return 'Marcada por você';
 }
 
@@ -50,6 +51,12 @@ export function detalheDoItem(item: ReviewQueueItem): string {
     const erros = item.wrongAttempts ?? 1;
     // Espelha ERROR_NOTEBOOK_MASTERED_STREAK do servidor.
     return `${erros} erro${erros === 1 ? '' : 's'} · ${item.correctStreak ?? 0} de 2 acertos seguidos`;
+  }
+  if (item.kind === 'FLASHCARD') {
+    if (!item.attempts) return 'Cartão novo · primeira revisão hoje';
+    return `${item.attempts} ${item.attempts === 1 ? 'revisão' : 'revisões'} · ${
+      item.accuracy ?? 0
+    }% de lembrança`;
   }
   if (!item.attempts) return 'Ainda não respondida';
   return `${item.accuracy ?? 0}% de acertos · ${item.attempts} tentativa${
