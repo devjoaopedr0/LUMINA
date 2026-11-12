@@ -8,6 +8,7 @@ import { ScoreEstimateService } from '../schedules/score-estimate.service';
 import { UserWithProfile } from '../users/users.repository';
 import { AiChatRequestDto, AiChatResponseDto } from './ai.dto';
 import { AiService } from './ai.service';
+import { PlanUsageService } from '../plans/plan-usage.service';
 import { TaskLesson, TopicLessonsService } from './topic-lessons.service';
 import { fallbackWeeklyComment, weeklySummaryContext } from '../schedules/schedule-weekly-summary';
 import { luminiaSystemPrompt } from './luminia-persona';
@@ -24,6 +25,7 @@ export class AiController {
     private readonly lessons: TopicLessonsService,
     private readonly scoreEstimates: ScoreEstimateService,
     private readonly questionsService: QuestionsService,
+    private readonly planUsage: PlanUsageService,
   ) {}
 
   @Post('chat')
@@ -56,10 +58,10 @@ export class AiController {
     ]
       .filter((part): part is string => Boolean(part))
       .join('\n\n');
-    return this.aiService.sendMessage(
-      dto,
-      context || undefined,
-      user.profile?.firstName,
+    // Cada mensagem conta no limite diário do plano; se a IA falhar, a
+    // mensagem volta para o aluno.
+    return this.planUsage.withQuota(user.id, 'LUMINIA_MESSAGE', () =>
+      this.aiService.sendMessage(dto, context || undefined, user.profile?.firstName),
     );
   }
 

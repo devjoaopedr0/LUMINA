@@ -24,6 +24,7 @@ import { CutoffsModule } from './cutoffs/cutoffs.module';
 import { NotebooksModule } from './notebooks/notebooks.module';
 import { AnswerKeysModule } from './answer-keys/answer-keys.module';
 import { InstitutionalAnalyticsModule } from './institutional-analytics/institutional-analytics.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { InstitutionalAnalyticsModule } from './institutional-analytics/institut
       envFilePath: join(__dirname, '..', '.env'),
     }),
     DatabaseModule,
+    PlansModule,
     UsersModule,
     AuthModule,
     WorkspacesModule,

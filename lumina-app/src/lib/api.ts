@@ -5,6 +5,7 @@ import {
   buildSimilarQuestionPayload,
   SIMILAR_QUESTION_ENDPOINT,
 } from "@/lib/similar-question-payload";
+import type { BillingMe, CheckoutBillingType, SubscriptionView } from "@/lib/plans";
 
 export { ApiError } from "@/lib/api-client-core";
 
@@ -2945,3 +2946,12 @@ export interface AnswerKeyStats {
 export const apiAnswerKeyStats = (token: string, id: string): Promise<AnswerKeyStats> => request(`/answer-keys/${id}/stats`, { headers: authHeaders(token) });
 export const apiContributeCommunity = (token: string, payload: { examId: string; application?: string; day?: number | null; bookletColor?: string | null; language?: string; answers: Record<string, number | null> }): Promise<AnswerKeyDetail> =>
   request('/answer-keys/community/contributions', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+// ------------------------------------------------------------ planos
+export type { BillingMe, CheckoutBillingType, SubscriptionView } from "@/lib/plans";
+
+export const apiBillingMe = (token: string): Promise<BillingMe> => request('/billing/me', { headers: authHeaders(token) });
+export const apiBillingCheckout = (token: string, payload: { cpfCnpj: string; billingType: CheckoutBillingType }): Promise<{ subscription: SubscriptionView }> =>
+  request('/billing/checkout', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiBillingCancel = (token: string): Promise<{ subscription: SubscriptionView }> =>
+  request('/billing/cancel', { method: 'POST', headers: authHeaders(token) });

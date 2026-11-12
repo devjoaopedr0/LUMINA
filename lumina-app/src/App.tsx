@@ -36,6 +36,7 @@ import { EssayReviewQueuePage } from "@/pages/EssayReviewQueuePage";
 import { EssayReviewWorkspacePage } from "@/pages/EssayReviewWorkspacePage";
 import { EssayReviewDivergencesPage } from "@/pages/EssayReviewDivergencesPage";
 import { MasteryMap } from "@/pages/MasteryMap";
+import { PlanPage } from "@/pages/PlanPage";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
@@ -146,6 +147,14 @@ function App() {
           element={
             <ProtectedRoute>
               <MasteryMap />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/plano"
+          element={
+            <ProtectedRoute>
+              <PlanPage />
             </ProtectedRoute>
           }
         />

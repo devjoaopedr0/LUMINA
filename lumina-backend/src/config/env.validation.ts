@@ -1,11 +1,15 @@
 import { Type, plainToInstance } from 'class-transformer';
 import {
+  IsDateString,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -15,6 +19,10 @@ import {
  * com uma mensagem clara — em vez de falhar de forma confusa mais tarde,
  * no meio de uma requisição (ex: JWT_SECRET undefined ao assinar um token).
  */
+/** Valida só quando a variável tem valor: vazio no .env conta como ausente. */
+const IfSet = (key: string) =>
+  ValidateIf((env: Record<string, unknown>) => env[key] !== undefined && env[key] !== null && String(env[key]) !== '');
+
 class EnvironmentVariables {
   @IsString()
   DATABASE_URL: string;
@@ -81,6 +89,44 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   RESEND_FROM_EMAIL?: string;
+
+  // Planos e cobrança (Asaas). Opcionais: sem ASAAS_API_KEY ou sem preço, o
+  // app funciona e a assinatura aparece como "em breve".
+  @IsOptional()
+  @IsString()
+  ASAAS_API_KEY?: string;
+
+  @IfSet('ASAAS_ENVIRONMENT')
+  @IsIn(['sandbox', 'production'])
+  ASAAS_ENVIRONMENT?: string;
+
+  @IsOptional()
+  @IsString()
+  ASAAS_WEBHOOK_TOKEN?: string;
+
+  @IfSet('PLAN_PREMIUM_MONTHLY_PRICE')
+  @Matches(/^\d+([.,]\d{1,2})?$/, { message: 'PLAN_PREMIUM_MONTHLY_PRICE deve ser um valor como 29.90' })
+  PLAN_PREMIUM_MONTHLY_PRICE?: string;
+
+  @Type(() => Number)
+  @IfSet('FOUNDER_STUDENT_SLOTS')
+  @IsInt()
+  @Min(0)
+  FOUNDER_STUDENT_SLOTS?: number;
+
+  @Type(() => Number)
+  @IfSet('FOUNDER_GRANT_MONTHS')
+  @IsInt()
+  @Min(1)
+  FOUNDER_GRANT_MONTHS?: number;
+
+  @IfSet('FOUNDER_CAMPAIGN_STARTS_AT')
+  @IsDateString()
+  FOUNDER_CAMPAIGN_STARTS_AT?: string;
+
+  @IfSet('FOUNDER_CAMPAIGN_ENDS_AT')
+  @IsDateString()
+  FOUNDER_CAMPAIGN_ENDS_AT?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

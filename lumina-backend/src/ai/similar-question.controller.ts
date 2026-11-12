@@ -11,13 +11,17 @@ import { QuestionResponseDto } from '../questions/dto/question-response.dto';
 import { UserWithProfile } from '../users/users.repository';
 import { GenerateSimilarQuestionDto } from './similar-question.dto';
 import { SimilarQuestionService } from './similar-question.service';
+import { PlanUsageService } from '../plans/plan-usage.service';
 
 @ApiTags('ai')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('ai/questions')
 export class SimilarQuestionController {
-  constructor(private readonly similarQuestionService: SimilarQuestionService) {}
+  constructor(
+    private readonly similarQuestionService: SimilarQuestionService,
+    private readonly planUsage: PlanUsageService,
+  ) {}
 
   @Post('similar')
   @ApiOperation({
@@ -33,6 +37,8 @@ export class SimilarQuestionController {
     @CurrentUser() user: UserWithProfile,
     @Body() dto: GenerateSimilarQuestionDto,
   ): Promise<QuestionResponseDto> {
-    return this.similarQuestionService.generate(user.id, dto.questionId);
+    return this.planUsage.withQuota(user.id, 'LUMINIA_MESSAGE', () =>
+      this.similarQuestionService.generate(user.id, dto.questionId),
+    );
   }
 }

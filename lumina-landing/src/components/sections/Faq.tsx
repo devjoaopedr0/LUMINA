@@ -6,7 +6,7 @@ const FAQ_ITEMS = [
   {
     question: "A Lumina é gratuita?",
     answer:
-      "Sim. O plano Free dá acesso ao dashboard, cronograma básico e uso limitado da LuminIA — sem precisar de cartão de crédito. O plano Premium libera simulados ilimitados, correção de redação e a LuminIA sem restrições.",
+      "Sim. O plano Gratuito inclui cronograma, banco de questões, caderno de erros e revisão, com limites: 2 correções de redação e 2 simulados por mês e 10 mensagens por dia para a LuminIA, sem cartão de crédito. O Premium amplia esses limites (30 correções por mês, simulados ilimitados, 200 mensagens por dia e flashcards gerados por IA). Os primeiros 100 alunos independentes ganham 4 meses de Premium sem cobrança.",
   },
   {
     question: "Como funciona o scanner inteligente?",
@@ -21,7 +21,7 @@ const FAQ_ITEMS = [
   {
     question: "Professores e escolas podem usar a Lumina?",
     answer:
-      "Sim. Há um plano específico para professores, com gestão de turmas e correção em escala, e licenciamento institucional para cursinhos e escolas que querem oferecer a plataforma a todos os alunos.",
+      "Sim. Professores usam a gestão de turmas, o cartão-resposta e a correção sem custo, e cursinhos e escolas podem contratar uma licença institucional que estende o Premium a todos os alunos. Fale com a gente para montar a licença.",
   },
   {
     question: "Meus dados de estudo estão seguros?",
@@ -31,7 +31,7 @@ const FAQ_ITEMS = [
   {
     question: "Posso cancelar quando quiser?",
     answer:
-      "Pode. Cancela direto no seu painel, quando quiser, sem burocracia, sem ligação e sem multa.",
+      "Pode. Você cancela em \"Meu plano\", quando quiser, sem multa, e o que já foi pago continua valendo até o fim do período.",
   },
 ];
 

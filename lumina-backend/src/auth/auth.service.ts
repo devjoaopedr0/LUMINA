@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +21,7 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { InstitutionsService } from '../institutions/institutions.service';
+import { FoundersService } from '../plans/founders.service';
 import { EmailVerificationCodeRepository } from './email-verification-codes.repository';
 import { GoogleProfile } from './interfaces/google-profile.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -54,6 +56,8 @@ export class AuthService {
     private readonly passwordResetTokensRepository: PasswordResetTokenRepository,
     private readonly emailVerificationCodesRepository: EmailVerificationCodeRepository,
     private readonly mailerService: MailerService,
+    // Opcional: os testes que montam o AuthService à mão não precisam dele.
+    @Optional() private readonly foundersService?: FoundersService,
   ) {
     this.dummyPasswordHash = bcrypt.hashSync(
       'lumina-timing-safety-placeholder',
@@ -108,6 +112,9 @@ export class AuthService {
     // sequência. O envio é feito fora da transação e não derruba o cadastro
     // se falhar — a pessoa pode pedir um novo código na tela de confirmação.
     await this.issueVerificationCode(user.id);
+    // Benefício de fundador (alunos independentes, enquanto houver vaga).
+    // Fora da transação e sem derrubar o cadastro se falhar.
+    await this.foundersService?.claimForNewUser(user.id);
 
     return this.buildAuthResponse(user);
   }
@@ -204,7 +211,7 @@ export class AuthService {
       return { ...existingByEmail, googleId: profile.googleId };
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       const createdUser = await this.usersRepository.createFromGoogle(
         {
           email: profile.email,
@@ -220,6 +227,8 @@ export class AuthService {
 
       return createdUser;
     });
+    await this.foundersService?.claimForNewUser(created.id);
+    return created;
   }
 
   /** Último passo do fluxo OAuth: mesmas checagens/efeitos do login comum

@@ -13,6 +13,9 @@ import { AnswerSheetController } from './omr/answer-sheet.controller';
 import { QuestionScanService } from './question-scan.service';
 import { TaskSimulationService } from './task-simulation.service';
 import { EnemSimulationService } from './enem-simulation.service';
+import { PlanUsageService } from '../plans/plan-usage.service';
+
+const isStudent = (user: UserWithProfile) => user.accountType === 'STUDENT_INDEPENDENT' || user.accountType === 'STUDENT_INSTITUTION';
 
 @ApiTags('simulations')
 @ApiBearerAuth()
@@ -25,7 +28,13 @@ export class SimulationsController {
     private readonly questionScanService: QuestionScanService,
     private readonly taskSimulation: TaskSimulationService,
     private readonly enem: EnemSimulationService,
+    private readonly planUsage: PlanUsageService,
   ) {}
+
+  /** Simulado criado pelo próprio aluno conta no limite do plano; o do professor, não. */
+  private studentQuota<T>(user: UserWithProfile, run: () => Promise<T>): Promise<T> {
+    return isStudent(user) ? this.planUsage.withQuota(user.id, 'SIMULATION', run) : run();
+  }
   @Get('classes') classes(@CurrentUser() user: UserWithProfile, @Query('includeArchived') includeArchived?: string) { return this.service.classes(user.id, includeArchived === 'true'); }
   @Post('classes') createClass(@CurrentUser() user: UserWithProfile, @Body() dto: CreateClassDto) { return this.service.createClass(user.id, dto.name); }
   // Aluno independente não entra por código: só pelo link de convite de quem gerencia a turma.
@@ -50,7 +59,7 @@ export class SimulationsController {
   @Post('coordinator/periods') createCoordinatorPeriod(@CurrentUser() user: UserWithProfile, @Body() dto: CreateAcademicPeriodDto) { return this.service.createCoordinatorPeriod(user.id, dto); }
   @Patch('coordinator/periods/:periodId') updateCoordinatorPeriod(@CurrentUser() user: UserWithProfile, @Param('periodId', ParseUUIDPipe) periodId: string, @Body() dto: UpdateAcademicPeriodDto) { return this.service.updateCoordinatorPeriod(user.id, periodId, dto); }
   @Get() list(@CurrentUser() user: UserWithProfile) { return this.service.list(user.id); }
-  @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateSimulationDto) { return this.service.create(user.id, dto.title, dto.questionIds, dto.classId, dto.assessmentType, dto.dueAt, dto.durationMinutes, dto.isRealExam, user.accountType, dto.generateAnswerSheet); }
+  @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateSimulationDto) { return this.studentQuota(user, () => this.service.create(user.id, dto.title, dto.questionIds, dto.classId, dto.assessmentType, dto.dueAt, dto.durationMinutes, dto.isRealExam, user.accountType, dto.generateAnswerSheet)); }
   @Get(':id') get(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query('answers') answers?: string) { return this.service.get(user.id, id, answers === 'true'); }
   @Post(':id/submission') async submit(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitSimulationDto) {
     const result = await this.service.submit(user.id, id, dto.answers);
@@ -59,7 +68,7 @@ export class SimulationsController {
     return { ...result, tri: await this.enem.triForSubmission(user.id, id) };
   }
   /** Simulado modelo ENEM: um dia de prova, 90 questões (45 por área), com o tempo oficial. */
-  @Post('enem') createEnem(@CurrentUser() user: UserWithProfile, @Body() dto: CreateEnemSimulationDto) { return this.enem.create(user.id, dto.day); }
+  @Post('enem') createEnem(@CurrentUser() user: UserWithProfile, @Body() dto: CreateEnemSimulationDto) { return this.studentQuota(user, () => this.enem.create(user.id, dto.day)); }
   /** Simulado da tarefa de "Simulado" do cronograma: cria na primeira vez, depois devolve o mesmo. */
   @Post('from-task/:taskId') async fromTask(@CurrentUser() user: UserWithProfile, @Param('taskId', ParseUUIDPipe) taskId: string) {
     const started = await this.taskSimulation.startForTask(user.id, taskId);
@@ -73,7 +82,7 @@ export class SimulationsController {
   }
 
   // Adaptive simulation endpoints
-  @Post('adaptive/start') adaptiveStart(@CurrentUser() user: UserWithProfile, @Body() dto: { examId?: string }) { return this.adaptiveService.start(user.id, dto.examId); }
+  @Post('adaptive/start') adaptiveStart(@CurrentUser() user: UserWithProfile, @Body() dto: { examId?: string }) { return this.studentQuota(user, () => this.adaptiveService.start(user.id, dto.examId)); }
   @Get('adaptive/:id/next') adaptiveNext(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.adaptiveService.nextQuestion(id); }
   @Post('adaptive/:id/answer') adaptiveAnswer(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { questionId: string; selectedPosition: number; timeSpentSeconds?: number }) { return this.adaptiveService.answer(id, dto.questionId, dto.selectedPosition, dto.timeSpentSeconds); }
   @Post('adaptive/:id/finish') adaptiveFinish(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.adaptiveService.finish(id); }

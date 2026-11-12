@@ -6,8 +6,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { EssayCorrectionStatus, EssayLearningLevel, EssayScanStatus, Prisma } from '@prisma/client';
+import { EntitlementsService } from '../plans/entitlements.service';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../database/prisma.service';
 import { countWords } from '../essays/essays.dto';
@@ -75,7 +77,14 @@ export class EssayCorrectionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    // O limite vem do plano do aluno; sem o serviço (testes montados à mão),
+    // vale ESSAY_CORRECTION_MONTHLY_LIMIT.
+    @Optional() private readonly entitlements?: EntitlementsService,
   ) {}
+
+  private async correctionLimit(userId: string): Promise<number> {
+    return this.entitlements ? this.entitlements.essayCorrectionLimit(userId) : monthlyCorrectionLimit();
+  }
 
   // ------------------------------------------------------------------ scans
 
@@ -249,7 +258,7 @@ export class EssayCorrectionService {
 
   async getQuota(userId: string, period = quotaPeriod()): Promise<CorrectionQuota> {
     const used = await this.prisma.essayCorrectionUsage.count({ where: { userId, period, refundedAt: null } });
-    return buildQuota(monthlyCorrectionLimit(), used, period);
+    return buildQuota(await this.correctionLimit(userId), used, period);
   }
 
   /** Devolve o crédito de uma correção que não usou a IA. */
@@ -273,7 +282,7 @@ export class EssayCorrectionService {
     // aluno: dois cliques (ou duas abas) ao mesmo tempo não passam juntos do
     // limite nem disparam duas correções da mesma redação.
     const period = quotaPeriod();
-    const limit = monthlyCorrectionLimit();
+    const limit = await this.correctionLimit(userId);
     const usageId = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`essay-quota:${userId}`}))`;
       const current = await tx.essayCorrection.findUnique({ where: { essayId }, select: { status: true, updatedAt: true } });
