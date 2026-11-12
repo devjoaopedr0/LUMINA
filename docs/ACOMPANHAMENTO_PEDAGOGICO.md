@@ -25,7 +25,7 @@ Authorization: Bearer <token>
 
 | Indicador | Origem |
 |---|---|
-| Participação | `SimulationSubmission` e `StudyTimeLog` no período |
+| Participação | `SimulationSubmission` de membros atuais e `StudyTimeLog` no período |
 | Média de acerto | `SimulationSubmission.correct / total` |
 | Média por questão e questões mais erradas | `SimulationItem` + `SimulationSubmission.answers` |
 | Conteúdos críticos | agregação por `SimulationItem.subject` |
@@ -34,6 +34,8 @@ Authorization: Bearer <token>
 | Alunos em risco | regras de acerto, inatividade e sequência de erros |
 
 A entrega usa **simulados/atividades com `SimulationSubmission`**. Tentativas avulsas do banco de questões, redações, domínio por tópico e metas do cronograma ainda não entram neste painel.
+
+Submissões de ex-alunos e de professores/co-professores não entram nas métricas da turma: cada simulado é filtrado pelos membros atuais antes das agregações. O tempo de estudo também só é atribuído a partir da data de ingresso do aluno na turma.
 
 ### Formato resumido da resposta
 
@@ -68,7 +70,7 @@ Cada turma traz `students` e `difficultQuestions`; cada aluno traz `accuracy`, `
 
 ### Participação
 
-Um aluno é considerado ativo no período quando tem pelo menos uma entrega de simulado **ou** algum registro de tempo de estudo. A participação é `alunos ativos / alunos atuais da turma`.
+Um aluno é considerado ativo no período quando tem pelo menos uma entrega de simulado **ou** algum registro de tempo de estudo. A participação é `alunos ativos / alunos atuais da turma`. Entregas de quem não é mais membro e de professores não contam.
 
 ### Acerto
 
@@ -81,7 +83,8 @@ Um aluno é considerado ativo no período quando tem pelo menos uma entrega de s
 `StudyTimeLog` não tem vínculo com turma. Por isso:
 
 - o resumo deduplica os alunos e soma o tempo uma única vez;
-- o cartão de uma turma soma o tempo dos alunos daquela turma e pode repetir minutos de um aluno que também esteja em outra turma do mesmo professor.
+- o cartão de uma turma soma o tempo dos alunos daquela turma e pode repetir minutos de um aluno que também esteja em outra turma do mesmo professor;
+- registros anteriores ao ingresso do aluno na turma não entram no cartão da turma nem no resumo.
 
 ### Questões
 
@@ -95,12 +98,12 @@ Um aluno é considerado ativo no período quando tem pelo menos uma entrega de s
 | Sinal | Regra | Gravidade |
 |---|---|---|
 | `STUDENT_LOW_ACCURACY` | aluno com 5+ respostas e acerto < 60% | alta abaixo de 45%, média entre 45% e 59% |
-| `STUDENT_INACTIVITY` | aluno na turma há 7+ dias sem entrega nem estudo nos últimos 7 dias | alta se não há atividade no período, média se há registro antigo |
+| `STUDENT_INACTIVITY` | aluno na turma há 7+ dias sem entrega nem estudo **nesta turma** no período | média |
 | `STUDENT_ERROR_STREAK` | 3+ erros consecutivos na ordem das entregas | média |
 | `CLASS_LOW_ACCURACY` | turma com 10+ respostas e acerto < 60% | alta abaixo de 45%, média entre 45% e 59% |
 | `DIFFICULT_QUESTION` | questão com 3+ respostas e acerto < 60% | alta abaixo de 35%, média entre 35% e 59% |
 
-Cada sinal traz uma sugestão textual de intervenção. A interface ordena por gravidade e depois pelo pior indicador.
+Cada sinal traz uma sugestão textual de intervenção. A interface ordena por gravidade e depois pelo pior indicador: acerto menor, sequência de erros maior ou mais dias sem atividade. A inatividade é deliberadamente **média** porque o aluno pode estar ativo em outra turma; consultar a atividade fora desta janela fica para o próximo incremento.
 
 ## Privacidade e autorização
 
@@ -112,6 +115,7 @@ Cada sinal traz uma sugestão textual de intervenção. A interface ordena por g
 ## Limites assumidos nesta entrega
 
 - **Sinais são calculados na leitura.** Não há tabela de alerta, histórico, reconhecimento, atribuição de responsável ou notificação push/e-mail.
+- **Inatividade é local à turma e ao período.** Atividade em outra turma ou fora da janela não é consultada nesta versão; por isso a severidade é média.
 - **Sem queda de desempenho histórica.** A comparação com o período anterior, meta atrasada e recomendações personalizadas por conteúdo ficam para o próximo incremento do item 41.
 - **Sem plano automático de recuperação.** O item 42 depende de decisões pedagógicas e de videoaulas; não foi simulado.
 - **Sem relatório persistido.** O CSV é gerado no navegador; o item 59 continua pendente.
@@ -120,9 +124,9 @@ Cada sinal traz uma sugestão textual de intervenção. A interface ordena por g
 
 ## Testes
 
-- `lumina-backend/src/institutional-analytics/teacher-analytics.spec.ts`: consolidação, participação, acerto nulo, agregação por `questionId`, evolução e todos os tipos de sinal.
-- `lumina-backend/src/institutional-analytics/teacher-analytics.service.spec.ts`: bloqueio de não professor, 404 para turma alheia e consulta restrita às turmas do professor.
-- `lumina-app/test/teacher-analytics.check.ts`: percentual nulo, minutos, ordenação por gravidade, filtro de sinais críticos e CSV com escape de aspas.
+- `lumina-backend/src/institutional-analytics/teacher-analytics.spec.ts`: consolidação, participação, acerto nulo, agregação por `questionId`, evolução, todos os tipos de sinal, exclusão de ex-alunos/professores e tempo anterior ao ingresso.
+- `lumina-backend/src/institutional-analytics/teacher-analytics.service.spec.ts`: bloqueio de não professor, 404 para turma alheia, consulta restrita às turmas do professor e relógio congelado para não depender da data de execução.
+- `lumina-app/test/teacher-analytics.check.ts`: percentual nulo, minutos, fuso de Brasília, ordenação por gravidade, filtro de questões difíceis, filtro de sinais críticos e CSV com escape de aspas/fórmulas.
 
 ## Próximo incremento recomendado
 

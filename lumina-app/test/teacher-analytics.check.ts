@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {
   classesSeveridade,
+  filtrarQuestoesDificeis,
   filtrarSinaisCriticos,
+  formatarDataHora,
   formatarMinutos,
   formatarPercentual,
   gerarCsvAlunos,
@@ -104,16 +106,23 @@ const resultado: TeacherAnalyticsResult = {
           studyMinutes: 0,
           lastActivityAt: null,
           errorStreak: 0,
-          riskLevel: 'HIGH',
+          riskLevel: 'MEDIUM',
           riskReasons: [
-            { kind: 'STUDENT_INACTIVITY', label: 'Sem atividade há mais de 7 dias', severity: 'HIGH' },
+            { kind: 'STUDENT_INACTIVITY', label: 'Sem atividade nesta turma no período', severity: 'MEDIUM' },
           ],
         },
       ],
       difficultQuestions: [],
     },
   ],
-  questions: [],
+  questions: [
+    { key: 'q-1', questionId: 'q-1', stem: 'Questão 1', subject: 'Matemática', simulationCount: 1, attempts: 4, correctCount: 2, blankCount: 0, accuracy: 50 },
+    { key: 'q-2', questionId: 'q-2', stem: 'Questão 2', subject: 'Matemática', simulationCount: 1, attempts: 5, correctCount: 4, blankCount: 0, accuracy: 80 },
+    { key: 'q-3', questionId: 'q-3', stem: 'Questão 3', subject: 'Matemática', simulationCount: 1, attempts: 3, correctCount: 0, blankCount: 0, accuracy: 0 },
+    { key: 'q-4', questionId: 'q-4', stem: 'Questão 4', subject: 'Matemática', simulationCount: 1, attempts: 2, correctCount: 0, blankCount: 0, accuracy: 0 },
+    { key: 'q-5', questionId: 'q-5', stem: 'Questão 5', subject: 'Matemática', simulationCount: 1, attempts: 4, correctCount: 3, blankCount: 0, accuracy: 75 },
+    { key: 'q-6', questionId: null, stem: 'Questão 6', subject: 'Matemática', simulationCount: 1, attempts: 4, correctCount: 0, blankCount: 0, accuracy: null },
+  ],
   subjects: [],
   evolution: [],
   signals: [],
@@ -136,6 +145,17 @@ assert.equal(rotuloSinal('DIFFICULT_QUESTION'), 'Questão difícil');
 assert.equal(rotuloRisco('NONE'), 'Sem sinal');
 assert.equal(resumoParticipacao(2, 4), '2 de 4 alunos com atividade no período');
 assert.equal(resumoParticipacao(0, 0), 'Nenhum aluno na turma');
+assert.equal(formatarDataHora(null), 'Sem atividade');
+assert.match(formatarDataHora('2026-11-08T12:00:00.000Z'), /08\/11\/2026.*09:00/);
+
+assert.deepEqual(
+  filtrarQuestoesDificeis(resultado.questions).map((question) => question.key),
+  ['q-1', 'q-3'],
+);
+assert.deepEqual(
+  filtrarQuestoesDificeis(resultado.questions, 1).map((question) => question.key),
+  ['q-1'],
+);
 
 const ordenados = ordenarSinais([
   sinal('baixo', 'LOW', 90),
@@ -144,10 +164,36 @@ const ordenados = ordenarSinais([
 ]);
 assert.deepEqual(ordenados.map((item) => item.id), ['alto', 'medio', 'baixo']);
 assert.deepEqual(filtrarSinaisCriticos(ordenados).map((item) => item.id), ['alto', 'medio']);
+assert.deepEqual(
+  ordenarSinais([
+    sinal('menos-grave', 'MEDIUM', -3),
+    sinal('mais-grave', 'MEDIUM', -10),
+  ]).map((item) => item.id),
+  ['mais-grave', 'menos-grave'],
+);
 
 const csv = gerarCsvAlunos(resultado);
-assert.match(csv, /^"Turma","Aluno","E-mail"/);
-assert.match(csv, /"Turma 1","Ana ""Lima""","ana@lumina\.test","10","5","50%","45","Médio"/);
-assert.match(csv, /"Bia","bia@lumina\.test","0","0","","0","Alto","Sem atividade há mais de 7 dias"/);
+assert.match(csv, /^"Turma";"Aluno";"E-mail"/);
+assert.match(csv, /"Turma 1";"Ana ""Lima""";"ana@lumina\.test";"10";"5";"50%";"45";"Médio";"Desempenho abaixo de 60%"/);
+assert.match(csv, /"Bia";"bia@lumina\.test";"0";"0";"";"0";"Médio";"Sem atividade nesta turma no período"/);
+
+const resultadoComFormula: TeacherAnalyticsResult = {
+  ...resultado,
+  classes: [
+    {
+      ...resultado.classes[0],
+      students: [
+        {
+          ...resultado.classes[0].students[0],
+          name: '=1+1',
+          email: '+soma@lumina.test',
+        },
+      ],
+    },
+  ],
+};
+const csvComFormula = gerarCsvAlunos(resultadoComFormula);
+assert.match(csvComFormula, /"'=1\+1"/);
+assert.match(csvComFormula, /"'\+soma@lumina\.test"/);
 
 console.log('acompanhamento pedagógico: checks ok');

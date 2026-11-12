@@ -150,7 +150,7 @@ describe('buildTeacherAnalytics', () => {
     expect(result.classes[0].students.find((student) => student.id === 'carol')).toMatchObject({
       submissions: 0,
       lastActivityAt: null,
-      riskLevel: 'HIGH',
+      riskLevel: 'MEDIUM',
     });
     expect(result.classes[0].students.find((student) => student.id === 'diego')?.riskReasons).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'STUDENT_LOW_ACCURACY' })]),
@@ -183,6 +183,94 @@ describe('buildTeacherAnalytics', () => {
         'DIFFICULT_QUESTION',
       ]),
     );
+
+    const bob = result.classes[0].students.find((student) => student.id === 'bob');
+    const bobStreak = result.signals.find(
+      (signal) => signal.kind === 'STUDENT_ERROR_STREAK' && signal.studentId === 'bob',
+    );
+    const carolInactivity = result.signals.find(
+      (signal) => signal.kind === 'STUDENT_INACTIVITY' && signal.studentId === 'carol',
+    );
+    expect(bob?.errorStreak).toBe(5);
+    expect(bobStreak?.metric).toBe(-5);
+    expect(carolInactivity?.severity).toBe('MEDIUM');
+    expect(carolInactivity?.metric).toBeLessThanOrEqual(-7);
+  });
+
+  it('ignora submissões de ex-alunos e professores nas métricas da turma', () => {
+    const answers = [
+      { position: 1, selectedPosition: 1 },
+      { position: 2, selectedPosition: 2 },
+    ];
+    const result = buildTeacherAnalytics({
+      classes: [
+        classRoom('turma-1', [member('ana', 'Ana')], [
+          simulation(
+            'sim-1',
+            [
+              { userId: 'ana', correct: 1, total: 2, submittedAt: RECENT, answers },
+              { userId: 'ex-aluno', correct: 2, total: 2, submittedAt: RECENT, answers },
+              { userId: 'professor', correct: 2, total: 2, submittedAt: RECENT, answers },
+            ],
+            [item(1), item(2)],
+          ),
+        ]),
+      ],
+      studyLogs: [],
+      now: NOW,
+      days: 30,
+    });
+
+    expect(result.summary).toMatchObject({
+      studentCount: 1,
+      submissionCount: 1,
+      answerCount: 2,
+      correctCount: 1,
+      accuracy: 50,
+      questionCount: 2,
+    });
+    expect(result.classes[0]).toMatchObject({
+      studentCount: 1,
+      submissionCount: 1,
+      answerCount: 2,
+      correctCount: 1,
+      accuracy: 50,
+    });
+    expect(result.questions.find((question) => question.key === 'sim-1:1')).toMatchObject({
+      attempts: 1,
+      correctCount: 1,
+      accuracy: 100,
+    });
+    expect(result.evolution[0]).toMatchObject({
+      submissions: 1,
+      answers: 2,
+      correctCount: 1,
+      accuracy: 50,
+    });
+  });
+
+  it('não atribui tempo de estudo anterior ao ingresso na turma', () => {
+    const joinedAt = new Date('2026-11-05T12:00:00.000Z');
+    const result = buildTeacherAnalytics({
+      classes: [
+        classRoom('turma-1', [
+          {
+            joinedAt,
+            user: { id: 'ana', name: 'Ana', email: 'ana@lumina.test' },
+          },
+        ]),
+      ],
+      studyLogs: [
+        { userId: 'ana', durationMinutes: 20, startTime: new Date('2026-11-04T12:00:00.000Z') },
+        { userId: 'ana', durationMinutes: 30, startTime: new Date('2026-11-06T12:00:00.000Z') },
+      ],
+      now: NOW,
+      days: 30,
+    });
+
+    expect(result.summary.studyMinutes).toBe(30);
+    expect(result.classes[0].studyMinutes).toBe(30);
+    expect(result.classes[0].students[0].studyMinutes).toBe(30);
   });
 
   it('usa null quando não há respostas e não inventa sinal', () => {
