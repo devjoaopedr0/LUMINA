@@ -24,20 +24,22 @@ A **LuminIA** é a camada que conecta tudo: entende onde o aluno está e recomen
 
 O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). Groups e Marketplace estão documentados para orientar decisões de arquitetura de hoje, não para competir com as prioridades atuais.
 
-## 2. Estado atual (resumo em 06/11/2026)
+## 2. Estado atual (resumo em 11/11/2026)
 
 | Área | Status | Observação |
 | --- | --- | --- |
 | Autenticação (JWT, refresh, Google OAuth, verificação de e-mail) | Implementado | |
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
-| Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente: **em andamento** (03/11, sem commit) |
+| Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente entregue (commit `1231306`, rota `/app/turmas/convite/:token`) |
+| Painel analítico do professor (Fase 3) | Parcial | Primeira versão em 09/11/2026 (simulados e tempo de estudo, `/app/acompanhamento`); correções de métricas e exportação no PR #23 (aberto em 10/11); alertas pedagógicos calculados na leitura, ainda sem histórico; ver [ACOMPANHAMENTO_PEDAGOGICO.md](ACOMPANHAMENTO_PEDAGOGICO.md) |
 | Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" em 05/11/2026, modo socrático e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
 | Caderno de erros com motivo do erro | Implementado | Revisão espaçada automática integrada em 07/11/2026 |
-| Revisão espaçada unificada | Parcial | Fila única, recálculo automático e aviso in-app entregues em 07/11/2026; flashcards dependem do item 32 |
+| Revisão espaçada unificada | Implementado | Fila única, recálculo automático e aviso in-app entregues em 07/11/2026 |
+| Flashcards (item 32) | Implementado | Entregue em 09/11/2026: criação manual, por IA e por PDF, com revisão espaçada; ver [FLASHCARDS.md](FLASHCARDS.md) |
 | Simulados (cronômetro, prova real, modelo ENEM 90 questões, nota estilo TRI) | Implementado | |
 | Simulado adaptativo | Implementado | IRT simplificado |
-| Scanner de cartão-resposta (OMR) | Implementado | Falta o teste com impressão real; cartão configurável pelo gestor **em andamento** (03/11) |
+| Scanner de cartão-resposta (OMR) | Implementado | Cartão configurável pelo gestor entregue (commit `1231306`); falta o teste com impressão real |
 | Correção de redação (foto e texto, IA com RAG e MCP, cota mensal) | Implementado | Revisão humana validada entregue em 05/11/2026; calibração em ampliação e medição held-out aguardando volume validado |
 | Revisão humana da redação (chat, evidências, validação e aprendizado) | Implementado | Ver [REVISAO_HUMANA_REDACAO.md](REVISAO_HUMANA_REDACAO.md) |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
@@ -47,8 +49,8 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
-| Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetir com o modelo padrão de produção; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
-| Gamificação, metas, flashcards, agenda e notificações push/e-mail | Planejado | Itens 32–52 do inventário; revisão espaçada e notificação in-app já entregues |
+| Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetir com o modelo padrão de produção usando `npm run answer-keys:eval` (script de medição reproduzível, 11/11); ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
+| Gamificação, metas, agenda e notificações push/e-mail | Planejado | Itens 33–52 do inventário; revisão espaçada, flashcards e notificação in-app já entregues |
 | Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
 | Lumina Groups | Planejado | Fase 2 |
 | Lumina Marketplace | Futuro | Fase 4 |
@@ -171,6 +173,7 @@ Recomendações da LuminIA cruzando desempenho, grupos e marketplace; grupos est
 4. **`STATUS_FUNCIONAL.md`, item 17 (26/09/2026):** descreve um processamento "simulado" que foi substituído pelo OMR real em 31/10/2026. A entrada mais nova prevalece.
 5. **`FUNCIONALIDADES_GERAIS.txt`:** a numeração se repete (há dois itens 22, 23 e 24, nos cadernos e na LuminIA), e o item 19 diz "UI pendente", embora a interface básica de provas anteriores exista desde 27/09/2026.
 6. **`README.md`:** descreve o backend só como "API de autenticação". Foi atualizado.
+7. **Este documento, §2 (revisão de 11/11/2026):** convite de turma por link e cartão-resposta configurável apareciam como "em andamento, sem commit", mas entraram no commit `1231306`; flashcards e o painel analítico do professor (09/11) não constavam. Corrigido.
 
 ## 10. Dúvidas que precisam de decisão
 - Idade mínima por recurso (grupos, chat, compra) e fluxo de consentimento do responsável.
