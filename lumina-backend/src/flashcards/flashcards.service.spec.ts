@@ -1,5 +1,5 @@
 import { FlashcardRating } from '@prisma/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createFakePrisma } from '../../test/fake-prisma';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../database/prisma.service';
@@ -83,6 +83,14 @@ describe('FlashcardsService', () => {
   });
 
   it('revisa, atualiza o histórico e tira o cartão da fila até o próximo dia', async () => {
+    // `due` é calculado com o relógio real; fixa o "agora" no dia da revisão
+    // para o teste não vencer quando a data do calendário passar de 10/11.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-09T15:00:00.000Z'));
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+
     const created = await service.create('user-1', {
       front: 'Frente',
       back: 'Verso',
