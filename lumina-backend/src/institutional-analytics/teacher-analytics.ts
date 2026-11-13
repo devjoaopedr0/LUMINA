@@ -207,6 +207,24 @@ function maxDate(values: Array<Date | null | undefined>): Date | null {
   return result;
 }
 
+/**
+ * Submissões de ex-alunos e de professores que enviaram a atividade não
+ * pertencem ao recorte pedagógico da turma. O serviço traz as submissões do
+ * período; aqui restringimos cada simulado aos membros atuais antes de
+ * qualquer agregação.
+ */
+function filterSimulationsByMembers(
+  simulations: TeacherAnalyticsSimulation[],
+  memberIds: Set<string>,
+): TeacherAnalyticsSimulation[] {
+  return simulations
+    .map((simulation) => ({
+      ...simulation,
+      submissions: simulation.submissions.filter((submission) => memberIds.has(submission.userId)),
+    }))
+    .filter((simulation) => simulation.submissions.length > 0);
+}
+
 function daysSince(from: Date, now: Date): number {
   return Math.max(0, Math.floor((now.getTime() - from.getTime()) / DAY_MS));
 }
@@ -261,7 +279,7 @@ export function riskReasonLabel(kind: PedagogicalSignalKind): string {
     case 'STUDENT_LOW_ACCURACY':
       return 'Desempenho abaixo de 60%';
     case 'STUDENT_INACTIVITY':
-      return 'Sem atividade há mais de 7 dias';
+      return 'Sem atividade nesta turma no período';
     case 'STUDENT_ERROR_STREAK':
       return 'Três ou mais erros seguidos';
     case 'DIFFICULT_QUESTION':
@@ -297,13 +315,13 @@ function buildStudent(
   const answerCount = ownSubmissions.reduce((sum, submission) => sum + submission.total, 0);
   const correctCount = ownSubmissions.reduce((sum, submission) => sum + submission.correct, 0);
   const accuracy = percentage(correctCount, answerCount);
-  const studyMinutes = logs
-    .filter((log) => log.userId === member.user.id)
-    .reduce((sum, log) => sum + log.durationMinutes, 0);
-  const lastSubmissionAt = maxDate(ownSubmissions.map((submission) => submission.submittedAt));
-  const lastStudyAt = maxDate(
-    logs.filter((log) => log.userId === member.user.id).map((log) => log.startTime),
+  const ownLogs = logs.filter(
+    (log) =>
+      log.userId === member.user.id && log.startTime.getTime() >= member.joinedAt.getTime(),
   );
+  const studyMinutes = ownLogs.reduce((sum, log) => sum + log.durationMinutes, 0);
+  const lastSubmissionAt = maxDate(ownSubmissions.map((submission) => submission.submittedAt));
+  const lastStudyAt = maxDate(ownLogs.map((log) => log.startTime));
   const lastActivityAt = maxDate([lastSubmissionAt, lastStudyAt]);
   const reasons: TeacherAnalyticsRiskReason[] = [];
 
@@ -322,7 +340,10 @@ function buildStudent(
       reasons.push({
         kind: 'STUDENT_INACTIVITY',
         label: riskReasonLabel('STUDENT_INACTIVITY'),
-        severity: lastActivityAt ? 'MEDIUM' : 'HIGH',
+        // A ausência vale para esta turma e para o período consultado. O aluno
+        // pode estar ativo em outra turma, então não elevamos para HIGH sem
+        // consultar a atividade fora desta janela.
+        severity: 'MEDIUM',
       });
     }
   }
@@ -421,6 +442,7 @@ function aggregateQuestions(simulations: TeacherAnalyticsSimulation[]): TeacherA
 function buildSignals(
   classes: TeacherAnalyticsClass[],
   difficultQuestions: TeacherAnalyticsQuestion[],
+  now: Date,
 ): TeacherAnalyticsSignal[] {
   const signals: TeacherAnalyticsSignal[] = [];
 
@@ -457,7 +479,7 @@ function buildSignals(
           subject: null,
           title:
             reason.kind === 'STUDENT_INACTIVITY'
-              ? `${student.name} está sem atividade`
+              ? `${student.name} não registrou atividade nesta turma`
               : `${student.name}: ${reason.label.toLowerCase()}`,
           detail:
             reason.kind === 'STUDENT_LOW_ACCURACY'
@@ -465,10 +487,22 @@ function buildSignals(
               : reason.kind === 'STUDENT_ERROR_STREAK'
                 ? `A maior sequência de erros foi ${student.errorStreak}.`
                 : student.lastActivityAt
-                  ? `Última atividade em ${dateKeyToBr(brasiliaDateKey(new Date(student.lastActivityAt)))}.`
-                  : 'Nenhuma atividade registrada no período analisado.',
+                  ? `Última atividade nesta turma em ${dateKeyToBr(brasiliaDateKey(new Date(student.lastActivityAt)))}.`
+                  : 'Nenhuma entrega ou tempo de estudo nesta turma no período analisado.',
           recommendation: riskRecommendation(reason.kind),
-          metric: reason.kind === 'STUDENT_LOW_ACCURACY' ? student.accuracy : student.errorStreak || null,
+          // O `metric` é sempre "menor = mais grave" para a ordenação. Em
+          // inatividade usamos dias negativos; em sequência, erros negativos.
+          metric:
+            reason.kind === 'STUDENT_LOW_ACCURACY'
+              ? student.accuracy
+              : reason.kind === 'STUDENT_ERROR_STREAK'
+                ? -student.errorStreak
+                : -daysSince(
+                    student.lastActivityAt
+                      ? new Date(student.lastActivityAt)
+                      : new Date(student.joinedAt),
+                    now,
+                  ),
         });
       }
     }
@@ -545,29 +579,43 @@ export function buildTeacherAnalytics(input: TeacherAnalyticsInput): TeacherAnal
     logsByUser.set(log.userId, list);
   }
 
-  const allSubmissions = classes.flatMap((classRoom) =>
-    classRoom.simulations.flatMap((simulation) => simulation.submissions),
+  const simulationsByClass = new Map<string, TeacherAnalyticsSimulation[]>();
+  for (const classRoom of classes) {
+    const memberIds = new Set(classRoom.members.map((member) => member.user.id));
+    simulationsByClass.set(
+      classRoom.id,
+      filterSimulationsByMembers(classRoom.simulations, memberIds),
+    );
+  }
+
+  const allSimulations = classes.flatMap(
+    (classRoom) => simulationsByClass.get(classRoom.id) ?? [],
   );
-  const allQuestions = aggregateQuestions(classes.flatMap((classRoom) => classRoom.simulations));
+  const allSubmissions = allSimulations.flatMap((simulation) => simulation.submissions);
+  const allQuestions = aggregateQuestions(allSimulations);
   const difficultQuestions = allQuestions.filter(
     (question) => question.attempts >= MIN_QUESTION_ATTEMPTS && question.accuracy !== null && question.accuracy < LOW_ACCURACY,
   );
 
   const classResults: TeacherAnalyticsClass[] = classes.map((classRoom) => {
-    const submissions = classRoom.simulations.flatMap((simulation) => simulation.submissions);
+    const classSimulations = simulationsByClass.get(classRoom.id) ?? [];
+    const submissions = classSimulations.flatMap((simulation) => simulation.submissions);
     const students = classRoom.members.map((member) =>
       buildStudent(
         member,
         submissions,
-        classRoom.simulations,
+        classSimulations,
         logsByUser.get(member.user.id) ?? [],
         now,
       ),
     );
     const answerCount = submissions.reduce((sum, submission) => sum + submission.total, 0);
     const correctCount = submissions.reduce((sum, submission) => sum + submission.correct, 0);
-    const memberIds = new Set(classRoom.members.map((member) => member.user.id));
-    const classLogs = studyLogs.filter((log) => memberIds.has(log.userId));
+    const memberById = new Map(classRoom.members.map((member) => [member.user.id, member]));
+    const classLogs = studyLogs.filter((log) => {
+      const member = memberById.get(log.userId);
+      return member !== undefined && log.startTime.getTime() >= member.joinedAt.getTime();
+    });
     const activeStudentCount = students.filter(
       (student) => student.submissions > 0 || student.studyMinutes > 0,
     ).length;
@@ -575,7 +623,7 @@ export function buildTeacherAnalytics(input: TeacherAnalyticsInput): TeacherAnal
       ...submissions.map((submission) => submission.submittedAt),
       ...classLogs.map((log) => log.startTime),
     ]);
-    const classQuestions = aggregateQuestions(classRoom.simulations);
+    const classQuestions = aggregateQuestions(classSimulations);
 
     return {
       id: classRoom.id,
@@ -604,8 +652,15 @@ export function buildTeacherAnalytics(input: TeacherAnalyticsInput): TeacherAnal
   });
 
   const allMembers = new Map<string, TeacherAnalyticsStudentRef>();
+  const earliestJoinByStudent = new Map<string, Date>();
   for (const classRoom of classes) {
-    for (const member of classRoom.members) allMembers.set(member.user.id, member.user);
+    for (const member of classRoom.members) {
+      allMembers.set(member.user.id, member.user);
+      const current = earliestJoinByStudent.get(member.user.id);
+      if (!current || member.joinedAt.getTime() < current.getTime()) {
+        earliestJoinByStudent.set(member.user.id, member.joinedAt);
+      }
+    }
   }
   const activeStudentIds = new Set(
     classResults.flatMap((classRoom) =>
@@ -619,7 +674,10 @@ export function buildTeacherAnalytics(input: TeacherAnalyticsInput): TeacherAnal
       classRoom.students.filter((student) => student.riskLevel !== 'NONE').map((student) => student.id),
     ),
   );
-  const uniqueLogs = studyLogs.filter((log) => allMembers.has(log.userId));
+  const uniqueLogs = studyLogs.filter((log) => {
+    const joinedAt = earliestJoinByStudent.get(log.userId);
+    return joinedAt !== undefined && log.startTime.getTime() >= joinedAt.getTime();
+  });
 
   const subjects = [...allQuestions.reduce((map, question) => {
     const current = map.get(question.subject) ?? { attempts: 0, correctCount: 0 };
@@ -660,6 +718,6 @@ export function buildTeacherAnalytics(input: TeacherAnalyticsInput): TeacherAnal
     questions: allQuestions,
     subjects,
     evolution: buildEvolution(allSubmissions, uniqueLogs),
-    signals: buildSignals(classResults, difficultQuestions),
+    signals: buildSignals(classResults, difficultQuestions, now),
   };
 }

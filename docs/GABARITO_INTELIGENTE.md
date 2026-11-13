@@ -113,7 +113,7 @@ Os demais `exam_papers` com gabarito continuam sendo dados de exemplo (o ENEM 20
 ## Próximas fases
 1. ~~Importar o gabarito oficial do PDF do INEP~~ (feito).
 2. ~~Foto do cartão-resposta para preencher as respostas~~ (feito; ver abaixo).
-3. ~~Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor~~ (feito em 04/11/2026; caminho da IA medido no ENEM 2024 em 05/11/2026, ver acima). Repetir a medição com o modelo padrão de produção quando a cota permitir; a revisão docente continua obrigatória.
+3. ~~Gabarito sugerido por IA (justificativa por questão, confiança só quando calculável) com validação do professor~~ (feito em 04/11/2026; caminho da IA medido no ENEM 2024 em 05/11/2026, ver acima). Repetir a medição com o modelo padrão de produção quando a cota permitir; a revisão docente continua obrigatória. A medição agora é reproduzível pelo script `lumina-backend/src/answer-keys/eval/evaluate-suggestions.ts` (só lê o banco, nunca grava): `npm run build && npm run answer-keys:eval -- --exam enem --year 2024 --day 2 --booklet Amarelo`. Ele usa o mesmo prompt do serviço sem revelar a resposta do banco, guarda as respostas em `.cache/answer-key-eval/<modelo>/` (rodar de novo retoma sem gastar cota) e aceita `--models`, `--limit`, `--only`, `--max-calls`, `--prompt-file` (A/B de prompt) e `--dry-run` (confere banco e vínculo sem chamar a IA).
 4. ~~Gabarito comunitário~~ (feito; ver abaixo).
 5. ~~LuminIA por questão com o texto real da questão e das alternativas (exige vincular `AnswerKeyItem.questionId` às questões do banco)~~ (feito em 04/11/2026; ver acima).
 6. ~~Painel do professor~~ (feito; ver abaixo).

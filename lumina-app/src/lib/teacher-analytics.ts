@@ -1,4 +1,5 @@
 import type {
+  TeacherAnalyticsQuestion,
   TeacherAnalyticsResult,
   TeacherAnalyticsSeverity,
   TeacherAnalyticsSignal,
@@ -11,6 +12,8 @@ const SEVERITY_ORDER: Record<TeacherAnalyticsSeverity, number> = {
   MEDIUM: 2,
   LOW: 1,
 };
+const MIN_DIFFICULT_QUESTION_ATTEMPTS = 3;
+const DIFFICULT_QUESTION_ACCURACY = 60;
 
 export function rotuloSeveridade(severity: TeacherAnalyticsSeverity): string {
   if (severity === 'HIGH') return 'Alta';
@@ -61,12 +64,27 @@ export function formatarMinutos(minutes: number): string {
 export function formatarDataHora(value: string | null | undefined): string {
   if (!value) return 'Sem atividade';
   return new Date(value).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+export function filtrarQuestoesDificeis(
+  questions: TeacherAnalyticsQuestion[],
+  limit = 12,
+): TeacherAnalyticsQuestion[] {
+  return questions
+    .filter(
+      (question) =>
+        question.attempts >= MIN_DIFFICULT_QUESTION_ATTEMPTS &&
+        question.accuracy !== null &&
+        question.accuracy < DIFFICULT_QUESTION_ACCURACY,
+    )
+    .slice(0, limit);
 }
 
 export function ordenarSinais(signals: TeacherAnalyticsSignal[]): TeacherAnalyticsSignal[] {
@@ -88,7 +106,10 @@ export function resumoParticipacao(active: number, total: number): string {
 
 function csvCell(value: string | number | null | undefined): string {
   const text = value === null || value === undefined ? '' : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  // Excel/LibreOffice interpretam =, +, - e @ como início de fórmula mesmo
+  // dentro de aspas. O apóstrofo mantém o conteúdo como texto.
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 export function gerarCsvAlunos(result: TeacherAnalyticsResult): string {
@@ -116,5 +137,5 @@ export function gerarCsvAlunos(result: TeacherAnalyticsResult): string {
       student.riskReasons.map((reason) => reason.label).join('; '),
     ]),
   );
-  return [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  return [header, ...rows].map((row) => row.map(csvCell).join(';')).join('\r\n');
 }

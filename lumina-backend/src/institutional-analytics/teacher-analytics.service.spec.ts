@@ -1,5 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../database/prisma.service';
 import { TeacherAnalyticsService } from './teacher-analytics.service';
 
@@ -20,6 +20,15 @@ function serviceWith(prisma: {
 }
 
 describe('TeacherAnalyticsService', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-09T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('bloqueia quem não possui perfil de professor', async () => {
     const { service } = serviceWith({
       user: { findUnique: vi.fn().mockResolvedValue({ teacherProfile: null }) },
