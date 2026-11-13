@@ -47,6 +47,7 @@ import {
   pickAccessibleQuestion,
   positionLetter,
   SUGGESTION_SYSTEM_PROMPT,
+  answerKeyModels,
   suggestionPrompt,
 } from '../answer-key.questions';
 
@@ -258,8 +259,10 @@ async function main() {
     const limit = argNumber('limit', 0) || null;
     const maxCalls = argNumber('max-calls', 200);
     const concurrency = argNumber('concurrency', 2);
+    // Sem --models, mede a mesma cadeia que o serviço usa em produção.
     const modelsArg = argText('models');
-    const modelLabel = modelsArg ?? process.env.AI_MODEL ?? 'default';
+    const chain = modelsArg ? [modelsArg] : answerKeyModels();
+    const modelLabel = chain.length ? chain.join('+') : (process.env.AI_MODEL ?? 'default');
     const refresh = flag('refresh');
     // Confere banco, vínculo e contagem sem gastar cota de IA.
     const dryRun = flag('dry-run');
@@ -398,7 +401,7 @@ async function main() {
           maxTokens: 500,
           timeoutMs: 30_000,
           temperature: 0.1,
-          ...(modelsArg ? { models: [modelsArg] } : {}),
+          ...(chain.length ? { models: chain } : {}),
         });
         if (!result?.text?.trim()) {
           return { ...base, outcome: { status: 'error', expected, error: 'a IA não devolveu texto', model: modelLabel } };

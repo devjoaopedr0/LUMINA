@@ -117,3 +117,19 @@ Os demais `exam_papers` com gabarito continuam sendo dados de exemplo (o ENEM 20
 4. ~~Gabarito comunitário~~ (feito; ver abaixo).
 5. ~~LuminIA por questão com o texto real da questão e das alternativas (exige vincular `AnswerKeyItem.questionId` às questões do banco)~~ (feito em 04/11/2026; ver acima).
 6. ~~Painel do professor~~ (feito; ver abaixo).
+
+## Modelos do gabarito sugerido (12/11/2026)
+
+O gabarito sugerido e a explicação por questão usam uma **cadeia própria de modelos**: `AI_ANSWER_KEY_MODELS` (mesmo formato de `AI_ESSAY_MODELS`); sem ela, a cadeia da redação (`AI_ESSAY_MODELS`, que começa pelo Gemini). O script `npm run answer-keys:eval` mede por padrão a mesma cadeia do serviço.
+
+Medições no ENEM 2024, 2º dia, Amarelo (75 questões elegíveis, prompt `835378abc1ef`, sem revelar a resposta do banco):
+
+| Cadeia | Corretas / respondidas | Natureza | Matemática | Pendentes | Erros de cota |
+| --- | --- | --- | --- | --- | --- |
+| `gemini-3.1-flash-lite` (05/11) | 44/59 (74,6%) | — | — | 16 | 3 |
+| Modelo do chat, `openrouter:nvidia/nemotron-3.5-lightning:free` | 36/63 (57,1%) | 27/38 (71,1%) | 9/25 (36%) | 2 | 9 |
+| **Cadeia nova** (`gemini-3.5-flash-lite` → `nemotron-3-ultra` → `gemini-3.5-flash`) | **41/55 (74,5%)** | **27/30 (90%)** | **14/25 (56%)** | 19 | 0 |
+
+- O modelo do chat forçava alternativas quando a conta não batia (Q104, Q108, Q115). Por isso o gabarito deixou de usá-lo.
+- As 19 pendentes da cadeia nova são quase todas por figura ou gráfico que não veio na extração: a IA diz que não dá para responder em vez de chutar.
+- Ainda há erros de cálculo em Matemática (ex.: Q140, Q155). A revisão docente continua obrigatória.

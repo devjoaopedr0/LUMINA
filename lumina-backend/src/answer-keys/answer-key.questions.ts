@@ -47,6 +47,20 @@ export function pickAccessibleQuestion<T extends { workspaceId: string }>(candid
 }
 
 /** Prompt do gabarito sugerido: resposta fechada e justificativa curta, sem invenção. */
+/**
+ * Modelos do gabarito (sugestão e explicação por questão), em ordem de
+ * tentativa. A medição de 12/11/2026 mostrou que o modelo padrão do chat
+ * (nemotron gratuito) acerta bem menos e força alternativas quando a conta não
+ * fecha; por isso o gabarito tem cadeia própria: AI_ANSWER_KEY_MODELS, ou, sem
+ * ela, a cadeia da redação (AI_ESSAY_MODELS, que começa pelo Gemini). Vazio =
+ * cadeia padrão do AiService.
+ */
+export function answerKeyModels(env: Record<string, string | undefined> = process.env): string[] {
+  const parse = (raw: string | undefined) => (raw ?? '').split(',').map((model) => model.trim()).filter(Boolean);
+  const own = parse(env.AI_ANSWER_KEY_MODELS);
+  return own.length ? own : parse(env.AI_ESSAY_MODELS);
+}
+
 export const SUGGESTION_SYSTEM_PROMPT = [
   'Você é a LuminIA, professora do Ensino Médio. Sugira a alternativa correta de uma questão de múltipla escolha usando SOMENTE o enunciado e as alternativas fornecidos.',
   'Regras:',
