@@ -365,3 +365,51 @@ export function toQueryString(query: object): string {
   const text = params.toString();
   return text ? `?${text}` : '';
 }
+
+// ------------------------------------------------- texto da LuminIA
+
+export type AiBlock =
+  | { kind: 'heading'; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'list'; ordered: boolean; items: string[] };
+
+/** Quebra o Markdown simples da LuminIA em blocos (títulos, parágrafos, listas). */
+export function parseAiBlocks(raw: string): AiBlock[] {
+  const blocks: AiBlock[] = [];
+  let paragraph: string[] = [];
+  const flush = () => {
+    if (paragraph.length) blocks.push({ kind: 'paragraph', text: paragraph.join(' ') });
+    paragraph = [];
+  };
+  for (const line of raw.replace(/\r/g, '').split('\n')) {
+    const trimmed = line.trim();
+    const heading = trimmed.match(/^#{1,6}\s+(.*)$/);
+    const bullet = trimmed.match(/^[-*•]\s+(.*)$/);
+    const numbered = trimmed.match(/^\d+[.)]\s+(.*)$/);
+    if (!trimmed) {
+      flush();
+    } else if (heading) {
+      flush();
+      blocks.push({ kind: 'heading', text: heading[1] });
+    } else if (bullet || numbered) {
+      flush();
+      const ordered = !!numbered;
+      const item = (bullet ?? numbered)![1];
+      const last = blocks[blocks.length - 1];
+      if (last?.kind === 'list' && last.ordered === ordered) last.items.push(item);
+      else blocks.push({ kind: 'list', ordered, items: [item] });
+    } else {
+      paragraph.push(trimmed);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+/** Separa **negrito** do texto comum (o resto do Markdown vira texto). */
+export function splitBold(text: string): { text: string; bold: boolean }[] {
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .filter(Boolean)
+    .map((part) => (part.startsWith('**') && part.endsWith('**') && part.length > 4 ? { text: part.slice(2, -2), bold: true } : { text: part.replace(/(^|\s)[*_](\S)/g, '$1$2').replace(/(\S)[*_](\s|$)/g, '$1$2'), bold: false }));
+}

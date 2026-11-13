@@ -4,6 +4,7 @@ import { ArrowLeft, BookmarkPlus, Brain, Copy, FolderPlus, Layers, Lightbulb, Lo
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/notebooks/Modal';
+import { AiText } from '@/components/notebooks/AiText';
 import { copyToClipboard, fieldClass } from '@/lib/notebook-ui';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -382,7 +383,7 @@ export function FormulaNotebook() {
             </div>
             {ai ? (
               <>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{ai.text}</p>
+                <div className="mt-3"><AiText text={ai.text} /></div>
                 <p className="mt-2 text-xs text-graphite-400">{ai.disclaimer}</p>
               </>
             ) : null}

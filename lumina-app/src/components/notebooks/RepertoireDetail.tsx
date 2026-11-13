@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BookmarkPlus, Copy, Loader2, Pencil, Sparkles, Star, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/notebooks/Modal';
+import { AiText } from '@/components/notebooks/AiText';
 import { copyToClipboard, fieldClass } from '@/lib/notebook-ui';
 import { ApiError, apiRepertoireAi } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
@@ -193,7 +194,7 @@ export function RepertoireDetail({
             {ai.check.tips.length ? <ul className="list-disc pl-5">{ai.check.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul> : null}
           </div>
         ) : null}
-        {ai?.text ? <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{ai.text}</p> : null}
+        {ai?.text ? <div className="mt-3"><AiText text={ai.text} /></div> : null}
         {ai ? <p className="mt-2 text-xs text-graphite-400">{ai.disclaimer}</p> : null}
       </section>
     </Modal>

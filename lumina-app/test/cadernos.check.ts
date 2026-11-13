@@ -75,3 +75,19 @@ assert.equal(toQueryString({ q: 'bauman', favorite: true, category: '', scope: u
 assert.equal(toQueryString({}), '');
 
 console.log('cadernos: ok');
+
+// Markdown simples da LuminIA: títulos, listas e negrito, sem HTML.
+import { parseAiBlocks, splitBold } from '../src/lib/notebooks.ts';
+assert.deepEqual(parseAiBlocks('## O que é\nUma ideia\ncontinuada.\n\n- um\n- dois\n1. primeiro'), [
+  { kind: 'heading', text: 'O que é' },
+  { kind: 'paragraph', text: 'Uma ideia continuada.' },
+  { kind: 'list', ordered: false, items: ['um', 'dois'] },
+  { kind: 'list', ordered: true, items: ['primeiro'] },
+]);
+assert.deepEqual(splitBold('O **Big Brother** vigia'), [
+  { text: 'O ', bold: false },
+  { text: 'Big Brother', bold: true },
+  { text: ' vigia', bold: false },
+]);
+assert.equal(splitBold('<script>x</script>')[0].text, '<script>x</script>');
+console.log('cadernos (texto da LuminIA): ok');

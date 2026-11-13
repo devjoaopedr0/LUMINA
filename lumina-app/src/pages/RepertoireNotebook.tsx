@@ -4,6 +4,7 @@ import { ArrowLeft, BookMarked, FolderPlus, Layers, Library, Plus, Search, Spark
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/notebooks/Modal';
+import { AiText } from '@/components/notebooks/AiText';
 import { fieldClass } from '@/lib/notebook-ui';
 import { RepertoireDetail } from '@/components/notebooks/RepertoireDetail';
 import { RepertoireForm } from '@/components/notebooks/RepertoireForm';
@@ -375,7 +376,7 @@ export function RepertoireNotebook() {
 
       {connections ? (
         <Modal title="Conexões entre repertórios" onClose={() => setConnections(null)} wide>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{connections.text}</p>
+          <AiText text={connections.text} />
           <p className="mt-3 text-xs text-graphite-400">{connections.disclaimer}</p>
         </Modal>
       ) : null}
