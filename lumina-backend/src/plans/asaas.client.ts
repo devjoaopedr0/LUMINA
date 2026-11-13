@@ -31,6 +31,8 @@ export interface AsaasSubscription {
 export interface AsaasPayment {
   id: string;
   subscription?: string | null;
+  installment?: string | null;
+  installmentNumber?: number | null;
   status: string;
   value?: number;
   dueDate?: string;
@@ -64,7 +66,7 @@ export class AsaasClient {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  private async request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, timeoutMs = 20_000): Promise<T> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.config.baseUrl}${path}`, {
@@ -75,7 +77,7 @@ export class AsaasClient {
           ...(body ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       this.logger.warn(`Asaas ${method} ${path} falhou: ${error instanceof Error ? error.message : error}`);
@@ -117,6 +119,50 @@ export class AsaasClient {
   async listSubscriptionPayments(subscriptionId: string): Promise<AsaasPayment[]> {
     const list = await this.request<{ data?: AsaasPayment[] }>('GET', `/subscriptions/${encodeURIComponent(subscriptionId)}/payments`);
     return list.data ?? [];
+  }
+
+  /**
+   * Plano anual: cobrança parcelada no cartão. Devolve a 1ª parcela, com o
+   * id do parcelamento (`installment`) e o link de pagamento (`invoiceUrl`).
+   * O número de parcelas é fixo na criação.
+   */
+  createInstallmentPayment(input: {
+    customer: string;
+    installmentCount: number;
+    totalValue: number;
+    dueDate: string;
+    description: string;
+    externalReference: string;
+  }): Promise<AsaasPayment> {
+    const { installmentCount, totalValue, ...rest } = input;
+    // Uma parcela só = cobrança simples: o Asaas não aceita installmentCount 1.
+    const body = installmentCount > 1 ? { ...rest, installmentCount, totalValue } : { ...rest, value: totalValue };
+    return this.request('POST', '/payments', { ...body, billingType: 'CREDIT_CARD' });
+  }
+
+  async listInstallmentPayments(installmentId: string): Promise<AsaasPayment[]> {
+    const list = await this.request<{ data?: AsaasPayment[] }>('GET', `/installments/${encodeURIComponent(installmentId)}/payments`);
+    return list.data ?? [];
+  }
+
+  /** Remove um parcelamento ainda não pago (parcelas pendentes ou vencidas). */
+  deleteInstallment(installmentId: string): Promise<{ deleted: boolean; id: string }> {
+    return this.request('DELETE', `/installments/${encodeURIComponent(installmentId)}`, undefined, 60_000);
+  }
+
+  /** Estorno total de um parcelamento no cartão já confirmado. */
+  refundInstallment(installmentId: string): Promise<unknown> {
+    return this.request('POST', `/installments/${encodeURIComponent(installmentId)}/refund`, {}, 60_000);
+  }
+
+  /** Estorno total de uma cobrança simples (anual em 1x). */
+  refundPayment(paymentId: string): Promise<unknown> {
+    return this.request('POST', `/payments/${encodeURIComponent(paymentId)}/refund`, {}, 60_000);
+  }
+
+  /** Cancela uma cobrança simples (anual em 1x) ainda não paga. */
+  deletePayment(paymentId: string): Promise<{ deleted: boolean; id: string }> {
+    return this.request('DELETE', `/payments/${encodeURIComponent(paymentId)}`);
   }
 
   /** Encerra a recorrência; cobranças pendentes da assinatura são removidas. */

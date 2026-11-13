@@ -108,6 +108,17 @@ class EnvironmentVariables {
   @Matches(/^\d+([.,]\d{1,2})?$/, { message: 'PLAN_PREMIUM_MONTHLY_PRICE deve ser um valor como 29.90' })
   PLAN_PREMIUM_MONTHLY_PRICE?: string;
 
+  @IfSet('PLAN_PREMIUM_YEARLY_PRICE')
+  @Matches(/^\d+([.,]\d{1,2})?$/, { message: 'PLAN_PREMIUM_YEARLY_PRICE deve ser um valor como 299.00' })
+  PLAN_PREMIUM_YEARLY_PRICE?: string;
+
+  @Type(() => Number)
+  @IfSet('PLAN_YEARLY_MAX_INSTALLMENTS')
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  PLAN_YEARLY_MAX_INSTALLMENTS?: number;
+
   @Type(() => Number)
   @IfSet('FOUNDER_STUDENT_SLOTS')
   @IsInt()

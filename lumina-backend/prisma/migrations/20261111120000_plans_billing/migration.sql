@@ -8,6 +8,9 @@ CREATE TYPE "SubscriptionStatus" AS ENUM ('PENDING', 'ACTIVE', 'PAST_DUE', 'CANC
 CREATE TYPE "SubscriptionSource" AS ENUM ('ASAAS', 'FOUNDER', 'MANUAL');
 
 -- CreateEnum
+CREATE TYPE "BillingCycle" AS ENUM ('MONTHLY', 'YEARLY');
+
+-- CreateEnum
 CREATE TYPE "PlanFeature" AS ENUM ('ESSAY_CORRECTION', 'SIMULATION', 'LUMINIA_MESSAGE', 'FLASHCARD_AI');
 
 -- CreateTable
@@ -21,6 +24,9 @@ CREATE TABLE "subscriptions" (
     "founder_number" INTEGER,
     "provider_customer_id" TEXT,
     "provider_subscription_id" TEXT,
+    "provider_installment_id" TEXT,
+    "billing_cycle" "BillingCycle" NOT NULL DEFAULT 'MONTHLY',
+    "installment_count" INTEGER,
     "billing_type" VARCHAR(20),
     "invoice_url" TEXT,
     "price_cents" INTEGER,
@@ -64,6 +70,9 @@ CREATE UNIQUE INDEX "subscriptions_founder_number_key" ON "subscriptions"("found
 
 -- CreateIndex
 CREATE UNIQUE INDEX "subscriptions_provider_subscription_id_key" ON "subscriptions"("provider_subscription_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "subscriptions_provider_installment_id_key" ON "subscriptions"("provider_installment_id");
 
 -- CreateIndex
 CREATE INDEX "subscriptions_user_id_status_idx" ON "subscriptions"("user_id", "status");

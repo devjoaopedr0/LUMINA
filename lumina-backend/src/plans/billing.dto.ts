@@ -10,7 +10,19 @@ export class CheckoutDto {
   @Matches(/^[\d.\-/ ]{11,20}$/, { message: 'Informe um CPF ou CNPJ válido.' })
   cpfCnpj!: string;
 
-  @ApiPropertyOptional({ enum: CHECKOUT_BILLING_TYPES, default: 'UNDEFINED', description: 'UNDEFINED deixa o aluno escolher na página do Asaas.' })
+  @ApiPropertyOptional({ enum: ['YEARLY', 'MONTHLY'], default: 'YEARLY', description: 'Anual (cartão, em até 12x, sem renovação automática) ou mensal (recorrente).' })
+  @IsOptional()
+  @IsIn(['YEARLY', 'MONTHLY'])
+  cycle?: 'YEARLY' | 'MONTHLY';
+
+  @ApiPropertyOptional({ description: 'Parcelas do anual (1 a 12).', default: 12 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  installments?: number;
+
+  @ApiPropertyOptional({ enum: CHECKOUT_BILLING_TYPES, default: 'UNDEFINED', description: 'Só no mensal. UNDEFINED deixa o aluno escolher na página do Asaas; o anual é sempre no cartão.' })
   @IsOptional()
   @IsIn(CHECKOUT_BILLING_TYPES)
   billingType?: CheckoutBillingType;

@@ -34,6 +34,21 @@ Como funciona:
 - Um fundador pode assinar antes do fim do benefício: a primeira cobrança vence no dia em que o benefício acaba, então ele não paga em dobro.
 - Configuração: `FOUNDER_STUDENT_SLOTS`, `FOUNDER_GRANT_MONTHS`, `FOUNDER_CAMPAIGN_STARTS_AT`, `FOUNDER_CAMPAIGN_ENDS_AT`. Mudar a configuração não altera concessões já feitas.
 
+## Plano anual (oferta principal)
+
+Combinado em 12/11/2026 para reduzir churn: o **anual parcelado no cartão** é a oferta principal e vem pré-selecionado com o selo "Mais escolhido" e a economia em relação a 12 meses do mensal. O mensal continua disponível.
+
+- Preço total em `PLAN_PREMIUM_YEARLY_PRICE`; parcelas de 1 a `PLAN_YEARLY_MAX_INSTALLMENTS` (padrão 12), escolhidas pelo aluno antes de criar a cobrança (o número de parcelas é fixo na criação no Asaas).
+- No Asaas, assinatura não aceita parcelamento: o anual é uma **cobrança parcelada no cartão** (`POST /v3/payments` com `installmentCount` e `totalValue`; em 1x, cobrança simples). Cada parcela é uma cobrança com webhook próprio e o campo `installment`.
+- **Acesso:** qualquer parcela paga garante 12 meses a partir do vencimento da 1ª parcela + 3 dias.
+- **Parcela em atraso:** `PAST_DUE` e o acesso fica no máximo mais 7 dias; pagar a parcela devolve o ano inteiro.
+- **Sem renovação automática.** Nos últimos 30 dias o app mostra o aviso e o botão "Renovar"; a nova cobrança vence quando o acesso atual acaba.
+- **Arrependimento (CDC, art. 49):** nos 7 primeiros dias, "Cancelar" estorna o parcelamento inteiro (`POST /v3/installments/{id}/refund`; em 1x, `POST /v3/payments/{id}/refund`) e encerra o Premium na hora. Depois disso não há cobrança a cancelar. O estorno no cartão pode levar até 10 dias úteis.
+- Anual ainda não pago: "Cancelar" remove a cobrança (`DELETE /v3/installments/{id}`).
+- Trocar de ideia antes de pagar (anual ↔ mensal ou outro número de parcelas) descarta a cobrança pendente e cria a nova.
+
+Ponto a validar no sandbox: a documentação do Asaas não diz se, no cartão, todas as parcelas são confirmadas de uma vez ou mês a mês. As regras acima funcionam nos dois casos.
+
 ## Cobrança (Asaas)
 
 Fluxo do aluno em `/app/plano`:
@@ -71,6 +86,8 @@ Variáveis em `lumina-backend/.env` (ver `.env.example`):
 | `ASAAS_API_KEY` | Chave da API (`$aact_hmlg_…` no sandbox, `$aact_prod_…` em produção) |
 | `ASAAS_ENVIRONMENT` | `sandbox` (padrão) ou `production` |
 | `ASAAS_WEBHOOK_TOKEN` | Token definido ao cadastrar o webhook no Asaas; valor aleatório longo, nunca a chave da API |
+| `PLAN_PREMIUM_YEARLY_PRICE` | Preço total do anual, ex.: `299.00` (sem valor, só o mensal é oferecido) |
+| `PLAN_YEARLY_MAX_INSTALLMENTS` | Máximo de parcelas do anual (1 a 12, padrão 12) |
 | `PLAN_PREMIUM_MONTHLY_PRICE` | Preço mensal, ex.: `29.90` |
 
 No painel do Asaas, cadastre o webhook apontando para `https://SEU_BACKEND/billing/webhooks/asaas`, com o mesmo token, e os eventos de cobrança e de assinatura.

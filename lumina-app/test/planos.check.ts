@@ -3,6 +3,7 @@ import {
   PLAN_COMPARISON,
   billingStatusText,
   formatPrice,
+  installmentText,
   maskCpfCnpj,
   planOriginText,
   usageRatio,
@@ -49,5 +50,10 @@ assert.match(billingStatusText(pendingNoLink), /link da cobrança aparece/);
 
 // A tabela precisa cobrir os quatro recursos com limite.
 assert.deepEqual(PLAN_COMPARISON.map((row) => row.feature).sort(), ['ESSAY_CORRECTION', 'FLASHCARD_AI', 'LUMINIA_MESSAGE', 'SIMULATION']);
+
+assert.equal(installmentText(29900, 12).replace(/\s/g, ' '), '12x de R$ 24,92 (R$ 299,00 no ano)');
+assert.equal(installmentText(29900, 1).replace(/\s/g, ' '), 'R$ 299,00 à vista');
+const yearlyActive = { status: 'ACTIVE', billingCycle: 'YEARLY', invoiceUrl: null, currentPeriodEnd: '2027-11-14T03:00:00.000Z' } as never;
+assert.match(billingStatusText(yearlyActive), /Plano anual ativo até 14\/11\/2027\. Ele não renova sozinho/);
 
 console.log('planos: ok');

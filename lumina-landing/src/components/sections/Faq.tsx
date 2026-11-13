@@ -6,7 +6,7 @@ const FAQ_ITEMS = [
   {
     question: "A Lumina é gratuita?",
     answer:
-      "Sim. O plano Gratuito inclui cronograma, banco de questões, caderno de erros e revisão, com limites: 2 correções de redação e 2 simulados por mês e 10 mensagens por dia para a LuminIA, sem cartão de crédito. O Premium amplia esses limites (30 correções por mês, simulados ilimitados, 200 mensagens por dia e flashcards gerados por IA). Os primeiros 100 alunos independentes ganham 4 meses de Premium sem cobrança.",
+      "Sim. O plano Gratuito inclui cronograma, banco de questões, caderno de erros e revisão, com limites: 2 correções de redação e 2 simulados por mês e 10 mensagens por dia para a LuminIA, sem cartão de crédito. O Premium amplia esses limites (30 correções por mês, simulados ilimitados, 200 mensagens por dia e flashcards gerados por IA), no plano anual em até 12x no cartão ou no mensal. Os primeiros 100 alunos independentes ganham 4 meses de Premium sem cobrança.",
   },
   {
     question: "Como funciona o scanner inteligente?",
@@ -31,7 +31,7 @@ const FAQ_ITEMS = [
   {
     question: "Posso cancelar quando quiser?",
     answer:
-      "Pode. Você cancela em \"Meu plano\", quando quiser, sem multa, e o que já foi pago continua valendo até o fim do período.",
+      "Pode. O mensal você cancela em \"Meu plano\" quando quiser, sem multa, e o que já foi pago vale até o fim do período. O anual não renova sozinho e tem reembolso integral se você cancelar nos 7 primeiros dias.",
   },
 ];
 

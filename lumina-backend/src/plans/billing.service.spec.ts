@@ -51,7 +51,7 @@ describe('BillingService.handleAsaasWebhook', () => {
 
   it('grava o evento, ativa a assinatura e marca como processado', async () => {
     const prisma = makePrisma();
-    prisma.subscription.findUnique.mockResolvedValue({ id: 'local-1', status: SubscriptionStatus.PENDING, currentPeriodEnd: null, canceledAt: null, invoiceUrl: 'https://www.asaas.com/i/1' });
+    prisma.subscription.findUnique.mockResolvedValue({ id: 'local-1', status: SubscriptionStatus.PENDING, billingCycle: 'MONTHLY', currentPeriodEnd: null, canceledAt: null, invoiceUrl: 'https://www.asaas.com/i/1' });
     const { service } = makeService(prisma);
     const result = await service.handleAsaasWebhook(
       'segredo-do-webhook',
@@ -108,7 +108,7 @@ describe('BillingService.checkout', () => {
       listSubscriptionPayments: vi.fn().mockResolvedValue([{ id: 'pay_1', status: 'PENDING', invoiceUrl: 'https://www.asaas.com/i/1' }]),
     };
     const { service } = makeService(prisma, asaas);
-    const result = await service.checkout(student, { cpfCnpj: '529.982.247-25', billingType: 'PIX' }, NOW);
+    const result = await service.checkout(student, { cpfCnpj: '529.982.247-25', billingType: 'PIX', cycle: 'MONTHLY' }, NOW);
 
     expect(asaas.createCustomer).toHaveBeenCalledWith({ name: 'Ana Lima', email: 'aluna@exemplo.com', cpfCnpj: '52998224725', externalReference: 'user-1' });
     expect(asaas.createSubscription).toHaveBeenCalledWith(
@@ -126,7 +126,7 @@ describe('BillingService.checkout', () => {
     };
     const { service, entitlements } = makeService(prisma, asaas);
     entitlements.resolve.mockResolvedValue({ tier: PlanTier.PREMIUM, accessUntil: new Date('2027-03-11T15:00:00.000Z'), isStudent: true });
-    await service.checkout(student, { cpfCnpj: '52998224725' }, NOW);
+    await service.checkout(student, { cpfCnpj: '52998224725', cycle: 'MONTHLY' }, NOW);
     expect(asaas.createSubscription.mock.calls[0][0].nextDueDate).toBe('2027-03-11');
   });
 
@@ -141,13 +141,79 @@ describe('BillingService.checkout', () => {
   it('se o Asaas falhar, apaga a assinatura local pendente', async () => {
     const prisma = makePrisma();
     const asaas = { createCustomer: vi.fn().mockRejectedValue(new Error('fora do ar')) };
-    await expect(makeService(prisma, asaas).service.checkout(student, { cpfCnpj: '52998224725' }, NOW)).rejects.toThrow('fora do ar');
+    await expect(makeService(prisma, asaas).service.checkout(student, { cpfCnpj: '52998224725', cycle: 'MONTHLY' }, NOW)).rejects.toThrow('fora do ar');
     expect(prisma.subscription.delete).toHaveBeenCalledWith({ where: { id: 'local-1' } });
+  });
+
+  it('anual: parcelado no cartão, com o link da 1ª parcela', async () => {
+    process.env.PLAN_PREMIUM_YEARLY_PRICE = '299.00';
+    const prisma = makePrisma();
+    const asaas = {
+      createCustomer: vi.fn().mockResolvedValue({ id: 'cus_1' }),
+      createInstallmentPayment: vi.fn().mockResolvedValue({ id: 'pay_1', installment: 'ins_1', invoiceUrl: 'https://www.asaas.com/i/9' }),
+    };
+    const { service } = makeService(prisma, asaas);
+    const result = await service.checkout(student, { cpfCnpj: '52998224725', installments: 10 }, NOW);
+    delete process.env.PLAN_PREMIUM_YEARLY_PRICE;
+
+    expect(asaas.createInstallmentPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: 'cus_1', installmentCount: 10, totalValue: 299, dueDate: '2026-11-11', externalReference: 'local-1' }),
+    );
+    expect(prisma.subscription.create.mock.calls[0][0].data).toMatchObject({ billingCycle: 'YEARLY', installmentCount: 10, billingType: 'CREDIT_CARD', priceCents: 29900 });
+    expect(prisma.subscription.update.mock.calls[0][0].data).toMatchObject({ providerInstallmentId: 'ins_1', invoiceUrl: 'https://www.asaas.com/i/9' });
+    expect(result.subscription.invoiceUrl).toBe('https://www.asaas.com/i/9');
+  });
+
+  it('anual sem preço configurado responde 503 sem chamar o Asaas', async () => {
+    const prisma = makePrisma();
+    const asaas = { createCustomer: vi.fn() };
+    await expect(makeService(prisma, asaas).service.checkout(student, { cpfCnpj: '52998224725' }, NOW)).rejects.toThrow('anual ainda não está disponível');
+    expect(asaas.createCustomer).not.toHaveBeenCalled();
   });
 
   it('professor não assina o Premium individual', async () => {
     const prisma = makePrisma();
     await expect(makeService(prisma, {}).service.checkout({ ...student, accountType: 'TEACHER' }, { cpfCnpj: '52998224725' }, NOW)).rejects.toThrow('contas de aluno');
+  });
+});
+
+describe('BillingService.cancel (anual)', () => {
+  const paidYearly = (createdAt: Date) => ({
+    id: 'local-1',
+    source: 'ASAAS',
+    status: SubscriptionStatus.ACTIVE,
+    billingCycle: 'YEARLY',
+    installmentCount: 12,
+    providerInstallmentId: 'ins_1',
+    providerSubscriptionId: null,
+    currentPeriodEnd: new Date('2027-11-14T03:00:00.000Z'),
+    createdAt,
+  });
+
+  it('nos 7 primeiros dias estorna o parcelamento e corta o acesso', async () => {
+    const prisma = makePrisma();
+    prisma.subscription.findFirst.mockResolvedValue(paidYearly(new Date('2026-11-08T12:00:00.000Z')));
+    const asaas = { refundInstallment: vi.fn().mockResolvedValue({}) };
+    const result = await makeService(prisma, asaas).service.cancel('user-1', NOW);
+    expect(asaas.refundInstallment).toHaveBeenCalledWith('ins_1');
+    expect(prisma.subscription.update.mock.calls[0][0].data).toMatchObject({ status: SubscriptionStatus.CANCELED, currentPeriodEnd: NOW });
+    expect(result).toMatchObject({ refunded: true });
+  });
+
+  it('depois de 7 dias explica que o anual não renova sozinho', async () => {
+    const prisma = makePrisma();
+    prisma.subscription.findFirst.mockResolvedValue(paidYearly(new Date('2026-10-01T12:00:00.000Z')));
+    const asaas = { refundInstallment: vi.fn() };
+    await expect(makeService(prisma, asaas).service.cancel('user-1', NOW)).rejects.toThrow('não renova sozinho');
+    expect(asaas.refundInstallment).not.toHaveBeenCalled();
+  });
+
+  it('anual ainda não pago: remove o parcelamento no Asaas', async () => {
+    const prisma = makePrisma();
+    prisma.subscription.findFirst.mockResolvedValue({ ...paidYearly(NOW), status: SubscriptionStatus.PENDING, currentPeriodEnd: null });
+    const asaas = { deleteInstallment: vi.fn().mockResolvedValue({ deleted: true }) };
+    await makeService(prisma, asaas).service.cancel('user-1', NOW);
+    expect(asaas.deleteInstallment).toHaveBeenCalledWith('ins_1');
   });
 });
 

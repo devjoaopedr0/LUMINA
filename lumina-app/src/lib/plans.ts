@@ -9,6 +9,7 @@ export type SubscriptionStatus = 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
 export type SubscriptionSource = 'ASAAS' | 'FOUNDER' | 'MANUAL';
 export type EntitlementSource = SubscriptionSource | 'STAFF' | 'INSTITUTION' | 'NONE';
 export type CheckoutBillingType = 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
+export type BillingCycle = 'YEARLY' | 'MONTHLY';
 
 export interface UsageSnapshot {
   feature: PlanFeature;
@@ -26,6 +27,8 @@ export interface SubscriptionView {
   status: SubscriptionStatus;
   source: SubscriptionSource;
   billingType: string | null;
+  billingCycle: BillingCycle;
+  installmentCount: number | null;
   invoiceUrl: string | null;
   priceCents: number | null;
   currentPeriodEnd: string | null;
@@ -42,6 +45,13 @@ export interface FounderCampaign {
   endsAt: string;
 }
 
+export interface CheckoutOffer {
+  available: boolean;
+  monthly: { priceCents: number } | null;
+  yearly: { priceCents: number; maxInstallments: number; installmentCents: number; savingsCents: number | null; savingsPercent: number | null } | null;
+  recommended: BillingCycle | null;
+}
+
 export interface BillingMe {
   tier: PlanTier;
   tierLabel: string;
@@ -51,7 +61,8 @@ export interface BillingMe {
   access: SubscriptionView | null;
   billing: SubscriptionView | null;
   usage: UsageSnapshot[];
-  checkout: { available: boolean; priceCents: number | null };
+  checkout: CheckoutOffer;
+  renewal: { canRenew: boolean; endsAt: string | null } | null;
   founderCampaign: FounderCampaign;
 }
 
@@ -81,6 +92,8 @@ export function formatPrice(cents: number | null): string {
   if (cents === null) return '';
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+
+export const CYCLE_LABEL: Record<BillingCycle, string> = { YEARLY: 'Anual', MONTHLY: 'Mensal' };
 
 export function formatDate(iso: string | null): string {
   if (!iso) return '';
@@ -120,8 +133,26 @@ export function planOriginText(me: Pick<BillingMe, 'tier' | 'source' | 'accessUn
   }
 }
 
-/** Situação da cobrança recorrente, quando existe. */
+/** "12x de R$ 24,92 (R$ 299,00 no ano)". */
+export function installmentText(totalCents: number, installments: number): string {
+  if (installments <= 1) return `${formatPrice(totalCents)} à vista`;
+  return `${installments}x de ${formatPrice(Math.ceil(totalCents / installments))} (${formatPrice(totalCents)} no ano)`;
+}
+
+/** Situação da cobrança, quando existe. */
 export function billingStatusText(billing: SubscriptionView): string {
+  if (billing.billingCycle === 'YEARLY') {
+    switch (billing.status) {
+      case 'PENDING':
+        return billing.invoiceUrl ? 'Plano anual aguardando o pagamento no cartão.' : 'Plano anual criado. O link de pagamento aparece aqui em instantes.';
+      case 'ACTIVE':
+        return `Plano anual ativo${billing.currentPeriodEnd ? ` até ${formatDate(billing.currentPeriodEnd)}` : ''}. Ele não renova sozinho: avisamos quando estiver perto do fim.`;
+      case 'PAST_DUE':
+        return 'Há uma parcela do plano anual em atraso. Regularize para não perder o Premium.';
+      case 'CANCELED':
+        return 'Plano anual cancelado.';
+    }
+  }
   switch (billing.status) {
     case 'PENDING':
       return billing.invoiceUrl ? 'Aguardando o pagamento da primeira cobrança.' : 'Assinatura criada. O link da cobrança aparece aqui em instantes.';

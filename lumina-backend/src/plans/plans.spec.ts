@@ -1,8 +1,8 @@
-import { PlanTier, SubscriptionSource, SubscriptionStatus } from '@prisma/client';
+import { BillingCycle, PlanTier, SubscriptionSource, SubscriptionStatus } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
-import { applyAsaasEvent, asaasSubscriptionIdOf, paidThrough } from './asaas-events';
+import { applyAsaasEvent, asaasReferenceOf, paidThrough, yearlyPaidThrough } from './asaas-events';
 import { AsaasClient, asaasConfigFromEnv } from './asaas.client';
-import { priceCentsFromEnv, webhookTokenMatches } from './billing.service';
+import { checkoutOffer, maxInstallmentsFromEnv, priceCentsFromEnv, webhookTokenMatches } from './billing.service';
 import { isValidCnpj, isValidCpf, isValidCpfCnpj } from './cpf-cnpj';
 import { bestAccess, grantsAccess } from './entitlements.service';
 import { addMonths, founderGrantEndsAt, founderPolicyFromEnv, isFounderEligible } from './founder-policy';
@@ -104,31 +104,54 @@ describe('acesso por assinatura', () => {
 });
 
 describe('webhooks do Asaas', () => {
-  const pending = { status: SubscriptionStatus.PENDING, currentPeriodEnd: null, canceledAt: null, invoiceUrl: 'https://www.asaas.com/i/1' };
+  const pending = { status: SubscriptionStatus.PENDING, billingCycle: BillingCycle.MONTHLY, currentPeriodEnd: null, canceledAt: null, invoiceUrl: 'https://www.asaas.com/i/1' };
+  const active = { ...pending, status: SubscriptionStatus.ACTIVE, currentPeriodEnd: new Date('2026-12-14T03:00:00.000Z') };
 
-  it('acha a assinatura no pagamento ou no evento de assinatura', () => {
-    expect(asaasSubscriptionIdOf({ id: 'evt_1', event: 'PAYMENT_RECEIVED', payment: { subscription: 'sub_1' } })).toBe('sub_1');
-    expect(asaasSubscriptionIdOf({ id: 'evt_2', event: 'SUBSCRIPTION_DELETED', subscription: { id: 'sub_2' } })).toBe('sub_2');
-    expect(asaasSubscriptionIdOf({ id: 'evt_3', event: 'PAYMENT_RECEIVED', payment: {} })).toBeNull();
+  it('acha a assinatura, o parcelamento ou a cobrança do evento', () => {
+    expect(asaasReferenceOf({ id: 'e1', event: 'PAYMENT_RECEIVED', payment: { id: 'pay_1', subscription: 'sub_1' } })).toEqual({ subscriptionId: 'sub_1', chargeId: null, externalReference: null });
+    expect(asaasReferenceOf({ id: 'e2', event: 'SUBSCRIPTION_DELETED', subscription: { id: 'sub_2' } }).subscriptionId).toBe('sub_2');
+    expect(asaasReferenceOf({ id: 'e3', event: 'PAYMENT_CONFIRMED', payment: { id: 'pay_3', installment: 'ins_3', externalReference: 'x' } })).toEqual({ subscriptionId: null, chargeId: 'ins_3', externalReference: 'x' });
+    // Anual em 1x: cobrança simples, sem parcelamento.
+    expect(asaasReferenceOf({ id: 'e4', event: 'PAYMENT_CONFIRMED', payment: { id: 'pay_4' } }).chargeId).toBe('pay_4');
   });
 
-  it('pagamento ativa até vencimento + 1 mês + 3 dias e limpa o link', () => {
+  it('mensal: pagamento ativa até vencimento + 1 mês + 3 dias e limpa o link', () => {
     const patch = applyAsaasEvent(pending, { id: 'e', event: 'PAYMENT_CONFIRMED', payment: { dueDate: '2026-11-11' } }, NOW);
     expect(patch).toEqual({ status: SubscriptionStatus.ACTIVE, currentPeriodEnd: paidThrough('2026-11-11', NOW), invoiceUrl: null });
     expect(paidThrough('2026-11-11', NOW).toISOString()).toBe('2026-12-14T03:00:00.000Z');
   });
 
   it('pagamento nunca encurta um período já pago', () => {
-    const paid = { ...pending, status: SubscriptionStatus.ACTIVE, currentPeriodEnd: new Date('2027-06-01T00:00:00.000Z') };
+    const paid = { ...active, currentPeriodEnd: new Date('2027-06-01T00:00:00.000Z') };
     const patch = applyAsaasEvent(paid, { id: 'e', event: 'PAYMENT_RECEIVED', payment: { dueDate: '2026-11-11' } }, NOW);
     expect(patch?.currentPeriodEnd?.toISOString()).toBe('2027-06-01T00:00:00.000Z');
   });
 
-  it('vencida vira PAST_DUE; estorno corta o acesso; remoção cancela', () => {
-    const active = { ...pending, status: SubscriptionStatus.ACTIVE, currentPeriodEnd: new Date('2026-12-14T03:00:00.000Z') };
+  it('mensal: vencida vira PAST_DUE; estorno corta o acesso; remoção cancela', () => {
     expect(applyAsaasEvent(active, { id: 'e', event: 'PAYMENT_OVERDUE', payment: {} }, NOW)).toEqual({ status: SubscriptionStatus.PAST_DUE });
+    expect(applyAsaasEvent(pending, { id: 'e', event: 'PAYMENT_OVERDUE', payment: {} }, NOW)).toBeNull();
     expect(applyAsaasEvent(active, { id: 'e', event: 'PAYMENT_REFUNDED', payment: {} }, NOW)).toEqual({ status: SubscriptionStatus.PAST_DUE, currentPeriodEnd: NOW });
     expect(applyAsaasEvent(active, { id: 'e', event: 'SUBSCRIPTION_DELETED', subscription: { id: 's' } }, NOW)).toEqual({ status: SubscriptionStatus.CANCELED, canceledAt: NOW });
+  });
+
+  it('anual: qualquer parcela paga garante 12 meses a partir da 1ª parcela', () => {
+    const yearlyPending = { ...pending, billingCycle: BillingCycle.YEARLY };
+    const first = applyAsaasEvent(yearlyPending, { id: 'e', event: 'PAYMENT_CONFIRMED', payment: { dueDate: '2026-11-11', installmentNumber: 1 } }, NOW);
+    expect(first?.currentPeriodEnd?.toISOString()).toBe('2027-11-14T03:00:00.000Z');
+    // A 3ª parcela vence 2 meses depois da 1ª: o fim do ano é o mesmo.
+    expect(yearlyPaidThrough('2027-01-11', 3, NOW).toISOString()).toBe('2027-11-14T03:00:00.000Z');
+  });
+
+  it('anual: parcela vencida dá 7 dias de tolerância; pagar devolve o ano', () => {
+    const yearlyActive = { ...active, billingCycle: BillingCycle.YEARLY, currentPeriodEnd: new Date('2027-11-14T03:00:00.000Z') };
+    const overdue = applyAsaasEvent(yearlyActive, { id: 'e', event: 'PAYMENT_OVERDUE', payment: { installmentNumber: 4 } }, NOW);
+    expect(overdue).toEqual({ status: SubscriptionStatus.PAST_DUE, currentPeriodEnd: new Date('2026-11-18T15:00:00.000Z') });
+    const back = applyAsaasEvent(
+      { ...yearlyActive, status: SubscriptionStatus.PAST_DUE, currentPeriodEnd: overdue!.currentPeriodEnd! },
+      { id: 'e', event: 'PAYMENT_RECEIVED', payment: { dueDate: '2027-02-11', installmentNumber: 4 } },
+      NOW,
+    );
+    expect(back).toMatchObject({ status: SubscriptionStatus.ACTIVE, currentPeriodEnd: new Date('2027-11-14T03:00:00.000Z') });
   });
 
   it('cobrança criada guarda o link; evento desconhecido não muda nada', () => {
@@ -141,6 +164,27 @@ describe('webhooks do Asaas', () => {
     expect(webhookTokenMatches('abd', 'abc')).toBe(false);
     expect(webhookTokenMatches('abc', undefined)).toBe(false);
     expect(webhookTokenMatches(undefined, 'abc')).toBe(false);
+  });
+});
+
+describe('ofertas de checkout', () => {
+  it('anual é o recomendado e mostra a economia contra 12 meses do mensal', () => {
+    const offer = checkoutOffer(true, true, 2990, 29900, 12);
+    expect(offer.recommended).toBe('YEARLY');
+    expect(offer.yearly).toEqual({ priceCents: 29900, maxInstallments: 12, installmentCents: 2492, savingsCents: 5980, savingsPercent: 17 });
+  });
+
+  it('sem anual configurado, cai no mensal; sem economia não inventa desconto', () => {
+    expect(checkoutOffer(true, true, 2990, null, 12)).toMatchObject({ recommended: 'MONTHLY', yearly: null });
+    expect(checkoutOffer(true, true, 1000, 15000, 12).yearly).toMatchObject({ savingsCents: null, savingsPercent: null });
+    expect(checkoutOffer(false, true, 2990, 29900, 12).available).toBe(false);
+  });
+
+  it('parcelas: padrão 12, nunca acima de 12', () => {
+    expect(maxInstallmentsFromEnv(undefined)).toBe(12);
+    expect(maxInstallmentsFromEnv('6')).toBe(6);
+    expect(maxInstallmentsFromEnv('24')).toBe(12);
+    expect(maxInstallmentsFromEnv('0')).toBe(12);
   });
 });
 

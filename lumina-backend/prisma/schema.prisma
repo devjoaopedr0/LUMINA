@@ -2490,6 +2490,13 @@ enum SubscriptionSource {
   MANUAL
 }
 
+/// MONTHLY: assinatura recorrente mensal. YEARLY: plano anual, cobrado de
+/// uma vez no cartão em até 12 parcelas (sem renovação automática).
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
 /// Recursos com limite por plano. A correção de redação continua contada em
 /// essay_correction_usages; só o limite dela vem do plano.
 enum PlanFeature {
@@ -2515,6 +2522,10 @@ model Subscription {
   founderNumber          Int?               @unique @map("founder_number")
   providerCustomerId     String?            @map("provider_customer_id")
   providerSubscriptionId String?            @unique @map("provider_subscription_id")
+  /// Parcelamento do Asaas (plano anual).
+  providerInstallmentId  String?            @unique @map("provider_installment_id")
+  billingCycle           BillingCycle       @default(MONTHLY) @map("billing_cycle")
+  installmentCount       Int?               @map("installment_count")
   billingType            String?            @map("billing_type") @db.VarChar(20)
   /// Link da cobrança em aberto (página hospedada do provedor).
   invoiceUrl             String?            @map("invoice_url")

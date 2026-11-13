@@ -5,14 +5,17 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { ApiError, apiBillingCancel, apiBillingCheckout, apiBillingMe, type BillingMe, type CheckoutBillingType } from '@/lib/api';
+import type { BillingCycle } from '@/lib/plans';
 import { getAccessToken } from '@/lib/auth';
 import {
   BILLING_TYPE_LABEL,
+  CYCLE_LABEL,
   FEATURE_LABEL,
   PLAN_COMPARISON,
   billingStatusText,
   formatDate,
   formatPrice,
+  installmentText,
   maskCpfCnpj,
   planOriginText,
   usageRatio,
@@ -27,9 +30,12 @@ export function PlanPage() {
   const [error, setError] = useState('');
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [billingType, setBillingType] = useState<CheckoutBillingType>('UNDEFINED');
+  const [cycle, setCycle] = useState<BillingCycle | null>(null);
+  const [installments, setInstallments] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -58,7 +64,11 @@ export function PlanPage() {
     setSubmitting(true);
     setError('');
     try {
-      const { subscription } = await apiBillingCheckout(token(), { cpfCnpj, billingType });
+      const chosen = selectedCycle ?? 'YEARLY';
+      const { subscription } = await apiBillingCheckout(
+        token(),
+        chosen === 'YEARLY' ? { cpfCnpj, cycle: chosen, installments: selectedInstallments } : { cpfCnpj, cycle: chosen, billingType },
+      );
       await load();
       if (subscription.invoiceUrl) window.open(subscription.invoiceUrl, '_blank', 'noopener,noreferrer');
     } catch (e) {
@@ -72,9 +82,10 @@ export function PlanPage() {
     setCanceling(true);
     setError('');
     try {
-      await apiBillingCancel(token());
+      const result = await apiBillingCancel(token());
       setConfirmCancel(false);
       await load();
+      if (result.refunded) setNotice('Plano anual cancelado. O estorno no cartão pode levar até 10 dias úteis.');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar.');
     } finally {
@@ -83,8 +94,20 @@ export function PlanPage() {
   }
 
   const billing = me?.billing ?? null;
-  const canSubscribe = !!me?.isStudent && me.checkout.available && (!billing || billing.status === 'CANCELED');
+  const offer = me?.checkout ?? null;
+  // O anual é a oferta principal: vem selecionado quando está configurado.
+  const selectedCycle: BillingCycle | null = cycle ?? offer?.recommended ?? null;
+  const maxInstallments = offer?.yearly?.maxInstallments ?? 12;
+  const selectedInstallments = installments ?? maxInstallments;
+  const canSubscribe =
+    !!me?.isStudent && !!offer?.available && (!billing || billing.status === 'CANCELED' || billing.status === 'PENDING' || !!me.renewal?.canRenew);
   const paying = billing && billing.status !== 'CANCELED';
+  const priceLabel =
+    selectedCycle === 'YEARLY' && offer?.yearly
+      ? installmentText(offer.yearly.priceCents, selectedInstallments)
+      : offer?.monthly
+        ? `${formatPrice(offer.monthly.priceCents)}/mês`
+        : '';
 
   return (
     <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8">
@@ -107,6 +130,11 @@ export function PlanPage() {
         {error ? (
           <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
             {error}
+          </p>
+        ) : null}
+        {notice ? (
+          <p role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
+            {notice}
           </p>
         ) : null}
 
@@ -164,7 +192,18 @@ export function PlanPage() {
               <Card className="bg-white p-6 sm:p-8">
                 <h2 className="text-xl font-bold">Assinatura Premium</h2>
                 <p className="mt-2 text-sm text-graphite-500">{billingStatusText(billing)}</p>
-                {billing.priceCents ? <p className="mt-1 text-sm text-graphite-500">{formatPrice(billing.priceCents)} por mês.</p> : null}
+                {billing.priceCents ? (
+                  <p className="mt-1 text-sm text-graphite-500">
+                    {billing.billingCycle === 'YEARLY'
+                      ? `${CYCLE_LABEL.YEARLY}: ${installmentText(billing.priceCents, billing.installmentCount ?? 1)}.`
+                      : `${formatPrice(billing.priceCents)} por mês.`}
+                  </p>
+                ) : null}
+                {me.renewal?.canRenew ? (
+                  <p className="mt-3 rounded-xl bg-primary/10 p-3 text-sm">
+                    Seu Premium termina em {formatDate(me.renewal.endsAt)}. Renove abaixo para não perder o acesso.
+                  </p>
+                ) : null}
                 <div className="mt-5 flex flex-wrap gap-3">
                   {billing.invoiceUrl && billing.status !== 'CANCELED' ? (
                     <a
@@ -185,8 +224,11 @@ export function PlanPage() {
                 {confirmCancel ? (
                   <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
                     <p>
-                      A recorrência será encerrada e cobranças em aberto serão removidas.
-                      {billing.currentPeriodEnd ? ` O que já foi pago continua valendo até ${formatDate(billing.currentPeriodEnd)}.` : ''}
+                      {billing.billingCycle === 'YEARLY'
+                        ? billing.status === 'PENDING'
+                          ? 'A cobrança do plano anual ainda não paga será removida.'
+                          : 'Nos 7 primeiros dias o plano anual é estornado por inteiro e o Premium acaba na hora. Depois disso não há cobrança a cancelar: o anual não renova sozinho.'
+                        : `A recorrência será encerrada e cobranças em aberto serão removidas.${billing.currentPeriodEnd ? ` O que já foi pago continua valendo até ${formatDate(billing.currentPeriodEnd)}.` : ''}`}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-3">
                       <Button variant="secondary" size="sm" onClick={() => void cancel()} disabled={canceling}>
@@ -232,42 +274,103 @@ export function PlanPage() {
                 </p>
               ) : null}
 
-              {canSubscribe ? (
-                <form onSubmit={(e) => void subscribe(e)} className="mt-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                  <label className="block text-sm font-semibold">
-                    CPF ou CNPJ de quem paga
-                    <Input
-                      className="mt-2"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={cpfCnpj}
-                      onChange={(e) => setCpfCnpj(maskCpfCnpj(e.target.value))}
-                      placeholder="000.000.000-00"
-                      required
-                    />
-                  </label>
-                  <label className="block text-sm font-semibold">
-                    Forma de pagamento
-                    <select
-                      className="mt-2 h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm"
-                      value={billingType}
-                      onChange={(e) => setBillingType(e.target.value as CheckoutBillingType)}
-                    >
-                      {(Object.keys(BILLING_TYPE_LABEL) as CheckoutBillingType[]).map((type) => (
-                        <option key={type} value={type}>
-                          {BILLING_TYPE_LABEL[type]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <Button type="submit" disabled={submitting}>
+              {canSubscribe && offer ? (
+                <form onSubmit={(e) => void subscribe(e)} className="mt-6 space-y-5">
+                  <fieldset>
+                    <legend className="text-sm font-semibold">Escolha o plano</legend>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {offer.yearly ? (
+                        <label
+                          className={`relative cursor-pointer rounded-2xl border-2 p-5 transition ${selectedCycle === 'YEARLY' ? 'border-primary bg-primary/5' : 'border-surface-line bg-white'}`}
+                        >
+                          <input type="radio" name="cycle" value="YEARLY" className="sr-only" checked={selectedCycle === 'YEARLY'} onChange={() => setCycle('YEARLY')} />
+                          <span className="absolute -top-3 left-4 rounded-full bg-primary px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-graphite">
+                            Mais escolhido
+                          </span>
+                          <span className="block text-lg font-bold">Anual</span>
+                          <span className="mt-1 block text-2xl font-bold">
+                            {offer.yearly.maxInstallments}x de {formatPrice(offer.yearly.installmentCents)}
+                          </span>
+                          <span className="mt-1 block text-sm text-graphite-500">{formatPrice(offer.yearly.priceCents)} por 12 meses, no cartão</span>
+                          {offer.yearly.savingsCents ? (
+                            <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                              Economize {formatPrice(offer.yearly.savingsCents)} ({offer.yearly.savingsPercent}%) em relação ao mensal
+                            </span>
+                          ) : null}
+                        </label>
+                      ) : null}
+                      {offer.monthly ? (
+                        <label
+                          className={`cursor-pointer rounded-2xl border-2 p-5 transition ${selectedCycle === 'MONTHLY' ? 'border-primary bg-primary/5' : 'border-surface-line bg-white'}`}
+                        >
+                          <input type="radio" name="cycle" value="MONTHLY" className="sr-only" checked={selectedCycle === 'MONTHLY'} onChange={() => setCycle('MONTHLY')} />
+                          <span className="block text-lg font-bold">Mensal</span>
+                          <span className="mt-1 block text-2xl font-bold">{formatPrice(offer.monthly.priceCents)}/mês</span>
+                          <span className="mt-1 block text-sm text-graphite-500">Renova todo mês; cancele quando quiser</span>
+                        </label>
+                      ) : null}
+                    </div>
+                  </fieldset>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-semibold">
+                      CPF ou CNPJ de quem paga
+                      <Input
+                        className="mt-2"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={cpfCnpj}
+                        onChange={(e) => setCpfCnpj(maskCpfCnpj(e.target.value))}
+                        placeholder="000.000.000-00"
+                        required
+                      />
+                    </label>
+                    {selectedCycle === 'YEARLY' && offer.yearly ? (
+                      <label className="block text-sm font-semibold">
+                        Parcelas no cartão
+                        <select
+                          className="mt-2 h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm"
+                          value={selectedInstallments}
+                          onChange={(e) => setInstallments(Number(e.target.value))}
+                        >
+                          {Array.from({ length: maxInstallments }, (_, i) => maxInstallments - i).map((n) => (
+                            <option key={n} value={n}>
+                              {installmentText(offer.yearly!.priceCents, n)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <label className="block text-sm font-semibold">
+                        Forma de pagamento
+                        <select
+                          className="mt-2 h-12 w-full rounded-xl border border-surface-line bg-white px-4 text-sm"
+                          value={billingType}
+                          onChange={(e) => setBillingType(e.target.value as CheckoutBillingType)}
+                        >
+                          {(Object.keys(BILLING_TYPE_LABEL) as CheckoutBillingType[]).map((type) => (
+                            <option key={type} value={type}>
+                              {BILLING_TYPE_LABEL[type]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+
+                  <Button type="submit" disabled={submitting || !selectedCycle}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
-                    Assinar por {formatPrice(me.checkout.priceCents)}/mês
+                    {me.renewal?.canRenew ? 'Renovar' : 'Assinar'} {selectedCycle ? CYCLE_LABEL[selectedCycle].toLowerCase() : ''}: {priceLabel}
                   </Button>
-                  <p className="flex items-start gap-2 text-xs text-graphite-500 sm:col-span-3">
+                  <p className="flex items-start gap-2 text-xs text-graphite-500">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                    O CPF/CNPJ vai direto para o Asaas, que emite a cobrança; a Lumina não o guarda.
-                    {me.tier !== 'FREE' && me.accessUntil ? ` Como você já tem Premium, a primeira cobrança vence em ${formatDate(me.accessUntil)}.` : ''}
+                    <span>
+                      O CPF/CNPJ vai direto para o Asaas, que emite a cobrança; a Lumina não o guarda.
+                      {selectedCycle === 'YEARLY'
+                        ? ' O anual é pago no cartão, não renova sozinho e pode ser cancelado com reembolso integral em até 7 dias.'
+                        : ' O mensal renova todo mês até você cancelar.'}
+                      {me.tier !== 'FREE' && me.accessUntil ? ` Como você já tem Premium, a primeira cobrança vence em ${formatDate(me.accessUntil)}.` : ''}
+                    </span>
                   </p>
                 </form>
               ) : null}
