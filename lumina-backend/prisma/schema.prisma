@@ -46,6 +46,7 @@ model User {
   essayCorrectionUsages  EssayCorrectionUsage[]
   subscriptions          Subscription[]
   planUsages             PlanUsage[]
+  notebookCollections    NotebookCollection[]
   essayReviews           EssayReview[]               @relation("EssayReviewEvaluator")
   essayReviewsValidated  EssayReview[]               @relation("EssayReviewValidator")
   essayReviewMessages    EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
@@ -219,13 +220,29 @@ model Formula {
   latex       String
   /// Anotações pessoais: quando usar, variações, macetes.
   description String?
+  /// O que cada símbolo significa (ex.: "a, b, c: coeficientes").
+  variables   String?
+  /// Em que tipo de questão a fórmula aparece.
+  whenToUse   String?  @map("when_to_use")
+  /// Exemplo resolvido curto.
+  example     String?
   isFavorite  Boolean  @default(false) @map("is_favorite")
+  /// Marcado pelo aluno quando já sabe a fórmula de cor.
+  isMemorized Boolean  @default(false) @map("is_memorized")
+  /// MANUAL, AI ou PLATFORM_COPY (copiada do acervo da plataforma).
+  origin      String   @default("MANUAL") @db.VarChar(20)
+  /// Item do acervo da plataforma (curado pela administração, só leitura para os alunos).
+  isPlatform  Boolean  @default(false) @map("is_platform")
+  /// De qual item da plataforma esta cópia veio.
+  platformSourceId String? @map("platform_source_id") @db.Uuid
+  collectionItems FormulaCollectionItem[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, discipline])
   @@index([userId, isFavorite])
+  @@index([isPlatform])
   @@map("formulas")
 }
 
@@ -251,12 +268,41 @@ model Repertoire {
   keywords  String[] @default([])
   /// Marcado pelo aluno quando já domina o repertório.
   isStudied Boolean  @default(false) @map("is_studied")
+  /// Categoria do caderno (FILOSOFIA, SOCIOLOGIA, ...) ou nome de uma
+  /// categoria criada pelo aluno.
+  category      String   @default("OUTRA") @db.VarChar(60)
+  /// Autor ou responsável (pensador, cineasta, órgão que publicou os dados).
+  author        String?  @db.VarChar(200)
+  /// LIVRO, FILME, SERIE, MUSICA, LEI, PESQUISA, PENSADOR, OBRA_DE_ARTE,
+  /// ACONTECIMENTO, CONCEITO, OUTRO.
+  referenceType String   @default("OUTRO") @map("reference_type") @db.VarChar(40)
+  /// Contexto histórico, social ou cultural.
+  context       String?
+  /// Importância sociocultural.
+  importance    String?
+  /// Como aplicar na redação.
+  essayUse      String?  @map("essay_use")
+  /// Exemplo de uso argumentativo (um trecho pronto para adaptar).
+  example       String?
+  /// Temas de redação com que o repertório se relaciona (texto livre).
+  relatedThemes String[] @default([]) @map("related_themes")
+  /// Anotações pessoais.
+  notes         String?
+  isFavorite    Boolean  @default(false) @map("is_favorite")
+  /// MANUAL, AI (sugestão da LuminIA revisada pelo aluno) ou PLATFORM_COPY.
+  origin        String   @default("MANUAL") @db.VarChar(20)
+  isPlatform    Boolean  @default(false) @map("is_platform")
+  platformSourceId String? @map("platform_source_id") @db.Uuid
+  collectionItems RepertoireCollectionItem[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, theme])
   @@index([userId, isStudied])
+  @@index([userId, category])
+  @@index([userId, isFavorite])
+  @@index([isPlatform])
   @@map("repertoires")
 }
 
@@ -2573,4 +2619,53 @@ model PaymentWebhookEvent {
 
   @@unique([provider, eventId])
   @@map("payment_webhook_events")
+}
+
+// ---------------------------------------------------------- cadernos
+
+enum NotebookKind {
+  FORMULA
+  REPERTOIRE
+}
+
+/// Coleção personalizada de um caderno (ex.: "Repertórios para educação").
+/// Um item pode estar em várias coleções.
+model NotebookCollection {
+  id          String                     @id @default(uuid()) @db.Uuid
+  userId      String                     @map("user_id") @db.Uuid
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        NotebookKind
+  name        String                     @db.VarChar(120)
+  description String?
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+  repertoires RepertoireCollectionItem[]
+  formulas    FormulaCollectionItem[]
+
+  @@index([userId, kind])
+  @@map("notebook_collections")
+}
+
+model RepertoireCollectionItem {
+  collectionId String             @map("collection_id") @db.Uuid
+  collection   NotebookCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  repertoireId String             @map("repertoire_id") @db.Uuid
+  repertoire   Repertoire         @relation(fields: [repertoireId], references: [id], onDelete: Cascade)
+  addedAt      DateTime           @default(now()) @map("added_at")
+
+  @@id([collectionId, repertoireId])
+  @@index([repertoireId])
+  @@map("repertoire_collection_items")
+}
+
+model FormulaCollectionItem {
+  collectionId String             @map("collection_id") @db.Uuid
+  collection   NotebookCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  formulaId    String             @map("formula_id") @db.Uuid
+  formula      Formula            @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+  addedAt      DateTime           @default(now()) @map("added_at")
+
+  @@id([collectionId, formulaId])
+  @@index([formulaId])
+  @@map("formula_collection_items")
 }

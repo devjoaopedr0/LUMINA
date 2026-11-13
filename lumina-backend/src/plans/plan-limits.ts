@@ -46,6 +46,24 @@ export const FEATURE_LABELS: Record<PlanFeature, { one: string; many: string }> 
   FLASHCARD_AI: { one: 'geração de flashcards por IA', many: 'gerações de flashcards por IA' },
 };
 
+/**
+ * Cadernos de fórmulas e de repertórios (benefício do Premium, 12/11/2026):
+ * no Gratuito, até 20 itens próprios e 2 coleções por caderno; no Premium,
+ * só tetos contra abuso. Itens copiados do acervo da plataforma contam como
+ * próprios. As ações da LuminIA nos cadernos gastam mensagens da LuminIA.
+ */
+export interface NotebookLimits {
+  items: number;
+  collections: number;
+}
+
+export const FREE_NOTEBOOK_LIMITS: NotebookLimits = { items: 20, collections: 2 };
+export const PREMIUM_NOTEBOOK_LIMITS: NotebookLimits = { items: 2000, collections: 100 };
+
+export function notebookLimitsFor(tier: PlanTier): NotebookLimits {
+  return tier === PlanTier.FREE ? FREE_NOTEBOOK_LIMITS : PREMIUM_NOTEBOOK_LIMITS;
+}
+
 export const TIER_LABELS: Record<PlanTier, string> = {
   FREE: 'Gratuito',
   PREMIUM: 'Premium',
