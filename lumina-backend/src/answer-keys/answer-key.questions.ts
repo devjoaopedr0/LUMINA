@@ -61,15 +61,26 @@ export function answerKeyModels(env: Record<string, string | undefined> = proces
   return own.length ? own : parse(env.AI_ESSAY_MODELS);
 }
 
+/**
+ * Prompt v2 (13/11/2026). A medição de 12/11 mostrou o erro mais perigoso:
+ * em contas, a IA chegava a um valor fora das alternativas e marcava uma
+ * delas mesmo assim. Agora ela resolve antes de escolher ("resolucao"), só
+ * escolhe quando o resultado corresponde a uma alternativa e devolve null
+ * quando não bate ou faltam dados.
+ */
 export const SUGGESTION_SYSTEM_PROMPT = [
   'Você é a LuminIA, professora do Ensino Médio. Sugira a alternativa correta de uma questão de múltipla escolha usando SOMENTE o enunciado e as alternativas fornecidos.',
-  'Regras:',
-  '- Escolha exatamente uma alternativa, de A a E, que responda ao comando da questão.',
-  '- Justifique em no máximo três frases, citando o trecho do enunciado ou o raciocínio que sustenta a escolha.',
+  'Como trabalhar:',
+  '1. Em "resolucao", resolva antes de escolher: diga o que o comando pede, liste os dados do enunciado e faça as contas passo a passo (no máximo 8 linhas).',
+  '2. Compare o resultado com as alternativas. Escolha uma só se ela corresponder ao resultado (em contas, o mesmo valor, admitindo apenas arredondamento ou a aproximação que o próprio comando pedir).',
+  '3. Devolva "answer": null quando o resultado não bater com nenhuma alternativa, quando faltarem dados (figura, gráfico, tabela, mapa ou cartaz que não foram transcritos) ou quando a decisão não for segura. Nunca ajuste a conta para chegar a uma alternativa e não use gabarito que você lembre de outra fonte.',
+  '4. Em "justification", explique a decisão final em no máximo três frases, sem rascunho. Com "answer": null, diga o que falta ou o que não bateu.',
   '- Não invente dados, leis, fórmulas, textos, contexto externo ou uma alternativa que não esteja na lista.',
-  '- Se o enunciado estiver incompleto, depender de imagem ou não permitir uma decisão segura, devolva "answer": null e explique o que falta na justificativa.',
-  '- Responda somente com JSON válido, sem markdown e sem texto antes ou depois: {"answer":"A","justification":"..."}.',
+  '- Responda somente com JSON válido, sem markdown e sem texto antes ou depois: {"resolucao":"...","answer":"A","justification":"..."}.',
 ].join('\n');
+
+/** Geração da sugestão: a mesma no serviço e no script de medição. */
+export const SUGGESTION_GENERATION = { maxTokens: 1200, timeoutMs: 45_000, temperature: 0.1 } as const;
 
 export function suggestionPrompt(params: {
   stem: string;
@@ -86,6 +97,30 @@ export function suggestionPrompt(params: {
     `Alternativas:\n${alternatives}`,
     'Sugira a alternativa correta e justifique. Responda apenas o JSON pedido.',
   ].join('\n\n');
+}
+
+/**
+ * Sinais de que a IA não fechou o raciocínio e marcou uma alternativa mesmo
+ * assim (vistos na medição de 12/11: "aguarde", "recalculando", "há um erro na
+ * minha conta", "o gabarito desta questão clássica"). Não inclui "mais
+ * próximo", que é legítimo quando o próprio comando pede aproximação.
+ */
+const UNSURE_PATTERNS = [
+  /\baguard[ae]\b/i,
+  /\bespere\b/i,
+  /\brecalcul/i,
+  /\bvamos verificar\b/i,
+  /\bh[aá] um erro\b/i,
+  /\bnão (?:está|aparece) entre as (?:alternativas|opções)\b/i,
+  /\bnenhuma das alternativas\b/i,
+  /\bgabarito (?:oficial|padr[aã]o)\b/i,
+  /\bquestão clássica\b/i,
+  /\bajustad[oa] ao gabarito\b/i,
+  /\bconsiderando (?:possíveis|arredondamentos? e)\b/i,
+];
+
+export function looksUnsure(justification: string): boolean {
+  return UNSURE_PATTERNS.some((pattern) => pattern.test(justification));
 }
 
 export type SuggestedAnswerOutcome =
@@ -131,6 +166,11 @@ export function parseSuggestedAnswerOutcome(text: string, alternatives: Suggesti
   }
   if (!position || !alternatives.some((a) => a.position === position)) return null;
   if (justification.length < 10) return null;
+  // A IA escolheu, mas a justificativa mostra que a conta não fechou: vira
+  // pendência para o professor, em vez de sugestão errada com cara de certa.
+  if (looksUnsure(justification)) {
+    return { position: null, justification: `A IA não chegou a um raciocínio consistente e a questão precisa de revisão manual. ${justification}`.slice(0, 800) };
+  }
   return { position, justification: justification.slice(0, 800) };
 }
 
