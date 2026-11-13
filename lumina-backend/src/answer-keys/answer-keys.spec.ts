@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, BadRequestException, Unprocessab
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { enemArea, gradeAnswers, GradingError, GradingItem, letterToPosition } from './answer-key.grading';
-import { correctPositions, enemQuestionSourceId, fallbackExplanation, parseSuggestedAnswer, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation } from './answer-key.questions';
+import { answerKeyModels, correctPositions, enemQuestionSourceId, fallbackExplanation, parseSuggestedAnswer, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation } from './answer-key.questions';
 import { parseOfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { grayImagesToPdf } from '../simulations/omr/pdf';
 import { answerKeySheetBits, answerKeySheetLayout } from './answer-key-sheet';
@@ -188,6 +188,8 @@ describe('Gabarito Inteligente — sugestão por IA', () => {
     const result = await s.suggestWithAi({ id: 'prof', accountType: 'TEACHER' }, { examId: 'exam-1', numbers: [1, 2, 3] });
 
     expect(ai.generateStructured).toHaveBeenCalledTimes(1);
+    // O gabarito usa a cadeia própria (ou a da redação), nunca a do chat.
+    expect(ai.generateStructured.mock.calls[0][0].models).toEqual(answerKeyModels());
     expect(result.counts).toEqual({ ai: 1, known: 1, skipped: 1, missing: 0 });
     expect(result.models).toEqual(['modelo-teste']);
     expect(result.skipped[0].reason).toMatch(/imagem/);
@@ -642,5 +644,16 @@ describe('Gabarito Inteligente — vínculo com o banco e explicação da LuminI
     const service = new AnswerKeysService(prisma as never);
     vi.spyOn(service as unknown as { loadVisible: () => Promise<unknown> }, 'loadVisible').mockResolvedValue({ id: 'k' } as never);
     await expect(service.explainQuestion({ id: 'aluno', accountType: 'STUDENT_INDEPENDENT' }, 'k', 91, 1, null)).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
+describe('cadeia de modelos do gabarito', () => {
+  it('usa AI_ANSWER_KEY_MODELS; sem ela, a cadeia da redação; sem nenhuma, a padrão', () => {
+    expect(answerKeyModels({ AI_ANSWER_KEY_MODELS: ' gemini:gemini-3.5-flash-lite , gemini:gemini-3.5-flash ', AI_ESSAY_MODELS: 'x:y' })).toEqual([
+      'gemini:gemini-3.5-flash-lite',
+      'gemini:gemini-3.5-flash',
+    ]);
+    expect(answerKeyModels({ AI_ANSWER_KEY_MODELS: '  ', AI_ESSAY_MODELS: 'gemini:gemini-3.5-flash-lite,openrouter:modelo' })).toEqual(['gemini:gemini-3.5-flash-lite', 'openrouter:modelo']);
+    expect(answerKeyModels({})).toEqual([]);
   });
 });

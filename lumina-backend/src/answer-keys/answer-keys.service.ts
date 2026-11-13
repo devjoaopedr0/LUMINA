@@ -11,7 +11,7 @@ import { ANSWER_KEY_SHEET_CODE, answerKeySheetBits, answerKeySheetLayout, readin
 import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
 import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto, SuggestAnswerKeyDto, ValidateAnswerKeyItemsDto } from './answer-keys.dto';
-import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, suggestionPrompt } from './answer-key.questions';
+import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, suggestionPrompt, answerKeyModels } from './answer-key.questions';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
@@ -327,6 +327,7 @@ export class AnswerKeysService {
           maxTokens: 900,
           timeoutMs: 25_000,
           temperature: 0.2,
+          models: answerKeyModels(),
         });
         if (result?.text?.trim()) {
           explanation = plainExplanation(result.text);
@@ -621,6 +622,7 @@ export class AnswerKeysService {
           maxTokens: 500,
           timeoutMs: 30_000,
           temperature: 0.1,
+          models: answerKeyModels(),
         });
         if (!result?.text?.trim()) {
           skipped.push({ number, language, reason: 'A IA não devolveu uma sugestão.' });
