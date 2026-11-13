@@ -5,6 +5,8 @@ import {
   buildSimilarQuestionPayload,
   SIMILAR_QUESTION_ENDPOINT,
 } from "@/lib/similar-question-payload";
+import type { BillingCycle, BillingMe, CheckoutBillingType, SubscriptionView } from "@/lib/plans";
+import { toQueryString, type Formula, type FormulaAiAction, type FormulaPayload, type FormulaQuery, type FormulaSummary, type NotebookCollection, type Repertoire, type RepertoireAiAction, type RepertoireAiResult, type RepertoirePayload, type RepertoireQuery, type RepertoireSummary } from "@/lib/notebooks";
 
 export { ApiError } from "@/lib/api-client-core";
 
@@ -2486,104 +2488,68 @@ export function apiGetUserVestibular(accessToken: string): Promise<UserVestibula
 // Caderno de Fórmulas (item 21)
 // =============================================================================
 
-export interface Formula {
-  id: string;
-  name: string;
-  discipline: 'MATEMATICA' | 'FISICA' | 'QUIMICA' | 'BIOLOGIA' | 'OUTRA';
-  topic: string | null;
-  latex: string;
-  description: string | null;
-  isFavorite: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type {
+  Formula,
+  FormulaPayload,
+  FormulaQuery,
+  FormulaSummary,
+  NotebookCollection,
+  Repertoire,
+  RepertoirePayload,
+  RepertoireQuery,
+  RepertoireSummary,
+  RepertoireAiResult,
+} from "@/lib/notebooks";
+/** Compatibilidade com o nome antigo. */
+export type CreateFormulaPayload = FormulaPayload;
+export type UpdateFormulaPayload = Partial<FormulaPayload>;
+export type CreateRepertoirePayload = RepertoirePayload;
+export type UpdateRepertoirePayload = Partial<RepertoirePayload>;
 
-export interface CreateFormulaPayload {
-  name: string;
-  discipline: 'MATEMATICA' | 'FISICA' | 'QUIMICA' | 'BIOLOGIA' | 'OUTRA';
-  topic?: string | null;
-  latex: string;
-  description?: string | null;
-  isFavorite?: boolean;
-}
+type NotebookPath = "formulas" | "repertoires";
+const json = (accessToken: string, method: string, body?: unknown) => ({
+  method,
+  headers: authHeaders(accessToken),
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
 
-export interface UpdateFormulaPayload {
-  name?: string;
-  discipline?: 'MATEMATICA' | 'FISICA' | 'QUIMICA' | 'BIOLOGIA' | 'OUTRA';
-  topic?: string | null;
-  latex?: string;
-  description?: string | null;
-  isFavorite?: boolean;
+export function apiListFormulas(accessToken: string, query: FormulaQuery = {}): Promise<Formula[]> {
+  return request(`/formulas${toQueryString(query)}`, { headers: authHeaders(accessToken) });
 }
+export const apiFormulaSummary = (accessToken: string): Promise<FormulaSummary> => request("/formulas/summary", { headers: authHeaders(accessToken) });
+export const apiCreateFormula = (accessToken: string, payload: FormulaPayload): Promise<Formula> => request("/formulas", json(accessToken, "POST", payload));
+export const apiUpdateFormula = (accessToken: string, id: string, payload: Partial<FormulaPayload>): Promise<Formula> => request(`/formulas/${id}`, json(accessToken, "PATCH", payload));
+export const apiDeleteFormula = (accessToken: string, id: string): Promise<{ deleted: boolean; id: string }> => request(`/formulas/${id}`, json(accessToken, "DELETE"));
+export const apiCopyFormula = (accessToken: string, id: string): Promise<Formula> => request(`/formulas/${id}/copy`, json(accessToken, "POST"));
+export const apiFormulaAi = (accessToken: string, payload: { action: FormulaAiAction; id: string }): Promise<{ text: string; disclaimer: string }> =>
+  request("/formulas/ai", json(accessToken, "POST", payload));
 
-export function apiListFormulas(accessToken: string): Promise<Formula[]> {
-  return request("/formulas", { headers: authHeaders(accessToken) });
+export function apiListRepertoires(accessToken: string, query: RepertoireQuery = {}): Promise<Repertoire[]> {
+  return request(`/repertoires${toQueryString(query)}`, { headers: authHeaders(accessToken) });
 }
+export const apiRepertoireSummary = (accessToken: string): Promise<RepertoireSummary> => request("/repertoires/summary", { headers: authHeaders(accessToken) });
+export const apiCreateRepertoire = (accessToken: string, payload: RepertoirePayload): Promise<Repertoire> => request("/repertoires", json(accessToken, "POST", payload));
+export const apiUpdateRepertoire = (accessToken: string, id: string, payload: Partial<RepertoirePayload>): Promise<Repertoire> =>
+  request(`/repertoires/${id}`, json(accessToken, "PATCH", payload));
+export const apiDeleteRepertoire = (accessToken: string, id: string): Promise<{ deleted: boolean; id: string }> => request(`/repertoires/${id}`, json(accessToken, "DELETE"));
+export const apiCopyRepertoire = (accessToken: string, id: string): Promise<Repertoire> => request(`/repertoires/${id}/copy`, json(accessToken, "POST"));
+export const apiRepertoireAi = (
+  accessToken: string,
+  payload: { action: RepertoireAiAction; theme?: string; ids?: string[]; part?: "INTRODUCAO" | "DESENVOLVIMENTO" },
+): Promise<RepertoireAiResult> => request("/repertoires/ai", json(accessToken, "POST", payload));
 
-export function apiCreateFormula(accessToken: string, payload: CreateFormulaPayload): Promise<Formula> {
-  return request("/formulas", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
-}
-
-export function apiUpdateFormula(accessToken: string, id: string, payload: UpdateFormulaPayload): Promise<Formula> {
-  return request(`/formulas/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
-}
-
-export function apiDeleteFormula(accessToken: string, id: string): Promise<{ ok: boolean }> {
-  return request(`/formulas/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
-}
-
-// =============================================================================
-// Caderno de Repertórios (item 22)
-// =============================================================================
-
-export interface Repertoire {
-  id: string;
-  title: string;
-  summary: string;
-  keywords: string[];
-  source: string | null;
-  year: number | null;
-  theme: string;
-  isStudied: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateRepertoirePayload {
-  title: string;
-  summary: string;
-  keywords: string[];
-  source?: string | null;
-  year?: number | null;
-  theme: string;
-  isStudied?: boolean;
-}
-
-export interface UpdateRepertoirePayload {
-  title?: string;
-  summary?: string;
-  keywords?: string[];
-  source?: string | null;
-  year?: number | null;
-  theme?: string;
-  isStudied?: boolean;
-}
-
-export function apiListRepertoires(accessToken: string): Promise<Repertoire[]> {
-  return request("/repertoires", { headers: authHeaders(accessToken) });
-}
-
-export function apiCreateRepertoire(accessToken: string, payload: CreateRepertoirePayload): Promise<Repertoire> {
-  return request("/repertoires", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
-}
-
-export function apiUpdateRepertoire(accessToken: string, id: string, payload: UpdateRepertoirePayload): Promise<Repertoire> {
-  return request(`/repertoires/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
-}
-
-export function apiDeleteRepertoire(accessToken: string, id: string): Promise<{ ok: boolean }> {
-  return request(`/repertoires/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
-}
+export const apiListCollections = (accessToken: string, notebook: NotebookPath): Promise<NotebookCollection[]> =>
+  request(`/${notebook}/collections`, { headers: authHeaders(accessToken) });
+export const apiCreateCollection = (accessToken: string, notebook: NotebookPath, payload: { name: string; description?: string | null }): Promise<NotebookCollection> =>
+  request(`/${notebook}/collections`, json(accessToken, "POST", payload));
+export const apiUpdateCollection = (accessToken: string, notebook: NotebookPath, id: string, payload: { name?: string; description?: string | null }): Promise<NotebookCollection> =>
+  request(`/${notebook}/collections/${id}`, json(accessToken, "PATCH", payload));
+export const apiDeleteCollection = (accessToken: string, notebook: NotebookPath, id: string): Promise<{ deleted: boolean }> =>
+  request(`/${notebook}/collections/${id}`, json(accessToken, "DELETE"));
+export const apiAddToCollection = (accessToken: string, notebook: NotebookPath, id: string, ids: string[]): Promise<{ added: number }> =>
+  request(`/${notebook}/collections/${id}/items`, json(accessToken, "POST", { ids }));
+export const apiRemoveFromCollection = (accessToken: string, notebook: NotebookPath, id: string, itemId: string): Promise<unknown> =>
+  request(`/${notebook}/collections/${id}/items/${itemId}`, json(accessToken, "DELETE"));
 
 // =============================================================================
 // Modelos de Redação Nota Mil (item 23)
@@ -2945,3 +2911,12 @@ export interface AnswerKeyStats {
 export const apiAnswerKeyStats = (token: string, id: string): Promise<AnswerKeyStats> => request(`/answer-keys/${id}/stats`, { headers: authHeaders(token) });
 export const apiContributeCommunity = (token: string, payload: { examId: string; application?: string; day?: number | null; bookletColor?: string | null; language?: string; answers: Record<string, number | null> }): Promise<AnswerKeyDetail> =>
   request('/answer-keys/community/contributions', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+// ------------------------------------------------------------ planos
+export type { BillingMe, CheckoutBillingType, SubscriptionView } from "@/lib/plans";
+
+export const apiBillingMe = (token: string): Promise<BillingMe> => request('/billing/me', { headers: authHeaders(token) });
+export const apiBillingCheckout = (token: string, payload: { cpfCnpj: string; cycle: BillingCycle; installments?: number; billingType?: CheckoutBillingType }): Promise<{ subscription: SubscriptionView }> =>
+  request('/billing/checkout', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiBillingCancel = (token: string): Promise<{ subscription: SubscriptionView; refunded?: boolean }> =>
+  request('/billing/cancel', { method: 'POST', headers: authHeaders(token) });

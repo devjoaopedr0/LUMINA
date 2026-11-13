@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
@@ -38,6 +38,7 @@ function setup() {
     formula: {
       findMany: vi.fn().mockResolvedValue([formula]),
       findFirst: vi.fn().mockResolvedValue(formula),
+      count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...formula, ...data })),
       update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...formula, ...data })),
       delete: vi.fn().mockResolvedValue({}),
@@ -45,6 +46,7 @@ function setup() {
     repertoire: {
       findMany: vi.fn().mockResolvedValue([repertoire]),
       findFirst: vi.fn().mockResolvedValue(repertoire),
+      count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...repertoire, ...data })),
       update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...repertoire, ...data })),
       delete: vi.fn().mockResolvedValue({}),
@@ -60,7 +62,7 @@ describe('Caderno de fórmulas (item 21)', () => {
     const { service, db } = setup();
     await service.createFormula('owner', dto(CreateFormulaDto, { name: 'Bhaskara', latex: 'x = ...', topic: '   ' }));
     expect(db.formula.create).toHaveBeenCalledWith({
-      data: {
+      data: expect.objectContaining({
         userId: 'owner',
         name: 'Bhaskara',
         discipline: 'MATEMATICA',
@@ -68,7 +70,9 @@ describe('Caderno de fórmulas (item 21)', () => {
         latex: 'x = ...',
         description: null,
         isFavorite: false,
-      },
+        isMemorized: false,
+        isPlatform: false,
+      }),
     });
   });
 
@@ -125,7 +129,9 @@ describe('Caderno de repertórios (item 22)', () => {
   it('rejeita repertório curto demais, ano fora da faixa e tema inválido', async () => {
     const base = { title: '1984', summary: 'A vigilância controla o pensamento.' };
     expect(await validate(dto(CreateRepertoireDto, { ...base, summary: 'curto' }))).not.toHaveLength(0);
-    expect(await validate(dto(CreateRepertoireDto, { ...base, year: 1800 }))).not.toHaveLength(0);
+    // Repertório histórico pode ser antigo (ex.: Aristóteles); fora de -3000..2100 é erro.
+    expect(await validate(dto(CreateRepertoireDto, { ...base, year: 1848 }))).toHaveLength(0);
+    expect(await validate(dto(CreateRepertoireDto, { ...base, year: -4000 }))).not.toHaveLength(0);
     expect(await validate(dto(CreateRepertoireDto, { ...base, year: 2200 }))).not.toHaveLength(0);
     expect(await validate(dto(CreateRepertoireDto, { ...base, theme: 'ESPORTE' }))).not.toHaveLength(0);
     expect(await validate(dto(CreateRepertoireDto, { ...base, year: 1949 }))).toHaveLength(0);

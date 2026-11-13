@@ -44,6 +44,9 @@ model User {
   essays                 Essay[]
   essayScans             EssayScan[]
   essayCorrectionUsages  EssayCorrectionUsage[]
+  subscriptions          Subscription[]
+  planUsages             PlanUsage[]
+  notebookCollections    NotebookCollection[]
   essayReviews           EssayReview[]               @relation("EssayReviewEvaluator")
   essayReviewsValidated  EssayReview[]               @relation("EssayReviewValidator")
   essayReviewMessages    EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
@@ -217,13 +220,29 @@ model Formula {
   latex       String
   /// Anotações pessoais: quando usar, variações, macetes.
   description String?
+  /// O que cada símbolo significa (ex.: "a, b, c: coeficientes").
+  variables   String?
+  /// Em que tipo de questão a fórmula aparece.
+  whenToUse   String?  @map("when_to_use")
+  /// Exemplo resolvido curto.
+  example     String?
   isFavorite  Boolean  @default(false) @map("is_favorite")
+  /// Marcado pelo aluno quando já sabe a fórmula de cor.
+  isMemorized Boolean  @default(false) @map("is_memorized")
+  /// MANUAL, AI ou PLATFORM_COPY (copiada do acervo da plataforma).
+  origin      String   @default("MANUAL") @db.VarChar(20)
+  /// Item do acervo da plataforma (curado pela administração, só leitura para os alunos).
+  isPlatform  Boolean  @default(false) @map("is_platform")
+  /// De qual item da plataforma esta cópia veio.
+  platformSourceId String? @map("platform_source_id") @db.Uuid
+  collectionItems FormulaCollectionItem[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, discipline])
   @@index([userId, isFavorite])
+  @@index([isPlatform])
   @@map("formulas")
 }
 
@@ -249,12 +268,41 @@ model Repertoire {
   keywords  String[] @default([])
   /// Marcado pelo aluno quando já domina o repertório.
   isStudied Boolean  @default(false) @map("is_studied")
+  /// Categoria do caderno (FILOSOFIA, SOCIOLOGIA, ...) ou nome de uma
+  /// categoria criada pelo aluno.
+  category      String   @default("OUTRA") @db.VarChar(60)
+  /// Autor ou responsável (pensador, cineasta, órgão que publicou os dados).
+  author        String?  @db.VarChar(200)
+  /// LIVRO, FILME, SERIE, MUSICA, LEI, PESQUISA, PENSADOR, OBRA_DE_ARTE,
+  /// ACONTECIMENTO, CONCEITO, OUTRO.
+  referenceType String   @default("OUTRO") @map("reference_type") @db.VarChar(40)
+  /// Contexto histórico, social ou cultural.
+  context       String?
+  /// Importância sociocultural.
+  importance    String?
+  /// Como aplicar na redação.
+  essayUse      String?  @map("essay_use")
+  /// Exemplo de uso argumentativo (um trecho pronto para adaptar).
+  example       String?
+  /// Temas de redação com que o repertório se relaciona (texto livre).
+  relatedThemes String[] @default([]) @map("related_themes")
+  /// Anotações pessoais.
+  notes         String?
+  isFavorite    Boolean  @default(false) @map("is_favorite")
+  /// MANUAL, AI (sugestão da LuminIA revisada pelo aluno) ou PLATFORM_COPY.
+  origin        String   @default("MANUAL") @db.VarChar(20)
+  isPlatform    Boolean  @default(false) @map("is_platform")
+  platformSourceId String? @map("platform_source_id") @db.Uuid
+  collectionItems RepertoireCollectionItem[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, theme])
   @@index([userId, isStudied])
+  @@index([userId, category])
+  @@index([userId, isFavorite])
+  @@index([isPlatform])
   @@map("repertoires")
 }
 
@@ -365,16 +413,17 @@ model SisuCutoff {
 /// particular, grupo de estudos). Possui exatamente um Workspace do tipo
 /// INSTITUTION — ver Workspace.institutionId.
 model Institution {
-  id        String            @id @default(uuid()) @db.Uuid
-  name      String
-  cnpj      String?           @unique
-  email     String            @unique
-  phone     String?
-  logoUrl   String?           @map("logo_url")
-  status    InstitutionStatus @default(PENDING)
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
-  workspace Workspace?
+  id            String            @id @default(uuid()) @db.Uuid
+  name          String
+  cnpj          String?           @unique
+  email         String            @unique
+  phone         String?
+  logoUrl       String?           @map("logo_url")
+  status        InstitutionStatus @default(PENDING)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  workspace     Workspace?
+  subscriptions Subscription[]
 
   @@map("institutions")
 }
@@ -992,31 +1041,31 @@ enum FlashcardRating {
 }
 
 model Flashcard {
-  id               String          @id @default(uuid()) @db.Uuid
-  userId           String          @map("user_id") @db.Uuid
-  subjectId        String?         @map("subject_id") @db.Uuid
-  topicId          String?         @map("topic_id") @db.Uuid
+  id               String            @id @default(uuid()) @db.Uuid
+  userId           String            @map("user_id") @db.Uuid
+  subjectId        String?           @map("subject_id") @db.Uuid
+  topicId          String?           @map("topic_id") @db.Uuid
   /// Questão de origem quando o cartão foi criado a partir de um erro.
-  sourceQuestionId String?         @map("source_question_id") @db.Uuid
-  source           FlashcardSource @default(MANUAL)
+  sourceQuestionId String?           @map("source_question_id") @db.Uuid
+  source           FlashcardSource   @default(MANUAL)
   front            String
   back             String
   /// Metadados de geração/auditoria (modelo, prompt, status de revisão).
   metadata         Json?
-  reviewCount      Int             @default(0) @map("review_count")
-  correctCount     Int             @default(0) @map("correct_count")
+  reviewCount      Int               @default(0) @map("review_count")
+  correctCount     Int               @default(0) @map("correct_count")
   /// Acertos seguidos em GOOD/EASY; AGAIN e HARD reiniciam.
-  streak           Int             @default(0)
-  intervalDays     Int             @default(0) @map("interval_days")
-  easeFactor       Float           @default(2.5) @map("ease_factor")
-  nextReviewAt     DateTime?       @map("next_review_at")
-  lastReviewedAt   DateTime?       @map("last_reviewed_at")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subject          Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  topic            Topic?          @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  sourceQuestion   Question?       @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
+  streak           Int               @default(0)
+  intervalDays     Int               @default(0) @map("interval_days")
+  easeFactor       Float             @default(2.5) @map("ease_factor")
+  nextReviewAt     DateTime?         @map("next_review_at")
+  lastReviewedAt   DateTime?         @map("last_reviewed_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject          Subject?          @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topic            Topic?            @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  sourceQuestion   Question?         @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
   reviews          FlashcardReview[]
 
   @@unique([userId, sourceQuestionId])
@@ -2457,4 +2506,166 @@ model AnswerKeyVote {
   @@unique([answerKeyId, userId, number, language])
   @@index([answerKeyId, number])
   @@map("answer_key_votes")
+}
+
+// ---------------------------------------------------------------- planos
+
+/// FREE: limites do plano gratuito. PREMIUM: assinatura individual do aluno.
+/// INSTITUTIONAL: licença da instituição, estendida aos alunos dela.
+enum PlanTier {
+  FREE
+  PREMIUM
+  INSTITUTIONAL
+}
+
+/// PENDING: aguardando o primeiro pagamento. PAST_DUE: cobrança vencida (o
+/// acesso segue até current_period_end). CANCELED: recorrência encerrada (o
+/// acesso já pago segue até current_period_end).
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+/// ASAAS: cobrança recorrente no Asaas. FOUNDER: benefício de fundador (sem
+/// cobrança, com prazo). MANUAL: concessão da administração.
+enum SubscriptionSource {
+  ASAAS
+  FOUNDER
+  MANUAL
+}
+
+/// MONTHLY: assinatura recorrente mensal. YEARLY: plano anual, cobrado de
+/// uma vez no cartão em até 12 parcelas (sem renovação automática).
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+/// Recursos com limite por plano. A correção de redação continua contada em
+/// essay_correction_usages; só o limite dela vem do plano.
+enum PlanFeature {
+  ESSAY_CORRECTION
+  SIMULATION
+  LUMINIA_MESSAGE
+  FLASHCARD_AI
+}
+
+/// Assinatura ou concessão de plano. Pertence a um usuário (individual) ou a
+/// uma instituição (licença). A Lumina não guarda cartão nem CPF: eles ficam
+/// no provedor; aqui ficam só os identificadores e o período pago.
+model Subscription {
+  id                     String             @id @default(uuid()) @db.Uuid
+  userId                 String?            @map("user_id") @db.Uuid
+  user                   User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institutionId          String?            @map("institution_id") @db.Uuid
+  institution            Institution?       @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  tier                   PlanTier
+  status                 SubscriptionStatus @default(PENDING)
+  source                 SubscriptionSource
+  /// Ordem do fundador (1..N). Única: impede passar do número de vagas.
+  founderNumber          Int?               @unique @map("founder_number")
+  providerCustomerId     String?            @map("provider_customer_id")
+  providerSubscriptionId String?            @unique @map("provider_subscription_id")
+  /// Parcelamento do Asaas (plano anual).
+  providerInstallmentId  String?            @unique @map("provider_installment_id")
+  billingCycle           BillingCycle       @default(MONTHLY) @map("billing_cycle")
+  installmentCount       Int?               @map("installment_count")
+  billingType            String?            @map("billing_type") @db.VarChar(20)
+  /// Link da cobrança em aberto (página hospedada do provedor).
+  invoiceUrl             String?            @map("invoice_url")
+  priceCents             Int?               @map("price_cents")
+  /// Até quando o acesso vale. Nulo só em concessão manual sem prazo.
+  currentPeriodEnd       DateTime?          @map("current_period_end")
+  canceledAt             DateTime?          @map("canceled_at")
+  /// Motivo da concessão manual ou observação da administração.
+  note                   String?
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@index([institutionId, status])
+  @@index([source])
+  @@map("subscriptions")
+}
+
+/// Contador de uso por recurso e período ("AAAA-MM" ou "AAAA-MM-DD", no fuso
+/// de Brasília). O incremento é atômico e respeita o limite no próprio SQL.
+model PlanUsage {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature   PlanFeature
+  period    String      @db.VarChar(10)
+  count     Int         @default(0)
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([userId, feature, period])
+  @@map("plan_usages")
+}
+
+/// Webhooks recebidos do provedor de pagamento. O provedor entrega "pelo menos
+/// uma vez": o par (provider, event_id) único torna o processamento idempotente.
+model PaymentWebhookEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  provider    String    @db.VarChar(20)
+  eventId     String    @map("event_id")
+  type        String    @db.VarChar(60)
+  payload     Json
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([provider, eventId])
+  @@map("payment_webhook_events")
+}
+
+// ---------------------------------------------------------- cadernos
+
+enum NotebookKind {
+  FORMULA
+  REPERTOIRE
+}
+
+/// Coleção personalizada de um caderno (ex.: "Repertórios para educação").
+/// Um item pode estar em várias coleções.
+model NotebookCollection {
+  id          String                     @id @default(uuid()) @db.Uuid
+  userId      String                     @map("user_id") @db.Uuid
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        NotebookKind
+  name        String                     @db.VarChar(120)
+  description String?
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+  repertoires RepertoireCollectionItem[]
+  formulas    FormulaCollectionItem[]
+
+  @@index([userId, kind])
+  @@map("notebook_collections")
+}
+
+model RepertoireCollectionItem {
+  collectionId String             @map("collection_id") @db.Uuid
+  collection   NotebookCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  repertoireId String             @map("repertoire_id") @db.Uuid
+  repertoire   Repertoire         @relation(fields: [repertoireId], references: [id], onDelete: Cascade)
+  addedAt      DateTime           @default(now()) @map("added_at")
+
+  @@id([collectionId, repertoireId])
+  @@index([repertoireId])
+  @@map("repertoire_collection_items")
+}
+
+model FormulaCollectionItem {
+  collectionId String             @map("collection_id") @db.Uuid
+  collection   NotebookCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  formulaId    String             @map("formula_id") @db.Uuid
+  formula      Formula            @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+  addedAt      DateTime           @default(now()) @map("added_at")
+
+  @@id([collectionId, formulaId])
+  @@index([formulaId])
+  @@map("formula_collection_items")
 }

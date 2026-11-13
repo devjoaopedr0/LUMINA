@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, Layers, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, Layers, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck, Crown } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { to: "/app/provas-antigas", label: "Provas anteriores", icon: History },
   { to: "/app/caderno-formulas", label: "Caderno de fórmulas", icon: Lightbulb },
   { to: "/app/caderno-repertorio", label: "Caderno de repertórios", icon: BookOpenCheck },
+  { to: "/app/plano", label: "Meu plano", icon: Crown },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
 ];
 

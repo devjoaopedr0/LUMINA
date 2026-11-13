@@ -1,0 +1,93 @@
+import assert from 'node:assert/strict';
+import {
+  atItemLimit,
+  categoryLabel,
+  isCustomCategory,
+  missingRepertoireFields,
+  repertoireInsertText,
+  repertoireSections,
+  suggestionToPayload,
+  toQueryString,
+  usageLabel,
+  type Repertoire,
+} from '../src/lib/notebooks.ts';
+
+const base: Repertoire = {
+  id: 'r1',
+  userId: 'u1',
+  title: 'Modernidade líquida',
+  summary: 'Relações frágeis e passageiras na sociedade de consumo.',
+  category: 'SOCIOLOGIA',
+  author: 'Zygmunt Bauman',
+  referenceType: 'CONCEITO',
+  source: null,
+  year: 2000,
+  theme: 'CULTURA',
+  keywords: [],
+  relatedThemes: ['Consumo', 'Redes sociais'],
+  context: null,
+  importance: null,
+  essayUse: 'Para discutir laços sociais frágeis.',
+  example: null,
+  notes: null,
+  isStudied: false,
+  isFavorite: false,
+  isPlatform: false,
+  origin: 'MANUAL',
+  platformSourceId: null,
+  createdAt: '2026-11-12T00:00:00.000Z',
+  updatedAt: '2026-11-12T00:00:00.000Z',
+};
+
+// Categorias fixas viram rótulo; a categoria própria fica com o nome do aluno.
+assert.equal(categoryLabel('CINEMA_SERIES'), 'Cinema e séries');
+assert.equal(categoryLabel('Minhas leituras'), 'Minhas leituras');
+assert.equal(isCustomCategory('Minhas leituras'), true);
+assert.equal(isCustomCategory('FILOSOFIA'), false);
+
+// Seções na ordem da especificação; as vazias somem.
+const titles = repertoireSections(base).map((s) => s.title);
+assert.deepEqual(titles, ['Identificação', 'Conceito', 'Como usar na redação', 'Temas relacionados']);
+assert.match(repertoireSections({ ...base, year: -350 })[0].body, /Ano: 350 a\.C\./);
+
+assert.deepEqual(missingRepertoireFields(base), ['contexto', 'exemplo de uso', 'fonte']);
+
+// Inserir na redação: o exemplo pronto, senão uma menção ao autor.
+assert.equal(repertoireInsertText(base), 'Segundo Zygmunt Bauman, em "Modernidade líquida", ');
+assert.equal(repertoireInsertText({ ...base, example: '  Como alerta Bauman, ...  ' }), 'Como alerta Bauman, ...');
+assert.equal(repertoireInsertText({ ...base, author: null }), 'Como mostra "Modernidade líquida", ');
+
+// Sugestão da LuminIA vira rascunho com origem AI e o "conferir" nas anotações.
+const draft = suggestionToPayload(
+  { title: 'Lei X', author: null, category: 'LEGISLACAO', referenceType: 'LEI', context: 'Contexto.', relation: 'Garante o direito discutido.', howToArgue: 'Contraste.', example: 'Ex.', verify: 'número do artigo' },
+  'Educação',
+);
+assert.equal(draft.origin, 'AI');
+assert.deepEqual(draft.relatedThemes, ['Educação']);
+assert.equal(draft.notes, 'Conferir: número do artigo');
+
+assert.equal(usageLabel(12, { tier: 'FREE', itemLimit: 20, collectionLimit: 2 }), '12 de 20');
+assert.equal(usageLabel(12, { tier: 'PREMIUM', itemLimit: 2000, collectionLimit: 100 }), '12');
+assert.equal(atItemLimit(20, { tier: 'FREE', itemLimit: 20, collectionLimit: 2 }), true);
+assert.equal(atItemLimit(20, { tier: 'PREMIUM', itemLimit: 2000, collectionLimit: 100 }), false);
+
+assert.equal(toQueryString({ q: 'bauman', favorite: true, category: '', scope: undefined, toMemorize: false }), '?q=bauman&favorite=true');
+assert.equal(toQueryString({}), '');
+
+console.log('cadernos: ok');
+
+// Markdown simples da LuminIA: títulos, listas e negrito, sem HTML.
+import { parseAiBlocks, splitBold } from '../src/lib/notebooks.ts';
+assert.deepEqual(parseAiBlocks('## O que é\nUma ideia\ncontinuada.\n\n- um\n- dois\n1. primeiro'), [
+  { kind: 'heading', text: 'O que é' },
+  { kind: 'paragraph', text: 'Uma ideia continuada.' },
+  { kind: 'list', ordered: false, items: ['um', 'dois'] },
+  { kind: 'list', ordered: true, items: ['primeiro'] },
+]);
+assert.deepEqual(splitBold('O **Big Brother** vigia'), [
+  { text: 'O ', bold: false },
+  { text: 'Big Brother', bold: true },
+  { text: ' vigia', bold: false },
+]);
+assert.equal(splitBold('<script>x</script>')[0].text, '<script>x</script>');
+console.log('cadernos (texto da LuminIA): ok');

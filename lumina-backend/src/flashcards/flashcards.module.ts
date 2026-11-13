@@ -28,13 +28,17 @@ import {
   UpdateFlashcardDto,
 } from './flashcards.dto';
 import { FlashcardsService } from './flashcards.service';
+import { PlanUsageService } from '../plans/plan-usage.service';
 
 @ApiTags('flashcards')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('flashcards')
 export class FlashcardsController {
-  constructor(private readonly service: FlashcardsService) {}
+  constructor(
+    private readonly service: FlashcardsService,
+    private readonly planUsage: PlanUsageService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Lista os flashcards do aluno, opcionalmente só os vencidos.' })
@@ -67,7 +71,7 @@ export class FlashcardsController {
   @ApiOperation({ summary: 'Gera flashcards com a LuminIA a partir de um conteúdo.' })
   @ApiResponse({ status: 201, type: [FlashcardResponseDto] })
   generate(@CurrentUser() user: UserWithProfile, @Body() dto: GenerateFlashcardsDto) {
-    return this.service.generate(user.id, dto);
+    return this.planUsage.withQuota(user.id, 'FLASHCARD_AI', () => this.service.generate(user.id, dto));
   }
 
   @Post('generate/from-pdf')
@@ -79,7 +83,7 @@ export class FlashcardsController {
     @CurrentUser() user: UserWithProfile,
     @Body() dto: GenerateFlashcardsFromPdfDto,
   ) {
-    return this.service.generateFromPdf(user.id, dto);
+    return this.planUsage.withQuota(user.id, 'FLASHCARD_AI', () => this.service.generateFromPdf(user.id, dto));
   }
 
   @Post('from-error/:questionId')
