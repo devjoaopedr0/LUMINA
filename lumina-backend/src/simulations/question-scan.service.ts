@@ -1,26 +1,31 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma, PrismaClient, QuestionDifficulty, ErrorReason } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
 import { nextErrorReviewAt } from '../questions/review-schedule';
 import { ERROR_NOTEBOOK_MASTERED_STREAK } from '../questions/dto/error-notebook.dto';
+import { AiService } from '../ai/ai.service';
+import { decodeImage } from '../essay-correction/essay-correction.service';
+import { PlanUsageService } from '../plans/plan-usage.service';
+import { parseQuestionOcr, QUESTION_OCR_PROMPT, QUESTION_OCR_SYSTEM, QuestionNotReadableError, QuestionOcrResult } from './question-ocr';
 
-interface QuestionScanProcessingResult {
-  stemText: string | null;
-  alternatives: { position: number; text: string }[] | null;
-  subject: string | null;
-  topic: string | null;
-  difficulty: QuestionDifficulty | null;
-  explanationJson: Record<number, string> | null;
-  confidence: number | null;
-  warnings: string[];
+/** Leitura que falhou: devolve o registro FAILED e o crédito do plano volta. */
+class ScanFailed extends Error {
+  constructor(readonly processing: unknown) {
+    super('leitura falhou');
+  }
 }
 
 @Injectable()
 export class QuestionScanService {
+  private readonly logger = new Logger(QuestionScanService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly questionAccess: QuestionAccessService,
+    // Opcionais para testes montados à mão; no app vêm do AiModule e do PlansModule.
+    @Optional() private readonly ai?: AiService,
+    @Optional() private readonly planUsage?: PlanUsageService,
   ) {}
 
   // ---------- Upload (Presigned URL) ----------
@@ -44,58 +49,74 @@ export class QuestionScanService {
     return { uploadUrl, uploadId: upload.id, key: upload.id, expiresIn };
   }
 
-  async completeUpload(uploadId: string, fileUrl: string, meta: { width: number; height: number; sizeBytes: number }) {
-    const upload = await this.prisma.questionScanUpload.update({
-      where: { id: uploadId },
-      data: {
-        fileUrl,
-        metaJson: meta,
-        status: 'PROCESSING',
-      },
-    });
+  /**
+   * Conclui o upload e já faz a leitura (a resposta volta com o resultado,
+   * sem o app precisar consultar de novo). Só o dono conclui o próprio
+   * upload, e só uma vez. Cada leitura gasta uma mensagem da LuminIA do
+   * plano; se a leitura falhar, a mensagem volta.
+   */
+  async completeUpload(userId: string, uploadId: string, dto: { fileUrl: string; width: number; height: number; sizeBytes: number }) {
+    const upload = await this.prisma.questionScanUpload.findFirst({ where: { id: uploadId, userId } });
+    if (!upload) throw new NotFoundException('Envio não encontrado.');
+    if (upload.status !== 'PENDING') throw new ConflictException('Esta foto já foi enviada para leitura.');
+    // Confere o tipo pelos bytes (JPEG, PNG ou WebP) e o tamanho máximo.
+    const image = decodeImage(dto.fileUrl);
 
-    // Dispara processamento assíncrono
-    void this.processUpload(upload.id);
+    const run = async () => {
+      await this.prisma.questionScanUpload.update({
+        where: { id: upload.id },
+        data: {
+          fileUrl: dto.fileUrl,
+          metaJson: { width: dto.width, height: dto.height, sizeBytes: image.bytes.length, mimeType: image.mime },
+          status: 'PROCESSING',
+        },
+      });
+      const processing = await this.processUpload(upload.id);
+      // Leitura que falhou não deve custar a mensagem do aluno.
+      if (processing?.status === 'FAILED') throw new ScanFailed(processing);
+      return processing;
+    };
 
-    return { status: 'PROCESSING' };
+    try {
+      return this.planUsage ? await this.planUsage.withQuota(userId, 'LUMINIA_MESSAGE', run) : await run();
+    } catch (error) {
+      if (error instanceof ScanFailed) return error.processing;
+      throw error;
+    }
   }
 
   // ---------- Processamento ----------
 
-  /** Processa o upload: OCR simulado + identificação de disciplina/assunto + LuminIA. */
+  /** Lê a questão na foto com o modelo de visão e grava o resultado para o aluno conferir. */
   async processUpload(uploadId: string) {
     const upload = await this.prisma.questionScanUpload.findUnique({ where: { id: uploadId } });
-    if (!upload) return;
+    if (!upload) return null;
 
     try {
-      // 1) Simula OCR + classificação (em produção: Tesseract/OpenCV + LLM)
-      const result = await this.simulateOcrAndClassification(upload);
-
-      // 2) Grava processing
+      const result = await this.readQuestion(upload.fileUrl);
       const processing = await this.prisma.questionScanProcessing.create({
         data: {
           uploadId: upload.id,
-          stemText: result.stemText ?? null,
-          alternativesJson: result.alternatives ?? Prisma.JsonNull,
-          subject: result.subject ?? null,
-          topic: result.topic ?? null,
+          stemText: result.stemText,
+          alternativesJson: result.alternatives.length ? result.alternatives : Prisma.JsonNull,
+          subject: result.subject,
+          topic: result.topic,
           difficulty: result.difficulty,
-          explanationJson: result.explanationJson ?? Prisma.JsonNull,
+          // A leitura não sabe a alternativa correta: sem explicação inventada.
+          explanationJson: Prisma.JsonNull,
           confidence: result.confidence,
           warningsJson: result.warnings.length > 0 ? result.warnings : Prisma.JsonNull,
           status: 'COMPLETED',
           finishedAt: new Date(),
         },
+        include: { upload: true, result: true },
       });
-
-      // 3) Atualiza upload
-      await this.prisma.questionScanUpload.update({
-        where: { id: uploadId },
-        data: { status: 'COMPLETED' },
-      });
-
+      await this.prisma.questionScanUpload.update({ where: { id: uploadId }, data: { status: 'COMPLETED' } });
+      return processing;
     } catch (err) {
-      await this.prisma.questionScanProcessing.create({
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      if (!(err instanceof QuestionNotReadableError)) this.logger.warn(`Leitura da questão ${uploadId} falhou: ${message}`);
+      const processing = await this.prisma.questionScanProcessing.create({
         data: {
           uploadId,
           stemText: null,
@@ -105,80 +126,31 @@ export class QuestionScanService {
           difficulty: null,
           explanationJson: Prisma.JsonNull,
           confidence: null,
-          warningsJson: [`Erro no processamento: ${err instanceof Error ? err.message : 'desconhecido'}`],
+          warningsJson: Prisma.JsonNull,
           status: 'FAILED',
-          errorMessage: err instanceof Error ? err.message : 'Erro desconhecido',
+          errorMessage: message,
           finishedAt: new Date(),
         },
+        include: { upload: true, result: true },
       });
-      await this.prisma.questionScanUpload.update({
-        where: { id: uploadId },
-        data: { status: 'FAILED' },
-      });
+      await this.prisma.questionScanUpload.update({ where: { id: uploadId }, data: { status: 'FAILED' } });
+      return processing;
     }
   }
 
-  /** Simula OCR + classificação + explicação LuminIA.
-   *  Em produção: chamaria serviço de OCR (Tesseract/Google Vision/Azure) +
-   *  classificador de disciplina/assunto + LLM para explicação. */
-  private async simulateOcrAndClassification(upload: { metaJson: Prisma.JsonValue }): Promise<QuestionScanProcessingResult> {
-    const meta = upload.metaJson as { width: number; height: number; mimeType: string } | null;
-    const isLandscape = (meta?.width ?? 0) > (meta?.height ?? 0);
-
-    // Simula enunciado extraído
-    const stemText = 'Considere a função f(x) = 2^x. O valor de f(3) é igual a:';
-
-    // Simula alternativas
-    const alternatives = [
-      { position: 1, text: '4' },
-      { position: 2, text: '8' },
-      { position: 3, text: '16' },
-      { position: 4, text: '32' },
-    ];
-
-    // Simula identificação de disciplina/assunto (por palavras-chave no enunciado)
-    let subject = 'Matemática';
-    let topic = 'Funções exponenciais';
-    let difficulty: QuestionDifficulty = 'MEDIA';
-
-    if (stemText.includes('termodinâmica') || stemText.includes('calor') || stemText.includes('energia')) {
-      subject = 'Física';
-      topic = 'Termodinâmica';
-      difficulty = 'DIFICIL';
-    } else if (stemText.includes('reação') || stemText.includes('mol') || stemText.includes('química')) {
-      subject = 'Química';
-      topic = 'Estequiometria';
-      difficulty = 'MEDIA';
-    }
-
-    // Simula explicação LuminIA por alternativa
-    const explanationJson: Record<number, string> = {
-      1: '2^2 = 4: o expoente foi trocado pela base.',
-      2: '2^3 = 8: base 2 elevada ao expoente 3.',
-      3: 'O dobro de 8 seria 16, mas 2^3 = 8.',
-      4: '4 é a base; a resposta seria 4^3 se o enunciado pedisse outra coisa.',
-    };
-
-    // Confiança simulada baseada em qualidade da imagem (meta)
-    const baseConfidence = 0.85;
-    const sizePenalty = (meta?.width ?? 1920) < 800 ? 0.15 : 0;
-    const confidence = Math.max(0.5, baseConfidence - sizePenalty - Math.random() * 0.1);
-
-    const warnings: string[] = [];
-    if (confidence < 0.7) warnings.push('Confiança baixa: imagem pode estar borrada ou com ruído.');
-    if (!meta || (meta.width < 600 && meta.height < 600)) warnings.push('Resolução da imagem baixa; recomenda-se foto com mais detalhes.');
-    if (isLandscape) warnings.push('Imagem em paisagem; preferir retrato para melhor OCR.');
-
-    return {
-      stemText,
-      alternatives,
-      subject,
-      topic,
-      difficulty,
-      explanationJson,
-      confidence,
-      warnings,
-    };
+  /** Chama o modelo de visão (AI_VISION_MODELS). Sem IA configurada, falha com mensagem clara. */
+  private async readQuestion(dataUrl: string): Promise<QuestionOcrResult> {
+    if (!this.ai) throw new Error('A leitura de questões por foto não está configurada neste ambiente.');
+    const result = await this.ai.generateStructured({
+      system: QUESTION_OCR_SYSTEM,
+      prompt: QUESTION_OCR_PROMPT,
+      imageDataUrl: dataUrl,
+      maxTokens: 2500,
+      timeoutMs: 60_000,
+      temperature: 0,
+    });
+    if (!result?.text?.trim()) throw new Error('A leitura de questões por foto não está disponível agora. Tente de novo em instantes.');
+    return parseQuestionOcr(result.text);
   }
 
   // ---------- Salvar resultado (criar questão ou adicionar ao caderno) ----------

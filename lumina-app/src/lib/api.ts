@@ -1110,7 +1110,8 @@ export const apiAdaptiveList = (token: string): Promise<AdaptiveSessionSummary[]
 
 // Question Scanner (item 18)
 export const apiQuestionScanPresignedUpload = (token: string, dto: { contentType: string }): Promise<QuestionScanUploadUrlResponseDto> => request('/simulations/question-scans/upload-url', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
-export const apiQuestionScanCompleteUpload = (token: string, id: string, dto: { fileUrl: string; width: number; height: number; sizeBytes: number }): Promise<QuestionScanUploadResponseDto> => request(`/simulations/question-scans/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+/** Envia a foto e já devolve a leitura (COMPLETED ou FAILED com o motivo). */
+export const apiQuestionScanCompleteUpload = (token: string, id: string, dto: { fileUrl: string; width: number; height: number; sizeBytes: number }): Promise<QuestionScanProcessingResponseDto> => request(`/simulations/question-scans/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
 export const apiListQuestionScanUploads = (token: string): Promise<QuestionScanUploadResponseDto[]> => request('/simulations/question-scans/uploads', { headers: authHeaders(token) });
 export const apiGetQuestionScanProcessing = (token: string, id: string): Promise<QuestionScanProcessingResponseDto> => request(`/simulations/question-scans/processing/${id}`, { headers: authHeaders(token) });
 export const apiSaveQuestionScanAsQuestion = (token: string, processingId: string, dto: any): Promise<any> => request(`/simulations/question-scans/processing/${processingId}/save-question`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });

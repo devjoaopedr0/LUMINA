@@ -46,7 +46,7 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Mapa de domínio (matéria → assunto, estados e calor) | Implementado (básico) | Página `/app/dominio` entregue em 06/11/2026; consome o domínio já calculado; subassunto/habilidade e histórico ficam para próximos incrementos; ver [MAPA_DOMINIO.md](MAPA_DOMINIO.md) |
 | Cálculo mental | Implementado | |
 | LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e criação de questão parecida entregues em 06/11/2026; videoaulas planejadas |
-| Scanner de questões | Parcial | OCR ainda simulado |
+| Scanner de questões | Implementado | OCR real com modelo de visão em 13/11/2026 (enunciado, alternativas, disciplina, assunto, dificuldade e aviso de figura); ver [SCANNER_QUESTOES.md](SCANNER_QUESTOES.md) |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
 | Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
 | Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetida em 12/11 com o modelo padrão de produção (`nemotron-3.5-lightning:free`): 36/63 (57,1%), pior que o Gemini e forçando alternativas em contas que não fecham; próximo passo: cadeia de modelos própria para o gabarito (Gemini) e nova medição; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
@@ -138,7 +138,7 @@ Preparação para o ENEM; questões e simulados; scanner de gabaritos; correçã
   - **Calibração e validação:** calibração da redação ampliada para 180 redações em 04/11 (174 completas; ganho honesto menor que a amostra de 30, viés reduzido); próximo: atacar C4/C2 no prompt, medir dois avaliadores e validar com fotos reais (redação) e impressões reais (cartão-resposta).
   - **Gabarito Inteligente:** fase 1, INEP, foto, painel e comunitário entregues; vínculo com o banco e LuminIA por questão validados com o ENEM 2024 (75/90 questões importadas e ligadas; as 15 restantes puladas por imagem, fórmula ilegível ou anulação); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes), com revisão docente obrigatória; repetir a medição com o modelo padrão de produção.
   - **Conteúdo:** Caderno de Repertórios completo (aguarda o resto da especificação); provas anteriores completas.
-  - **LuminIA e dados:** ~~LuminIA explicando questões (com o texto real da questão)~~ (feito em 04/11 no Gabarito Inteligente); OCR real no scanner de questões.
+  - **LuminIA e dados:** ~~LuminIA explicando questões (com o texto real da questão)~~ (feito em 04/11 no Gabarito Inteligente); ~~OCR real no scanner de questões~~ (feito em 13/11/2026).
   - **Comercial:** planos e cota do plano gratuito alinhados à landing.
 
 ### Fase 2: Lumina Groups

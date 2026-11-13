@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -b --pretty false",
-    "test": "node test/api-session.check.ts && node test/essay-draft.check.ts && node test/transcricao-questoes.check.ts && node test/caderno-de-erros.check.ts && node test/doc-scanner.check.ts && node test/pdf-writer.check.ts && node test/provas-anteriores.check.ts && node test/luminia-socratic.check.ts && node test/luminia-similar-question.check.ts && node test/mapa-dominio.check.ts && node test/revisao-espacada.check.ts && node test/teacher-analytics.check.ts && node test/planos.check.ts && node test/cadernos.check.ts",
+    "test": "node test/api-session.check.ts && node test/essay-draft.check.ts && node test/transcricao-questoes.check.ts && node test/caderno-de-erros.check.ts && node test/doc-scanner.check.ts && node test/pdf-writer.check.ts && node test/provas-anteriores.check.ts && node test/luminia-socratic.check.ts && node test/luminia-similar-question.check.ts && node test/mapa-dominio.check.ts && node test/revisao-espacada.check.ts && node test/teacher-analytics.check.ts && node test/planos.check.ts && node test/cadernos.check.ts && node test/scanner-questoes.check.ts",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

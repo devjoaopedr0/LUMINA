@@ -195,7 +195,7 @@
     -  Resultado imediato
     -  Relatórios por questão
     -  Relatórios por turma
-18. 18. Scanner de questões [INTEGRADA EM 26/09/2026 - OCR SIMULADO, CLASSIFICAÇÃO E LUMINIA; WORKER REAL + UI DE REVISÃO PENDENTES]
+18. 18. Scanner de questões [OCR REAL COM MODELO DE VISÃO EM 13/11/2026 - LEITURA, CLASSIFICAÇÃO, AVISO DE FIGURA E CONFERÊNCIA ANTES DE SALVAR; VER docs/SCANNER_QUESTOES.md]
     -  Fotografar questão impressa
     -  Reconhecimento do texto
     -  Identificação automática da disciplina
