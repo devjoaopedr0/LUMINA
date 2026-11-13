@@ -126,7 +126,7 @@ Medições no ENEM 2024, 2º dia, Amarelo (75 questões elegíveis, prompt `8353
 
 | Cadeia | Corretas / respondidas | Natureza | Matemática | Pendentes | Erros de cota |
 | --- | --- | --- | --- | --- | --- |
-| `gemini-3.1-flash-lite` (05/11) | 44/59 (74,6%) | — | — | 16 | 3 |
+| `gemini-3.1-flash-lite` (05/11) | 44/59 (74,6%) | — | — | 16 (3 delas por cota) | (incluídas nas pendentes) |
 | Modelo do chat, `openrouter:nvidia/nemotron-3.5-lightning:free` | 36/63 (57,1%) | 27/38 (71,1%) | 9/25 (36%) | 2 | 9 |
 | **Cadeia nova** (`gemini-3.5-flash-lite` → `nemotron-3-ultra` → `gemini-3.5-flash`) | **41/55 (74,5%)** | **27/30 (90%)** | **14/25 (56%)** | 19 | 0 |
 
