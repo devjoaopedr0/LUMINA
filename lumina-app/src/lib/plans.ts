@@ -74,11 +74,13 @@ export const FEATURE_LABEL: Record<PlanFeature, string> = {
 };
 
 /** Tabela de comparação (espelha plan-limits.ts do backend). */
-export const PLAN_COMPARISON: { feature: PlanFeature; free: string; premium: string }[] = [
-  { feature: 'ESSAY_CORRECTION', free: '2 por mês', premium: '30 por mês' },
-  { feature: 'SIMULATION', free: '2 por mês', premium: 'Ilimitados' },
-  { feature: 'LUMINIA_MESSAGE', free: '10 por dia', premium: '200 por dia' },
-  { feature: 'FLASHCARD_AI', free: 'Não incluso', premium: '60 gerações por mês' },
+export const PLAN_COMPARISON: { key: string; label: string; free: string; premium: string }[] = [
+  { key: 'ESSAY_CORRECTION', label: FEATURE_LABEL.ESSAY_CORRECTION, free: '2 por mês', premium: '30 por mês' },
+  { key: 'SIMULATION', label: FEATURE_LABEL.SIMULATION, free: '2 por mês', premium: 'Ilimitados' },
+  { key: 'LUMINIA_MESSAGE', label: FEATURE_LABEL.LUMINIA_MESSAGE, free: '10 por dia', premium: '200 por dia' },
+  { key: 'FLASHCARD_AI', label: FEATURE_LABEL.FLASHCARD_AI, free: 'Não incluso', premium: '60 gerações por mês' },
+  { key: 'REPERTOIRES', label: 'Caderno de Repertórios', free: 'Até 20 repertórios e 2 coleções', premium: 'Ilimitado, com coleções' },
+  { key: 'FORMULAS', label: 'Caderno de Fórmulas', free: 'Até 20 fórmulas e 2 coleções', premium: 'Ilimitado, com coleções' },
 ];
 
 export const BILLING_TYPE_LABEL: Record<CheckoutBillingType, string> = {

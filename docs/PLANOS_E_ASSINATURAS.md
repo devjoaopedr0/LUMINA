@@ -10,6 +10,8 @@
 | Simulados criados pelo aluno | 2 por mês | Ilimitados |
 | Mensagens para a LuminIA (chat e "criar questão parecida") | 10 por dia | 200 por dia |
 | Flashcards gerados por IA (texto ou PDF) | Não incluso | 60 gerações por mês |
+| Caderno de Repertórios | Até 20 repertórios e 2 coleções | Ilimitado (ver [CADERNOS.md](CADERNOS.md)) |
+| Caderno de Fórmulas | Até 20 fórmulas e 2 coleções | Ilimitado |
 
 - Os períodos seguem o fuso de Brasília (o dia vira à meia-noite e o mês no dia 1º).
 - Os tetos do Premium existem só contra abuso e custo de IA.

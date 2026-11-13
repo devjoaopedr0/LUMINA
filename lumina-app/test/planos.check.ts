@@ -48,8 +48,8 @@ assert.equal(planOriginText({ tier: 'FREE', source: 'NONE', accessUntil: null, a
 const pendingNoLink = { status: 'PENDING', invoiceUrl: null, currentPeriodEnd: null } as never;
 assert.match(billingStatusText(pendingNoLink), /link da cobrança aparece/);
 
-// A tabela precisa cobrir os quatro recursos com limite.
-assert.deepEqual(PLAN_COMPARISON.map((row) => row.feature).sort(), ['ESSAY_CORRECTION', 'FLASHCARD_AI', 'LUMINIA_MESSAGE', 'SIMULATION']);
+// A tabela cobre os recursos com limite e os dois cadernos.
+assert.deepEqual(PLAN_COMPARISON.map((row) => row.key).sort(), ['ESSAY_CORRECTION', 'FLASHCARD_AI', 'FORMULAS', 'LUMINIA_MESSAGE', 'REPERTOIRES', 'SIMULATION']);
 
 assert.equal(installmentText(29900, 12).replace(/\s/g, ' '), '12x de R$ 24,92 (R$ 299,00 no ano)');
 assert.equal(installmentText(29900, 1).replace(/\s/g, ' '), 'R$ 299,00 à vista');

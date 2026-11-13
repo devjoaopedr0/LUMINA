@@ -256,8 +256,8 @@ export function PlanPage() {
                   </thead>
                   <tbody>
                     {PLAN_COMPARISON.map((row) => (
-                      <tr key={row.feature} className="border-b border-surface-line last:border-0">
-                        <td className="py-3 pr-4 font-medium">{FEATURE_LABEL[row.feature]}</td>
+                      <tr key={row.key} className="border-b border-surface-line last:border-0">
+                        <td className="py-3 pr-4 font-medium">{row.label}</td>
                         <td className="py-3 pr-4 text-graphite-500">{row.free}</td>
                         <td className="py-3 font-semibold">{row.premium}</td>
                       </tr>
