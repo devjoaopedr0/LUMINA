@@ -156,7 +156,42 @@ Regras de presença: heartbeat a cada 30 s, "offline" após 90 s sem sinal, e a 
 4. **Comunicação:** notificações (módulo genérico), avisos, chat com moderação.
 
 ## 7. Dúvidas em aberto
-- Idade mínima e fluxo de consentimento do responsável (jurídico).
-- Limite de membros por grupo e de grupos por usuário.
-- Websocket próprio ou Supabase Realtime.
+- ~~Idade mínima e fluxo de consentimento do responsável~~ **Decidido em 14/11/2026:** sem idade mínima por enquanto. Menores de 18 ficam com as proteções do §5 por padrão. A idade mínima e o consentimento do responsável voltam quando o jurídico definir.
+- ~~Limite de membros por grupo e de grupos por usuário~~ **Decidido no MVP:** até 10 grupos por aluno, 3 criados a cada 24 h, de 2 a 100 membros por grupo (padrão 30). Os valores ficam em `GROUP_LIMITS`.
+- ~~Websocket próprio ou Supabase Realtime~~ **Decidido em 14/11/2026:** Socket.IO próprio (`@nestjs/websockets`, adaptador Redis quando houver várias instâncias), nas salas coletivas. O MVP usa só HTTP.
 - Se o perfil de grupo aparece também para amigos fora do grupo (rede social) ou só dentro do grupo (recomendação: só dentro).
+
+## 8. Implementação do MVP (backend, 14/11/2026)
+
+**Feito** (`lumina-backend/src/groups/`, migration `20261114200000_study_groups`, só adições):
+- `StudyGroup` e `StudyGroupMember`, fora de `Workspace`/`Class`, com papel e status (`ACTIVE`/`PENDING`) por membro.
+- **Criar e gerenciar:** nome, descrição, propósito, imagem (https), regras, limite de membros e aprovação de entrada. Editar, trocar o código, arquivar, reativar e excluir (só o dono, e só depois de arquivar).
+- **Entrar:** por código (8 caracteres, sem 0/O/1/I/L) ou por link assinado, válido por 7 dias e sem tabela, no modelo do convite da turma. Trocar o código invalida os links antigos. Há uma prévia do grupo antes de entrar. Com aprovação ligada, a entrada fica pendente até um moderador aprovar ou recusar.
+- **Convites:** qualquer membro ativo vê o código e gera o link (grupo de amigos). Para um grupo fechado, liga-se a aprovação de entrada.
+- **Papéis:**
+  - o dono promove a administrador, moderador ou membro;
+  - o administrador promove a moderador ou membro, e só quem está abaixo dele;
+  - a partir de moderador, remove quem está abaixo;
+  - o dono só sai depois de transferir a posse.
+- **Perfil de estudo com privacidade:**
+  - todos os itens começam desligados, para qualquer idade;
+  - cada aluno liga, por grupo, o tempo (hoje, 7 dias e total), as matérias dos últimos 7 dias, a sequência de dias e a última atividade;
+  - os números vêm do `StudyTimeLog`, no fuso de Brasília, e o grupo não grava tempo próprio;
+  - notas, redações e caderno de erros não aparecem em nenhum caso;
+  - a data de nascimento não é exposta: só o próprio aluno recebe o aviso de que é menor de idade.
+- **Segurança:** quem não é membro recebe 404. Toda permissão é conferida no serviço, e os DTOs têm whitelist.
+- **Testes:** `group-rules.spec.ts` (papéis, código e link, idade, estatísticas e privacidade) e `groups.service.spec.ts` (fluxos com banco em memória): 19 testes.
+
+**Endpoints** (`/groups`, autenticados):
+- consulta e entrada: `GET /`, `POST /`, `GET /preview?code=|token=`, `POST /join`, `POST /join-link`;
+- grupo: `GET /:id`, `PATCH /:id`, `POST /:id/code`, `POST /:id/invite-link`, `PATCH /:id/me/sharing`, `POST /:id/leave`;
+- membros: `POST /:id/members/:userId/approve|reject`, `PATCH /:id/members/:userId/role`, `DELETE /:id/members/:userId`;
+- posse e arquivo: `POST /:id/transfer`, `POST /:id/archive|unarchive`, `DELETE /:id`.
+
+**Falta para fechar o MVP:**
+- tela no app: lista, criar, entrar por código ou link, detalhe com membros e "o que eu compartilho";
+- aplicar a migration no banco (`npx prisma migrate deploy`);
+- vincular a sessão individual com matéria ao grupo, quando as salas chegarem (o `StudyTimeLog.groupSessionId` entra com `GroupStudySession` na fase 2);
+- convite nominal (aceitar ou recusar um convite enviado a uma pessoa), denúncia e filtro de conteúdo do nome e da imagem.
+
+A sequência de dias olha os últimos 60 dias de log; sequências maiores aparecem como 60 até a fase de engajamento trazer um cálculo próprio.
