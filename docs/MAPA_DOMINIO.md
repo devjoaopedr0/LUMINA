@@ -66,9 +66,11 @@ caderno de erros; o mapa não recalcula nem sobrescreve nada.
 
 ## Limites conhecidos
 
-- **Subassunto e habilidade:** o modelo atual tem dois níveis (`Subject` →
-  `Topic`). Subassunto e habilidade exigem mudança de schema/classificação das
-  questões e não foram inventados na interface.
+- **Habilidade do ENEM (entregue em 14/11/2026):** a visão "Por habilidade do
+  ENEM" mostra o acerto por H1–H30 da Matriz de Referência, com as questões
+  classificadas pela IA e validadas por quem gerencia o banco. Ver
+  `docs/HABILIDADES_ENEM.md`. Subassunto continua fora: o modelo tem dois
+  níveis (`Subject` → `Topic`).
 - **Tópicos nunca tocados:** como `TopicMastery` só nasce depois de tentativa ou
   tarefa de estudo, o mapa mostra o que já tem registro. O cronograma continua
   sendo a visão dos tópicos ainda não estudados.

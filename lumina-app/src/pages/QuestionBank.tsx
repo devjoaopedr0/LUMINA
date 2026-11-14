@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { QuestionResolution } from "@/components/QuestionResolution";
+import { EnemSkillBadge, EnemSkillField, useEnemMatrix } from "@/components/EnemSkill";
+import { skillFromMatrix } from "@/lib/enem-skills";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -165,6 +167,9 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const matrix = useEnemMatrix();
+  const [enemSkill, setEnemSkill] = useState(initial?.enemSkill?.code ?? "");
+  const [skillConfirmed, setSkillConfirmed] = useState(false);
 
   useEffect(() => {
     if (initial?.subjectId) catalog.loadTopics(initial.subjectId);
@@ -257,6 +262,11 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
       explanation: explanation.trim() || undefined,
       alternatives,
     };
+    // Habilidade: só vai no PATCH quando mudou ou quando a sugestão da IA foi confirmada.
+    const initialSkill = initial?.enemSkill?.code ?? "";
+    if (initial && (enemSkill !== initialSkill || (skillConfirmed && initial.enemSkill && !initial.enemSkill.validated))) {
+      payload.enemSkill = enemSkill || null;
+    }
 
     const token = getAccessToken() ?? "";
     try {
@@ -396,6 +406,20 @@ function QuestionForm({ initial, onSaved, onCancel, teacherSubject }: QuestionFo
           </div>
         </div>
       </div>
+
+      {initial ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <EnemSkillField
+            matrix={matrix}
+            subject={teacherSubject || subjectName || initial.subject}
+            initial={initial.enemSkill}
+            value={enemSkill}
+            onChange={(code) => { setEnemSkill(code); setSkillConfirmed(false); }}
+            confirmed={skillConfirmed}
+            onConfirm={setSkillConfirmed}
+          />
+        </div>
+      ) : null}
 
       <div>
         <label htmlFor="stem" className="mb-1.5 block text-sm font-medium text-graphite">
@@ -585,6 +609,7 @@ function QuestionCard({ question, onEdit, onDelete, showSimilar = true }: Questi
               {origin}
             </span>
           )}
+          {question.enemSkill ? <EnemSkillBadge skill={question.enemSkill} /> : null}
           {question.stats && question.stats.attempts > 0 && (
             <span
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
@@ -725,6 +750,13 @@ export function QuestionBank() {
   const [searchParams] = useSearchParams();
   const linkedSubjectId = searchParams.get("subjectId") ?? "";
   const linkedTopicId = searchParams.get("topicId") ?? "";
+  // O mapa por habilidade abre o banco já numa habilidade (?enemSkill=MT-H17).
+  const [skillFilter, setSkillFilter] = useState(() => {
+    const code = searchParams.get("enemSkill") ?? "";
+    return /^(LC|CH|CN|MT)-H([1-9]|[12][0-9]|30)$/.test(code) ? code : "";
+  });
+  const bankMatrix = useEnemMatrix();
+  const skillInfo = skillFromMatrix(bankMatrix, skillFilter);
   const [filters, setFilters] = useState<QuestionFilters>({
     page: 1,
     limit: 10,
@@ -768,7 +800,7 @@ export function QuestionBank() {
     if (!token) return;
     setLoading(true);
     setError(null);
-    apiListQuestions(token, filters)
+    apiListQuestions(token, { ...filters, enemSkill: skillFilter || undefined })
       .then(setData)
       .catch((err) =>
         setError(
@@ -778,7 +810,7 @@ export function QuestionBank() {
         )
       )
       .finally(() => setLoading(false));
-  }, [filters]);
+  }, [filters, skillFilter]);
 
   function handleSubjectChange(id: string) {
     setDraft((d) => ({ ...d, subjectId: id, topicId: "" }));
@@ -1122,6 +1154,17 @@ export function QuestionBank() {
               </div>
             </div>
 
+            {skillFilter ? (
+              <div className="mt-6 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm">
+                <div>
+                  <p className="font-semibold text-graphite">Habilidade {skillFilter.replace("-", " ")}{skillInfo ? ` · ${skillInfo.areaName}` : ""}</p>
+                  {skillInfo ? <p className="mt-1 text-graphite-500">{skillInfo.text}</p> : null}
+                </div>
+                <button type="button" onClick={() => setSkillFilter("")} className="rounded-full border border-surface-line bg-white px-3 py-1 text-xs font-semibold text-graphite-500 hover:text-graphite">
+                  Tirar filtro de habilidade
+                </button>
+              </div>
+            ) : null}
             {loading ? (
               <div className="mt-10 flex items-center justify-center gap-2 text-sm text-graphite-500">
                 <Loader2 className="h-5 w-5 animate-spin" />

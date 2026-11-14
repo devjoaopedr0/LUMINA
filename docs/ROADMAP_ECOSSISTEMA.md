@@ -155,7 +155,7 @@ Fica em aberto o que depende de material, credencial ou decisão do produto:
 | Prompt da redação em produção | Decisão: a produção usa o v3 (critérios C2/C4 de 2026), que na medição de 05/11 ficou abaixo do v2 (concordância 33% contra 47%; C3 pior). Manter o v3 e atacar C3/C1, ou voltar ao v2 com a calibração arquivada |
 | Calibração da redação | Rodadas de medição ao longo de vários dias (cota gratuita de ~500 chamadas/dia; cada redação usa 10–15) |
 | Caderno de Repertórios, além da seção 9 | O restante da especificação (o texto recebido terminava no meio da seção 9) |
-| Subassunto e habilidade no mapa de domínio | Classificar o banco de questões pela matriz do ENEM (projeto próprio, Fase 2+) |
+| Habilidade no mapa de domínio | **Entregue em 14/11/2026** (`docs/HABILIDADES_ENEM.md`); falta a validação docente das sugestões da IA |
 
 ### Fase 2: Lumina Groups
 - **Primeiro:** criação de grupos, entrada por código e link, convites, participantes e papéis, perfis de estudo com privacidade, registro de sessões, tempo no `StudyTimeLog`.

@@ -571,6 +571,7 @@ export interface Question {
   year: number | null;
   examNumber: number | null;
   sourcePdf?: { url: string; page: number } | null;
+  enemSkill?: import("@/lib/enem-skills").QuestionEnemSkill | null;
   stem: string;
   explanation?: string | null;
   stats?: QuestionStats | null;
@@ -654,6 +655,7 @@ export interface QuestionFilters {
   exam?: string;
   examId?: string;
   year?: number;
+  enemSkill?: string;
   sort?: QuestionSort;
   page?: number;
   limit?: number;
@@ -679,6 +681,8 @@ export interface QuestionPayload {
   stem: string;
   explanation?: string;
   alternatives: QuestionAlternativePayload[];
+  /** Só na edição: habilidade do ENEM definida/confirmada (null remove). */
+  enemSkill?: string | null;
 }
 
 /** Explicação de uma alternativa, entregue só depois da resposta. */
@@ -1132,6 +1136,7 @@ export function apiListQuestions(
   if (filters.examId) params.set("examId", filters.examId);
   else if (filters.exam) params.set("exam", filters.exam);
   if (filters.year) params.set("year", String(filters.year));
+  if (filters.enemSkill) params.set("enemSkill", filters.enemSkill);
   if (filters.sort) params.set("sort", filters.sort);
   if (filters.page) params.set("page", String(filters.page));
   if (filters.limit) params.set("limit", String(filters.limit));
@@ -2952,3 +2957,17 @@ export const apiVideoLessons = (accessToken: string, params: { topicId?: string;
   const query = new URLSearchParams(Object.entries(params).filter(([, v]) => !!v) as [string, string][]);
   return request(`/ai/videos?${query}`, { headers: authHeaders(accessToken) });
 };
+
+/** Matriz de Referência do ENEM (texto oficial do Inep). Cacheada na sessão. */
+let enemMatrixPromise: Promise<import("@/lib/enem-skills").EnemMatrix> | null = null;
+export function apiGetEnemMatrix(accessToken: string): Promise<import("@/lib/enem-skills").EnemMatrix> {
+  enemMatrixPromise ??= request<import("@/lib/enem-skills").EnemMatrix>("/enem-matrix", { headers: authHeaders(accessToken) }).catch((e) => {
+    enemMatrixPromise = null;
+    throw e;
+  });
+  return enemMatrixPromise;
+}
+
+/** Acerto do aluno por habilidade do ENEM (mapa de domínio). */
+export const apiGetSkillMastery = (accessToken: string): Promise<import("@/lib/enem-skills").SkillMasteryReport> =>
+  request("/users/me/skill-mastery", { headers: authHeaders(accessToken) });
