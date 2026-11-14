@@ -415,3 +415,21 @@ Leitura:
 - o esperado, pela rodada de 14/11, é um viés total perto de zero, com erro médio maior que o do v2 (cerca de 147 contra 129 pontos) e C3 mais branda;
 - para voltar ao v2, basta trocar `GRADER_PROMPT_VERSION` de volta para `v2-competencia`: a calibração dele continua no arquivo;
 - antes de calibrar o v6, falta uma segunda rodada de medição e uma amostra de calibração (`--prompt v6-checagem --calib 30 --test 30`, sem `--write false`, o que grava a calibração do v6 e arquiva a do v2).
+
+### Calibração do v6 (14/11/2026)
+
+Rodada com `--prompt v6-checagem --calib 30 --test 30` (`gemini:gemini-3.5-flash-lite`). Das 30 redações de calibração, 26 fecharam; 4 bateram no limite de chamadas por minuto do Gemini. As 30 de teste vieram do cache. A calibração do v2 continua arquivada em `model/archive/llm-calibration.v2-competencia.json`.
+
+Calibração gravada (ajustada nas 56 redações, com escolha por validação cruzada deixando uma de fora):
+- **C1:** isotônica. O bruto 80 passa a 120; os outros níveis ficam como estão. Erro na validação cruzada: 40,7 → 35,7.
+- **C3:** isotônica. O bruto 80 passa a 40, o 120 a 80 e o 160 a 120, corrigindo a C3 branda do v6. Erro na validação cruzada: 45,0 → 35,7.
+- **C2, C4 e C5:** identidade, porque nenhum ajuste ganhou da nota bruta.
+
+**Atenção, os sinais são mistos.** Na medição limpa (ajustada só nas 26 de calibração e medida nas 30 de teste), a calibração piorou o total:
+
+| | MAE total | Viés | Concordância |
+| --- | --- | --- | --- |
+| v6 bruto | **146,7** | **+8,0** | **40,0%** |
+| v6 calibrado (só nas 26) | 153,3 | −46,7 | 36,7% |
+
+A função gravada é outra (ajustada com 56 redações), e por competência ela reduz o erro de C1 e C3 na validação cruzada. Mesmo assim, com 26 redações de calibração e o ruído de ~31 pontos entre rodadas, o ganho não está comprovado. Para confirmar, falta uma rodada nova de teste em outro dia, comparando o bruto com o calibrado.
