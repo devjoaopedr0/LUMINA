@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { MasteryEvolutionCard } from '@/components/MasteryEvolutionCard';
+import { SkillMasteryView } from '@/components/SkillMasteryView';
 import { VideoLessonsModal } from '@/components/VideoLessonsModal';
 import { Card } from '@/components/ui/Card';
 import { apiGetTopicMastery, type TopicMasteryEntry } from '@/lib/api';
@@ -85,6 +86,9 @@ export function MasteryMap() {
   const [dueOnly, setDueOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [videoTopic, setVideoTopic] = useState<{ topicId: string; topic: string } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: 'topics' | 'skills' = searchParams.get('visao') === 'habilidades' ? 'skills' : 'topics';
+  const setView = (next: 'topics' | 'skills') => setSearchParams(next === 'skills' ? { visao: 'habilidades' } : {}, { replace: true });
 
   useEffect(() => {
     let active = true;
@@ -154,12 +158,25 @@ export function MasteryMap() {
             <BrainCircuit size={20} />O que você já sabe
           </span>
           <h1 className="mt-3 text-3xl font-bold">Mapa de domínio</h1>
-          <p className="mt-3 max-w-3xl text-graphite-500">
+          {view === 'topics' ? (
+            <p className="mt-3 max-w-3xl text-graphite-500">
             Cada quadrado é um assunto do seu cronograma. A cor mostra o domínio de 0 a 100, calculado a
             partir das suas tentativas recentes; o estado mostra o que fazer com ele agora. Clique em um
             assunto para praticar questões.
           </p>
+          ) : (
+            <p className="mt-3 max-w-3xl text-graphite-500">
+              Seu acerto em cada habilidade da Matriz de Referência do ENEM. Clique numa habilidade para ver o texto
+              oficial e praticar questões dela.
+            </p>
+          )}
+          <div className="mt-5 inline-flex rounded-xl border border-surface-line bg-white p-1 text-sm" role="tablist" aria-label="Visão do mapa">
+            <button type="button" role="tab" aria-selected={view === 'topics'} onClick={() => setView('topics')} className={`rounded-lg px-4 py-1.5 font-semibold ${view === 'topics' ? 'bg-graphite text-white' : ''}`}>Por assunto</button>
+            <button type="button" role="tab" aria-selected={view === 'skills'} onClick={() => setView('skills')} className={`rounded-lg px-4 py-1.5 font-semibold ${view === 'skills' ? 'bg-graphite text-white' : ''}`}>Por habilidade do ENEM</button>
+          </div>
         </header>
+
+        {view === 'skills' ? <SkillMasteryView /> : (<>
 
         {error ? (
           <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
@@ -396,6 +413,7 @@ export function MasteryMap() {
             )}
           </>
         ) : null}
+        </>)}
       </div>
       {videoTopic ? <VideoLessonsModal topicId={videoTopic.topicId} topic={videoTopic.topic} onClose={() => setVideoTopic(null)} /> : null}
     </main>

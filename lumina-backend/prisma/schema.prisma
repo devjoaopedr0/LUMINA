@@ -799,6 +799,14 @@ model Question {
   sourceType         QuestionSourceType       @default(OFFICIAL) @map("source_type")
   subjectId          String?                  @map("subject_id") @db.Uuid
   topicId            String?                  @map("topic_id") @db.Uuid
+  /// Habilidade da Matriz de Referência do ENEM (ex.: "MT-H17"). Nula = ainda
+  /// não classificada. Ver src/questions/enem-skills.
+  enemSkill          String?                  @map("enem_skill") @db.VarChar(6)
+  /// Quem classificou: AI (sugestão, pendente) ou MANUAL (professor/gestão).
+  enemSkillOrigin    String?                  @map("enem_skill_origin") @db.VarChar(10)
+  enemSkillValidated Boolean                  @default(false) @map("enem_skill_validated")
+  /// Justificativa curta da classificação automática.
+  enemSkillNote      String?                  @map("enem_skill_note")
   alternatives       QuestionAlternative[]
   simulationItems    SimulationItem[]
   attempts           QuestionAttempt[]
@@ -821,6 +829,7 @@ model Question {
   @@index([workspaceId, exam])
   @@index([workspaceId, subjectId])
   @@index([workspaceId, topicId])
+  @@index([workspaceId, enemSkill])
   @@index([workspaceId, examId])
   @@index([sourceType])
   @@index([contentHash])

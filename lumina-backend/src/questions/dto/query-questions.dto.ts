@@ -6,7 +6,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsIn,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -23,6 +25,14 @@ export class QueryQuestionsDto {
   @ApiPropertyOptional({ description: 'Busca palavras no enunciado da questão.' })
   @IsOptional() @IsString() @MaxLength(120)
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Habilidade da Matriz de Referência do ENEM (ex.: MT-H17).' })
+  @IsOptional() @Matches(/^(LC|CH|CN|MT)-H([1-9]|[12][0-9]|30)$/, { message: 'enemSkill deve ser como MT-H17.' })
+  enemSkill?: string;
+
+  @ApiPropertyOptional({ description: 'Área do ENEM das questões já classificadas por habilidade.', enum: ['LC', 'CH', 'CN', 'MT'] })
+  @IsOptional() @IsIn(['LC', 'CH', 'CN', 'MT'])
+  enemArea?: 'LC' | 'CH' | 'CN' | 'MT';
 
   @ApiPropertyOptional({ description: 'Número exato da questão na prova.' })
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(9999)
