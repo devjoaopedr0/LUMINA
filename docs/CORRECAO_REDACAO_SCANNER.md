@@ -376,3 +376,29 @@ npm run build && npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --p
 ```
 
 Critério para virar produção: erro total menor ou igual ao do v2 nas mesmas redações, em duas rodadas, com viés menor. Se passar, a calibração dele precisa ser ajustada antes da troca (`--calib 30 --test 30`, sem `--write false`).
+
+### Medição do v5 (14/11/2026)
+
+Primeira rodada do `v5-c2-c4` nas mesmas 30 redações de teste (`gemini:gemini-3.5-flash-lite`, nota bruta sem calibração, com as regras de tangência, direitos humanos e anulação aplicadas como no relatório do `essay:eval`). As 30 fecharam, sem 429. As demais rodadas vieram do cache.
+
+| | MAE total | Viés | Concordância | C1 | C2 | C3 | C4 | C5 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **17 redações comuns a todas as rodadas** | | | | | | | | |
+| v2 rodada 1 | **110,6** | −54,1 | **47,1%** | 28,2 / −18,8 | 30,6 / −11,8 | 30,6 / +11,8 | 49,4 / −7,1 | 37,6 / −28,2 |
+| v2 rodada 2 | 115,3 | −44,7 | 41,2% | 30,6 / −16,5 | 30,6 / −16,5 | 37,6 / +14,1 | 42,4 / 0 | 35,3 / −25,9 |
+| v4 rodada 1 | 127,1 | −42,4 | 41,2% | 37,6 / −23,5 | 30,6 / −16,5 | 47,1 / +18,8 | 44,7 / +2,4 | 37,6 / −23,5 |
+| v4 rodada 2 | 124,7 | **−30,6** | 41,2% | 35,3 / −11,8 | 25,9 / −11,8 | 40,0 / +16,5 | 42,4 / 0 | 37,6 / −23,5 |
+| v5 rodada 1 | 124,7 | **−30,6** | 41,2% | 32,9 / −18,8 | 30,6 / −7,1 | 42,4 / +18,8 | 44,7 / −2,4 | 40,0 / −21,2 |
+| **30 redações, v5 x v2 rodada 1** | | | | | | | | |
+| v2 rodada 1 | **129,3** | −46,7 | **46,7%** | **30,7** / −17,3 | 36,0 / −14,7 | **30,7** / +12,0 | 54,7 / −4,0 | **36,0** / −22,7 |
+| v5 rodada 1 | 134,7 | **−17,3** | 43,3% | 34,7 / −18,7 | **34,7 / −5,3** | 38,7 / +14,7 | **45,3** / +5,3 | 37,3 / **−13,3** |
+
+Competências: MAE / viés. Nas 29 redações em que o v4 tem as duas rodadas, o v5 ficou com MAE 135,2, viés −13,8 e concordância 44,8% (v2 rodada 1: 125,5 / −40,0 / 48,3%; v4: 135,2 e 131,0 / −19,3 e −12,4).
+
+Nota sobre a tabela da "Segunda rodada": ela foi calculada sem o teto de tangência (por isso o v2 aparece com 117,6 nas 17 e 129,7 nas 29). Sem esse teto, o v5 dá 127,1 / −28,2 nas 17 e 134,7 / −9,3 nas 30; a conclusão não muda.
+
+Leitura:
+- **O v5 não passou no critério.** Erra 5,4 pontos a mais que o v2 nas 30 e 9 a 14 pontos a mais nas 17 comuns (contra as duas rodadas do v2). Por redação, o erro do v5 menos o do v2 dá +5,3 em média (IC 95% ±22,2): o v5 foi melhor em 9, pior em 12 e empatou em 9. Dentro do ruído, mas o critério pede erro menor ou igual, e isso já falhou na primeira rodada.
+- O viés caiu bastante (de −46,7 para −17,3 nas 30), concentrado em C2 e C5. As duas competências que mudaram melhoraram: C2 de 36,0 para 34,7 de MAE com viés de −14,7 para −5,3, e C4 de 54,7 para 45,3.
+- A perda veio de C1 e C3, cujos prompts são **idênticos** ao v2 (C3 foi de 30,7 para 38,7). Ou seja, a diferença no total é do tamanho do ruído entre rodadas. Nas 17 comuns, o v5 ficou praticamente igual ao v4 rodada 2.
+- **Decisão: a produção continua no v2.** Uma segunda rodada do v5 não mudaria a decisão pelo critério escrito, porque a primeira já falhou. Para separar o ganho em C2/C4 do ruído de C1/C3, a medição precisa ser por competência, com mais redações ou várias rodadas por versão (média de rodadas), e não pelo total de uma rodada.
