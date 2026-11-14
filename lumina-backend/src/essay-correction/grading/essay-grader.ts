@@ -30,6 +30,7 @@ import { CARTILHA_2026, CompetencyId, COMPETENCY_IDS, KNOWLEDGE_DOCUMENTS, Knowl
 import { stripAccents } from '../rag/bm25';
 import type { CartilhaHit, CompetencyGrade, EssayTools } from '../mcp/essay-mcp-client';
 import { applyCalibrationFn, CalibrationFn, IDENTITY_FN } from './calibration';
+import { CompetencyContext, PROMPT_SETS, PromptSet } from './prompt-sets';
 import { extractFeatures, FeatureModelWeights, predictWithFeatureModel, snapToLevel } from './feature-model';
 
 export type LlmGenerate = (args: { system: string; prompt: string; temperature: number; maxTokens: number }) => Promise<{ text: string; model: string } | null>;
@@ -38,7 +39,7 @@ export type LlmGenerate = (args: { system: string; prompt: string; temperature: 
  * Versão dos prompts. A calibração é ajustada para uma versão: trocar o
  * prompt muda a distribuição das notas brutas e exige calibrar de novo.
  */
-export const GRADER_PROMPT_VERSION = 'v3-c2-c4-oficial-2026';
+export const GRADER_PROMPT_VERSION = 'v2-competencia';
 
 export type AnnulmentCode =
   | 'EM_BRANCO'
@@ -79,8 +80,9 @@ const IDENTITY_PER_COMPETENCY = Object.fromEntries(COMPETENCY_IDS.map((id) => [i
  * prompt atual. Modelo sem calibração própria fica sem calibração — a
  * função de um modelo não serve para outro.
  */
-export function calibrationFor(calibration: LlmCalibration | undefined, model: string): { perCompetency: Record<CompetencyId, CalibrationFn>; fitted: boolean } {
-  if (!calibration || calibration.promptVersion !== GRADER_PROMPT_VERSION) return { perCompetency: IDENTITY_PER_COMPETENCY, fitted: false };
+export function calibrationFor(calibration: LlmCalibration | undefined, model: string, promptVersion: string = GRADER_PROMPT_VERSION): { perCompetency: Record<CompetencyId, CalibrationFn>; fitted: boolean } {
+  // Calibração de outra versão de prompt não vale: a distribuição das notas muda.
+  if (!calibration || calibration.promptVersion !== promptVersion) return { perCompetency: IDENTITY_PER_COMPETENCY, fitted: false };
   const own = calibration.byModel?.[model] ?? calibration.byModel?.[model.replace(/^openrouter:/, '')] ?? calibration.byModel?.[`openrouter:${model}`];
   if (!own) return { perCompetency: IDENTITY_PER_COMPETENCY, fitted: false };
   const fitted = COMPETENCY_IDS.some((id) => own.perCompetency[id] && own.perCompetency[id].type !== 'identity');
@@ -209,6 +211,8 @@ export interface GraderDependencies {
   calibration?: LlmCalibration;
   /** Quantos trechos da cartilha, além da grade, por competência. */
   chunksPerCompetency?: number;
+  /** Versão do prompt (A/B na medição); padrão: GRADER_PROMPT_VERSION. */
+  promptVersion?: string;
   /**
    * Chamadas simultâneas ao modelo (as cinco competências de um avaliador).
    * Padrão 3: os planos gratuitos limitam requisições por minuto.
@@ -258,180 +262,19 @@ const ANNULMENT_CITATIONS: Record<AnnulmentCode, string> = {
   ILEGIVEL: annulmentCitation('8'),
 };
 
-const COMPETENCY_QUERIES: Record<CompetencyId, string> = {
-  C1: 'desvios gramaticais convenções da escrita estrutura sintática escolha de registro vocabular',
-  C2: 'tema recorte leitura global tangenciamento fuga repertório legitimidade pertinência produtividade repertório de bolso tipo dissertativo-argumentativo',
-  C3: 'projeto de texto desenvolvimento dos argumentos autoria organização ponto de vista',
-  C4: 'coesão referencial sequencial articulação entre parágrafos referenciação repetição conectivo inadequado operadores argumentativos',
-  C5: 'proposta de intervenção elementos ação agente meio finalidade detalhamento',
-};
+/** Conjunto de prompts da versão ativa (ver prompt-sets.ts). */
+export function activePromptSet(version: string = GRADER_PROMPT_VERSION): PromptSet {
+  const set = PROMPT_SETS[version];
+  if (!set) throw new Error(`Prompt do avaliador não encontrado: ${version}`);
+  return set;
+}
 
-/** Consulta do RAG montada a partir dos problemas encontrados no texto. */
 export function buildCompetencyQuery(competency: CompetencyId, analysis: EssayTextAnalysis): string {
-  const extra: string[] = [];
-  switch (competency) {
-    case 'C1':
-      if (analysis.informalMarkers.length) extra.push('registro informal marcas de oralidade');
-      if (analysis.longestSentenceWords > 60) extra.push('períodos truncados justaposição pontuação');
-      break;
-    case 'C2':
-      // A cobertura lexical é só um gatilho de leitura: nunca vira conclusão
-      // de fuga. A consulta pede os critérios de recorte e de repertório.
-      if (analysis.themeCoverage !== null && analysis.themeCoverage < 0.6) extra.push('cobertura lexical auxiliar leitura global do tema tangenciamento');
-      if (analysis.repeatedWords.length) extra.push('termos recorrentes do tema retomadas repertório');
-      if (analysis.paragraphs < 3) extra.push('tipo textual estrutura proposição argumentação conclusão');
-      break;
-    case 'C3':
-      if (analysis.paragraphs < 3) extra.push('informações soltas sem desenvolvimento');
-      break;
-    case 'C4':
-      if (analysis.connectives.overused.length || analysis.repeatedWords.length) extra.push('repetição referencial progressão inadequação semântica operador argumentativo');
-      if (analysis.connectives.distinct <= 1) extra.push('coesão referencial justaposição sem conectivo explícito');
-      if (analysis.paragraphs <= 1) extra.push('ausência de paragrafação monobloco');
-      if (analysis.connectives.paragraphsWithoutLink.length) extra.push('articulação por referenciação elipse continuidade semântica');
-      break;
-    case 'C5':
-      if (analysis.humanRightsFlags.length) extra.push('direitos humanos violência justiça com as próprias mãos');
-      if (analysis.proposal.count < 3) extra.push('proposta vaga genérica explícita');
-      extra.push('contagem de elementos');
-      break;
-  }
-  return `${COMPETENCY_QUERIES[competency]} ${extra.join(' ')}`.trim();
-}
-
-interface CompetencyContext {
-  competency: CompetencyId;
-  grade: CompetencyGrade;
-  chunks: CartilhaHit[];
-}
-
-/** O que cada chamada avalia — e o que ela deve ignorar. */
-const COMPETENCY_TASK: Record<CompetencyId, string> = {
-  C1: 'Avalie SOMENTE a Competência 1 — domínio da modalidade escrita formal: desvios gramaticais (concordância, regência, crase, pontuação), de convenção da escrita (ortografia, acentuação, maiúsculas), estrutura sintática (períodos truncados ou justapostos) e escolha de registro. Não avalie tema, argumentos, coesão nem proposta.',
-  C2: 'Avalie SOMENTE a Competência 2 — compreensão da proposta, em três dimensões separadas: (a) recorte temático: o texto desenvolve o tema específico e os elementos do recorte, não apenas o assunto amplo; (b) tipo dissertativo-argumentativo: defesa de ponto de vista com proposição, argumentação e conclusão, sem predominância de narração, descrição, poema ou depoimento; (c) repertório sociocultural: verifique legitimidade (referência reconhecida, não inventada), pertinência ao recorte e produtividade argumentativa (o repertório é interpretado e sustenta a tese, não apenas citado). Não use contagem de palavras do tema como prova de fuga. Decida também, com cautela, se há fuga total, tangenciamento ou anulação por tipo textual.',
-  C3: 'Avalie SOMENTE a Competência 3 — seleção, relação, organização e interpretação de informações, fatos e opiniões em defesa de um ponto de vista: projeto de texto, desenvolvimento e aprofundamento dos argumentos, autoria. Não avalie gramática, conectivos nem a proposta.',
-  C4: 'Avalie SOMENTE a Competência 4 — articulação textual: relações semânticas entre ideias, referenciação (pronomes, sinônimos, hiperônimos, expressões resumitivas, elipse), progressão entre parágrafos e adequação dos recursos coesivos. A quantidade de conectivos, por si só, não é nota: avalie se as relações lógicas são recuperáveis e se a repetição prejudica ou não a clareza. Não exija conectivo no início de cada parágrafo e não penalize repetição temática por si só.',
-  C5: 'Avalie SOMENTE a Competência 5 — proposta de intervenção: presença e detalhamento dos elementos (agente, ação, modo/meio, finalidade/efeito e detalhamento), articulação com a discussão do texto e respeito aos direitos humanos.',
-};
-
-const SYSTEM_PROMPT = `Você é avaliador(a) da redação do Enem, formado(a) em Letras, treinado(a) pela Matriz de Referência do Inep.
-Nesta tarefa você avalia UMA competência, usando SOMENTE os critérios dos trechos oficiais fornecidos.
-Regras:
-- A nota é exatamente um destes valores: 0, 40, 80, 120, 160 ou 200. Escolha o nível cujo descritor melhor descreve o texto NESTA competência; use a escala inteira.
-- Fundamente a nota com trechos copiados LITERALMENTE da redação (até 3) e com os ids dos trechos oficiais usados. Nunca invente citação, referência ou problema que não esteja no texto.
-- Separe o que é elogio, o que é problema e a explicação do nível. "pontos_fortes" e "problemas" devem ser listas curtas, específicas e ancoradas no texto; "explicacao_nivel" deve justificar por que o descritor escolhido se aplica, sem repetir a nota.
-- Trechos marcados como "critério operacional da Lumina" não são texto do Inep: use-os como guia de consistência, sem dizer que são da cartilha.
-- Sinais automáticos são indícios, não notas: cobertura lexical, contagem de conectivos, repetição de palavras e parágrafos sem conectivo inicial não decidem a competência.
-- Escreva em português, dirigindo-se ao(à) estudante, de forma direta e específica: a justificativa (2 a 4 frases) descreve o desempenho; "como_melhorar" (1 a 2 frases) diz o que faria a nota subir.
-Responda APENAS com um objeto JSON válido, sem texto antes ou depois.`;
-
-/** Sinais automáticos relevantes para cada competência. */
-function competencySignals(competency: CompetencyId, analysis: EssayTextAnalysis, zeroAlerts: string[]): string[] {
-  const shape = `Parágrafos: ${analysis.paragraphs}; linhas: ${analysis.lines} (${analysis.linesSource}); palavras: ${analysis.words}.`;
-  switch (competency) {
-    case 'C1':
-      return [
-        `Períodos: ${analysis.sentences}; média de ${analysis.avgSentenceWords.toFixed(0)} palavras; maior período: ${analysis.longestSentenceWords} palavras.`,
-        ...(analysis.informalMarkers.length ? [`Marcas de informalidade: ${analysis.informalMarkers.join(', ')}.`] : []),
-      ];
-    case 'C2':
-      return [
-        shape,
-        ...(analysis.themeCoverage !== null
-          ? [`Cobertura lexical dos termos do tema: ${Math.round(analysis.themeCoverage * 100)}%${analysis.themeTermsMissing.length ? ` (ausentes: ${analysis.themeTermsMissing.join(', ')})` : ''}. Sinal auxiliar: leia o recorte desenvolvido, os sinônimos, as retomadas e os exemplos antes de concluir fuga ou tangenciamento.`]
-          : []),
-        ...(analysis.repeatedWords.length ? [`Termos recorrentes no texto (podem ser temáticos/referenciais): ${analysis.repeatedWords.map((w) => `${w.word} (${w.count}x)`).join(', ')}.`] : []),
-        ...zeroAlerts.map((w) => `Alerta objetivo para conferir (não é anulação automática): ${w}`),
-      ];
-    case 'C3':
-      return [shape];
-    case 'C4':
-      return [
-        shape,
-        `Relações coesivas reconhecidas: ${analysis.connectives.distinct} conectivo(s) distinto(s) (${Object.entries(analysis.connectives.byRelation).map(([r, l]) => `${r}: ${l?.join(', ')}`).join('; ') || 'nenhum'}). A contagem é auxiliar; avalie as relações semânticas e a referenciação.`,
-        ...(analysis.connectives.overused.length ? [`Conectivos repetidos (${analysis.connectives.overused.join(', ')}): confira se a repetição prejudica a relação lógica ou é apenas ênfase.`] : []),
-        ...(analysis.connectives.paragraphsWithoutLink.length ? [`Parágrafos sem conectivo explícito na abertura: ${analysis.connectives.paragraphsWithoutLink.join(', ')}. Isso não é falha automática: a articulação pode ocorrer por referenciação, elipse ou continuidade semântica.`] : []),
-        ...(analysis.repeatedWords.length ? [`Repetições detectadas: ${analysis.repeatedWords.map((w) => `${w.word} (${w.count}x)`).join(', ')}. Podem ser temáticas ou referenciais; só penalize se prejudicarem a progressão ou a clareza.`] : []),
-      ];
-    case 'C5':
-      return [
-        `Proposta (parágrafo ${analysis.proposal.paragraph ?? '—'}): ${Object.entries(analysis.proposal.elements).map(([k, v]) => `${k}=${v ?? 'não encontrado'}`).join(', ')}.`,
-        ...(analysis.humanRightsFlags.length ? [`Possível desrespeito aos direitos humanos (confira): ${analysis.humanRightsFlags.join(', ')}.`] : []),
-      ];
-  }
-}
-
-const EXTRA_FIELDS: Record<CompetencyId, string> = {
-  C1: '',
-  C2: `,
- "anulacao": null ou {"motivo": "FUGA_AO_TEMA"|"TIPO_TEXTUAL"|"PARTE_DESCONECTADA"|"IDENTIFICACAO"|"LINGUA_ESTRANGEIRA", "explicacao": "..."},
- "tangenciamento": false`,
-  C3: '',
-  C4: '',
-  C5: `,
- "direitos_humanos_desrespeitados": false`,
-};
-
-const EXTRA_RULES: Record<CompetencyId, string> = {
-  C1: '',
-  C2: `
-Regras específicas da C2:
-- Leia o texto inteiro antes de decidir. Fuga ao tema é desenvolver outro tema; tangenciamento é abordar apenas o assunto amplo, sem o recorte. Não conclua fuga porque faltam palavras exatas do tema: sinônimos, paráfrases e retomadas contam.
-- Trate as três dimensões separadamente: quando houver evidência, identifique o ponto forte ou o problema com o prefixo [recorte], [tipo textual] ou [repertório]. Não transforme uma falha de repertório em fuga ao tema, nem uma falha de estrutura em problema de recorte.
-- Repertório: avalie legitimidade, pertinência e produtividade. Citar autor/obra não garante nota; repertório de bolso, genérico ou apenas justaposto é problema de produtividade.
-- Anulação (nota zero total) só nos casos da cartilha: fuga total ao tema, predominância de outro tipo textual, parte deliberadamente desconectada, identificação ou texto predominantemente em língua estrangeira. Na dúvida, não anule.
-- Tangenciamento limita C2, C3 e C5 a 40; marque "tangenciamento" apenas se o recorte temático tiver sido realmente abandonado.`,
-  C3: '',
-  C4: `
-Regras específicas da C4:
-- Avalie relações semânticas e referenciação, não a quantidade de conectivos. Poucos conectivos podem ser suficientes se a articulação estiver clara; muitos conectivos podem ser inadequados se não expressarem a relação pretendida.
-- Não exija conectivo no início de cada parágrafo. A articulação pode ser feita por pronomes, sinônimos, hiperônimos, expressões resumitivas, elipse, ordem dos enunciados e continuidade temática.
-- Repetição de palavras ou de termos do tema pode ser necessária para manter o referente. Só aponte problema quando a repetição ou a substituição inadequada prejudicar a progressão, a clareza ou a relação lógica.
-- "Repertório diversificado de recursos coesivos" é qualitativo: descreva quais relações o texto constrói e onde há inadequação real.`,
-  C5: '\nProposta que desrespeite os direitos humanos zera a C5: marque "direitos_humanos_desrespeitados" só se for o caso.',
-};
-
-function learningExamplesBlock(competency: CompetencyId, examples: ValidatedLearningExample[] | undefined): string {
-  if (!examples?.length) return '';
-  const lines = examples
-    .slice(0, 3)
-    .map((example) => {
-      const evidence = example.evidence ? ` Evidência anonimizada: ${example.evidence.replace(/\s+/g, ' ').trim().slice(0, 420)}.` : '';
-      const reason = example.divergenceReason ? ` Motivo da divergência: ${example.divergenceReason.trim().slice(0, 240)}.` : '';
-      return `  - Exemplo validado ${example.id.slice(0, 8)} (${example.competency}): IA ${example.aiScore ?? 'não informada'}, humano ${example.humanScore ?? 'não informada'}. Critério: ${example.criterion?.trim() || 'não informado'}. Aprendizado: ${example.learning.replace(/\s+/g, ' ').trim().slice(0, 700)}.${reason}${evidence}`;
-    })
-    .join('\n');
-  return `\n\nEXEMPLOS VALIDADOS POR AVALIADORES HUMANOS — ${competency} (contexto auxiliar, anonimizado):
-${lines}
-Use estes exemplos apenas para calibrar a interpretação do critério. Não os trate como texto oficial do Inep, não copie a nota sem verificar a redação atual e não cite um exemplo validado como se fosse a cartilha.`;
+  return activePromptSet().buildQuery(competency, analysis);
 }
 
 export function buildCompetencyPrompt(input: GradeInput, analysis: EssayTextAnalysis, context: CompetencyContext, zeroAlerts: string[]): string {
-  const { competency, grade, chunks } = context;
-  const levels = grade.niveis.map((n) => `  ${n.nota}: ${n.descritor}`).join('\n');
-  const extra = chunks.map((c) => `  [${c.id}] ${c.titulo} (${c.citacao}): ${c.texto}`).join('\n');
-  const learning = learningExamplesBlock(competency, input.learningExamples?.[competency]);
-  const signals = competencySignals(competency, analysis, zeroAlerts);
-  return `${COMPETENCY_TASK[competency]}${EXTRA_RULES[competency]}
-
-TEMA: ${input.theme || '(não informado — avalie a coerência interna e não anule por fuga ao tema)'}
-
-CRITÉRIOS DA CARTILHA — ${competency}: ${grade.descricao}
-[${competency.toLowerCase()}-niveis] Níveis (${grade.citacao}):
-${levels}
-${extra}${learning}
-
-SINAIS AUTOMÁTICOS DO TEXTO (indícios a conferir, não notas):
-${signals.join('\n') || '(nenhum)'}
-
-REDAÇÃO:
-"""
-${input.text}
-"""
-
-Formato da resposta:
-{"nota": 0, "justificativa": "...", "pontos_fortes": ["..."], "problemas": ["..."], "explicacao_nivel": "...", "trechos": ["..."], "referencias": ["${competency.toLowerCase()}-niveis"], "como_melhorar": "..."${EXTRA_FIELDS[competency]}}
-Use "trechos" somente com citações literais da redação; use "problemas" para o que impede nota maior e "pontos_fortes" para o que o texto já faz bem. Se não houver ponto forte ou problema, devolva lista vazia.`;
+  return activePromptSet().buildPrompt(input, analysis, context, zeroAlerts);
 }
 
 /** Extrai o primeiro objeto JSON da resposta (modelos às vezes cercam com ```). */
@@ -497,12 +340,13 @@ export function parseCompetencyEvaluation(
   calibration: LlmCalibration | undefined,
   label: string,
   model: string,
+  promptVersion: string = GRADER_PROMPT_VERSION,
 ): CompetencyRun {
   const data = (raw ?? {}) as Record<string, unknown>;
   const rawScore = Number(data.nota);
   if (!Number.isFinite(rawScore)) throw new Error(`Avaliação sem nota numérica em ${competency}.`);
   const clamped = snapToLevel(Math.min(200, Math.max(0, rawScore)));
-  const fn = calibrationFor(calibration, model).perCompetency[competency];
+  const fn = calibrationFor(calibration, model, promptVersion).perCompetency[competency];
   const refs = Array.isArray(data.referencias) ? data.referencias.filter((r): r is string => typeof r === 'string' && allowedRefs.has(r)) : [];
   const justification = String(data.justificativa ?? '').trim().slice(0, 1500);
   const levelExplanation = String(data.explicacao_nivel ?? '').trim().slice(0, 900) || justification;
@@ -735,6 +579,11 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 export class EssayGrader {
   constructor(private readonly deps: GraderDependencies) {}
 
+  /** Versão do prompt em uso por este avaliador. */
+  get promptVersion(): string {
+    return this.deps.promptVersion ?? GRADER_PROMPT_VERSION;
+  }
+
   /** Análise, nota zero por regra e contexto do RAG de cada competência. */
   async prepare(input: GradeInput): Promise<PreparedEssay> {
     const tools = this.deps.tools;
@@ -750,7 +599,7 @@ export class EssayGrader {
         COMPETENCY_IDS.map(async (competency) => {
           const [grade, hits] = await Promise.all([
             tools.gradeCompetencia(competency),
-            tools.buscarCartilha({ consulta: buildCompetencyQuery(competency, analysis), competencia: competency, limite: perCompetency + 1 }),
+            tools.buscarCartilha({ consulta: activePromptSet(this.promptVersion).buildQuery(competency, analysis), competencia: competency, limite: perCompetency + 1 }),
           ]);
           return { competency, grade, chunks: hits.filter((hit) => hit.id !== `${competency.toLowerCase()}-niveis`).slice(0, perCompetency) };
         }),
@@ -784,13 +633,13 @@ export class EssayGrader {
   async evaluateCompetency(prepared: PreparedEssay, competency: CompetencyId, label: string, temperature: number): Promise<CompetencyRun | null> {
     const context = prepared.contexts.get(competency);
     if (!context) throw new Error(`Sem contexto para ${competency}.`);
-    const prompt = buildCompetencyPrompt(prepared.input, prepared.analysis, context, prepared.zeroAlerts);
+    const prompt = activePromptSet(this.promptVersion).buildPrompt(prepared.input, prepared.analysis, context, prepared.zeroAlerts);
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await this.deps.llm({ system: SYSTEM_PROMPT, prompt, temperature, maxTokens: 900 });
+      const result = await this.deps.llm({ system: activePromptSet(this.promptVersion).system, prompt, temperature, maxTokens: 900 });
       if (!result) return null;
       try {
-        return parseCompetencyEvaluation(extractJson(result.text), competency, prepared.input.text, prepared.allowedRefs, this.deps.calibration, label, result.model);
+        return parseCompetencyEvaluation(extractJson(result.text), competency, prepared.input.text, prepared.allowedRefs, this.deps.calibration, label, result.model, this.promptVersion);
       } catch (error) {
         lastError = error;
       }
@@ -933,7 +782,7 @@ export class EssayGrader {
       runs,
       analysis,
       toolCalls: [...tools.calls],
-      calibrated: [...models].some((m) => calibrationFor(this.deps.calibration, m).fitted),
+      calibrated: [...models].some((m) => calibrationFor(this.deps.calibration, m, this.promptVersion).fitted),
       knowledge: KNOWLEDGE_INFO,
     };
   }

@@ -32,6 +32,7 @@ import { analyzeEssayText } from '../analysis/text-analysis';
 import { applyCalibrationFn, CalibrationFn, fitCalibration } from '../grading/calibration';
 import { archiveCalibrationIfNeeded, canWriteFinalCalibration } from '../grading/calibration-store';
 import { EssayGrader, GRADER_PROMPT_VERSION, IDENTITY_CALIBRATION, LlmCalibration } from '../grading/essay-grader';
+import { PROMPT_SETS } from '../grading/prompt-sets';
 import { extractFeatures, FeatureModelWeights, predictWithFeatureModel, snapToLevel } from '../grading/feature-model';
 import { CompetencyId, COMPETENCY_IDS } from '../knowledge';
 import { EssayMcpClient } from '../mcp/essay-mcp-client';
@@ -99,8 +100,11 @@ async function main() {
   const concurrency = arg('concurrency', 2);
   process.loadEnvFile(join(ROOT, '.env'));
   const model = argText('models') ?? essayModels()[0];
+  // --prompt <versão> mede outra versão do prompt sem mudar o código (A/B).
+  const promptVersion = argText('prompt') ?? GRADER_PROMPT_VERSION;
+  if (!PROMPT_SETS[promptVersion]) throw new Error(`Prompt desconhecido: ${promptVersion}. Opções: ${Object.keys(PROMPT_SETS).join(', ')}`);
   if (!model) throw new Error('Informe o modelo: --models gemini:gemini-3.5-flash-lite (ou defina AI_ESSAY_MODELS).');
-  const runsDir = join(CACHE_DIR, '..', 'llm-runs', GRADER_PROMPT_VERSION, slug(model));
+  const runsDir = join(CACHE_DIR, '..', 'llm-runs', promptVersion, slug(model));
   mkdirSync(runsDir, { recursive: true });
   mkdirSync(REPORT_DIR, { recursive: true });
 
@@ -116,6 +120,7 @@ async function main() {
   const grader = new EssayGrader({
     tools,
     calibration: IDENTITY_CALIBRATION,
+    promptVersion,
     llm: async (args) => ai.generateStructured({ ...args, timeoutMs: 120_000, models: [model] }),
   });
 
@@ -167,7 +172,7 @@ async function main() {
   const calibSample = stratifiedSample(all.filter((e) => e.split === 'valid' && usable(e)), calibSize, 'calib');
   const testSample = stratifiedSample(all.filter((e) => e.split === 'test' && usable(e)), testSize, 'test');
 
-  console.log(`Modelo: ${model} — prompts ${GRADER_PROMPT_VERSION}`);
+  console.log(`Modelo: ${model} — prompts ${promptVersion}`);
   console.log(`Calibração (${calibSample.length} redações da validação):`);
   const calibPairs: { human: Scores; raw: Scores; cached: CachedEssay }[] = [];
   for (const essay of calibSample) {
@@ -211,13 +216,13 @@ async function main() {
   const final = canWriteFinalCalibration(calibPairs.length, testPairs.length) ? fitCalibration(allPairs) : null;
   const modelKey = [...answeredBy][0] ?? calibPairs[0]?.cached.model ?? model;
   if (final && argText('write') !== 'false') {
-    const archived = archiveCalibrationIfNeeded(CALIBRATION_PATH, GRADER_PROMPT_VERSION);
+    const archived = archiveCalibrationIfNeeded(CALIBRATION_PATH, promptVersion);
     if (archived) console.log(`Calibração anterior arquivada em ${archived}`);
     const current = existsSync(CALIBRATION_PATH) ? (JSON.parse(readFileSync(CALIBRATION_PATH, 'utf8')) as Partial<LlmCalibration>) : {};
     const next: LlmCalibration =
-      current.version === 2 && current.promptVersion === GRADER_PROMPT_VERSION
+      current.version === 2 && current.promptVersion === promptVersion
         ? (current as LlmCalibration)
-        : { version: 2, promptVersion: GRADER_PROMPT_VERSION, byModel: {} };
+        : { version: 2, promptVersion: promptVersion, byModel: {} };
     next.byModel[modelKey] = { perCompetency: final.perCompetency, fittedAt: new Date().toISOString(), sampleSize: allPairs.length, selection: final.selection };
     writeFileSync(CALIBRATION_PATH, `${JSON.stringify(next, null, 2)}\n`);
   }
@@ -225,7 +230,7 @@ async function main() {
   const total = (s: Scores) => COMPETENCY_IDS.reduce((sum, id) => sum + s[id], 0);
   const report = {
     generatedAt: new Date().toISOString(),
-    promptVersion: GRADER_PROMPT_VERSION,
+    promptVersion: promptVersion,
     model: modelKey,
     callsThisRun: calls,
     secondsThisRun: Math.round((Date.now() - started) / 1000),
@@ -244,7 +249,7 @@ async function main() {
       calibrated: complete(cached) && final ? total(predict(cached, final.perCompetency)) : null,
     })),
   };
-  writeFileSync(join(REPORT_DIR, `eval-${GRADER_PROMPT_VERSION}-${slug(model)}.json`), `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(join(REPORT_DIR, `eval-${promptVersion}-${slug(model)}.json`), `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
   await tools.close();
 }
