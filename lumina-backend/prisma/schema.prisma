@@ -293,6 +293,26 @@ model Repertoire {
   origin        String   @default("MANUAL") @db.VarChar(20)
   isPlatform    Boolean  @default(false) @map("is_platform")
   platformSourceId String? @map("platform_source_id") @db.Uuid
+  /// Eixos temáticos (especificação de 13/11/2026), um repertório pode ter vários.
+  axes              String[] @default([])
+  /// Funções no mapa de aplicação argumentativa (explicar desigualdades
+  /// estruturais, evidenciar omissão estatal...).
+  argumentFunctions String[] @default([]) @map("argument_functions")
+  /// Conceitos fundamentais.
+  concepts          String[] @default([])
+  /// Problemas sociais que o repertório ajuda a explicar.
+  socialProblems    String?  @map("social_problems")
+  /// Relação com a realidade brasileira.
+  brazilRelation    String?  @map("brazil_relation")
+  /// Em que desenvolvimento o exemplo se encaixa: D1 ou D2.
+  exampleSlot       String?  @map("example_slot") @db.VarChar(4)
+  /// Possíveis conexões com outros repertórios.
+  connections       String?
+  /// Cuidados para evitar uso superficial ou decorativo.
+  pitfalls          String?
+  /// Citação literal (separada da paráfrase), sempre com a fonte exata.
+  quote             String?
+  quoteSource       String?  @map("quote_source") @db.VarChar(300)
   collectionItems RepertoireCollectionItem[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

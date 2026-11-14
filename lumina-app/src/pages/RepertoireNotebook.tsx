@@ -26,11 +26,16 @@ import {
 } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import {
+  ARGUMENT_FUNCTIONS,
+  AXIS_LABEL,
+  FUNCTION_LABEL,
+  REPERTOIRE_AXES,
+  byArgumentFunction,
+  type ArgumentFunction,
+  type RepertoireAxis,
   CATEGORY_LABEL,
   REPERTOIRE_CATEGORIES,
-  REPERTOIRE_THEMES,
   SORT_LABEL,
-  THEME_LABEL,
   atItemLimit,
   categoryLabel,
   isCustomCategory,
@@ -44,7 +49,6 @@ import {
   type RepertoirePayload,
   type RepertoireQuery,
   type RepertoireSummary,
-  type RepertoireTheme,
 } from '@/lib/notebooks';
 
 const token = () => getAccessToken() ?? '';
@@ -55,7 +59,11 @@ type FormState = { mode: 'create' | 'edit'; initial: RepertoirePayload; id?: str
 
 function toPayload(r: Repertoire): RepertoirePayload {
   const { title, summary, category, author, referenceType, source, year, theme, keywords, relatedThemes, context, importance, essayUse, example, notes, isStudied, isFavorite, isPlatform } = r;
-  return { title, summary, category, author, referenceType, source, year, theme, keywords, relatedThemes, context, importance, essayUse, example, notes, isStudied, isFavorite, isPlatform };
+  const { axes, argumentFunctions, concepts, socialProblems, brazilRelation, exampleSlot, connections, pitfalls, quote, quoteSource } = r;
+  return {
+    title, summary, category, author, referenceType, source, year, theme, keywords, relatedThemes, context, importance, essayUse, example, notes, isStudied, isFavorite, isPlatform,
+    axes, argumentFunctions, concepts, socialProblems, brazilRelation, exampleSlot, connections, pitfalls, quote, quoteSource,
+  };
 }
 
 export function RepertoireNotebook() {
@@ -70,7 +78,9 @@ export function RepertoireNotebook() {
 
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('');
-  const [theme, setTheme] = useState<RepertoireTheme | ''>('');
+  const [axis, setAxis] = useState<RepertoireAxis | ''>('');
+  const [argumentFunction, setArgumentFunction] = useState<ArgumentFunction | ''>('');
+  const [mapView, setMapView] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [scope, setScope] = useState<NotebookScope>('mine');
   const [collectionId, setCollectionId] = useState('');
@@ -84,10 +94,10 @@ export function RepertoireNotebook() {
   const [connections, setConnections] = useState<{ text: string; disclaimer: string } | null>(null);
 
   const query: RepertoireQuery = useMemo(
-    () => ({ q: q.trim() || undefined, category: category || undefined, theme: theme || undefined, favorite, scope, collectionId: collectionId || undefined, sort }),
-    [q, category, theme, favorite, scope, collectionId, sort],
+    () => ({ q: q.trim() || undefined, category: category || undefined, axis: axis || undefined, argumentFunction: argumentFunction || undefined, favorite, scope, collectionId: collectionId || undefined, sort }),
+    [q, category, axis, argumentFunction, favorite, scope, collectionId, sort],
   );
-  const filtersActive = !!(q.trim() || category || theme || favorite || collectionId);
+  const filtersActive = !!(q.trim() || category || axis || argumentFunction || favorite || collectionId);
 
   const reload = useCallback(async () => {
     try {
@@ -219,13 +229,23 @@ export function RepertoireNotebook() {
               {REPERTOIRE_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
               {customCategories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select aria-label="Tema" className={`${fieldClass} mt-0`} value={theme} onChange={(e) => setTheme(e.target.value as RepertoireTheme | '')}>
-              <option value="">Todos os temas</option>
-              {REPERTOIRE_THEMES.map((t) => <option key={t} value={t}>{THEME_LABEL[t]}</option>)}
+            <select aria-label="Eixo temático" className={`${fieldClass} mt-0`} value={axis} onChange={(e) => setAxis(e.target.value as RepertoireAxis | '')}>
+              <option value="">Todos os eixos</option>
+              {REPERTOIRE_AXES.map((a) => <option key={a} value={a}>{AXIS_LABEL[a]}</option>)}
             </select>
             <select aria-label="Ordenar" className={`${fieldClass} mt-0`} value={sort} onChange={(e) => setSort(e.target.value as NotebookSort)}>
               {(Object.keys(SORT_LABEL) as NotebookSort[]).map((s) => <option key={s} value={s}>{SORT_LABEL[s]}</option>)}
             </select>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-[2fr_1fr]">
+            <select aria-label="Função na argumentação" className={`${fieldClass} mt-0`} value={argumentFunction} onChange={(e) => setArgumentFunction(e.target.value as ArgumentFunction | '')}>
+              <option value="">Todas as funções na argumentação</option>
+              {ARGUMENT_FUNCTIONS.map((f) => <option key={f} value={f}>{FUNCTION_LABEL[f]}</option>)}
+            </select>
+            <div className="flex rounded-xl border border-surface-line p-1 text-sm" role="tablist" aria-label="Visualização">
+              <button type="button" role="tab" aria-selected={!mapView} onClick={() => setMapView(false)} className={`flex-1 rounded-lg px-3 py-1.5 font-semibold ${!mapView ? 'bg-graphite text-white' : ''}`}>Lista</button>
+              <button type="button" role="tab" aria-selected={mapView} onClick={() => setMapView(true)} className={`flex-1 rounded-lg px-3 py-1.5 font-semibold ${mapView ? 'bg-graphite text-white' : ''}`}>Mapa de aplicação</button>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className="mr-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} />Só favoritos</label>
@@ -247,7 +267,7 @@ export function RepertoireNotebook() {
                 ) : null}
               </>
             ) : null}
-            {filtersActive ? <button type="button" className="text-xs font-semibold underline" onClick={() => { setQ(''); setCategory(''); setTheme(''); setFavorite(false); setCollectionId(''); }}>Limpar filtros</button> : null}
+            {filtersActive ? <button type="button" className="text-xs font-semibold underline" onClick={() => { setQ(''); setCategory(''); setAxis(''); setArgumentFunction(''); setFavorite(false); setCollectionId(''); }}>Limpar filtros</button> : null}
           </div>
         </Card>
 
@@ -263,7 +283,28 @@ export function RepertoireNotebook() {
           </Card>
         ) : null}
 
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {mapView ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {byArgumentFunction(items).map(({ fn, items: group }) => (
+              <section key={fn} className="rounded-2xl border border-surface-line bg-white p-4">
+                <h2 className="font-bold">{FUNCTION_LABEL[fn]}</h2>
+                {group.length ? (
+                  <ul className="mt-2 space-y-1">
+                    {group.map((r) => (
+                      <li key={r.id}>
+                        <button type="button" onClick={() => setSelected(r)} className="text-left text-sm hover:underline">
+                          {r.author ? <span className="font-semibold">{r.author}</span> : null}{r.author ? ' — ' : ''}{r.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-2 text-sm text-graphite-400">Nenhum repertório com esta função no recorte.</p>}
+              </section>
+            ))}
+          </div>
+        ) : null}
+
+        <ul className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${mapView ? 'hidden' : ''}`}>
           {items.map((r) => {
             const missing = r.isPlatform ? 0 : missingRepertoireFields(r).length;
             const checked = connecting?.includes(r.id) ?? false;

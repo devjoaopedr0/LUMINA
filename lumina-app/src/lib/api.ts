@@ -2535,7 +2535,7 @@ export const apiDeleteRepertoire = (accessToken: string, id: string): Promise<{ 
 export const apiCopyRepertoire = (accessToken: string, id: string): Promise<Repertoire> => request(`/repertoires/${id}/copy`, json(accessToken, "POST"));
 export const apiRepertoireAi = (
   accessToken: string,
-  payload: { action: RepertoireAiAction; theme?: string; ids?: string[]; part?: "INTRODUCAO" | "DESENVOLVIMENTO" },
+  payload: { action: RepertoireAiAction; theme?: string; ids?: string[]; part?: "INTRODUCAO" | "DESENVOLVIMENTO"; paragraph?: string },
 ): Promise<RepertoireAiResult> => request("/repertoires/ai", json(accessToken, "POST", payload));
 
 export const apiListCollections = (accessToken: string, notebook: NotebookPath): Promise<NotebookCollection[]> =>

@@ -46,6 +46,9 @@ async function main() {
         title: rep.title, summary: rep.summary, category: rep.category ?? 'OUTRA', author: rep.author ?? null, referenceType: rep.referenceType ?? 'OUTRO',
         source: rep.source ?? null, year: rep.year ?? null, theme: rep.theme ?? 'OUTRO', keywords: (rep.keywords ?? []).map((k) => k.toLowerCase()),
         relatedThemes: rep.relatedThemes ?? [], context: rep.context ?? null, importance: rep.importance ?? null, essayUse: rep.essayUse ?? null, example: rep.example ?? null,
+        axes: rep.axes ?? [], argumentFunctions: rep.argumentFunctions ?? [], concepts: rep.concepts ?? [], socialProblems: rep.socialProblems ?? null,
+        brazilRelation: rep.brazilRelation ?? null, exampleSlot: rep.exampleSlot ?? null, connections: rep.connections ?? null, pitfalls: rep.pitfalls ?? null,
+        quote: rep.quote ?? null, quoteSource: rep.quoteSource ?? null,
       };
       if (dryRun) { existing ? updated++ : created++; continue; }
       if (existing) { await prisma.repertoire.update({ where: { id: existing.id }, data }); updated++; }

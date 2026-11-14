@@ -10,6 +10,7 @@ import {
   VERDICT_LABEL,
   categoryLabel,
   missingRepertoireFields,
+  practiceGuide,
   repertoireCopyText,
   repertoireInsertText,
   repertoireSections,
@@ -101,6 +102,28 @@ export function RepertoireDetail({
         ))}
       </div>
 
+      {repertoire.quote ? (
+        <figure className="mt-4 rounded-xl border-l-4 border-primary bg-primary/5 p-3">
+          <figcaption className="text-xs font-bold uppercase tracking-wider text-primary-700">Citação literal</figcaption>
+          <blockquote className="mt-1 text-sm italic">“{repertoire.quote}”</blockquote>
+          <p className="mt-1 text-xs text-graphite-500">{repertoire.quoteSource}</p>
+        </figure>
+      ) : (
+        <p className="mt-4 text-xs text-graphite-400">Todo o texto acima é paráfrase: use com suas palavras, citando autor e obra.</p>
+      )}
+
+      <section className="mt-5 rounded-2xl bg-surface-card p-4">
+        <h3 className="font-bold">Aplicação prática</h3>
+        <dl className="mt-2 space-y-2 text-sm">
+          {practiceGuide(repertoire).map(({ question, answer }) => (
+            <div key={question}>
+              <dt className="font-semibold">{question}</dt>
+              <dd className={`whitespace-pre-wrap ${answer ? 'text-graphite' : 'text-graphite-400'}`}>{answer ?? 'Ainda não registrado: complete o repertório ou use "Aplicar ao meu tema".'}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
       {missing.length ? (
         <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Para ficar completo, falta: {missing.join(', ')}.</p>
       ) : null}
@@ -181,6 +204,9 @@ export function RepertoireDetail({
         </div>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <input className={`${fieldClass} mt-0`} value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="Tema da redação para conferir a pertinência" />
+          <Button size="sm" variant="outline" disabled={!!busy || theme.trim().length < 3} onClick={() => void askAi({ action: 'apply', ids: [repertoire.id], theme: theme.trim() })}>
+            Aplicar ao meu tema
+          </Button>
           <Button size="sm" variant="outline" disabled={!!busy || theme.trim().length < 3} onClick={() => void askAi({ action: 'check', ids: [repertoire.id], theme: theme.trim() })}>
             Conferir pertinência
           </Button>
@@ -192,6 +218,28 @@ export function RepertoireDetail({
             <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${VERDICT_STYLE[ai.check.verdict]}`}>{VERDICT_LABEL[ai.check.verdict]}</span>
             <p>{ai.check.explanation}</p>
             {ai.check.tips.length ? <ul className="list-disc pl-5">{ai.check.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul> : null}
+          </div>
+        ) : null}
+        {ai?.application ? (
+          <div className="mt-3 space-y-2 text-sm">
+            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${ai.application.relevance === 'ALTA' ? 'bg-emerald-50 text-emerald-800' : ai.application.relevance === 'MEDIA' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
+              Pertinência ao tema: {ai.application.relevance === 'ALTA' ? 'alta' : ai.application.relevance === 'MEDIA' ? 'média' : 'baixa (considere outro repertório)'}
+            </span>
+            {[
+              ['O que defende', ai.application.defends],
+              ['Problema que explica', ai.application.problem],
+              ['Como relacionar ao tema', ai.application.relation],
+              ['Como sustentar a tese', ai.application.thesis],
+              ['Como desenvolver sem só mencionar', ai.application.develop],
+            ].filter(([, v]) => v).map(([label, value]) => (
+              <p key={label}><span className="font-semibold">{label}:</span> {value}</p>
+            ))}
+            {ai.application.paragraph ? (
+              <div className="rounded-xl border border-surface-line p-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-graphite-400">Parágrafo modelo (adapte, não copie)</p>
+                <p className="mt-1">{ai.application.paragraph}</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {ai?.text ? <div className="mt-3"><AiText text={ai.text} /></div> : null}

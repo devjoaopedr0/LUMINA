@@ -166,6 +166,36 @@ export const THEME_LABEL: Record<RepertoireTheme, string> = {
   OUTRO: 'Outro',
 };
 
+/** Eixos temáticos (especificação de 13/11/2026). */
+export const REPERTOIRE_AXES = ['EDUCACAO', 'DESIGUALDADE', 'POLITICA_CIDADANIA', 'CULTURA_IDENTIDADE', 'TECNOLOGIA', 'MEIO_AMBIENTE', 'SAUDE', 'TRABALHO_ECONOMIA', 'DIREITOS_HUMANOS', 'MIDIA_COMPORTAMENTO'] as const;
+export type RepertoireAxis = (typeof REPERTOIRE_AXES)[number];
+export const AXIS_LABEL: Record<RepertoireAxis, string> = {
+  EDUCACAO: 'Educação e formação social',
+  DESIGUALDADE: 'Desigualdade e exclusão social',
+  POLITICA_CIDADANIA: 'Política, cidadania e democracia',
+  CULTURA_IDENTIDADE: 'Cultura e identidade brasileira',
+  TECNOLOGIA: 'Tecnologia e sociedade',
+  MEIO_AMBIENTE: 'Meio ambiente e sustentabilidade',
+  SAUDE: 'Saúde pública e bem-estar',
+  TRABALHO_ECONOMIA: 'Trabalho e relações econômicas',
+  DIREITOS_HUMANOS: 'Direitos humanos e grupos vulneráveis',
+  MIDIA_COMPORTAMENTO: 'Mídia, comunicação e comportamento social',
+};
+
+/** Mapa de aplicação argumentativa: a função do repertório no texto. */
+export const ARGUMENT_FUNCTIONS = ['DESIGUALDADES_ESTRUTURAIS', 'OMISSAO_ESTATAL', 'FALHAS_EDUCACIONAIS', 'COMPORTAMENTOS_COLETIVOS', 'PROBLEMAS_HISTORICOS', 'VIOLACOES_DE_DIREITOS', 'IMPACTOS_TECNOLOGICOS', 'RELACOES_DE_PODER'] as const;
+export type ArgumentFunction = (typeof ARGUMENT_FUNCTIONS)[number];
+export const FUNCTION_LABEL: Record<ArgumentFunction, string> = {
+  DESIGUALDADES_ESTRUTURAIS: 'Explicar desigualdades estruturais',
+  OMISSAO_ESTATAL: 'Evidenciar omissão estatal',
+  FALHAS_EDUCACIONAIS: 'Discutir falhas educacionais',
+  COMPORTAMENTOS_COLETIVOS: 'Analisar comportamentos coletivos',
+  PROBLEMAS_HISTORICOS: 'Explicar problemas históricos',
+  VIOLACOES_DE_DIREITOS: 'Fundamentar violações de direitos',
+  IMPACTOS_TECNOLOGICOS: 'Discutir impactos tecnológicos',
+  RELACOES_DE_PODER: 'Analisar relações de poder',
+};
+
 export interface Repertoire {
   id: string;
   userId: string;
@@ -184,6 +214,16 @@ export interface Repertoire {
   essayUse: string | null;
   example: string | null;
   notes: string | null;
+  axes: RepertoireAxis[];
+  argumentFunctions: ArgumentFunction[];
+  concepts: string[];
+  socialProblems: string | null;
+  brazilRelation: string | null;
+  exampleSlot: 'D1' | 'D2' | null;
+  connections: string | null;
+  pitfalls: string | null;
+  quote: string | null;
+  quoteSource: string | null;
   isStudied: boolean;
   isFavorite: boolean;
   isPlatform: boolean;
@@ -210,6 +250,16 @@ export interface RepertoirePayload {
   essayUse?: string | null;
   example?: string | null;
   notes?: string | null;
+  axes?: RepertoireAxis[];
+  argumentFunctions?: ArgumentFunction[];
+  concepts?: string[];
+  socialProblems?: string | null;
+  brazilRelation?: string | null;
+  exampleSlot?: 'D1' | 'D2' | null;
+  connections?: string | null;
+  pitfalls?: string | null;
+  quote?: string | null;
+  quoteSource?: string | null;
   isStudied?: boolean;
   isFavorite?: boolean;
   origin?: 'MANUAL' | 'AI';
@@ -221,6 +271,8 @@ export interface RepertoireQuery {
   category?: string;
   theme?: RepertoireTheme;
   referenceType?: ReferenceType;
+  axis?: RepertoireAxis;
+  argumentFunction?: ArgumentFunction;
   favorite?: boolean;
   scope?: NotebookScope;
   collectionId?: string;
@@ -234,6 +286,8 @@ export interface RepertoireSummary {
   byCategory: { category: string; count: number }[];
   recent: { id: string; title: string; category: string; author: string | null; createdAt: string }[];
   platformAvailable: number;
+  byAxis?: Partial<Record<RepertoireAxis, number>>;
+  byFunction?: Partial<Record<ArgumentFunction, number>>;
   plan: NotebookPlan;
 }
 
@@ -265,13 +319,43 @@ export const VERDICT_LABEL: Record<CheckVerdict, string> = {
   DESCONTEXTUALIZADO: 'Fora de contexto',
 };
 
-export type RepertoireAiAction = 'suggest' | 'explain' | 'howToUse' | 'connections' | 'check';
+export type RepertoireAiAction = 'suggest' | 'explain' | 'howToUse' | 'connections' | 'check' | 'apply' | 'analyzeUse';
 export interface RepertoireAiResult {
   action: RepertoireAiAction;
   disclaimer: string;
   text?: string;
   suggestions?: RepertoireSuggestion[];
   check?: { verdict: CheckVerdict; explanation: string; tips: string[] };
+  application?: RepertoireApplication;
+  analysis?: UseAnalysis;
+}
+
+export interface RepertoireApplication {
+  relevance: 'ALTA' | 'MEDIA' | 'BAIXA';
+  defends: string;
+  problem: string;
+  relation: string;
+  thesis: string;
+  develop: string;
+  paragraph: string;
+}
+
+export type UseVerdict = 'PRODUTIVO' | 'SUPERFICIAL' | 'DECORATIVO' | 'FORCADO' | 'INCORRETO' | 'SEM_REPERTORIO';
+export const USE_VERDICT_LABEL: Record<UseVerdict, string> = {
+  PRODUTIVO: 'Uso produtivo',
+  SUPERFICIAL: 'Uso superficial',
+  DECORATIVO: 'Uso decorativo (repertório de bolso)',
+  FORCADO: 'Relação forçada com o tema',
+  INCORRETO: 'Atribuição a conferir',
+  SEM_REPERTORIO: 'Sem repertório',
+};
+
+export interface UseAnalysis {
+  verdict: UseVerdict;
+  repertoire: string | null;
+  excerpt: string | null;
+  explanation: string;
+  tips: string[];
 }
 
 export const SORT_LABEL: Record<NotebookSort, string> = {
@@ -283,37 +367,66 @@ export const SORT_LABEL: Record<NotebookSort, string> = {
 
 // -------------------------------------------------------------- regras
 
-/** Seções do detalhe do repertório, na ordem da especificação (vazias somem). */
+/** Seções do detalhe na ordem da especificação de 13/11/2026 (vazias somem). */
 export function repertoireSections(r: Repertoire): { title: string; body: string }[] {
   const identification = [
     r.author ? `Autor/responsável: ${r.author}` : null,
     `Tipo: ${REFERENCE_TYPE_LABEL[r.referenceType] ?? r.referenceType}`,
     `Categoria: ${categoryLabel(r.category)}`,
     r.year !== null ? `Ano: ${r.year < 0 ? `${-r.year} a.C.` : r.year}` : null,
+    r.axes?.length ? `Eixos: ${r.axes.map((a) => AXIS_LABEL[a] ?? a).join(' · ')}` : null,
   ]
     .filter(Boolean)
     .join('\n');
   const sections: { title: string; body: string | null }[] = [
-    { title: 'Identificação', body: identification },
-    { title: 'Contexto', body: r.context },
-    { title: 'Conceito', body: r.summary },
-    { title: 'Importância sociocultural', body: r.importance },
+    { title: '1. Autor, obra ou documento', body: identification },
+    { title: '2. Contexto histórico e social', body: r.context },
+    { title: '3. Ideia central', body: r.summary },
+    { title: '4. Conceitos fundamentais', body: r.concepts?.length ? r.concepts.join(' · ') : null },
+    { title: '5. Problemas sociais que ajuda a explicar', body: r.socialProblems },
+    { title: '6. Relação com a realidade brasileira', body: r.brazilRelation },
+    { title: '7. Temas de redação', body: r.relatedThemes.length ? r.relatedThemes.join(' · ') : null },
+    { title: `8. Exemplo de aplicação${r.exampleSlot ? ` (${r.exampleSlot})` : ''}`, body: r.example },
+    { title: '9. Conexões com outros repertórios', body: r.connections },
+    { title: '10. Cuidados para não usar de forma decorativa', body: r.pitfalls },
     { title: 'Como usar na redação', body: r.essayUse },
-    { title: 'Temas relacionados', body: r.relatedThemes.length ? r.relatedThemes.join(' · ') : null },
-    { title: 'Exemplo de uso argumentativo', body: r.example },
+    { title: 'Função na argumentação', body: r.argumentFunctions?.length ? r.argumentFunctions.map((f) => FUNCTION_LABEL[f] ?? f).join(' · ') : null },
+    { title: 'Importância sociocultural', body: r.importance },
     { title: 'Fonte', body: r.source },
     { title: 'Minhas anotações', body: r.notes },
   ];
-  return sections.filter((s): s is { title: string; body: string } => !!s.body && s.body.trim().length > 0);
+  return sections.filter((x): x is { title: string; body: string } => !!x.body && x.body.trim().length > 0);
+}
+
+/**
+ * Guia de aplicação prática (seção 6): as 5 perguntas, respondidas com o que
+ * o repertório já registra. Pergunta sem resposta no registro fica marcada
+ * para o aluno completar (ou pedir à LuminIA com o tema dele).
+ */
+export function practiceGuide(r: Pick<Repertoire, 'summary' | 'socialProblems' | 'relatedThemes' | 'brazilRelation' | 'essayUse' | 'example' | 'pitfalls'>): { question: string; answer: string | null }[] {
+  return [
+    { question: 'O que esse repertório defende?', answer: r.summary || null },
+    { question: 'Qual problema social ele ajuda a explicar?', answer: r.socialProblems },
+    { question: 'Como posso relacioná-lo ao tema?', answer: [r.relatedThemes.length ? `Temas: ${r.relatedThemes.join(', ')}.` : '', r.brazilRelation ?? ''].join(' ').trim() || null },
+    { question: 'Como posso usá-lo para sustentar minha tese?', answer: r.essayUse },
+    { question: 'Como desenvolvê-lo sem apenas mencioná-lo?', answer: [r.example ?? '', r.pitfalls ? `Cuidado: ${r.pitfalls}` : ''].join('\n\n').trim() || null },
+  ];
+}
+
+/** Repertórios agrupados pela função argumentativa (mapa de aplicação). */
+export function byArgumentFunction<T extends Pick<Repertoire, 'argumentFunctions'>>(items: T[]): { fn: ArgumentFunction; items: T[] }[] {
+  return ARGUMENT_FUNCTIONS.map((fn) => ({ fn, items: items.filter((item) => item.argumentFunctions?.includes(fn)) }));
 }
 
 /** O que falta para o repertório ficar completo (o cadastro mínimo já é garantido pelo servidor). */
-export function missingRepertoireFields(r: Pick<Repertoire, 'author' | 'context' | 'essayUse' | 'example' | 'source'>): string[] {
+export function missingRepertoireFields(r: Pick<Repertoire, 'author' | 'context' | 'essayUse' | 'example' | 'source'> & Partial<Pick<Repertoire, 'socialProblems' | 'brazilRelation' | 'pitfalls'>>): string[] {
   const missing: string[] = [];
   if (!r.author) missing.push('autor ou responsável');
   if (!r.context) missing.push('contexto');
-  if (!r.essayUse) missing.push('como usar na redação');
+  if (!r.socialProblems) missing.push('problemas que explica');
+  if (!r.brazilRelation) missing.push('relação com o Brasil');
   if (!r.example) missing.push('exemplo de uso');
+  if (!r.pitfalls) missing.push('cuidados de uso');
   if (!r.source) missing.push('fonte');
   return missing;
 }
@@ -412,4 +525,15 @@ export function splitBold(text: string): { text: string; bold: boolean }[] {
     .split(/(\*\*[^*]+\*\*)/g)
     .filter(Boolean)
     .map((part) => (part.startsWith('**') && part.endsWith('**') && part.length > 4 ? { text: part.slice(2, -2), bold: true } : { text: part.replace(/(^|\s)[*_](\S)/g, '$1$2').replace(/(\S)[*_](\s|$)/g, '$1$2'), bold: false }));
+}
+
+/** Parágrafo onde está o cursor (separado por linha em branco ou quebra de linha). */
+export function paragraphAt(text: string, index: number): string {
+  if (!text.trim()) return '';
+  const at = Math.max(0, Math.min(index, text.length));
+  const start = text.lastIndexOf('\n', at - 1) + 1;
+  const endBreak = text.indexOf('\n', at);
+  const paragraph = text.slice(start, endBreak === -1 ? text.length : endBreak).trim();
+  // Cursor numa linha em branco: usa o parágrafo anterior.
+  return paragraph || text.slice(0, start).trim().split(/\n+/).pop()?.trim() || '';
 }

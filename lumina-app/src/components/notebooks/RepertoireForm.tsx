@@ -4,16 +4,19 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/notebooks/Modal';
 import { fieldClass } from '@/lib/notebook-ui';
 import {
+  ARGUMENT_FUNCTIONS,
+  AXIS_LABEL,
+  FUNCTION_LABEL,
+  REPERTOIRE_AXES,
+  type ArgumentFunction,
+  type RepertoireAxis,
   CATEGORY_LABEL,
   REFERENCE_TYPE_LABEL,
   REFERENCE_TYPES,
   REPERTOIRE_CATEGORIES,
-  REPERTOIRE_THEMES,
-  THEME_LABEL,
   isCustomCategory,
   type ReferenceType,
   type RepertoirePayload,
-  type RepertoireTheme,
 } from '@/lib/notebooks';
 
 const NEW_CATEGORY = '__nova__';
@@ -37,6 +40,7 @@ export function RepertoireForm({
   const [form, setForm] = useState<RepertoirePayload>(initial);
   const [keywords, setKeywords] = useState((initial.keywords ?? []).join(', '));
   const [themes, setThemes] = useState((initial.relatedThemes ?? []).join('; '));
+  const [concepts, setConcepts] = useState((initial.concepts ?? []).join(', '));
   const startsCustom = !!initial.category && isCustomCategory(initial.category);
   const [categoryChoice, setCategoryChoice] = useState(startsCustom ? NEW_CATEGORY : (initial.category ?? 'OUTRA'));
   const [customCategory, setCustomCategory] = useState(startsCustom ? initial.category! : '');
@@ -60,6 +64,9 @@ export function RepertoireForm({
         category,
         keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
         relatedThemes: themes.split(';').map((t) => t.trim()).filter(Boolean),
+        concepts: concepts.split(',').map((c) => c.trim()).filter(Boolean),
+        // Citação literal sem fonte não é aceita: vira anotação para conferir.
+        ...(form.quote?.trim() && !form.quoteSource?.trim() ? { quote: null, notes: [form.notes, `Citação a conferir (sem fonte): ${form.quote.trim()}`].filter(Boolean).join('\n\n') } : {}),
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível salvar.');
@@ -113,14 +120,7 @@ export function RepertoireForm({
               <input className={fieldClass} value={customCategory} maxLength={60} onChange={(e) => setCustomCategory(e.target.value)} />
             </label>
           ) : (
-            <label className="block text-sm font-semibold">
-              Tema de redação
-              <select className={fieldClass} value={form.theme ?? 'OUTRO'} onChange={(e) => set('theme', e.target.value as RepertoireTheme)}>
-                {REPERTOIRE_THEMES.map((t) => (
-                  <option key={t} value={t}>{THEME_LABEL[t]}</option>
-                ))}
-              </select>
-            </label>
+            <span aria-hidden="true" />
           )}
           <label className="block text-sm font-semibold">
             Fonte ou bibliografia
@@ -137,18 +137,58 @@ export function RepertoireForm({
           </label>
         </div>
 
+        <ChipGroup
+          legend="Eixos temáticos"
+          options={REPERTOIRE_AXES}
+          labels={AXIS_LABEL}
+          value={form.axes ?? []}
+          onChange={(axes) => set('axes', axes as RepertoireAxis[])}
+        />
+        <ChipGroup
+          legend="Função na argumentação (mapa de aplicação)"
+          options={ARGUMENT_FUNCTIONS}
+          labels={FUNCTION_LABEL}
+          value={form.argumentFunctions ?? []}
+          onChange={(fns) => set('argumentFunctions', fns as ArgumentFunction[])}
+        />
+
+        {area('context', '2. Contexto histórico e social')}
         <label className="block text-sm font-semibold">
-          Explicação do conceito *
+          3. Ideia central * <span className="font-normal text-graphite-400">(com suas palavras: paráfrase)</span>
           <textarea rows={4} className={fieldClass} value={form.summary} onChange={(e) => set('summary', e.target.value)} required minLength={10} />
         </label>
-        {area('context', 'Contexto histórico, social ou cultural')}
+        <label className="block text-sm font-semibold">
+          4. Conceitos fundamentais <span className="font-normal text-graphite-400">(separe com vírgula)</span>
+          <input className={fieldClass} value={concepts} onChange={(e) => setConcepts(e.target.value)} placeholder="capital cultural, habitus" />
+        </label>
+        {area('socialProblems', '5. Problemas sociais que ajuda a explicar')}
+        {area('brazilRelation', '6. Relação com a realidade brasileira')}
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          {area('example', '8. Exemplo de aplicação', '(um parágrafo de desenvolvimento)')}
+          <label className="block text-sm font-semibold">
+            Desenvolvimento
+            <select className={fieldClass} value={form.exampleSlot ?? ''} onChange={(e) => set('exampleSlot', (e.target.value || null) as 'D1' | 'D2' | null)}>
+              <option value="">—</option>
+              <option value="D1">D1</option>
+              <option value="D2">D2</option>
+            </select>
+          </label>
+        </div>
+        {area('connections', '9. Conexões com outros repertórios')}
+        {area('pitfalls', '10. Cuidados para não usar de forma decorativa')}
+        {area('essayUse', 'Como usar na redação (resumo)')}
         {area('importance', 'Importância sociocultural')}
-        {area('essayUse', 'Como usar na redação')}
-        {area('example', 'Exemplo de uso argumentativo', '(um trecho para adaptar)')}
+
+        <fieldset className="rounded-xl border border-surface-line p-3">
+          <legend className="px-1 text-sm font-semibold">Citação literal (opcional)</legend>
+          <p className="text-xs text-graphite-500">Só copie palavra por palavra se tiver a fonte exata (obra e página). Sem fonte, a citação vai para as anotações como "a conferir".</p>
+          <textarea rows={2} className={fieldClass} value={form.quote ?? ''} onChange={(e) => set('quote', e.target.value)} />
+          <input className={fieldClass} value={form.quoteSource ?? ''} maxLength={300} onChange={(e) => set('quoteSource', e.target.value)} placeholder="Fonte exata: obra, edição, página" />
+        </fieldset>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-semibold">
-            Temas relacionados <span className="font-normal text-graphite-400">(separe com ;)</span>
+            7. Temas de redação <span className="font-normal text-graphite-400">(separe com ;)</span>
             <input className={fieldClass} value={themes} onChange={(e) => setThemes(e.target.value)} placeholder="Desigualdade digital; consumo" />
           </label>
           <label className="block text-sm font-semibold">
@@ -181,5 +221,30 @@ export function RepertoireForm({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Grupo de opções marcáveis (eixos, funções). */
+function ChipGroup({ legend, options, labels, value, onChange }: { legend: string; options: readonly string[]; labels: Record<string, string>; value: string[]; onChange: (value: string[]) => void }) {
+  return (
+    <fieldset>
+      <legend className="text-sm font-semibold">{legend}</legend>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((option) => {
+          const on = value.includes(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(on ? value.filter((v) => v !== option) : [...value, option])}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${on ? 'border-primary bg-primary/15 text-primary-700' : 'border-surface-line text-graphite-600'}`}
+            >
+              {labels[option] ?? option}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }

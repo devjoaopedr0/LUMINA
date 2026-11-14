@@ -40,4 +40,23 @@ describe('acervo inicial dos cadernos', () => {
     expect(titles).toContain('Lei 8.069/1990'); // ECA
     expect(titles).toContain('Lei 13.709/2018'); // LGPD
   });
+
+  it('as 10 referências iniciais da especificação estão no acervo, com a estrutura completa', () => {
+    const initial = ['Caio Prado Júnior', 'Zygmunt Bauman', 'Pierre Bourdieu', 'Paulo Freire', 'Milton Santos', 'Hannah Arendt', 'Carolina Maria de Jesus', 'Byung-Chul Han'];
+    for (const author of initial) {
+      const rep = PLATFORM_REPERTOIRES.find((r) => r.author === author)!;
+      expect(rep, author).toBeDefined();
+      for (const field of ['context', 'summary', 'socialProblems', 'brazilRelation', 'example', 'connections', 'pitfalls'] as const) expect(rep[field], `${author}: ${field}`).toBeTruthy();
+      expect(rep.concepts?.length, author).toBeGreaterThan(0);
+      expect(rep.axes?.length, author).toBeGreaterThan(0);
+      expect(rep.argumentFunctions?.length, author).toBeGreaterThan(0);
+      expect(['D1', 'D2']).toContain(rep.exampleSlot);
+    }
+    expect(PLATFORM_REPERTOIRES.some((r) => r.title.startsWith('Constituição Federal de 1988, art. 6º'))).toBe(true);
+    expect(PLATFORM_REPERTOIRES.some((r) => r.title.startsWith('Declaração Universal dos Direitos Humanos'))).toBe(true);
+  });
+
+  it('sem citação literal no acervo (tudo é paráfrase)', () => {
+    expect(PLATFORM_REPERTOIRES.every((r) => !r.quote)).toBe(true);
+  });
 });
