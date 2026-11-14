@@ -2,7 +2,7 @@ import { NotebookKind, PlanTier } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { describe, expect, it, vi } from 'vitest';
-import { parseCheck, parseSuggestions, suggestPrompt } from './notebook-ai';
+import { analyzeUsePrompt, applyPrompt, parseApplication, parseCheck, parseSuggestions, parseUseAnalysis, suggestPrompt } from './notebook-ai';
 import { CreateRepertoireDto, ListRepertoiresQueryDto, RepertoireAiDto } from './notebooks.dto';
 import { NotebookLimitExceededException, NotebooksService } from './notebooks.service';
 
@@ -180,5 +180,67 @@ describe('leitura das respostas da LuminIA', () => {
 
   it('o prompt proíbe inventar citação, número e data', () => {
     expect(suggestPrompt('tema')).toContain('sem citação literal inventada');
+  });
+});
+
+describe('especificação completa do caderno (13/11/2026)', () => {
+  it('busca filtra por eixo temático e por função argumentativa', async () => {
+    const { service, db } = setup();
+    await service.listRepertoires('owner', { axis: 'EDUCACAO', argumentFunction: 'FALHAS_EDUCACIONAIS' });
+    const where = db.repertoire.findMany.mock.calls[0][0].where;
+    expect(where.AND).toEqual(expect.arrayContaining([{ axes: { has: 'EDUCACAO' } }, { argumentFunctions: { has: 'FALHAS_EDUCACIONAIS' } }]));
+  });
+
+  it('eixo e função fora da lista são recusados; citação literal é campo separado', async () => {
+    const base = { title: 'Teste', summary: 'Resumo com mais de dez letras.' };
+    expect(await validate(plainToInstance(CreateRepertoireDto, { ...base, axes: ['ASTROLOGIA'] }))).not.toHaveLength(0);
+    expect(await validate(plainToInstance(CreateRepertoireDto, { ...base, argumentFunctions: ['ENFEITAR'] }))).not.toHaveLength(0);
+    expect(await validate(plainToInstance(CreateRepertoireDto, { ...base, axes: ['EDUCACAO'], exampleSlot: 'D1', quote: 'trecho', quoteSource: 'Obra, p. 10' }))).toHaveLength(0);
+    expect(await validate(plainToInstance(CreateRepertoireDto, { ...base, exampleSlot: 'D3' }))).not.toHaveLength(0);
+  });
+
+  it('aplicar ao tema: as 5 perguntas, com aviso quando a relação é fraca', async () => {
+    const ai = {
+      generateStructured: vi.fn().mockResolvedValue({
+        text: JSON.stringify({ pertinencia: 'baixa', defende: 'Vínculos frágeis.', problema: 'p', relacao: 'Relação fraca com o tema.', tese: 't', desenvolver: 'd', paragrafo: 'x' }),
+        model: 'm',
+      }),
+    };
+    const { service, db } = setup({ ai });
+    db.repertoire.findMany.mockResolvedValue([repertoire]);
+    const result: any = await service.repertoireAi('owner', { action: 'apply', ids: [repertoire.id], theme: 'Mobilidade urbana' });
+    expect(result.application).toMatchObject({ relevance: 'BAIXA', defends: 'Vínculos frágeis.' });
+    expect(applyPrompt(repertoire as any, 'Tema')).toContain('não invente uma ligação');
+  });
+
+  it('analisar o parágrafo: veredito e trecho só se estiver no texto do aluno', () => {
+    const paragraph = 'Segundo Bauman, vivemos tempos líquidos. Além disso, o governo deve agir para melhorar a situação.';
+    const real = parseUseAnalysis('{"veredito":"decorativo","repertorio":"Bauman","trecho":"Segundo Bauman, vivemos tempos líquidos.","explicacao":"Citado sem ligação com o argumento.","como_melhorar":["Explique o conceito."]}', paragraph);
+    expect(real).toMatchObject({ verdict: 'DECORATIVO', excerpt: 'Segundo Bauman, vivemos tempos líquidos.', tips: ['Explique o conceito.'] });
+    const invented = parseUseAnalysis('{"veredito":"SUPERFICIAL","trecho":"frase que não está no parágrafo","explicacao":"x y z"}', paragraph);
+    expect(invented?.excerpt).toBeNull();
+    expect(parseUseAnalysis('{"veredito":"OTIMO","explicacao":"x"}', paragraph)).toBeNull();
+    expect(analyzeUsePrompt(paragraph, 'Tema')).toContain('repertório de bolso');
+  });
+
+  it('analisar o parágrafo exige o texto; aplicar exige o tema', async () => {
+    const { service } = setup({ ai: { generateStructured: vi.fn() } });
+    await expect(service.repertoireAi('owner', { action: 'analyzeUse' })).rejects.toThrow('Cole o parágrafo');
+    await expect(service.repertoireAi('owner', { action: 'apply', ids: [repertoire.id] })).rejects.toThrow('Informe o tema');
+    expect(parseApplication('sem json')).toBeNull();
+  });
+});
+
+describe('modelos da LuminIA nos cadernos', () => {
+  it('usa AI_NOTEBOOK_MODELS; sem ela, a cadeia da redação', async () => {
+    const { notebookModels } = await import('./notebooks.service');
+    expect(notebookModels({ AI_NOTEBOOK_MODELS: 'a:x, b:y', AI_ESSAY_MODELS: 'c:z' })).toEqual(['a:x', 'b:y']);
+    expect(notebookModels({ AI_ESSAY_MODELS: 'gemini:flash' })).toEqual(['gemini:flash']);
+    expect(notebookModels({})).toEqual([]);
+  });
+
+  it('os prompts trazem os critérios de pertinência e de uso decorativo', () => {
+    expect(applyPrompt(repertoire as any, 'Tema')).toMatch(/BAIXA: só se liga ao tema por uma generalização/);
+    expect(analyzeUsePrompt('p'.repeat(50), 'Tema')).toMatch(/o parágrafo diria o mesmo sem ele/);
   });
 });

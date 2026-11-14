@@ -1,3 +1,4 @@
+import { PROMPT_SETS } from './grading/prompt-sets';
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeEssayText, splitParagraphs } from './analysis/text-analysis';
 import { applyCalibrationFn, fitIsotonicFn, LEVELS, preservesExtremes, selectCalibrationFn } from './grading/calibration';
@@ -30,6 +31,8 @@ import { combineConfidence, linesToText, parseTranscription, transcribeEssayPage
 import { tokenize } from './rag/bm25';
 import { EssayKnowledgeBase } from './rag/knowledge-base';
 import { decodeImage } from './essay-correction.service';
+
+const V3 = PROMPT_SETS['v3-c2-c4-oficial-2026'];
 
 const THEME = 'Desafios para a valorização da herança africana no Brasil';
 
@@ -198,13 +201,13 @@ describe('Análise determinística do texto', () => {
     expect(a.zeroRisks).toEqual([]);
     expect(a.warnings.join(' ')).not.toMatch(/Repertório limitado|sem elemento de ligação no início/i);
     expect(a.warnings.join(' ')).not.toMatch(/nota automática.*conectivo/i);
-    expect(buildCompetencyQuery('C4', a)).toMatch(/coesão referencial justaposição sem conectivo explícito/i);
-    expect(buildCompetencyQuery('C4', a)).not.toMatch(/repetição conector inadequado substituição/i);
+    expect(V3.buildQuery('C4', a)).toMatch(/coesão referencial justaposição sem conectivo explícito/i);
+    expect(V3.buildQuery('C4', a)).not.toMatch(/repetição conector inadequado substituição/i);
     const repeticao = analyzeEssayText(`${ESSAY}\n\nA herança africana é uma herança viva; a herança africana deve ser valorizada.`, { theme: THEME });
     expect(repeticao.warnings.join(' ')).toMatch(/podem ser temáticas ou referenciais/i);
     expect(repeticao.zeroRisks).toEqual([]);
-    expect(buildCompetencyQuery('C2', repeticao)).not.toMatch(/repertório repetido|pouco produtivo/i);
-    expect(buildCompetencyQuery('C4', repeticao)).toMatch(/repetição referencial progressão/i);
+    expect(V3.buildQuery('C2', repeticao)).not.toMatch(/repertório repetido|pouco produtivo/i);
+    expect(V3.buildQuery('C4', repeticao)).toMatch(/repetição referencial progressão/i);
   });
 
   it('não transforma sinônimos e retomadas em fuga por baixa cobertura lexical', () => {
@@ -214,8 +217,8 @@ describe('Análise determinística do texto', () => {
     expect(a.themeCoverage!).toBeLessThan(0.6);
     expect(a.zeroRisks).toEqual([]);
     expect(a.warnings.join(' ')).toMatch(/Cobertura lexical baixa.*Sinal auxiliar/i);
-    expect(buildCompetencyQuery('C2', a)).toContain('cobertura lexical auxiliar');
-    expect(buildCompetencyQuery('C2', a)).not.toMatch(/fuga ao tema tangenciamento abordagem parcial/);
+    expect(V3.buildQuery('C2', a)).toContain('cobertura lexical auxiliar');
+    expect(V3.buildQuery('C2', a)).not.toMatch(/fuga ao tema tangenciamento abordagem parcial/);
   });
 
   it('separa parágrafos por linha em branco e por recuo', () => {
@@ -300,10 +303,12 @@ describe('Corretor por competência', () => {
     expect(run.tip).toMatch(/Reescreva os trechos apontados/i);
   });
 
-  it('não reutiliza a calibração ajustada ao prompt anterior', () => {
+  it('a calibração só vale para a versão de prompt em que foi ajustada', () => {
     expect(llmCalibration.promptVersion).toBe('v2-competencia');
-    expect(llmCalibration.promptVersion).not.toBe(GRADER_PROMPT_VERSION);
-    expect(calibrationFor(llmCalibration as unknown as LlmCalibration, 'gemini:gemini-3.5-flash-lite').fitted).toBe(false);
+    const calibration = llmCalibration as unknown as LlmCalibration;
+    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v2-competencia').fitted).toBe(true);
+    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v3-c2-c4-oficial-2026').fitted).toBe(false);
+    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v4-calibrado').fitted).toBe(false);
   });
 
   it('aplica a função de calibração da competência só ao modelo dela', () => {
@@ -378,7 +383,7 @@ describe('Corretor por competência', () => {
    * Corrige com um modelo falso: `answer(competência, avaliador)` devolve o
    * texto da resposta (o avaliador sai da temperatura: 0,2 → 1, 0,7 → 2, 0,4 → 3).
    */
-  async function grade(answer: (competency: (typeof IDS)[number], evaluator: number) => string | null) {
+  async function grade(answer: (competency: (typeof IDS)[number], evaluator: number) => string | null, promptVersion?: string) {
     const tools = await EssayMcpClient.connect();
     const prompts: string[] = [];
     const llm: LlmGenerate = vi.fn(async ({ prompt, temperature }) => {
@@ -387,7 +392,7 @@ describe('Corretor por competência', () => {
       return text === null ? null : { text, model: 'fake-model' };
     });
     try {
-      return { result: await new EssayGrader({ tools, llm }).grade({ text: ESSAY, theme: THEME }), llm, prompts };
+      return { result: await new EssayGrader({ tools, llm, promptVersion }).grade({ text: ESSAY, theme: THEME }), llm, prompts };
     } finally {
       await tools.close();
     }
@@ -422,7 +427,7 @@ describe('Corretor por competência', () => {
   });
 
   it('prompts de C2 e C4 ensinam os critérios oficiais sem transformar contagem em nota', async () => {
-    const { prompts } = await grade(scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]));
+    const { prompts } = await grade(scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]), 'v3-c2-c4-oficial-2026');
     const c2 = prompts.find((p) => competencyOf(p) === 'C2')!;
     const c4 = prompts.find((p) => competencyOf(p) === 'C4')!;
     expect(c2).toMatch(/recorte temático/i);
@@ -437,7 +442,37 @@ describe('Corretor por competência', () => {
     expect(c4).toMatch(/repetição.*pode ser necessária/is);
     expect(c4).toMatch(/A contagem é auxiliar/i);
     expect(c4).not.toContain('[c2-niveis]');
-    expect(GRADER_PROMPT_VERSION).toBe('v3-c2-c4-oficial-2026');
+  });
+
+  it('v4: base v2, C4 do v3, regras de calibração em C1/C2/C5 e formato do v2', async () => {
+    const { prompts } = await grade(scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]), 'v4-calibrado');
+    const byC = (c: string) => prompts.find((p) => competencyOf(p) === c)!;
+    expect(byC('C4')).toMatch(/Não exija conectivo no início de cada parágrafo/i);
+    expect(byC('C1')).toMatch(/Calibração pela grade \(não pela caça a erros\)/);
+    expect(byC('C5')).toMatch(/Uma única proposta completa/);
+    expect(byC('C2')).toMatch(/Calibração pela grade/);
+    expect(byC('C3')).not.toMatch(/Calibração pela grade/);
+    // Formato do v2: sem os campos extras do v3.
+    expect(byC('C1')).not.toContain('pontos_fortes');
+    const analysis = analyzeEssayText(ESSAY, { theme: THEME });
+    expect(PROMPT_SETS['v4-calibrado'].buildQuery('C4', analysis)).toBe(V3.buildQuery('C4', analysis));
+    expect(PROMPT_SETS['v4-calibrado'].buildQuery('C2', analysis)).toBe(PROMPT_SETS['v2-competencia'].buildQuery('C2', analysis));
+  });
+
+  it('v5: igual ao v2 em C1, C3 e C5; C4 do v3; regras de calibração só em C2', async () => {
+    const same = scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]);
+    const v5 = (await grade(same, 'v5-c2-c4')).prompts;
+    const v2 = (await grade(same, 'v2-competencia')).prompts;
+    const v4 = (await grade(same, 'v4-calibrado')).prompts;
+    const byC = (prompts: string[], c: string) => prompts.find((p) => competencyOf(p) === c)!;
+    for (const c of ['C1', 'C3', 'C5']) expect(byC(v5, c)).toBe(byC(v2, c));
+    expect(byC(v5, 'C4')).toBe(byC(v4, 'C4'));
+    expect(byC(v5, 'C2')).toMatch(/Calibração pela grade/);
+    expect(byC(v5, 'C2')).toBe(byC(v4, 'C2'));
+  });
+
+  it('produção volta ao prompt v2 (o v3 mediu pior em 05/11/2026)', () => {
+    expect(GRADER_PROMPT_VERSION).toBe('v2-competencia');
   });
 
   it('devolve pontos fortes, problemas, explicação do nível e a versão da base usada', async () => {

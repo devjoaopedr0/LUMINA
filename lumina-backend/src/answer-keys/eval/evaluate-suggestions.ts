@@ -27,6 +27,11 @@
  *   --dry-run             confere banco e vínculo sem chamar a IA
  *   --out <arq>           caminho do relatório JSON
  *   --json                imprime o relatório completo
+ *   --compare <arq>       compara com um relatório anterior (o que corrigiu,
+ *                         piorou ou virou pendência, questão a questão)
+ *
+ * As respostas em cache são relidas com as regras atuais de leitura (ex.: a
+ * trava de justificativa inconsistente): mudar só a leitura não gasta cota.
  *
  * NÃO escreve no banco: é medição, não geração de rascunho. Assim como o
  * `essay:eval`, este script existe para que a medição do roadmap seja
@@ -41,11 +46,13 @@ import { AiService } from '../../ai/ai.service';
 import { PrismaService } from '../../database/prisma.service';
 import { QUESTION_BANK_INSTITUTION_EMAIL } from '../../questions/question-access.service';
 import { enemArea } from '../answer-key.grading';
+import { CHANGE_LABEL, compareMeasurements, MeasuredItem } from './compare';
 import {
   enemQuestionSourceId,
   parseSuggestedAnswerOutcome,
   pickAccessibleQuestion,
   positionLetter,
+  SUGGESTION_GENERATION,
   SUGGESTION_SYSTEM_PROMPT,
   answerKeyModels,
   suggestionPrompt,
@@ -182,8 +189,11 @@ function printReport(params: {
   console.log(`Modelo: ${params.model} · prompt ${params.promptHash}`);
   console.log(`Itens do gabarito: ${evaluated.length} · elegíveis: ${counted.length} · pulados: ${skipped.length}`);
   console.log(`Respondidas: ${answered} · corretas: ${correct.length} · erradas: ${wrong.length} · pendentes: ${pending.length} · inválidas: ${invalid.length} · erros: ${errors.length}`);
-  console.log(`Acurácia entre respondidas: ${percent(correct.length, answered)}%`);
+  console.log(`Acurácia entre respondidas (precisão): ${percent(correct.length, answered)}%`);
   console.log(`Acurácia entre elegíveis: ${percent(correct.length, counted.length)}%`);
+  console.log(`Cobertura (respondidas / elegíveis): ${percent(answered, counted.length)}%`);
+  // O que mais importa para o professor: sugestão errada com cara de certa.
+  console.log(`Risco (erradas / elegíveis): ${percent(wrong.length, counted.length)}%`);
   console.log(`Chamadas: ${params.calls} · do cache: ${params.cached} · ${params.seconds}s`);
   console.log('');
 
@@ -388,6 +398,11 @@ async function main() {
       const existing = modelCache[question.id];
       if (!refresh && existing && existing.promptHash === promptHash) {
         cached++;
+        if (existing.raw) {
+          // Relê o texto cru com as regras atuais de leitura.
+          const reparsed = parseSuggestedAnswerOutcome(existing.raw, alternatives);
+          return { ...base, outcome: score(expected, reparsed !== null, reparsed ? reparsed.position : null, reparsed?.justification ?? '', existing.model, existing.raw) };
+        }
         return { ...base, outcome: score(expected, existing.valid, existing.answer, existing.justification, existing.model, existing.raw ?? '') };
       }
       if (calls >= maxCalls) {
@@ -398,9 +413,7 @@ async function main() {
         const result = await ai.generateStructured({
           system: systemPrompt,
           prompt: suggestionPrompt({ stem: question.stem, subject: question.subject, area, alternatives }),
-          maxTokens: 500,
-          timeoutMs: 30_000,
-          temperature: 0.1,
+          ...SUGGESTION_GENERATION,
           ...(chain.length ? { models: chain } : {}),
         });
         if (!result?.text?.trim()) {
@@ -456,6 +469,17 @@ async function main() {
       seconds: report.seconds,
       reportPath,
     });
+    const comparePath = argText('compare');
+    if (comparePath) {
+      const previous = JSON.parse(readFileSync(comparePath, 'utf8')) as { items: MeasuredItem[]; promptHash?: string; model?: string };
+      const { rows, summary } = compareMeasurements(previous.items, evaluated);
+      console.log('');
+      console.log(`Comparação com ${comparePath} (prompt ${previous.promptHash ?? '?'} · ${previous.model ?? '?'}):`);
+      for (const change of Object.keys(CHANGE_LABEL) as (keyof typeof CHANGE_LABEL)[]) {
+        const list = rows.filter((row) => row.change === change).map((row) => row.key);
+        console.log(`  ${CHANGE_LABEL[change]}: ${summary[change]}${list.length ? ` (${list.join(', ')})` : ''}`);
+      }
+    }
     if (flag('json')) console.log(JSON.stringify(report, null, 2));
   } finally {
     await prisma.$disconnect();

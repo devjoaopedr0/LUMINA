@@ -133,3 +133,22 @@ Medições no ENEM 2024, 2º dia, Amarelo (75 questões elegíveis, prompt `8353
 - O modelo do chat forçava alternativas quando a conta não batia (Q104, Q108, Q115). Por isso o gabarito deixou de usá-lo.
 - As 19 pendentes da cadeia nova são quase todas por figura ou gráfico que não veio na extração: a IA diz que não dá para responder em vez de chutar.
 - Ainda há erros de cálculo em Matemática (ex.: Q140, Q155). A revisão docente continua obrigatória.
+
+### Prompt v2 e trava de justificativa (13/11/2026)
+
+Duas mudanças contra o erro mais perigoso (sugestão errada com cara de certa):
+
+1. **Prompt v2** (`ae07489238da`): a IA resolve em `"resolucao"` antes de escolher, só escolhe quando o resultado corresponde a uma alternativa e devolve `null` quando a conta não bate, faltam dados ou ela teria que lembrar o gabarito de outra fonte. A geração ganhou espaço para a resolução (`SUGGESTION_GENERATION`: 1.200 tokens, 45 s), igual no serviço e na medição.
+2. **Trava na leitura** (`looksUnsure`): se a justificativa mostra que o raciocínio não fechou ("aguarde", "recalculando", "há um erro", "gabarito padrão", "questão clássica", "não está entre as alternativas"), a escolha vira pendência para o professor. "Mais próximo" não dispara a trava, porque é legítimo quando o comando pede aproximação.
+
+Mesma prova, mesma cadeia Gemini:
+
+| | Corretas | Erradas | Precisão | Risco (erradas / elegíveis) | Cobertura | Matemática (precisão) |
+| --- | --- | --- | --- | --- | --- | --- |
+| v1 (12/11) | 41 | 14 | 74,5% | 18,7% | 73,3% | 56% |
+| v1 + trava (relido do cache, sem chamadas) | 41 | 9 | 82% | 12% | 66,7% | — |
+| **v2 + trava** | **50** | **2** | **96,2%** | **2,7%** | 69,3% | **95,5%** |
+
+Questão a questão (v2 contra v1 + trava): 6 erradas passaram a corretas, 5 pendências ganharam resposta correta, 4 viraram pendência (3 porque o valor calculado não está nas alternativas, 1 por gráfico ausente) e nenhuma correta passou a errada. Restam 2 erradas (Q127, interpretação; Q143, raciocínio financeiro), por isso a revisão docente continua obrigatória.
+
+O script de medição agora mostra precisão, cobertura e risco, relê o cache com as regras atuais (mudar só a leitura não gasta cota) e compara com uma medição anterior: `--compare <relatório.json>`.

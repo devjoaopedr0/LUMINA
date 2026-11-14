@@ -1,3 +1,4 @@
+import { buildMasteryEvolution } from './mastery-evolution';
 import { Injectable } from '@nestjs/common';
 import { Prisma, TopicMasteryStatus, type TopicMastery } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
@@ -218,5 +219,34 @@ export class TopicMasteryService {
       nextReviewAt: row.nextReviewAt,
       due: isReviewDayDue(row.nextReviewAt),
     }));
+  }
+
+  /** Evolução do domínio nas últimas semanas (geral, por matéria e o que mudou na semana). */
+  async evolutionForUser(userId: string, weeks = 8, today: Date = new Date()) {
+    const span = Math.min(26, Math.max(2, Math.round(weeks)));
+    const since = new Date(today.getTime() - (span * 7 + 1) * 86_400_000);
+    const [topics, recent, before] = await Promise.all([
+      this.prisma.topicMastery.findMany({
+        where: { userId },
+        select: { topicId: true, topic: { select: { name: true } }, subject: { select: { name: true } } },
+      }),
+      this.prisma.topicMasteryHistory.findMany({
+        where: { userId, day: { gte: since } },
+        select: { topicId: true, day: true, masteryScore: true },
+      }),
+      // Último valor anterior à janela, para o começo da série não ficar vazio.
+      this.prisma.topicMasteryHistory.findMany({
+        where: { userId, day: { lt: since } },
+        orderBy: { day: 'desc' },
+        distinct: ['topicId'],
+        select: { topicId: true, day: true, masteryScore: true },
+      }),
+    ]);
+    return buildMasteryEvolution(
+      [...before, ...recent],
+      topics.map((t) => ({ topicId: t.topicId, topic: t.topic.name, subject: t.subject.name })),
+      today,
+      span,
+    );
   }
 }

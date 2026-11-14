@@ -124,6 +124,12 @@ export class QuestionResponseDto {
 
   @ApiPropertyOptional({
     description:
+      'Habilidade da Matriz de Referência do ENEM. origin AI = sugestão automática pendente até validated; MANUAL = professor/gestão.',
+  })
+  enemSkill?: { code: string; area: string; competency: number; text: string; origin: string | null; validated: boolean; note: string | null } | null;
+
+  @ApiPropertyOptional({
+    description:
       'true se o usuário autenticado pode editar/excluir esta questão (dono do workspace pessoal ou admin do banco).',
   })
   canManage?: boolean;

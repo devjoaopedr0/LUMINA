@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/Button';
 import { RepertoireDetail } from '@/components/notebooks/RepertoireDetail';
 import { RepertoireForm } from '@/components/notebooks/RepertoireForm';
 import { RepertoireSuggestions } from '@/components/notebooks/RepertoireSuggestions';
-import { ApiError, apiCreateRepertoire, apiListRepertoires } from '@/lib/api';
+import { ApiError, apiCreateRepertoire, apiListRepertoires, apiRepertoireAi } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { fieldClass } from '@/lib/notebook-ui';
-import { categoryLabel, suggestionToPayload, type Repertoire, type RepertoirePayload } from '@/lib/notebooks';
+import { USE_VERDICT_LABEL, categoryLabel, suggestionToPayload, type Repertoire, type RepertoirePayload, type UseAnalysis } from '@/lib/notebooks';
 
 /**
  * Caderno de Repertórios dentro do editor de redação: abre ao lado do texto
@@ -15,8 +15,26 @@ import { categoryLabel, suggestionToPayload, type Repertoire, type RepertoirePay
  * caderno e no acervo, mostra o repertório, copia ou insere no texto e pede
  * sugestões da LuminIA para o tema da redação.
  */
-export function RepertoirePanel({ theme, onInsert, onClose }: { theme: string; onInsert: (text: string) => void; onClose: () => void }) {
-  const [tab, setTab] = useState<'notebook' | 'ai'>('notebook');
+export function RepertoirePanel({ theme, onInsert, onClose, currentParagraph }: { theme: string; onInsert: (text: string) => void; onClose: () => void; currentParagraph?: () => string }) {
+  const [tab, setTab] = useState<'notebook' | 'ai' | 'analyze'>('notebook');
+  const [paragraph, setParagraph] = useState('');
+  const [analysis, setAnalysis] = useState<UseAnalysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState('');
+
+  async function analyze() {
+    setAnalyzing(true);
+    setAnalyzeError('');
+    setAnalysis(null);
+    try {
+      const result = await apiRepertoireAi(getAccessToken() ?? '', { action: 'analyzeUse', paragraph: paragraph.trim(), theme: theme.trim() || undefined });
+      setAnalysis(result.analysis ?? null);
+    } catch (e) {
+      setAnalyzeError(e instanceof ApiError ? e.message : 'A LuminIA não respondeu. Tente de novo.');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
   const [q, setQ] = useState('');
   const [items, setItems] = useState<Repertoire[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,10 +61,11 @@ export function RepertoirePanel({ theme, onInsert, onClose }: { theme: string; o
         <button type="button" aria-label="Fechar repertórios" onClick={onClose} className="rounded-lg p-2 hover:bg-graphite/5"><X className="h-5 w-5" /></button>
       </div>
       <div className="flex gap-2 border-b border-surface-line px-4 py-3" role="tablist">
-        {(['notebook', 'ai'] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
+        {(['notebook', 'ai', 'analyze'] as const).map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t}
+            onClick={() => { setTab(t); if (t === 'analyze' && !paragraph && currentParagraph) setParagraph(currentParagraph()); }}
             className={`rounded-full px-3 py-1.5 text-sm font-semibold ${tab === t ? 'bg-graphite text-white' : 'bg-surface-card'}`}>
-            {t === 'notebook' ? 'Meu caderno' : 'Sugestões para o tema'}
+            {{ notebook: 'Meu caderno', ai: 'Sugestões para o tema', analyze: 'Analisar meu parágrafo' }[t]}
           </button>
         ))}
       </div>
@@ -78,8 +97,30 @@ export function RepertoirePanel({ theme, onInsert, onClose }: { theme: string; o
               ))}
             </ul>
           </>
-        ) : (
+        ) : tab === 'ai' ? (
           <RepertoireSuggestions initialTheme={theme} onReview={(s, t) => setReview(suggestionToPayload(s, t))} />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-graphite-500">A LuminIA verifica se o repertório do parágrafo é produtivo (explicado, ligado ao tema e sustentando o argumento) ou só decorativo.</p>
+            <textarea rows={7} className={fieldClass} value={paragraph} onChange={(e) => setParagraph(e.target.value)} placeholder="Cole aqui o parágrafo (ou posicione o cursor nele antes de abrir)" aria-label="Parágrafo para analisar" />
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={analyzing || paragraph.trim().length < 40} onClick={() => void analyze()}>{analyzing ? 'Analisando…' : 'Analisar uso do repertório'}</Button>
+              {currentParagraph ? <Button size="sm" variant="ghost" onClick={() => setParagraph(currentParagraph())}>Usar o parágrafo do cursor</Button> : null}
+            </div>
+            {paragraph.trim().length > 0 && paragraph.trim().length < 40 ? <p className="text-xs text-graphite-400">Escreva ao menos 40 caracteres.</p> : null}
+            {analyzeError ? <p role="alert" className="text-sm text-red-700">{analyzeError}</p> : null}
+            {analysis ? (
+              <div className="space-y-2 rounded-2xl border border-surface-line p-3 text-sm">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${analysis.verdict === 'PRODUTIVO' ? 'bg-emerald-50 text-emerald-800' : analysis.verdict === 'SUPERFICIAL' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
+                  {USE_VERDICT_LABEL[analysis.verdict]}
+                </span>
+                {analysis.repertoire ? <p><span className="font-semibold">Repertório:</span> {analysis.repertoire}</p> : null}
+                {analysis.excerpt ? <blockquote className="border-l-4 border-surface-line pl-3 italic">{analysis.excerpt}</blockquote> : null}
+                <p>{analysis.explanation}</p>
+                {analysis.tips.length ? <ul className="list-disc pl-5">{analysis.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul> : null}
+              </div>
+            ) : null}
+          </div>
         )}
       </div>
 

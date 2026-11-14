@@ -15,6 +15,7 @@ function makeController() {
     scoreEstimates as any,
     questionsService as any,
     { withQuota: (_user: string, _feature: string, run: () => Promise<unknown>) => run() } as any,
+    {} as any,
   );
   return { controller, aiService, scheduleInsights, questionsService };
 }

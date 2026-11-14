@@ -10,7 +10,7 @@
 import { extractJson } from '../essay-correction/grading/essay-grader';
 import { REFERENCE_TYPES, REPERTOIRE_CATEGORIES } from './notebooks.dto';
 
-export const PROMPT_VERSION = 'cadernos-v1';
+export const PROMPT_VERSION = 'cadernos-v2';
 
 const HONESTY_RULES = `Regras obrigatórias:
 - Cite apenas autores, obras, leis, pesquisas e acontecimentos amplamente conhecidos e verificáveis.
@@ -32,6 +32,9 @@ export interface RepertoireForPrompt {
   summary: string;
   context: string | null;
   essayUse: string | null;
+  concepts?: string[];
+  socialProblems?: string | null;
+  brazilRelation?: string | null;
 }
 
 function describe(r: RepertoireForPrompt): string {
@@ -42,6 +45,9 @@ function describe(r: RepertoireForPrompt): string {
     `Explicação registrada pelo aluno: ${r.summary}`,
     r.context ? `Contexto registrado: ${r.context}` : null,
     r.essayUse ? `Uso na redação registrado: ${r.essayUse}` : null,
+    r.concepts?.length ? `Conceitos fundamentais: ${r.concepts.join(', ')}` : null,
+    r.socialProblems ? `Problemas sociais que ajuda a explicar: ${r.socialProblems}` : null,
+    r.brazilRelation ? `Relação com a realidade brasileira: ${r.brazilRelation}` : null,
   ]
     .filter(Boolean)
     .join('\n');
@@ -80,6 +86,42 @@ Tema da redação: "${theme}"
 
 Avalie a pertinência desse repertório ao tema. Responda SOMENTE com JSON:
 {"verdict":"PERTINENTE|SUPERFICIAL|FORCADO|DESCONTEXTUALIZADO","explanation":"por que, em 2-4 frases","tips":["como tornar o uso produtivo", "..."]}`;
+}
+
+/** As 5 perguntas de aplicação (especificação, seção 6) para um tema. */
+export function applyPrompt(r: RepertoireForPrompt, theme: string): string {
+  return `${describe(r)}
+
+Tema da redação: "${theme}"
+
+Ajude o aluno a aplicar esse repertório ao tema, sem decorar citação. Antes de tudo, julgue a pertinência com rigor:
+- ALTA: o repertório explica diretamente a causa, a consequência ou o problema central do recorte do tema;
+- MEDIA: ajuda num aspecto lateral do tema, mas não no problema central;
+- BAIXA: só se liga ao tema por uma generalização ("toda sociedade tem desigualdade", "tudo é cultura"). Nesse caso, diga em "relacao" que é melhor escolher outro repertório e não invente uma ligação.
+Responda SOMENTE com JSON:
+{"pertinencia":"ALTA|MEDIA|BAIXA","defende":"o que o repertório defende, em 1-2 frases","problema":"qual problema social do tema ele ajuda a explicar","relacao":"como relacioná-lo ao recorte do tema","tese":"como usá-lo para sustentar uma tese possível sobre o tema","desenvolver":"como desenvolvê-lo sem só mencionar (explicar, relacionar ao Brasil e voltar ao argumento)","paragrafo":"um parágrafo de desenvolvimento modelo (4-6 frases) que conecta repertório, argumento e problemática, sem citação literal inventada"}`;
+}
+
+export const USE_VERDICTS = ['PRODUTIVO', 'SUPERFICIAL', 'DECORATIVO', 'FORCADO', 'INCORRETO', 'SEM_REPERTORIO'] as const;
+export type UseVerdict = (typeof USE_VERDICTS)[number];
+
+/** Analisa como o aluno usou repertório num parágrafo (especificação, seção 7). */
+export function analyzeUsePrompt(paragraph: string, theme: string | undefined): string {
+  const themeLine = theme ? `Tema da redação: "${theme}"\n\n` : '';
+  return `${themeLine}Parágrafo do aluno:
+<<<
+${paragraph}
+>>>
+
+Avalie o uso de repertório sociocultural nesse parágrafo pelos critérios da competência 2 do ENEM (legitimidade, pertinência e produtividade). Decida em dois passos: (1) o repertório tem relação com o argumento do próprio parágrafo? (2) se tem, ele é explicado e usado para sustentar o argumento? Classifique:
+- PRODUTIVO: o repertório é explicado, relacionado ao tema e sustenta o argumento;
+- SUPERFICIAL: tem relação com o argumento do parágrafo, mas só é mencionado, sem desenvolvimento;
+- DECORATIVO: não tem relação com o argumento do parágrafo; aparece solto, como enfeite, e o parágrafo diria o mesmo sem ele ("repertório de bolso"). Ex.: citar um autor numa frase e, na frase seguinte, mudar de assunto com "além disso" sem voltar a ele é DECORATIVO, mesmo que o autor seja conhecido;
+- FORCADO: a ligação com o tema não se sustenta;
+- INCORRETO: o autor, a obra ou a ideia atribuída parece errada (diga o que conferir, sem afirmar o que não tem certeza);
+- SEM_REPERTORIO: o parágrafo não usa repertório.
+Responda SOMENTE com JSON:
+{"veredito":"PRODUTIVO|SUPERFICIAL|DECORATIVO|FORCADO|INCORRETO|SEM_REPERTORIO","repertorio":"qual repertório foi usado (ou null)","trecho":"trecho literal do parágrafo onde ele aparece (ou null)","explicacao":"por que, em 2-3 frases","como_melhorar":["passo concreto"]}`;
 }
 
 export interface FormulaForPrompt {
@@ -176,4 +218,64 @@ export function parseCheck(raw: string): PertinenceCheck | null {
   if (!(CHECK_VERDICTS as readonly string[]).includes(verdict) || !explanation) return null;
   const tips = Array.isArray(parsed.tips) ? parsed.tips.map((tip) => text(tip, 400)).filter(Boolean).slice(0, 5) : [];
   return { verdict: verdict as CheckVerdict, explanation, tips };
+}
+
+export interface RepertoireApplication {
+  relevance: 'ALTA' | 'MEDIA' | 'BAIXA';
+  defends: string;
+  problem: string;
+  relation: string;
+  thesis: string;
+  develop: string;
+  paragraph: string;
+}
+
+export function parseApplication(raw: string): RepertoireApplication | null {
+  let data: Record<string, unknown>;
+  try {
+    data = extractJson(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const relevance = text(data.pertinencia, 10).toUpperCase();
+  const result: RepertoireApplication = {
+    relevance: (['ALTA', 'MEDIA', 'BAIXA'].includes(relevance) ? relevance : 'MEDIA') as RepertoireApplication['relevance'],
+    defends: text(data.defende, 800),
+    problem: text(data.problema, 800),
+    relation: text(data.relacao, 800),
+    thesis: text(data.tese, 800),
+    develop: text(data.desenvolver, 800),
+    paragraph: text(data.paragrafo, 2000),
+  };
+  return result.defends && result.relation ? result : null;
+}
+
+export interface UseAnalysis {
+  verdict: UseVerdict;
+  repertoire: string | null;
+  excerpt: string | null;
+  explanation: string;
+  tips: string[];
+}
+
+/** Lê a análise; o trecho só fica se estiver de fato no parágrafo (sem invenção). */
+export function parseUseAnalysis(raw: string, paragraph: string): UseAnalysis | null {
+  let data: Record<string, unknown>;
+  try {
+    data = extractJson(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const verdict = text(data.veredito, 20).toUpperCase();
+  const explanation = text(data.explicacao, 1500);
+  if (!(USE_VERDICTS as readonly string[]).includes(verdict) || !explanation) return null;
+  const excerpt = nullableText(data.trecho, 600);
+  const norm = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+  return {
+    verdict: verdict as UseVerdict,
+    repertoire: nullableText(data.repertorio, 240),
+    excerpt: excerpt && norm(paragraph).includes(norm(excerpt)) ? excerpt : null,
+    explanation,
+    tips: Array.isArray(data.como_melhorar) ? data.como_melhorar.map((tip) => text(tip, 400)).filter(Boolean).slice(0, 4) : [],
+  };
 }

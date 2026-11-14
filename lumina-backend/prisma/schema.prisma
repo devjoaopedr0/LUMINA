@@ -293,6 +293,26 @@ model Repertoire {
   origin        String   @default("MANUAL") @db.VarChar(20)
   isPlatform    Boolean  @default(false) @map("is_platform")
   platformSourceId String? @map("platform_source_id") @db.Uuid
+  /// Eixos temáticos (especificação de 13/11/2026), um repertório pode ter vários.
+  axes              String[] @default([])
+  /// Funções no mapa de aplicação argumentativa (explicar desigualdades
+  /// estruturais, evidenciar omissão estatal...).
+  argumentFunctions String[] @default([]) @map("argument_functions")
+  /// Conceitos fundamentais.
+  concepts          String[] @default([])
+  /// Problemas sociais que o repertório ajuda a explicar.
+  socialProblems    String?  @map("social_problems")
+  /// Relação com a realidade brasileira.
+  brazilRelation    String?  @map("brazil_relation")
+  /// Em que desenvolvimento o exemplo se encaixa: D1 ou D2.
+  exampleSlot       String?  @map("example_slot") @db.VarChar(4)
+  /// Possíveis conexões com outros repertórios.
+  connections       String?
+  /// Cuidados para evitar uso superficial ou decorativo.
+  pitfalls          String?
+  /// Citação literal (separada da paráfrase), sempre com a fonte exata.
+  quote             String?
+  quoteSource       String?  @map("quote_source") @db.VarChar(300)
   collectionItems RepertoireCollectionItem[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -779,6 +799,14 @@ model Question {
   sourceType         QuestionSourceType       @default(OFFICIAL) @map("source_type")
   subjectId          String?                  @map("subject_id") @db.Uuid
   topicId            String?                  @map("topic_id") @db.Uuid
+  /// Habilidade da Matriz de Referência do ENEM (ex.: "MT-H17"). Nula = ainda
+  /// não classificada. Ver src/questions/enem-skills.
+  enemSkill          String?                  @map("enem_skill") @db.VarChar(6)
+  /// Quem classificou: AI (sugestão, pendente) ou MANUAL (professor/gestão).
+  enemSkillOrigin    String?                  @map("enem_skill_origin") @db.VarChar(10)
+  enemSkillValidated Boolean                  @default(false) @map("enem_skill_validated")
+  /// Justificativa curta da classificação automática.
+  enemSkillNote      String?                  @map("enem_skill_note")
   alternatives       QuestionAlternative[]
   simulationItems    SimulationItem[]
   attempts           QuestionAttempt[]
@@ -801,6 +829,7 @@ model Question {
   @@index([workspaceId, exam])
   @@index([workspaceId, subjectId])
   @@index([workspaceId, topicId])
+  @@index([workspaceId, enemSkill])
   @@index([workspaceId, examId])
   @@index([sourceType])
   @@index([contentHash])
