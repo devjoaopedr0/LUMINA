@@ -2920,3 +2920,7 @@ export const apiBillingCheckout = (token: string, payload: { cpfCnpj: string; cy
   request('/billing/checkout', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 export const apiBillingCancel = (token: string): Promise<{ subscription: SubscriptionView; refunded?: boolean }> =>
   request('/billing/cancel', { method: 'POST', headers: authHeaders(token) });
+
+/** Evolução do domínio por semana (mapa de domínio). */
+export const apiGetMasteryEvolution = (accessToken: string, weeks = 8): Promise<import("@/lib/mastery-evolution").MasteryEvolution> =>
+  request(`/users/me/topic-mastery/evolution?weeks=${weeks}`, { headers: authHeaders(accessToken) });

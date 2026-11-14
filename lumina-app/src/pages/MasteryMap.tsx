@@ -12,6 +12,7 @@ import {
   Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { MasteryEvolutionCard } from '@/components/MasteryEvolutionCard';
 import { Card } from '@/components/ui/Card';
 import { apiGetTopicMastery, type TopicMasteryEntry } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
@@ -218,6 +219,8 @@ export function MasteryMap() {
                 hint={summary.accuracy === null ? 'sem tentativas no recorte' : `${summary.accuracy}% de acerto no recorte`}
               />
             </section>
+
+            <MasteryEvolutionCard />
 
             <Card className="mt-6 bg-white p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">

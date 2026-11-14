@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,5 +22,11 @@ export class TopicMasteryController {
   @ApiOperation({ summary: 'Domínio do aluno por tópico, com status, streak e próxima revisão.' })
   list(@CurrentUser() user: UserWithProfile) {
     return this.topicMasteryService.listForUser(user.id);
+  }
+
+  @Get('evolution')
+  @ApiOperation({ summary: 'Evolução do domínio nas últimas semanas: geral, por matéria e o que subiu ou caiu na semana.' })
+  evolution(@CurrentUser() user: UserWithProfile, @Query('weeks') weeks?: string) {
+    return this.topicMasteryService.evolutionForUser(user.id, Number(weeks) || 8);
   }
 }
