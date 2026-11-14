@@ -39,7 +39,7 @@ export type LlmGenerate = (args: { system: string; prompt: string; temperature: 
  * Versão dos prompts. A calibração é ajustada para uma versão: trocar o
  * prompt muda a distribuição das notas brutas e exige calibrar de novo.
  */
-export const GRADER_PROMPT_VERSION = 'v2-competencia';
+export const GRADER_PROMPT_VERSION = 'v6-checagem';
 
 export type AnnulmentCode =
   | 'EM_BRANCO'
