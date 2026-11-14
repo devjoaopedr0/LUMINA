@@ -366,3 +366,13 @@ Leitura:
 - **Decisão: a produção continua no v2.** O v4 corrige menos para baixo, mas não erra menos. O próximo candidato deve partir do v2 e trazer só o C4 e as regras de C2 do v4, sem mexer em C1 e C3.
 
 As respostas da segunda rodada estão em `.cache/llm-runs/<versão>/gemini_gemini-3.5-flash-lite.rodada2/`; a pasta sem sufixo continua sendo a da rodada 1 (e da calibração).
+
+### Candidato v5 (`v5-c2-c4`, 13/11/2026)
+
+Parte do v2 e traz do v4 só o que ganhou nas duas rodadas: a C4 do v3 e as regras de calibração da C2. C1, C3 e C5 são idênticas ao v2 (o teste garante isso), e não entram exemplos validados. Medição pendente, porque a cota diária do Gemini acabou em 13/11. Para medir (cerca de 150 chamadas):
+
+```bash
+npm run build && npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --prompt v5-c2-c4 --calib 0 --test 30 --inep 0 --max-calls 160 --write false
+```
+
+Critério para virar produção: erro total menor ou igual ao do v2 nas mesmas redações, em duas rodadas, com viés menor. Se passar, a calibração dele precisa ser ajustada antes da troca (`--calib 30 --test 30`, sem `--write false`).

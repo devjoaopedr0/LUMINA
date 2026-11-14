@@ -12,6 +12,7 @@
  * - v3-c2-c4-oficial-2026: o prompt de 04/11/2026 (C2/C4 da cartilha 2026).
  * - v4-calibrado: v2 + C4 do v3 + regras de calibração em C1, C2 e C5 +
  *   exemplos validados por humanos (13/11/2026).
+ * - v5-c2-c4: v2 + C4 do v3 + regras de calibração só em C2 (13/11/2026).
  */
 import type { EssayTextAnalysis } from '../analysis/text-analysis';
 import type { CompetencyId } from '../knowledge';
@@ -375,14 +376,22 @@ function buildCompetencyQuery_V4(competency: CompetencyId, analysis: EssayTextAn
   return competency === 'C4' ? buildCompetencyQuery_V3(competency, analysis) : buildCompetencyQuery_V2(competency, analysis);
 }
 
-function buildCompetencyPrompt_V4(input: GradeInput, analysis: EssayTextAnalysis, context: CompetencyContext, zeroAlerts: string[]): string {
+/** v2 com a C4 do v3 e regras extras por competência (base do v4 e do v5). */
+function buildHybridPrompt(
+  rules: Record<CompetencyId, string>,
+  withLearning: boolean,
+  input: GradeInput,
+  analysis: EssayTextAnalysis,
+  context: CompetencyContext,
+  zeroAlerts: string[],
+): string {
   const { competency, grade, chunks } = context;
   const c4 = competency === 'C4';
   const levels = grade.niveis.map((n) => `  ${n.nota}: ${n.descritor}`).join('\n');
   const extra = chunks.map((c) => `  [${c.id}] ${c.titulo} (${c.citacao}): ${c.texto}`).join('\n');
-  const learning = learningExamplesBlock(competency, input.learningExamples?.[competency]);
+  const learning = withLearning ? learningExamplesBlock(competency, input.learningExamples?.[competency]) : '';
   const signals = c4 ? competencySignals_V3(competency, analysis, zeroAlerts) : competencySignals_V2(competency, analysis, zeroAlerts);
-  const task = c4 ? `${COMPETENCY_TASK_V3[competency]}${EXTRA_RULES_V3[competency]}` : `${COMPETENCY_TASK_V2[competency]}${EXTRA_RULES_V2[competency]}${RULES_V4[competency]}`;
+  const task = c4 ? `${COMPETENCY_TASK_V3[competency]}${EXTRA_RULES_V3[competency]}` : `${COMPETENCY_TASK_V2[competency]}${EXTRA_RULES_V2[competency]}${rules[competency]}`;
   return `${task}
 
 TEMA: ${input.theme || '(não informado — avalie a coerência interna e não anule por fuga ao tema)'}
@@ -404,8 +413,27 @@ Formato da resposta:
 {"nota": 0, "justificativa": "...", "trechos": ["..."], "referencias": ["${competency.toLowerCase()}-niveis"], "como_melhorar": "..."${EXTRA_FIELDS_V2[competency]}}`;
 }
 
+function buildCompetencyPrompt_V4(input: GradeInput, analysis: EssayTextAnalysis, context: CompetencyContext, zeroAlerts: string[]): string {
+  return buildHybridPrompt(RULES_V4, true, input, analysis, context, zeroAlerts);
+}
+
+// ========================================================= v5-c2-c4
+/*
+ * v5 (13/11/2026): nas duas rodadas de medição, o v4 só ganhou do v2 em C4
+ * (MAE 55 → 44–48) e em C2 (viés −11 → −1 a −7, MAE igual); as regras de C1
+ * pioraram o MAE e as de C5 não mudaram o erro. O v5 fica com o v2 e traz só
+ * essas duas partes. Sem exemplos validados, como o v2, para que a diferença
+ * medida seja só a das duas competências.
+ */
+const RULES_V5: Record<CompetencyId, string> = { C1: '', C2: RULES_V4.C2, C3: '', C4: '', C5: '' };
+
+function buildCompetencyPrompt_V5(input: GradeInput, analysis: EssayTextAnalysis, context: CompetencyContext, zeroAlerts: string[]): string {
+  return buildHybridPrompt(RULES_V5, false, input, analysis, context, zeroAlerts);
+}
+
 export const PROMPT_SETS: Record<string, PromptSet> = {
   'v2-competencia': { version: 'v2-competencia', system: SYSTEM_PROMPT_V2, buildQuery: buildCompetencyQuery_V2, buildPrompt: buildCompetencyPrompt_V2 },
   'v3-c2-c4-oficial-2026': { version: 'v3-c2-c4-oficial-2026', system: SYSTEM_PROMPT_V3, buildQuery: buildCompetencyQuery_V3, buildPrompt: buildCompetencyPrompt_V3 },
   'v4-calibrado': { version: 'v4-calibrado', system: SYSTEM_PROMPT_V2, buildQuery: buildCompetencyQuery_V4, buildPrompt: buildCompetencyPrompt_V4 },
+  'v5-c2-c4': { version: 'v5-c2-c4', system: SYSTEM_PROMPT_V2, buildQuery: buildCompetencyQuery_V4, buildPrompt: buildCompetencyPrompt_V5 },
 };

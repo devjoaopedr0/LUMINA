@@ -459,6 +459,18 @@ describe('Corretor por competência', () => {
     expect(PROMPT_SETS['v4-calibrado'].buildQuery('C2', analysis)).toBe(PROMPT_SETS['v2-competencia'].buildQuery('C2', analysis));
   });
 
+  it('v5: igual ao v2 em C1, C3 e C5; C4 do v3; regras de calibração só em C2', async () => {
+    const same = scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]);
+    const v5 = (await grade(same, 'v5-c2-c4')).prompts;
+    const v2 = (await grade(same, 'v2-competencia')).prompts;
+    const v4 = (await grade(same, 'v4-calibrado')).prompts;
+    const byC = (prompts: string[], c: string) => prompts.find((p) => competencyOf(p) === c)!;
+    for (const c of ['C1', 'C3', 'C5']) expect(byC(v5, c)).toBe(byC(v2, c));
+    expect(byC(v5, 'C4')).toBe(byC(v4, 'C4'));
+    expect(byC(v5, 'C2')).toMatch(/Calibração pela grade/);
+    expect(byC(v5, 'C2')).toBe(byC(v4, 'C2'));
+  });
+
   it('produção volta ao prompt v2 (o v3 mediu pior em 05/11/2026)', () => {
     expect(GRADER_PROMPT_VERSION).toBe('v2-competencia');
   });
