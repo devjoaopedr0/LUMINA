@@ -1,3 +1,4 @@
+import { addDaysToDateKey, brasiliaDateKey } from '../src/questions/review-day';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -710,7 +711,8 @@ describe('Questions (e2e)', () => {
       expect(patch.body.notes).toBe('invertei a base');
 
       // Amanhã ainda não está vencida.
-      const amanha = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      // Dias de Brasília, como o app (o dia UTC vira às 21h de Brasília).
+      const amanha = addDaysToDateKey(brasiliaDateKey(new Date()), 1);
       const futuro = await request(app.getHttpServer())
         .patch(`/users/me/error-notebook/${questionId}`)
         .set(header)
@@ -719,7 +721,7 @@ describe('Questions (e2e)', () => {
       expect(futuro.body.due).toBe(false);
 
       // Hoje está.
-      const hoje = new Date().toISOString().slice(0, 10);
+      const hoje = brasiliaDateKey(new Date());
       const vencido = await request(app.getHttpServer())
         .patch(`/users/me/error-notebook/${questionId}`)
         .set(header)

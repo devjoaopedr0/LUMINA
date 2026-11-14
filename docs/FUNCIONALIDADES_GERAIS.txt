@@ -284,7 +284,7 @@
     -  Dar pistas progressivas
     -  Identificar onde o aluno travou
     -  Conduzir até a solução
-24. 24. LuminIA — recomendação de videoaulas
+24. 24. LuminIA — recomendação de videoaulas [ENTREGUE EM 13/11/2026 - YOUTUBE NO NÍVEL DO ALUNO, COM MOTIVO; ATIVA COM YOUTUBE_API_KEY]
     -  Pesquisar vídeos no YouTube
     -  Identificar vídeos relacionados ao conteúdo perguntado
     -  Mostrar título
@@ -337,7 +337,7 @@
     -  Reforço de pré-requisitos
     -  Mudança de dificuldade
     -  Próxima atividade sugerida automaticamente
-30. 30. Mapa de domínio [ENTREGUE EM 06/11/2026 - MATÉRIA, ASSUNTO, ESTADOS E MAPA DE CALOR; SUBCATEGORIAS/HABILIDADE AINDA NÃO EXISTEM NO MODELO]
+30. 30. Mapa de domínio [ENTREGUE EM 06/11/2026 - MATÉRIA, ASSUNTO, ESTADOS E MAPA DE CALOR; EVOLUÇÃO SEMANAL EM 13/11/2026; SUBASSUNTO/HABILIDADE DEPENDEM DE CLASSIFICAR O BANCO PELA MATRIZ DO ENEM]
     -  Mostrar domínio por matéria
     -  Assunto
     -  Subassunto

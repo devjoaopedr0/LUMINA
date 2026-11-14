@@ -21,7 +21,8 @@
     "essay:train": "node dist/essay-correction/eval/train.js",
     "essay:eval": "node dist/essay-correction/eval/evaluate-llm.js",
     "essay:human-eval": "node dist/essay-review/eval/human-loop-eval.js",
-    "answer-keys:eval": "node dist/answer-keys/eval/evaluate-suggestions.js"
+    "answer-keys:eval": "node dist/answer-keys/eval/evaluate-suggestions.js",
+    "notebooks:seed-platform": "node dist/notebooks/seed-platform.js"
   },
   "keywords": [],
   "author": "",

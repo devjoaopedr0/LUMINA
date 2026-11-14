@@ -2920,3 +2920,35 @@ export const apiBillingCheckout = (token: string, payload: { cpfCnpj: string; cy
   request('/billing/checkout', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 export const apiBillingCancel = (token: string): Promise<{ subscription: SubscriptionView; refunded?: boolean }> =>
   request('/billing/cancel', { method: 'POST', headers: authHeaders(token) });
+
+/** Evolução do domínio por semana (mapa de domínio). */
+export const apiGetMasteryEvolution = (accessToken: string, weeks = 8): Promise<import("@/lib/mastery-evolution").MasteryEvolution> =>
+  request(`/users/me/topic-mastery/evolution?weeks=${weeks}`, { headers: authHeaders(accessToken) });
+
+/** Videoaulas do YouTube para um assunto, no nível do aluno (item 24). */
+export interface VideoLesson {
+  id: string;
+  title: string;
+  channel: string;
+  url: string;
+  thumbnailUrl: string;
+  duration: string;
+  durationSeconds: number;
+  level: 'BASICO' | 'INTERMEDIARIO' | 'AVANCADO';
+  reason: string;
+}
+export interface VideoLessonsResult {
+  topic: string;
+  subject: string | null;
+  level: VideoLesson['level'];
+  levelLabel: string;
+  mastery: number | null;
+  query: string;
+  searchUrl: string;
+  configured: boolean;
+  videos: VideoLesson[];
+}
+export const apiVideoLessons = (accessToken: string, params: { topicId?: string; topic?: string; subject?: string }): Promise<VideoLessonsResult> => {
+  const query = new URLSearchParams(Object.entries(params).filter(([, v]) => !!v) as [string, string][]);
+  return request(`/ai/videos?${query}`, { headers: authHeaders(accessToken) });
+};
