@@ -750,6 +750,17 @@ export function QuestionBank() {
   const [searchParams] = useSearchParams();
   const linkedSubjectId = searchParams.get("subjectId") ?? "";
   const linkedTopicId = searchParams.get("topicId") ?? "";
+  // Vindo de uma prova anterior (?questionId=…): a questão abre no topo.
+  const linkedQuestionId = searchParams.get("questionId") ?? "";
+  const [linkedQuestion, setLinkedQuestion] = useState<Question | null>(null);
+  useEffect(() => {
+    if (!linkedQuestionId) return;
+    let active = true;
+    apiGetQuestion(getAccessToken() ?? "", linkedQuestionId)
+      .then((question) => { if (active) setLinkedQuestion(question); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [linkedQuestionId]);
   // O mapa por habilidade abre o banco já numa habilidade (?enemSkill=MT-H17).
   const [skillFilter, setSkillFilter] = useState(() => {
     const code = searchParams.get("enemSkill") ?? "";
@@ -1197,6 +1208,12 @@ export function QuestionBank() {
               </Card>
             ) : (
               <div className="mt-6 flex flex-col gap-5">
+                {linkedQuestion ? (
+                  <div className="rounded-3xl ring-2 ring-primary">
+                    <p className="px-6 pt-4 text-xs font-semibold uppercase tracking-wider text-primary-700">Questão aberta a partir da prova</p>
+                    <QuestionCard question={linkedQuestion} onEdit={startEdit} onDelete={handleDelete} showSimilar={false} />
+                  </div>
+                ) : null}
                 {data?.items.map((question) => (
                   <QuestionCard
                     key={question.id}

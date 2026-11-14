@@ -2614,9 +2614,11 @@ export interface ExamPaper {
   examId: string;
   exam?: { id: string; name: string };
   year: number;
+  /** Edição dentro do ano (ex.: "D2-AMARELO"); vazio quando há um caderno só. */
+  edition?: string;
   pdfUrl: string | null;
   pageImagesJson: string[] | null;
-  metadataJson: { totalPages?: number; hasGabarito?: boolean; hasCaderno?: boolean; sourceUrl?: string } | null;
+  metadataJson: { totalPages?: number; hasGabarito?: boolean; hasCaderno?: boolean; sourceUrl?: string; day?: number; bookletColor?: string | null } | null;
   gabaritoJson: Record<string, number> | null;
   cadernoJson: Record<string, number> | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
@@ -2637,6 +2639,8 @@ export interface ExamPaperPage {
 
 export interface ExamPaperQuestion {
   id: string;
+  /** Questão no banco: abre a resolução em /app/questoes?questionId=… */
+  questionId?: string;
   number: number;
   pageNumber: number;
   boundsJson: { x: number; y: number; width: number; height: number } | null;
@@ -2926,6 +2930,30 @@ export const apiBillingCheckout = (token: string, payload: { cpfCnpj: string; cy
   request('/billing/checkout', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 export const apiBillingCancel = (token: string): Promise<{ subscription: SubscriptionView; refunded?: boolean }> =>
   request('/billing/cancel', { method: 'POST', headers: authHeaders(token) });
+
+// ------------------------------------------------- provas anteriores (PDF e importação)
+
+/** Baixa o PDF da prova pelo backend (o navegador não acessa o INEP direto). */
+export async function apiExamPaperPdfBlobUrl(token: string, id: string): Promise<string> {
+  const response = await fetch(`${API_URL}/exam-papers/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new ApiError(response.status, response.status === 404 ? 'O PDF desta prova não está disponível.' : 'Não foi possível carregar o PDF da prova.');
+  return URL.createObjectURL(await response.blob());
+}
+
+export interface EnemPaperImportItem { year: number; day: 1 | 2; provaUrl: string; gabaritoUrl: string }
+export interface EnemPaperImportResult {
+  year: number;
+  day: number;
+  status: 'OK' | 'ERROR';
+  paperId?: string;
+  edition?: string;
+  totalPages?: number;
+  questions?: { imported: number; duplicates: number; invalid: number; skipped: number };
+  linked?: number;
+  message?: string;
+}
+export const apiImportEnemPapers = (token: string, items: EnemPaperImportItem[], publish: boolean): Promise<{ items: EnemPaperImportResult[] }> =>
+  request('/exam-papers/import/enem', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ items, publish }) });
 
 /** Evolução do domínio por semana (mapa de domínio). */
 export const apiGetMasteryEvolution = (accessToken: string, weeks = 8): Promise<import("@/lib/mastery-evolution").MasteryEvolution> =>

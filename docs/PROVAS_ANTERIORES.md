@@ -43,12 +43,36 @@ questões) sejam testáveis sem navegador.
 - Backend: `GET /exam-papers`, `GET /exam-papers/:id/pages` e
   `GET /exam-papers/:id/questions` em `question-catalog.controller.ts`
 
+## PDF embutido e importação em lote (13/11/2026)
+
+### Importação em lote dos cadernos do INEP
+- Na página, a administração vê o painel **Importar cadernos do ENEM**: uma linha por caderno, `ano; dia; URL da prova; URL do gabarito` (só PDFs de `https://download.inep.gov.br/`).
+- Para cada caderno, `POST /exam-papers/import/enem`:
+  1. importa as questões no banco central, pelo mesmo pipeline do importador do ENEM (sem duplicar as que já existem);
+  2. cria ou atualiza a prova no acervo, com o PDF, o gabarito oficial, o total de páginas, o dia e a cor do caderno lida do gabarito. A edição fica, por exemplo, `D2-AZUL`;
+  3. refaz o vínculo questão → página (a página onde cada questão começa no PDF).
+- Um caderno que falha não interrompe os outros; o relatório diz o resultado de cada um.
+- Quem importa: a administração da plataforma (`ADMIN`) ou quem tem o cargo de gestor do banco de questões. As duas coisas são separadas no app: o admin não recebe o cargo do banco automaticamente, e o "admin" do seed (`admin@lumina.app`) é um aluno com esse cargo. O painel na tela aparece só para `ADMIN`.
+- Migration `20261113120000_exam_paper_edition`: a prova passa a ser única por `(prova, ano, edição)`, para caber os dois dias do ENEM no mesmo ano.
+
+### Visualizador de PDF embutido
+- "Ver a prova aqui" abre o PDF dentro da página, com Anterior/Próxima e campo de página (`de 32`).
+- Na lista de questões, "pág. N" abre o visualizador direto na página da questão.
+- O PDF vem do backend (`GET /exam-papers/:id/pdf`): o navegador não baixa direto do INEP (sem CORS e com cadeia de certificados incompleta). O backend busca uma vez, guarda em `.cache/exam-pdfs/` e serve daí. Exige login, só prova publicada (rascunho só para admin), só PDF do INEP, e `Cache-Control: no-store` para o navegador não guardar a resposta.
+- O link "PDF oficial do INEP" continua disponível.
+
+### Resolver a questão a partir da prova
+- Cada questão da lista tem o botão **Resolver**, que abre `/app/questoes?questionId=…`. O banco de questões mostra essa questão destacada no topo, com a resolução, as dicas e a LuminIA.
+- A comparação entre edições agora vale entre anos diferentes do mesmo vestibular (o ENEM tem um registro de prova por ano; a regra passou a ser o nome).
+
+### Validação real (13/11/2026)
+- Importação do ENEM 2024, 2º dia (caderno 7): 52 s; edição `D2-AZUL`; 32 páginas; 71 questões já existiam, 4 novas, 15 puladas por depender de imagem; **79 questões ligadas às páginas**.
+- PDF pelo backend: 5,2 MB; 11 s na primeira vez e 1,7 s pelo cache. Sem login, 401.
+- Na tela, "pág. 16" da Questão 136 abriu o visualizador na página 16 de 32, e o "Resolver" aponta para a questão no banco.
+- **Não conferido na tela:** a questão destacada no topo do banco ao abrir pelo "Resolver" (a sessão do navegador caiu durante o teste).
+
 ## Limites atuais
 
-- O botão **Abrir PDF** só aparece quando `ExamPaper.pdfUrl` existe. O acervo
-  de demonstração usa páginas em SVG e não tem PDF anexado.
-- O PDF ainda abre em outra aba; não há visualizador embutido.
-- Ainda não há importação em lote de PDFs oficiais nem geração automática das
-  comparações entre edições.
-- O mapeamento questão → página é exibido, mas não leva ao banco de questões:
-  o DTO de `ExamPaperQuestion` não expõe o `questionId` da questão vinculada.
+- Só o ENEM (INEP) é importado em lote; outras bancas exigem mapear o formato do PDF e avaliar os direitos de reprodução.
+- As 15 questões com figura ficam fora do banco (o importador não extrai imagens), mas continuam visíveis no PDF.
+- A comparação automática entre edições continua medindo só questões repetidas.

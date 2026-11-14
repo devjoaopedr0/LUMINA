@@ -1,4 +1,5 @@
-import { Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -18,6 +19,8 @@ import {
 import { QueryQuestionsDto } from './dto/query-questions.dto';
 import { PaginatedQuestionsDto } from './dto/question-response.dto';
 import { QuestionCatalogService } from './question-catalog.service';
+import { ExamPaperImportService } from './exam-paper-import.service';
+import { ImportEnemPapersDto } from './dto/import-exam-papers.dto';
 
 /** Catálogo de classificação do banco de questões (disciplinas, assuntos e
  * provas). Qualquer usuário autenticado pode navegar; o acesso ao conteúdo das
@@ -27,7 +30,10 @@ import { QuestionCatalogService } from './question-catalog.service';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class QuestionCatalogController {
-  constructor(private readonly catalogService: QuestionCatalogService) {}
+  constructor(
+    private readonly catalogService: QuestionCatalogService,
+    private readonly paperImport: ExamPaperImportService,
+  ) {}
 
   @Get('subjects')
   @ApiOperation({ summary: 'Lista todas as disciplinas cadastradas.' })
@@ -86,6 +92,26 @@ export class QuestionCatalogController {
     @Query('compareId', ParseUUIDPipe) compareId: string,
   ) {
     return this.catalogService.compareExamPapers(user.id, baseId, compareId);
+  }
+
+  @Post('exam-papers/import/enem')
+  @ApiOperation({ summary: '(Admin) Importa cadernos oficiais do ENEM para o acervo: questões no banco, prova com PDF e gabarito, e vínculo questão → página.' })
+  @ApiResponse({ status: 403, description: 'Só a administração importa provas.' })
+  importEnemPapers(@CurrentUser() user: UserWithProfile, @Body() dto: ImportEnemPapersDto) {
+    return this.paperImport.importEnemBatch(user, dto.items, dto.publish ?? false);
+  }
+
+  @Get('exam-papers/:id/pdf')
+  @ApiOperation({ summary: 'PDF da prova para o visualizador embutido (servido pelo backend, com cache).' })
+  @ApiResponse({ status: 404, description: 'Prova sem PDF ou não publicada.' })
+  async getExamPaperPdf(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { path, size } = await this.paperImport.examPaperPdf(user, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', String(size));
+    res.setHeader('Content-Disposition', 'inline; filename="prova.pdf"');
+    // O cache fica no servidor; o navegador não guarda (a resposta exige login).
+    res.setHeader('Cache-Control', 'no-store');
+    this.paperImport.openPdf(path).pipe(res);
   }
 
   @Get('exam-papers/:id')

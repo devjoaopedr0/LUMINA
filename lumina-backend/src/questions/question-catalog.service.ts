@@ -178,6 +178,8 @@ export class QuestionCatalogService {
     });
     return rows.map((row) => ({
       id: row.id,
+      // Leva ao banco de questões (resolver a questão direto da prova).
+      questionId: row.questionId,
       number: row.number,
       pageNumber: row.pageNumber,
       boundsJson: row.boundsJson,
@@ -205,7 +207,11 @@ export class QuestionCatalogService {
       this.prisma.examPaper.findFirst({ where: { id: compareId, status: 'PUBLISHED' } }),
     ]);
     if (!base || !compare) throw new NotFoundException('Prova não encontrada.');
-    if (base.examId !== compare.examId) {
+    // ENEM 2023 e ENEM 2024 são registros diferentes de Exam (um por ano):
+    // o que define "o mesmo vestibular" é o nome.
+    const exams = await this.prisma.exam.findMany({ where: { id: { in: [base.examId, compare.examId] } }, select: { id: true, name: true } });
+    const nameOf = (id: string) => exams.find((exam) => exam.id === id)?.name.trim().toLowerCase();
+    if (base.examId !== compare.examId && nameOf(base.examId) !== nameOf(compare.examId)) {
       throw new BadRequestException('Só é possível comparar edições do mesmo vestibular.');
     }
 

@@ -55,3 +55,28 @@ assert.deepEqual(questionsOnPage(questions, 4).map((item) => item.number), [4]);
 assert.deepEqual(questionsOnPage([], 1), []);
 
 console.log('Provas anteriores: navegação por páginas e vínculo questão → página conferidos.');
+
+// ---- PDF embutido, título com a edição e importação em lote (13/11/2026)
+import { clampPdfPage, paperTitle, parseImportLines, sameExam } from '../src/lib/exam-paper-navigation.ts';
+
+assert.equal(paperTitle({ exam: { name: 'ENEM' }, year: 2024, metadataJson: { day: 2, bookletColor: 'Amarelo' } }), 'ENEM · 2024 · 2º dia (Amarelo)');
+assert.equal(paperTitle({ exam: { name: 'FUVEST' }, year: 2023, metadataJson: null }), 'FUVEST · 2023');
+
+assert.equal(clampPdfPage(0, 32), 1);
+assert.equal(clampPdfPage(40, 32), 32);
+assert.equal(clampPdfPage(7.4, 32), 7);
+assert.equal(clampPdfPage(Number.NaN, 32), 1);
+assert.equal(clampPdfPage(500, undefined), 500);
+
+// ENEM 2023 e 2024 são registros diferentes de Exam, mas o mesmo vestibular.
+assert.equal(sameExam({ examId: 'a', exam: { name: 'ENEM' } }, { examId: 'b', exam: { name: 'enem ' } }), true);
+assert.equal(sameExam({ examId: 'a', exam: { name: 'ENEM' } }, { examId: 'b', exam: { name: 'FUVEST' } }), false);
+
+const inep = 'https://download.inep.gov.br/enem/provas_e_gabaritos/2024_PV_impresso_D2_CD7.pdf';
+const gab = 'https://download.inep.gov.br/enem/provas_e_gabaritos/2024_GB_impresso_D2_CD7.pdf';
+const parsed = parseImportLines(`# lote\n2024; 2; ${inep}; ${gab}\n\n2023\t1\t${inep}\t${gab}\n2024; 3; ${inep}; ${gab}\n2024; 1; https://exemplo.com/p.pdf; ${gab}`);
+assert.equal(parsed.items.length, 2);
+assert.deepEqual(parsed.items[0], { year: 2024, day: 2, provaUrl: inep, gabaritoUrl: gab });
+assert.deepEqual(parsed.errors, ['Linha 5: o dia deve ser 1 ou 2.', 'Linha 6: as URLs da prova e do gabarito precisam ser do INEP (https://download.inep.gov.br/).']);
+
+console.log('provas anteriores (PDF e importação): ok');

@@ -31,6 +31,14 @@ export interface EnemFetchIssue {
 export interface EnemFetchResult {
   questions: ExternalQuestion[];
   skipped: EnemFetchIssue[];
+  /** Páginas do caderno (para o acervo de provas anteriores). */
+  totalPages: number;
+  /** Página onde cada questão começa no caderno. */
+  pageOf: Record<number, number>;
+  /** Gabarito oficial por número (questões de língua: a de inglês). */
+  answers: Record<number, number>;
+  /** Cor do caderno lida no gabarito (ex.: "Azul"), se houver. */
+  bookletColor: string | null;
 }
 
 // Único host de onde este serviço aceita baixar PDF — evita que o endpoint
@@ -69,7 +77,7 @@ export class EnemImportService {
   private readonly logger = new Logger(EnemImportService.name);
 
   async fetchExam(params: FetchEnemExamParams): Promise<EnemFetchResult> {
-    const [examText, introText, gabarito, pages] = await this.loadExamContent(params);
+    const [examText, introText, gabarito, pages, totalPages] = await this.loadExamContent(params);
 
     const areaRanges = parseAreaRanges(introText);
     if (areaRanges.length === 0) {
@@ -147,12 +155,17 @@ export class EnemImportService {
       });
     }
 
-    return { questions, skipped };
+    const answers: Record<number, number> = {};
+    for (const item of gabarito.items) {
+      const position = item.letter ? 'ABCDE'.indexOf(item.letter) + 1 : 0;
+      if (position > 0 && (item.language === '' || item.language === 'INGLES')) answers[item.number] = position;
+    }
+    return { questions, skipped, totalPages, pageOf: Object.fromEntries(pages), answers, bookletColor: gabarito.bookletColor };
   }
 
   private async loadExamContent(
     params: FetchEnemExamParams,
-  ): Promise<[examText: string, introText: string, gabarito: OfficialGabarito, pages: Map<number, number>]> {
+  ): Promise<[examText: string, introText: string, gabarito: OfficialGabarito, pages: Map<number, number>, totalPages: number]> {
     // Import dinâmico: pdfjs-dist 6.x só publica build ESM (.mjs), e este
     // projeto compila para CommonJS — `import()` dinâmico é a forma correta
     // de consumir um pacote ESM-only a partir de código CJS no Node.
@@ -199,7 +212,7 @@ export class EnemImportService {
 
     // parseOfficialGabarito aceita as questões 1–9 e separa as duas línguas
     // do 1º dia (o antigo parseGabaritoText perdia as duas coisas).
-    return [examText, introText, parseOfficialGabarito(gabaritoRaw), pages];
+    return [examText, introText, parseOfficialGabarito(gabaritoRaw), pages, provaDoc.numPages];
   }
 
   /**
@@ -218,7 +231,8 @@ export class EnemImportService {
     return parseOfficialGabarito(raw);
   }
 
-  private async download(url: string): Promise<Uint8Array> {
+  /** Baixa um PDF do INEP (só desse domínio; completa a cadeia de certificados). */
+  async download(url: string): Promise<Uint8Array> {
     let parsed: URL;
     try {
       parsed = new URL(url);
