@@ -36,6 +36,7 @@ import { buildQuestionTutorContext, TutorMode } from './question-tutor-context';
 import { SubjectsRepository } from './subjects.repository';
 import { ExamsRepository } from './exams.repository';
 import { QuestionTextSearchRepository } from './question-text-search.repository';
+import { ENEM_MATRIX, areaForSubject, findSkill } from './enem-skills/enem-matrix';
 
 interface QuestionClassification {
   subject: string;
@@ -163,6 +164,8 @@ export class QuestionsService {
     if (query.year) where.year = query.year;
     if (query.sourceType) where.sourceType = query.sourceType;
     if (query.examNumber) where.examNumber = query.examNumber;
+    if (query.enemSkill) where.enemSkill = query.enemSkill;
+    else if (query.enemArea) where.enemSkill = { startsWith: `${query.enemArea}-` };
 
     // Busca por palavra-chave passa por um pré-filtro de ids que ignora
     // acento e maiúsculas (unaccent no banco). O restante da listagem
@@ -287,6 +290,7 @@ export class QuestionsService {
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl?.trim() || null;
     if (dto.sourceType !== undefined && !teacher) data.sourceType = dto.sourceType;
     if (dto.sourceName !== undefined && !teacher) data.sourceName = dto.sourceName.trim();
+    if (dto.enemSkill !== undefined) Object.assign(data, this.manualEnemSkill(dto.enemSkill, classification.subject));
 
     if (dto.alternatives !== undefined) {
       this.validateAlternatives(dto.alternatives);
@@ -866,6 +870,18 @@ export class QuestionsService {
       }));
   }
 
+  /** Classificação feita (ou confirmada) por quem gerencia a questão: entra validada. */
+  private manualEnemSkill(code: string | null, subject: string): Prisma.QuestionUpdateInput {
+    if (code === null) return { enemSkill: null, enemSkillOrigin: null, enemSkillValidated: false, enemSkillNote: null };
+    const skill = findSkill(code);
+    if (!skill) throw new BadRequestException('Habilidade fora da Matriz de Referência do ENEM.');
+    const area = areaForSubject(subject);
+    if (area && area !== skill.area) {
+      throw new BadRequestException(`A matéria ${subject} é da área ${ENEM_MATRIX[area].name}; escolha uma habilidade dessa área.`);
+    }
+    return { enemSkill: skill.code, enemSkillOrigin: 'MANUAL', enemSkillValidated: true, enemSkillNote: null };
+  }
+
   private resolveSort(sort: QuestionSort | undefined): Prisma.QuestionOrderByWithRelationInput[] {
     switch (sort) {
       case 'oldest':
@@ -904,6 +920,7 @@ export class QuestionsService {
       explanation: question.explanation,
       imageUrl: question.imageUrl,
       sourcePdf: sourcePdfFromMetadata(question.metadata),
+      enemSkill: enemSkillView(question),
       canManage,
       stats,
       alternatives: question.alternatives.map((alternative) => ({
@@ -943,6 +960,20 @@ function sourcePdfFromMetadata(metadata: unknown): { url: string; page: number }
   if (!pdf || typeof pdf !== 'object' || !('url' in pdf) || !('page' in pdf)) return null;
   return typeof pdf.url === 'string' && pdf.url.startsWith('https://download.inep.gov.br/') && Number.isInteger(pdf.page) && (pdf.page as number) > 0
     ? { url: pdf.url, page: pdf.page as number } : null;
+}
+
+function enemSkillView(question: { enemSkill?: string | null; enemSkillOrigin?: string | null; enemSkillValidated?: boolean; enemSkillNote?: string | null }): QuestionResponseDto['enemSkill'] {
+  const skill = findSkill(question.enemSkill);
+  if (!skill) return null;
+  return {
+    code: skill.code,
+    area: skill.area,
+    competency: skill.competency,
+    text: skill.text,
+    origin: question.enemSkillOrigin ?? null,
+    validated: question.enemSkillValidated ?? false,
+    note: question.enemSkillNote ?? null,
+  };
 }
 
 /** Remove valores duplicados, preservando a ordem. */

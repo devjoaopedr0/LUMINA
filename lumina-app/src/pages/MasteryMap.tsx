@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -7,11 +7,15 @@ import {
   CheckCircle2,
   Clock3,
   Filter,
+  PlayCircle,
   RotateCcw,
   Search,
   Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { MasteryEvolutionCard } from '@/components/MasteryEvolutionCard';
+import { SkillMasteryView } from '@/components/SkillMasteryView';
+import { VideoLessonsModal } from '@/components/VideoLessonsModal';
 import { Card } from '@/components/ui/Card';
 import { apiGetTopicMastery, type TopicMasteryEntry } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
@@ -81,6 +85,10 @@ export function MasteryMap() {
   const [band, setBand] = useState<MasteryBand | ''>('');
   const [dueOnly, setDueOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const [videoTopic, setVideoTopic] = useState<{ topicId: string; topic: string } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: 'topics' | 'skills' = searchParams.get('visao') === 'habilidades' ? 'skills' : 'topics';
+  const setView = (next: 'topics' | 'skills') => setSearchParams(next === 'skills' ? { visao: 'habilidades' } : {}, { replace: true });
 
   useEffect(() => {
     let active = true;
@@ -150,12 +158,25 @@ export function MasteryMap() {
             <BrainCircuit size={20} />O que você já sabe
           </span>
           <h1 className="mt-3 text-3xl font-bold">Mapa de domínio</h1>
-          <p className="mt-3 max-w-3xl text-graphite-500">
+          {view === 'topics' ? (
+            <p className="mt-3 max-w-3xl text-graphite-500">
             Cada quadrado é um assunto do seu cronograma. A cor mostra o domínio de 0 a 100, calculado a
             partir das suas tentativas recentes; o estado mostra o que fazer com ele agora. Clique em um
             assunto para praticar questões.
           </p>
+          ) : (
+            <p className="mt-3 max-w-3xl text-graphite-500">
+              Seu acerto em cada habilidade da Matriz de Referência do ENEM. Clique numa habilidade para ver o texto
+              oficial e praticar questões dela.
+            </p>
+          )}
+          <div className="mt-5 inline-flex rounded-xl border border-surface-line bg-white p-1 text-sm" role="tablist" aria-label="Visão do mapa">
+            <button type="button" role="tab" aria-selected={view === 'topics'} onClick={() => setView('topics')} className={`rounded-lg px-4 py-1.5 font-semibold ${view === 'topics' ? 'bg-graphite text-white' : ''}`}>Por assunto</button>
+            <button type="button" role="tab" aria-selected={view === 'skills'} onClick={() => setView('skills')} className={`rounded-lg px-4 py-1.5 font-semibold ${view === 'skills' ? 'bg-graphite text-white' : ''}`}>Por habilidade do ENEM</button>
+          </div>
         </header>
+
+        {view === 'skills' ? <SkillMasteryView /> : (<>
 
         {error ? (
           <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
@@ -218,6 +239,8 @@ export function MasteryMap() {
                 hint={summary.accuracy === null ? 'sem tentativas no recorte' : `${summary.accuracy}% de acerto no recorte`}
               />
             </section>
+
+            <MasteryEvolutionCard />
 
             <Card className="mt-6 bg-white p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -341,15 +364,15 @@ export function MasteryMap() {
                             const accuracy = masteryAccuracy(entry);
                             const entryBand = masteryBand(entry.status);
                             return (
+                              <div key={entry.id} className="relative">
                               <Link
-                                key={entry.id}
                                 to={`/app/questoes?subjectId=${encodeURIComponent(entry.subjectId)}&topicId=${encodeURIComponent(entry.topicId)}`}
                                 className={`group flex min-h-[128px] flex-col justify-between rounded-xl border p-3 transition hover:-translate-y-0.5 hover:shadow-md ${heatClass(entry.masteryScore)}`}
                                 title={`${entry.subject} · ${entry.topic}: ${MASTERY_STATUS_LABEL[entry.status]} (${entry.masteryScore}/100). ${masteryReviewLabel(entry)}`}
                                 aria-label={`${entry.topic}: ${MASTERY_STATUS_LABEL[entry.status]}, domínio ${entry.masteryScore} de 100, ${accuracy === null ? 'sem tentativas' : `${accuracy}% de acerto`}. ${masteryReviewLabel(entry)}. Abrir questões do assunto.`}
                               >
                                 <div>
-                                  <p className="text-sm font-semibold leading-snug">{entry.topic}</p>
+                                  <p className="pr-8 text-sm font-semibold leading-snug">{entry.topic}</p>
                                   <p className="mt-1 text-[11px] font-bold uppercase tracking-wide opacity-70">
                                     {MASTERY_BAND_LABEL[entryBand]}
                                   </p>
@@ -369,6 +392,16 @@ export function MasteryMap() {
                                   <p className="mt-1.5 line-clamp-1 text-[11px] opacity-75">{masteryReviewLabel(entry)}</p>
                                 </div>
                               </Link>
+                              <button
+                                type="button"
+                                onClick={() => setVideoTopic({ topicId: entry.topicId, topic: entry.topic })}
+                                className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 text-graphite shadow-sm hover:bg-white"
+                                aria-label={`Videoaulas de ${entry.topic}`}
+                                title="Videoaulas"
+                              >
+                                <PlayCircle className="h-4 w-4" />
+                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -380,7 +413,9 @@ export function MasteryMap() {
             )}
           </>
         ) : null}
+        </>)}
       </div>
+      {videoTopic ? <VideoLessonsModal topicId={videoTopic.topicId} topic={videoTopic.topic} onClose={() => setVideoTopic(null)} /> : null}
     </main>
   );
 }

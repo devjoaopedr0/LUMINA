@@ -64,6 +64,32 @@ export const REFERENCE_TYPES = [
   'OUTRO',
 ] as const;
 
+/** Eixos temáticos do caderno (especificação de 13/11/2026). */
+export const REPERTOIRE_AXES = [
+  'EDUCACAO',
+  'DESIGUALDADE',
+  'POLITICA_CIDADANIA',
+  'CULTURA_IDENTIDADE',
+  'TECNOLOGIA',
+  'MEIO_AMBIENTE',
+  'SAUDE',
+  'TRABALHO_ECONOMIA',
+  'DIREITOS_HUMANOS',
+  'MIDIA_COMPORTAMENTO',
+] as const;
+
+/** Mapa de aplicação argumentativa: a função do repertório no texto. */
+export const ARGUMENT_FUNCTIONS = [
+  'DESIGUALDADES_ESTRUTURAIS',
+  'OMISSAO_ESTATAL',
+  'FALHAS_EDUCACIONAIS',
+  'COMPORTAMENTOS_COLETIVOS',
+  'PROBLEMAS_HISTORICOS',
+  'VIOLACOES_DE_DIREITOS',
+  'IMPACTOS_TECNOLOGICOS',
+  'RELACOES_DE_PODER',
+] as const;
+
 export const NOTEBOOK_SORTS = ['recent', 'oldest', 'favorites', 'az'] as const;
 export type NotebookSort = (typeof NOTEBOOK_SORTS)[number];
 
@@ -222,6 +248,46 @@ export class CreateRepertoireDto {
   @OptionalText(5000)
   notes?: string | null;
 
+  @ApiPropertyOptional({ enum: REPERTOIRE_AXES, isArray: true, description: 'Eixos temáticos.' })
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsIn(REPERTOIRE_AXES, { each: true })
+  axes?: (typeof REPERTOIRE_AXES)[number][];
+
+  @ApiPropertyOptional({ enum: ARGUMENT_FUNCTIONS, isArray: true, description: 'Funções no mapa de aplicação argumentativa.' })
+  @IsOptional() @IsArray() @ArrayMaxSize(8) @IsIn(ARGUMENT_FUNCTIONS, { each: true })
+  argumentFunctions?: (typeof ARGUMENT_FUNCTIONS)[number][];
+
+  @ApiPropertyOptional({ type: [String], description: 'Conceitos fundamentais.' })
+  @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) @MaxLength(120, { each: true })
+  concepts?: string[];
+
+  @ApiPropertyOptional({ nullable: true, description: 'Problemas sociais que o repertório ajuda a explicar.' })
+  @OptionalText(5000)
+  socialProblems?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Relação com a realidade brasileira.' })
+  @OptionalText(5000)
+  brazilRelation?: string | null;
+
+  @ApiPropertyOptional({ enum: ['D1', 'D2'], nullable: true, description: 'Em que desenvolvimento o exemplo se encaixa.' })
+  @IsOptional() @IsIn(['D1', 'D2', null])
+  exampleSlot?: 'D1' | 'D2' | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Possíveis conexões com outros repertórios.' })
+  @OptionalText(3000)
+  connections?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Cuidados para evitar uso superficial ou decorativo.' })
+  @OptionalText(3000)
+  pitfalls?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Citação LITERAL (só com a fonte exata). Paráfrase vai na ideia central.' })
+  @OptionalText(1500)
+  quote?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Fonte exata da citação literal (obra, edição, página).' })
+  @OptionalText(300)
+  quoteSource?: string | null;
+
   @ApiPropertyOptional({ default: false })
   @IsOptional() @IsBoolean()
   isStudied?: boolean;
@@ -257,6 +323,14 @@ export class ListRepertoiresQueryDto {
   @ApiPropertyOptional({ enum: REFERENCE_TYPES })
   @IsOptional() @IsIn(REFERENCE_TYPES)
   referenceType?: string;
+
+  @ApiPropertyOptional({ enum: REPERTOIRE_AXES })
+  @IsOptional() @IsIn(REPERTOIRE_AXES)
+  axis?: string;
+
+  @ApiPropertyOptional({ enum: ARGUMENT_FUNCTIONS })
+  @IsOptional() @IsIn(ARGUMENT_FUNCTIONS)
+  argumentFunction?: string;
 
   @ApiPropertyOptional()
   @IsOptional() @Transform(toBool) @IsBoolean()
@@ -297,14 +371,14 @@ export class CollectionItemsDto {
 
 // ------------------------------------------------------------- LuminIA
 
-export const REPERTOIRE_AI_ACTIONS = ['suggest', 'explain', 'howToUse', 'connections', 'check'] as const;
+export const REPERTOIRE_AI_ACTIONS = ['suggest', 'explain', 'howToUse', 'connections', 'check', 'apply', 'analyzeUse'] as const;
 export type RepertoireAiAction = (typeof REPERTOIRE_AI_ACTIONS)[number];
 
 export class RepertoireAiDto {
   @ApiProperty({
     enum: REPERTOIRE_AI_ACTIONS,
     description:
-      'suggest: repertórios para um tema; explain: explica um repertório; howToUse: como usar na introdução ou no desenvolvimento; connections: relações entre repertórios; check: pertinência ao tema.',
+      'suggest: repertórios para um tema; explain: explica um repertório; howToUse: como usar na introdução ou no desenvolvimento; connections: relações entre repertórios; check: pertinência ao tema; apply: as 5 perguntas de aplicação para um tema; analyzeUse: analisa o uso de um repertório no parágrafo do aluno (produtivo ou decorativo).',
   })
   @IsIn(REPERTOIRE_AI_ACTIONS)
   action: RepertoireAiAction;
@@ -316,6 +390,10 @@ export class RepertoireAiDto {
   @ApiPropertyOptional({ type: [String], description: 'Repertórios do caderno (explain, howToUse, check: 1; connections: 2 a 4).' })
   @IsOptional() @IsArray() @ArrayMaxSize(4) @IsUUID('all', { each: true })
   ids?: string[];
+
+  @ApiPropertyOptional({ description: 'analyzeUse: o parágrafo do aluno (até 3.000 caracteres).' })
+  @IsOptional() @IsString() @MinLength(40) @MaxLength(3000)
+  paragraph?: string;
 
   @ApiPropertyOptional({ enum: ['INTRODUCAO', 'DESENVOLVIMENTO'], description: 'howToUse: parte do texto.' })
   @IsOptional() @IsIn(['INTRODUCAO', 'DESENVOLVIMENTO'])

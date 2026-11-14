@@ -1,3 +1,4 @@
+import { reviewDay } from './review-day';
 import { describe, expect, it, vi } from 'vitest';
 import { TopicMasteryService, masteryHistoryDay } from './topic-mastery.service';
 
@@ -142,9 +143,8 @@ describe('TopicMasteryService.registerStudy', () => {
     await service.registerStudy(userId, topicId);
     const row = store.get(`${userId}:${topicId}`);
     expect(row).toMatchObject({ masteryScore: 90, status: 'DOMINADO', reviewIntervalDays: 6 });
-    const days = (row.nextReviewAt.getTime() - Date.now()) / 86_400_000;
-    expect(days).toBeGreaterThan(5);
-    expect(days).toBeLessThanOrEqual(6);
+    // Dia de Brasília + 6, à meia-noite UTC (a distância em horas varia com a hora do teste).
+    expect(row.nextReviewAt).toEqual(reviewDay(new Date(), 6));
   });
 
   it('revisão ainda não vencida não é adiada', async () => {

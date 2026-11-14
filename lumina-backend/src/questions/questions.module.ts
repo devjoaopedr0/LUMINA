@@ -23,6 +23,8 @@ import { ErrorNotebookRepository } from './error-notebook.repository';
 import { ErrorNotebookService } from './error-notebook.service';
 import { SubjectsRepository } from './subjects.repository';
 import { TopicMasteryController } from './topic-mastery.controller';
+import { EnemSkillsController } from './enem-skills/enem-skills.controller';
+import { SkillMasteryService } from './enem-skills/skill-mastery.service';
 import { TopicMasteryService } from './topic-mastery.service';
 import { ReviewQueueController } from './review-queue.controller';
 import { ReviewQueueService } from './review-queue.service';
@@ -41,6 +43,7 @@ import {
     QuestionPerformanceController,
     ErrorNotebookController,
     TopicMasteryController,
+    EnemSkillsController,
     ReviewQueueController,
   ],
   exports: [
@@ -54,6 +57,7 @@ import {
     QuestionCalibrationService,
   ],
   providers: [
+    SkillMasteryService,
     QuestionsService,
     QuestionsRepository,
     QuestionAttemptsRepository,

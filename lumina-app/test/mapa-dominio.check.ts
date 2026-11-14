@@ -184,3 +184,15 @@ assert.equal(grupos[1].summary.total, 1);
 assert.equal(grupos[2].summary.byBand.DOMINADO, 1);
 
 console.log('mapa de domínio: faixas, calor, revisão, filtros e agrupamento conferidos.');
+
+// ---- Evolução do domínio (13/11/2026)
+import { linePaths, seriesChange, shortDate } from '../src/lib/mastery-evolution.ts';
+// Ponto nulo quebra a linha em vez de cair a zero.
+assert.deepEqual(linePaths([50, null, 100], 108, 108), ['M4.0,54.0', 'M104.0,4.0']);
+assert.deepEqual(linePaths([0, 100], 108, 108), ['M4.0,104.0 L104.0,4.0']);
+assert.deepEqual(linePaths([], 100, 100), []);
+assert.equal(seriesChange([null, 40, 45, 60]), '+20');
+assert.equal(seriesChange([70, 50]), '−20');
+assert.equal(seriesChange([null, 50]), null);
+assert.equal(shortDate('2026-11-13'), '13/11');
+console.log('mapa de domínio (evolução): ok');

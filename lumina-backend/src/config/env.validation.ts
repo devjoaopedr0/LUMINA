@@ -92,6 +92,11 @@ class EnvironmentVariables {
 
   // Planos e cobrança (Asaas). Opcionais: sem ASAAS_API_KEY ou sem preço, o
   // app funciona e a assinatura aparece como "em breve".
+  // Videoaulas da LuminIA (YouTube Data API v3). Sem ela, o app mostra só o link da busca.
+  @IsOptional()
+  @IsString()
+  YOUTUBE_API_KEY?: string;
+
   @IsOptional()
   @IsString()
   ASAAS_API_KEY?: string;

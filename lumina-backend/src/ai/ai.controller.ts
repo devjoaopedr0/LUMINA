@@ -9,6 +9,7 @@ import { UserWithProfile } from '../users/users.repository';
 import { AiChatRequestDto, AiChatResponseDto } from './ai.dto';
 import { AiService } from './ai.service';
 import { PlanUsageService } from '../plans/plan-usage.service';
+import { VideoLessonsService } from './video-lessons.service';
 import { TaskLesson, TopicLessonsService } from './topic-lessons.service';
 import { fallbackWeeklyComment, weeklySummaryContext } from '../schedules/schedule-weekly-summary';
 import { luminiaSystemPrompt } from './luminia-persona';
@@ -26,6 +27,7 @@ export class AiController {
     private readonly scoreEstimates: ScoreEstimateService,
     private readonly questionsService: QuestionsService,
     private readonly planUsage: PlanUsageService,
+    private readonly videoLessons: VideoLessonsService,
   ) {}
 
   @Post('chat')
@@ -63,6 +65,21 @@ export class AiController {
     return this.planUsage.withQuota(user.id, 'LUMINIA_MESSAGE', () =>
       this.aiService.sendMessage(dto, context || undefined, user.profile?.firstName),
     );
+  }
+
+  /**
+   * Videoaulas do YouTube para um assunto, no nível do aluno (pelo domínio no
+   * tópico). Sem YOUTUBE_API_KEY, devolve só o link da busca.
+   */
+  @Get('videos')
+  videos(
+    @CurrentUser() user: UserWithProfile,
+    @Query('topicId') topicId?: string,
+    @Query('topic') topic?: string,
+    @Query('subject') subject?: string,
+  ) {
+    if (topicId && !/^[0-9a-f-]{36}$/i.test(topicId)) throw new NotFoundException('Assunto não encontrado.');
+    return this.videoLessons.forUser(user.id, { topicId, topic, subject });
   }
 
   /** Resumo de teoria do tópico da tarefa (gerado na primeira abertura). */

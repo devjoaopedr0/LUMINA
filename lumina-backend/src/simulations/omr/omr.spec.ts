@@ -99,16 +99,17 @@ describe('Layout do cartão-resposta', () => {
     for (const n of [1, 10, 30, 45, 90, 120, 180]) {
       const layout = buildSheetLayout(Array.from({ length: n }, (_, i) => (i % 4) + 2));
       const bubbles = layout.questions.flatMap((q) => q.bubbles);
-      for (const b of bubbles) {
-        expect(b.x - b.r).toBeGreaterThan(12);
-        expect(b.x + b.r).toBeLessThan(198);
-        expect(b.y + b.r).toBeLessThan(280);
-      }
+      // Junta as violações e confere uma vez: com 180 questões são ~400 mil
+      // pares, e um expect por par deixava o teste lento a ponto de estourar.
+      const outside = bubbles.filter((b) => !(b.x - b.r > 12 && b.x + b.r < 198 && b.y + b.r < 280));
+      expect(outside, `${n} questões: bolhas fora da folha`).toEqual([]);
+      const overlapping: string[] = [];
       for (let i = 0; i < bubbles.length; i++) {
         for (let j = i + 1; j < bubbles.length; j++) {
-          expect(Math.hypot(bubbles[i].x - bubbles[j].x, bubbles[i].y - bubbles[j].y)).toBeGreaterThan(bubbles[i].r * 2.2);
+          if (Math.hypot(bubbles[i].x - bubbles[j].x, bubbles[i].y - bubbles[j].y) <= bubbles[i].r * 2.2) overlapping.push(`${i}x${j}`);
         }
       }
+      expect(overlapping, `${n} questões: bolhas sobrepostas`).toEqual([]);
     }
     expect(() => buildSheetLayout([])).toThrow();
     expect(() => buildSheetLayout([6])).toThrow();
