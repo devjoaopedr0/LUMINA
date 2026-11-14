@@ -11,7 +11,7 @@ import { ANSWER_KEY_SHEET_CODE, answerKeySheetBits, answerKeySheetLayout, readin
 import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser';
 import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
 import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto, SuggestAnswerKeyDto, ValidateAnswerKeyItemsDto } from './answer-keys.dto';
-import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, suggestionPrompt, answerKeyModels } from './answer-key.questions';
+import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, SUGGESTION_GENERATION, suggestionPrompt, answerKeyModels } from './answer-key.questions';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
@@ -619,9 +619,8 @@ export class AnswerKeysService {
         const result = await this.ai.generateStructured({
           system: SUGGESTION_SYSTEM_PROMPT,
           prompt: suggestionPrompt({ stem: question.stem, subject: question.subject, area, alternatives: alternatives.map((a) => ({ position: a.position, text: a.text })) }),
-          maxTokens: 500,
-          timeoutMs: 30_000,
-          temperature: 0.1,
+          // O prompt v2 resolve antes de escolher: precisa de mais espaço.
+          ...SUGGESTION_GENERATION,
           models: answerKeyModels(),
         });
         if (!result?.text?.trim()) {
