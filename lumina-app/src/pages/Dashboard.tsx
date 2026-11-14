@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { to: "/app/busca-web", label: "Buscar questões na web", icon: Globe },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
   { to: "/app/turmas", label: "Turmas", icon: School, onlyWithClasses: true },
+  { to: "/app/grupos", label: "Grupos de estudo", icon: Users },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
   { to: "/app/redacoes", label: "Redações", icon: BookOpenCheck },
   { to: "/app/revisoes", label: "Revisões humanas", icon: ClipboardCheck, reviewersOnly: true },

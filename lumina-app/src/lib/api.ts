@@ -3000,3 +3000,39 @@ export function apiGetEnemMatrix(accessToken: string): Promise<import("@/lib/ene
 /** Acerto do aluno por habilidade do ENEM (mapa de domínio). */
 export const apiGetSkillMastery = (accessToken: string): Promise<import("@/lib/enem-skills").SkillMasteryReport> =>
   request("/users/me/skill-mastery", { headers: authHeaders(accessToken) });
+
+// ---- Lumina Groups (docs/LUMINA_GROUPS.md) ----
+export const apiGroups = (accessToken: string): Promise<import("@/lib/groups").GroupSummary[]> =>
+  request("/groups", { headers: authHeaders(accessToken) });
+export const apiGroup = (accessToken: string, id: string): Promise<import("@/lib/groups").GroupDetail> =>
+  request(`/groups/${id}`, { headers: authHeaders(accessToken) });
+export const apiCreateGroup = (accessToken: string, payload: import("@/lib/groups").GroupPayload): Promise<import("@/lib/groups").GroupDetail> =>
+  request("/groups", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiUpdateGroup = (accessToken: string, id: string, payload: Partial<import("@/lib/groups").GroupPayload>): Promise<import("@/lib/groups").GroupDetail> =>
+  request(`/groups/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiGroupPreview = (accessToken: string, input: { code?: string; token?: string }): Promise<import("@/lib/groups").GroupPreview> =>
+  request(`/groups/preview?${new URLSearchParams(input.token ? { token: input.token } : { code: input.code ?? "" })}`, { headers: authHeaders(accessToken) });
+export const apiJoinGroup = (accessToken: string, input: { code?: string; token?: string }): Promise<{ groupId: string; status: import("@/lib/groups").GroupMemberStatus; alreadyMember: boolean }> =>
+  input.token
+    ? request("/groups/join-link", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ token: input.token }) })
+    : request("/groups/join", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ code: input.code }) });
+export const apiGroupInviteLink = (accessToken: string, id: string): Promise<{ token: string; expiresAt: string }> =>
+  request(`/groups/${id}/invite-link`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiRegenerateGroupCode = (accessToken: string, id: string): Promise<{ joinCode: string }> =>
+  request(`/groups/${id}/code`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiUpdateGroupSharing = (accessToken: string, id: string, sharing: Partial<import("@/lib/groups").GroupSharing>): Promise<import("@/lib/groups").GroupSharing> =>
+  request(`/groups/${id}/me/sharing`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(sharing) });
+export const apiLeaveGroup = (accessToken: string, id: string): Promise<{ left: boolean }> =>
+  request(`/groups/${id}/leave`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiDecideGroupRequest = (accessToken: string, id: string, userId: string, decision: "approve" | "reject"): Promise<unknown> =>
+  request(`/groups/${id}/members/${userId}/${decision}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiChangeGroupRole = (accessToken: string, id: string, userId: string, role: Exclude<import("@/lib/groups").GroupRole, "OWNER">): Promise<unknown> =>
+  request(`/groups/${id}/members/${userId}/role`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ role }) });
+export const apiRemoveGroupMember = (accessToken: string, id: string, userId: string): Promise<unknown> =>
+  request(`/groups/${id}/members/${userId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+export const apiTransferGroup = (accessToken: string, id: string, userId: string): Promise<unknown> =>
+  request(`/groups/${id}/transfer`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ userId }) });
+export const apiArchiveGroup = (accessToken: string, id: string, archived: boolean): Promise<unknown> =>
+  request(`/groups/${id}/${archived ? "archive" : "unarchive"}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiDeleteGroup = (accessToken: string, id: string): Promise<unknown> =>
+  request(`/groups/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });

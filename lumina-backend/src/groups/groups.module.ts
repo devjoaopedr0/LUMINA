@@ -1,0 +1,149 @@
+import { Body, Controller, Delete, Get, Module, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { UserWithProfile } from '../users/users.repository';
+import {
+  ChangeMemberRoleDto,
+  CreateGroupDto,
+  JoinGroupByCodeDto,
+  JoinGroupByLinkDto,
+  TransferOwnershipDto,
+  UpdateGroupDto,
+  UpdateSharingDto,
+} from './groups.dto';
+import { GroupsService } from './groups.service';
+
+/** Lumina Groups (Fase 2, MVP): docs/LUMINA_GROUPS.md. */
+@ApiTags('groups')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('groups')
+export class GroupsController {
+  constructor(private readonly service: GroupsService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Grupos do aluno e pedidos de entrada pendentes.' })
+  list(@CurrentUser() user: UserWithProfile) {
+    return this.service.listMine(user.id);
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Cria um grupo; quem cria é o dono.' })
+  create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateGroupDto) {
+    return this.service.create(user.id, dto);
+  }
+
+  @Get('preview')
+  @ApiOperation({ summary: 'Prévia do grupo pelo código ou pelo link, antes de entrar.' })
+  preview(@Query('code') code?: string, @Query('token') token?: string) {
+    return this.service.preview({ code, token });
+  }
+
+  @Post('join')
+  @ApiOperation({ summary: 'Entra num grupo pelo código.' })
+  joinByCode(@CurrentUser() user: UserWithProfile, @Body() dto: JoinGroupByCodeDto) {
+    return this.service.join(user.id, { code: dto.code });
+  }
+
+  @Post('join-link')
+  @ApiOperation({ summary: 'Entra num grupo pelo link de convite.' })
+  joinByLink(@CurrentUser() user: UserWithProfile, @Body() dto: JoinGroupByLinkDto) {
+    return this.service.join(user.id, { token: dto.token });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Detalhe do grupo, com o perfil de estudo dos membros conforme a privacidade de cada um.' })
+  detail(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.detail(user.id, id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Edita o grupo (dono e administradores).' })
+  update(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateGroupDto) {
+    return this.service.update(user.id, id, dto);
+  }
+
+  @Post(':id/code')
+  @ApiOperation({ summary: 'Troca o código de entrada; links antigos deixam de valer.' })
+  regenerateCode(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.regenerateCode(user.id, id);
+  }
+
+  @Post(':id/invite-link')
+  @ApiOperation({ summary: 'Gera um link de convite válido por 7 dias.' })
+  inviteLink(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.inviteLink(user.id, id);
+  }
+
+  @Patch(':id/me/sharing')
+  @ApiOperation({ summary: 'O que o aluno compartilha com este grupo.' })
+  sharing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSharingDto) {
+    return this.service.updateSharing(user.id, id, dto);
+  }
+
+  @Post(':id/leave')
+  @ApiOperation({ summary: 'Sai do grupo ou cancela o pedido de entrada.' })
+  leave(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.leave(user.id, id);
+  }
+
+  @Post(':id/members/:userId/approve')
+  @ApiOperation({ summary: 'Aprova um pedido de entrada.' })
+  approve(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) target: string) {
+    return this.service.approve(user.id, id, target);
+  }
+
+  @Post(':id/members/:userId/reject')
+  @ApiOperation({ summary: 'Recusa um pedido de entrada.' })
+  reject(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) target: string) {
+    return this.service.reject(user.id, id, target);
+  }
+
+  @Patch(':id/members/:userId/role')
+  @ApiOperation({ summary: 'Promove ou rebaixa um membro.' })
+  changeRole(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) target: string,
+    @Body() dto: ChangeMemberRoleDto,
+  ) {
+    return this.service.changeRole(user.id, id, target, dto);
+  }
+
+  @Delete(':id/members/:userId')
+  @ApiOperation({ summary: 'Remove um membro (só quem está acima dele).' })
+  removeMember(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) target: string) {
+    return this.service.removeMember(user.id, id, target);
+  }
+
+  @Post(':id/transfer')
+  @ApiOperation({ summary: 'Transfere a posse do grupo a outro membro.' })
+  transfer(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TransferOwnershipDto) {
+    return this.service.transferOwnership(user.id, id, dto.userId);
+  }
+
+  @Post(':id/archive')
+  @ApiOperation({ summary: 'Arquiva o grupo (só o dono).' })
+  archive(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.setArchived(user.id, id, true);
+  }
+
+  @Post(':id/unarchive')
+  @ApiOperation({ summary: 'Reativa um grupo arquivado (só o dono).' })
+  unarchive(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.setArchived(user.id, id, false);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Exclui o grupo de vez (só o dono, depois de arquivar).' })
+  remove(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.remove(user.id, id);
+  }
+}
+
+@Module({
+  controllers: [GroupsController],
+  providers: [GroupsService],
+})
+export class GroupsModule {}

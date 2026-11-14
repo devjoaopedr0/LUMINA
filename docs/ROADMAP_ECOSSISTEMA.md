@@ -192,10 +192,10 @@ Recomendações da LuminIA cruzando desempenho, grupos e marketplace; grupos est
 7. **Este documento, §2 (revisão de 11/11/2026):** convite de turma por link e cartão-resposta configurável apareciam como "em andamento, sem commit", mas entraram no commit `1231306`; flashcards e o painel analítico do professor (09/11) não constavam. Corrigido.
 
 ## 10. Dúvidas que precisam de decisão
-- Idade mínima por recurso (grupos, chat, compra) e fluxo de consentimento do responsável.
+- Idade mínima por recurso (grupos, chat, compra) e fluxo de consentimento do responsável. *Grupos, decidido em 14/11/2026: sem idade mínima por enquanto, com as proteções para menores de 18 por padrão.*
 - Provedor de pagamentos (assinaturas e split do marketplace).
 - Percentual de comissão e variação por categoria.
-- Websocket próprio ou Supabase Realtime.
+- ~~Websocket próprio ou Supabase Realtime~~ *Decidido em 14/11/2026: Socket.IO próprio.*
 - Provedor de vídeo e nível de proteção.
 - Limites do plano gratuito (correções, simulados, LuminIA) e o que muda no pago.
 - Curadoria do marketplace: aberto a qualquer professor verificado ou por convite no começo.
