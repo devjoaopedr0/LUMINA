@@ -283,6 +283,47 @@ npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --calib 30 --test 0 
 
 **Próximo passo para melhorar a nota:** o prompt v3 (`v3-c2-c4-oficial-2026`) foi medido em 05/11/2026 com um avaliador (29 de calibração + 30 de teste). Não houve ganho sobre a v2: a concordância ficou em 33,3% bruta/36,7% calibrada contra 46,7%/43,3% da v2 nas mesmas redações, e a C3 piorou de forma consistente. A C4 melhorou direcionalmente (MAE 54,7 → 48,0), mas o intervalo de confiança ainda inclui zero. A calibração v3 não foi gravada e o arquivo ativo continua v2; o próximo ataque é o prompt de C3/C1 (e a instabilidade da C2), não a calibração. Depois, validar a produção com os dois avaliadores.
 
+## Volta ao prompt v2 e candidato v4 (13/11/2026)
+
+**Produção de volta ao v2.** O prompt v3 (`v3-c2-c4-oficial-2026`) mediu pior que o v2 em 05/11 (concordância 33% contra 47%) e rodava sem calibração. Desde 13/11/2026 a produção usa de novo o `v2-competencia`, com a calibração dele (`model/llm-calibration.json`) voltando a valer. Para isso os prompts passaram a ser versionados em `grading/prompt-sets.ts`:
+- cada versão guarda as instruções, a tarefa por competência, a consulta ao RAG, os sinais automáticos e o formato da resposta;
+- o v2 foi restaurado do histórico (commit anterior ao `e8fd3c7`), sem reescrever;
+- a base de conhecimento continua a da cartilha 2026, que é a vigente.
+
+O que muda para o aluno: a resposta do v2 não traz os campos "pontos fortes", "problemas" e "explicação do nível" do v3. A tela mostra a justificativa e "como melhorar", e os exemplos validados pela revisão humana não entram no prompt do v2.
+
+**Candidato v4 (`v4-calibrado`).** Parte do v2 e mira os desvios medidos nele:
+- C4 com a tarefa, as regras, a consulta e os sinais do v3 (única competência que melhorou com ele);
+- regras de calibração pela grade em C1, C2 e C5;
+- volta dos exemplos validados por humanos.
+
+Medido nas mesmas 30 redações de teste (`gemini:gemini-3.5-flash-lite`, um avaliador, nota bruta; o v2 veio do cache e o v4 gastou 150 chamadas):
+
+| | v2 | v4 |
+| --- | --- | --- |
+| MAE total | **129,3** | 135,2 |
+| Viés total | −46,7 | **−19,3** |
+| Concordância (regra do Inep) | **46,7%** | 41,4% |
+| C1 MAE / viés | **30,7** / −17,3 | 37,2 / −17,9 |
+| C2 MAE / viés | 36,0 / −14,7 | **31,7 / −6,9** |
+| C3 MAE / viés | **30,7** / +12,0 | 41,4 / +16,6 |
+| C4 MAE / viés | 54,7 / −4,0 | **48,3** / +4,1 |
+| C5 MAE / viés | 36,0 / −22,7 | **34,5 / −15,2** |
+
+**Leitura honesta:**
+- O prompt da C3 é idêntico no v2 e no v4, e mesmo assim o MAE foi de 30,7 para 41,4. Com 30 redações e um avaliador, a variação entre rodadas fica perto de 10 pontos por competência; a maior parte da tabela está dentro desse ruído.
+- O sinal mais consistente é a redução do viés negativo (o v4 é menos severo), concentrada em C2, C4 e C5.
+- A regra nova da C1 não reduziu a severidade.
+- **Decisão:** a produção fica no v2. O v4 só vai para produção depois de uma medição pareada maior, ao longo de vários dias (dois avaliadores e mais redações, com intervalo de confiança), que separe ganho de ruído.
+
+Como medir uma versão sem mudar o código:
+
+```bash
+npm run build && npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --prompt v4-calibrado --calib 0 --test 30 --inep 0 --write false
+```
+
+O cache fica por versão (`.cache/llm-runs/<versão>/<modelo>/`), então rodar de novo continua de onde parou.
+
 ## Testes adversariais de C2/C4
 
 A suíte `essay-correction.spec.ts` cobre os casos em que a heurística não pode decidir sozinha:
