@@ -471,6 +471,23 @@ describe('Corretor por competência', () => {
     expect(byC(v5, 'C2')).toBe(byC(v4, 'C2'));
   });
 
+  it('v6: checagem dos critérios da cartilha antes da nota, com C2 do v5 e C4 do v3', async () => {
+    const { prompts } = await grade(scores([160, 160, 160, 160, 160], [160, 160, 160, 160, 160]), 'v6-checagem');
+    const byC = (c: string) => prompts.find((p) => competencyOf(p) === c)!;
+    for (const c of ['C1', 'C2', 'C3', 'C4', 'C5']) {
+      expect(byC(c)).toMatch(/\{"checagem": \{.*"nota": 0/s);
+      expect(byC(c)).toMatch(/Como decidir/);
+    }
+    expect(byC('C1')).toMatch(/na dúvida se é desvio, não conte/);
+    expect(byC('C2')).toMatch(/Calibração pela grade/);
+    expect(byC('C4')).toMatch(/Não exija conectivo no início de cada parágrafo/i);
+    expect(byC('C5')).toMatch(/5 elementos → 200/);
+    expect(byC('C2')).toContain('"anulacao"');
+    expect(byC('C1')).not.toContain('pontos_fortes');
+    expect(PROMPT_SETS['v6-checagem'].system).toMatch(/120 não é posição neutra/);
+    expect(PROMPT_SETS['v6-checagem'].system).toMatch(/Responda APENAS com um objeto JSON válido/);
+  });
+
   it('produção volta ao prompt v2 (o v3 mediu pior em 05/11/2026)', () => {
     expect(GRADER_PROMPT_VERSION).toBe('v2-competencia');
   });

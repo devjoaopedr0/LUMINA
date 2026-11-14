@@ -13,6 +13,8 @@
  * - v4-calibrado: v2 + C4 do v3 + regras de calibração em C1, C2 e C5 +
  *   exemplos validados por humanos (13/11/2026).
  * - v5-c2-c4: v2 + C4 do v3 + regras de calibração só em C2 (13/11/2026).
+ * - v6-checagem: v5 + checagem dos critérios da cartilha antes da nota, em
+ *   todas as competências (14/11/2026).
  */
 import type { EssayTextAnalysis } from '../analysis/text-analysis';
 import type { CompetencyId } from '../knowledge';
@@ -431,9 +433,99 @@ function buildCompetencyPrompt_V5(input: GradeInput, analysis: EssayTextAnalysis
   return buildHybridPrompt(RULES_V5, false, input, analysis, context, zeroAlerts);
 }
 
+// ========================================================= v6-checagem
+/*
+ * v6 (14/11/2026): refinamento do v2 pela cartilha 2026 e pelos manuais
+ * oficiais. Nas duas rodadas do v2, o modelo concentra as notas em 120: quem o
+ * avaliador humano pôs em 160/200 recebe um nível a menos em C1, C2, C3 e C4
+ * (viés total −40 a −54). O v6 muda o procedimento, não a régua:
+ * - antes da nota, o modelo preenche uma checagem com os critérios que a
+ *   cartilha usa para separar os níveis (desvios e estrutura sintática na C1;
+ *   recorte, repertório e estrutura na C2; ponto de vista, desenvolvimento e
+ *   autoria na C3; recursos e inadequações na C4; os cinco elementos na C5);
+ * - a nota sai da checagem lida contra os descritores, com 120 tratado como
+ *   um nível com descritor próprio, não como posição neutra;
+ * - C4 com a tarefa e as regras do v3 (melhor C4 nas medições) e C2 com as
+ *   regras do v5 (menor viés), mais a checagem.
+ * Os descritores e as contagens vêm da grade oficial e dos critérios
+ * operacionais da Lumina que já estão na base (lumina-c1-frequencia-de-desvios
+ * e lumina-c5-contagem-de-elementos), agora sempre presentes no prompt.
+ */
+const SYSTEM_PROMPT_V6 = `${SYSTEM_PROMPT_V2.replace(/\nResponda APENAS[^\n]*$/, '')}
+- Antes da nota, preencha a "checagem" pedida no formato, olhando o texto. A nota sai da checagem lida contra os descritores, não de uma impressão geral.
+- Cada nível tem descritor próprio: 120 não é posição neutra. Comece pelo descritor de 200 e desça um nível só quando a checagem mostrar o que o texto deixa de atender; dê 160 ou 200 sempre que o descritor for atendido, e 80 ou menos quando o texto estiver abaixo do descritor de 120.
+Responda APENAS com um objeto JSON válido, sem texto antes ou depois.`;
+
+const RULES_V6: Record<CompetencyId, string> = {
+  C1: `
+Como decidir (cartilha, p. 12–14, e critério operacional da Lumina):
+- Liste em "desvios" só desvios claros pela norma-padrão: convenção da escrita (acentuação, ortografia, hífen, maiúsculas), gramaticais (concordância, regência, crase, pontuação obrigatória, tempos verbais, pronomes, paralelismo), registro informal ou marca de oralidade, palavra usada em sentido impróprio. Não conte vírgula facultativa, colocação pronominal aceita, estilo, repetição de palavras (é C4) nem trechos entre aspas; na dúvida se é desvio, não conte. O mesmo erro repetido conta como reincidência.
+- Leia a lista numa redação de cerca de 30 linhas: no máximo 1 desvio, sem reincidência, e períodos complexos bem estruturados → 200; até 3 → 160; até 5 → 120; de 6 a 8, ou estrutura sintática deficitária (truncamentos e justaposições frequentes) → 80; desvios diversificados e frequentes em quase todo o texto → 40. Texto mais curto: proporcione.`,
+  C2: `${RULES_V4.C2}
+Como decidir (grade da C2 e manual oficial da C2):
+- 200: recorte completo, argumentação consistente, estrutura completa (proposição, argumentação, conclusão) e ao menos um repertório legitimado, pertinente E produtivo (interpretado e ligado à tese, não só citado).
+- 160: recorte completo, argumentação consistente e estrutura completa, mas o repertório falta, é só citado, genérico ou "de bolso".
+- 120: recorte atendido com argumentação previsível (ideias de senso comum, pouco aprofundadas) ou estrutura com partes desproporcionais.
+- 80: estrutura insuficiente (falta proposição, desenvolvimento ou conclusão) ou desenvolvimento apoiado em cópia/paráfrase dos textos motivadores.
+- 40: tangenciamento ou traços constantes de outro tipo textual.`,
+  C3: `
+Como decidir (cartilha, p. 28–31):
+- Em "argumentos", liste cada argumento do desenvolvimento e diga se ele é explicado e fundamentado (por exemplo, dado, causa, consequência, comparação) ou fica apenas afirmado.
+- 200: ponto de vista claro, argumentos selecionados e todos desenvolvidos, progressão sem lacunas e autoria configurada (seleção e interpretação próprias, que vão além do óbvio).
+- 160: ponto de vista claro, organização perceptível (projeto de texto) e argumentos desenvolvidos, com alguma lacuna; indícios de autoria.
+- 120: argumentos previsíveis, genéricos ou pouco desenvolvidos (como a cartilha descreve os "limitados aos textos motivadores"), ou organização falha.
+- 80: informações desorganizadas, contraditórias ou soltas, com pouco desenvolvimento.
+- 40: informações pouco relacionadas ao tema, incoerentes ou sem defesa de ponto de vista.`,
+  C4: `
+Como decidir (grade da C4, cartilha, p. 31–34):
+- Em "recursos", liste os recursos coesivos que o texto usa de fato, entre parágrafos e dentro deles (operadores argumentativos, retomadas por pronome, sinônimo, hiperônimo, expressão resumitiva, elipse). Em "inadequacoes", só os trechos em que um conectivo expressa a relação errada, uma retomada fica ambígua, a repetição prejudica a clareza ou falta articulação entre partes.
+- 200: partes bem articuladas, recursos diversificados entre e dentro dos parágrafos, no máximo uma inadequação. 160: recursos diversificados com poucas inadequações. 120: articulação mediana, com inadequações ou recursos pouco diversificados (os mesmos conectivos e retomadas se repetem). 80: muitas inadequações ou repertório coesivo limitado. 40: articulação precária. Texto em um único parágrafo não passa de 80.`,
+  C5: `
+Como decidir (cartilha, p. 35–38, e critério operacional da Lumina):
+- Em "elementos", copie do texto o trecho de cada elemento da proposta mais completa (ação, agente, modo/meio, efeito/finalidade, detalhamento), ou null se faltar. Detalhamento é qualquer informação a mais sobre um dos outros elementos (exemplo, explicação, especificação). Constatar a falta de algo ("faltam investimentos") não é ação.
+- Com a proposta relacionada ao tema e articulada à discussão: 5 elementos → 200; 4 → 160; 3 → 120; 2 → 80; só a ação, ou proposta vaga ou ligada só ao assunto → 40; sem proposta → 0. Não exija mais de uma proposta.`,
+};
+
+const CHECK_FIELDS_V6: Record<CompetencyId, string> = {
+  C1: '"checagem": {"desvios": ["trecho literal → tipo"], "estrutura_sintatica": "boa"|"falhas pontuais"|"deficitária"}',
+  C2: '"checagem": {"recorte": "completo"|"parcial"|"tangencia"|"fuga", "repertorio": ["referência → legitimado? pertinente? produtivo?"], "estrutura": "completa"|"desproporcional"|"insuficiente", "argumentacao": "consistente"|"previsível"|"fraca"}',
+  C3: '"checagem": {"ponto_de_vista": "...", "argumentos": ["argumento → desenvolvido|parcial|só afirmado"], "autoria": "configurada"|"indícios"|"não"}',
+  C4: '"checagem": {"recursos": ["recurso → exemplo literal"], "inadequacoes": ["trecho literal → problema"], "paragrafos": 0}',
+  C5: '"checagem": {"elementos": {"acao": "..."|null, "agente": "..."|null, "modo_meio": "..."|null, "finalidade": "..."|null, "detalhamento": "..."|null}, "articulada_a_discussao": true}',
+};
+
+function buildCompetencyPrompt_V6(input: GradeInput, analysis: EssayTextAnalysis, context: CompetencyContext, zeroAlerts: string[]): string {
+  const { competency, grade, chunks } = context;
+  const c4 = competency === 'C4';
+  const levels = grade.niveis.map((n) => `  ${n.nota}: ${n.descritor}`).join('\n');
+  const extra = chunks.map((c) => `  [${c.id}] ${c.titulo} (${c.citacao}): ${c.texto}`).join('\n');
+  const signals = c4 ? competencySignals_V3(competency, analysis, zeroAlerts) : competencySignals_V2(competency, analysis, zeroAlerts);
+  const task = c4 ? `${COMPETENCY_TASK_V3[competency]}${EXTRA_RULES_V3[competency]}` : `${COMPETENCY_TASK_V2[competency]}${EXTRA_RULES_V2[competency]}`;
+  return `${task}${RULES_V6[competency]}
+
+TEMA: ${input.theme || '(não informado — avalie a coerência interna e não anule por fuga ao tema)'}
+
+CRITÉRIOS DA CARTILHA — ${competency}: ${grade.descricao}
+[${competency.toLowerCase()}-niveis] Níveis (${grade.citacao}):
+${levels}
+${extra}
+
+SINAIS AUTOMÁTICOS DO TEXTO (indícios a conferir, não notas):
+${signals.join('\n') || '(nenhum)'}
+
+REDAÇÃO:
+"""
+${input.text}
+"""
+
+Formato da resposta (preencha a checagem primeiro, com itens curtos, no máximo 8 por lista):
+{${CHECK_FIELDS_V6[competency]}, "nota": 0, "justificativa": "...", "trechos": ["..."], "referencias": ["${competency.toLowerCase()}-niveis"], "como_melhorar": "..."${EXTRA_FIELDS_V2[competency]}}`;
+}
+
 export const PROMPT_SETS: Record<string, PromptSet> = {
   'v2-competencia': { version: 'v2-competencia', system: SYSTEM_PROMPT_V2, buildQuery: buildCompetencyQuery_V2, buildPrompt: buildCompetencyPrompt_V2 },
   'v3-c2-c4-oficial-2026': { version: 'v3-c2-c4-oficial-2026', system: SYSTEM_PROMPT_V3, buildQuery: buildCompetencyQuery_V3, buildPrompt: buildCompetencyPrompt_V3 },
   'v4-calibrado': { version: 'v4-calibrado', system: SYSTEM_PROMPT_V2, buildQuery: buildCompetencyQuery_V4, buildPrompt: buildCompetencyPrompt_V4 },
   'v5-c2-c4': { version: 'v5-c2-c4', system: SYSTEM_PROMPT_V2, buildQuery: buildCompetencyQuery_V4, buildPrompt: buildCompetencyPrompt_V5 },
+  'v6-checagem': { version: 'v6-checagem', system: SYSTEM_PROMPT_V6, buildQuery: buildCompetencyQuery_V4, buildPrompt: buildCompetencyPrompt_V6 },
 };
