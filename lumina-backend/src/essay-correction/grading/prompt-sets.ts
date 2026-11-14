@@ -14,7 +14,8 @@
  *   exemplos validados por humanos (13/11/2026).
  * - v5-c2-c4: v2 + C4 do v3 + regras de calibração só em C2 (13/11/2026).
  * - v6-checagem: v5 + checagem dos critérios da cartilha antes da nota, em
- *   todas as competências (14/11/2026).
+ *   todas as competências (14/11/2026). Em produção desde 14/11/2026, por
+ *   decisão do usuário, sem calibração própria.
  */
 import type { EssayTextAnalysis } from '../analysis/text-analysis';
 import type { CompetencyId } from '../knowledge';

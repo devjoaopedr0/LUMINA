@@ -409,3 +409,9 @@ Leitura:
 - A instrução "comece pelo 200 e desça" empurra todas as notas para cima, não só as que estavam comprimidas. O desvio do v2 é de compressão (regressão ao 120), não um deslocamento uniforme, e uma regra de procedimento não resolve isso.
 - Repetindo a observação de antes: o v6 continua sem conseguir dar 200 em C1 e C4 quando o humano dá. Parte da ponta de baixo do conjunto de teste é ruído das notas humanas (redações de 115 a 215 palavras com zeros pouco consistentes, como C5 = 120 com C1 a C4 = 0).
 - **Decisão: a produção continua no v2.** Das tentativas até aqui (v4, v5, v6), toda mudança de prompt que reduz o viés aumenta o erro. O caminho que sobra para corrigir a compressão é a calibração por competência do v2 (`model/llm-calibration.json`, que já faz esse ajuste depois da nota bruta), não o texto do prompt.
+
+**Atualização (14/11/2026): v6 em produção por decisão do usuário.** `GRADER_PROMPT_VERSION` passou para `v6-checagem`, mesmo com a medição acima. Consequências:
+- a calibração gravada (`model/llm-calibration.json`) é a do v2 e não vale para o v6, então as notas saem brutas (identidade), como na medição;
+- o esperado, pela rodada de 14/11, é um viés total perto de zero, com erro médio maior que o do v2 (cerca de 147 contra 129 pontos) e C3 mais branda;
+- para voltar ao v2, basta trocar `GRADER_PROMPT_VERSION` de volta para `v2-competencia`: a calibração dele continua no arquivo;
+- antes de calibrar o v6, falta uma segunda rodada de medição e uma amostra de calibração (`--prompt v6-checagem --calib 30 --test 30`, sem `--write false`, o que grava a calibração do v6 e arquiva a do v2).

@@ -488,8 +488,11 @@ describe('Corretor por competência', () => {
     expect(PROMPT_SETS['v6-checagem'].system).toMatch(/Responda APENAS com um objeto JSON válido/);
   });
 
-  it('produção volta ao prompt v2 (o v3 mediu pior em 05/11/2026)', () => {
-    expect(GRADER_PROMPT_VERSION).toBe('v2-competencia');
+  it('produção usa o prompt v6 (decisão do usuário em 14/11/2026), ainda sem calibração própria', () => {
+    expect(GRADER_PROMPT_VERSION).toBe('v6-checagem');
+    // A calibração gravada é a do v2 e não vale para o v6: as notas saem brutas.
+    const calibration = llmCalibration as unknown as LlmCalibration;
+    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite').fitted).toBe(false);
   });
 
   it('devolve pontos fortes, problemas, explicação do nível e a versão da base usada', async () => {
