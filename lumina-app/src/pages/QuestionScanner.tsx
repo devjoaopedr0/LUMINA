@@ -11,6 +11,7 @@ import {
   type QuestionScanProcessingResponseDto,
   type QuestionScanUploadResponseDto,
 } from '@/lib/api';
+import { prepareScanImage, SCAN_ACCEPTED_TYPES, SCAN_MAX_INPUT_BYTES } from '@/lib/question-scan-image';
 
 const token = () => getAccessToken() ?? '';
 
@@ -37,15 +38,6 @@ type Difficulty = (typeof DIFFICULTIES)[number];
 type Alternative = { position: number; text: string; isCorrect: boolean };
 
 type Tab = 'scan' | 'history';
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
-    reader.readAsDataURL(file);
-  });
-}
 
 export function QuestionScanner() {
   const [tab, setTab] = useState<Tab>('scan');
@@ -83,12 +75,12 @@ export function QuestionScanner() {
   function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
     if (!selected) return;
-    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(selected.type)) {
-      setError('Formato não suportado. Use JPEG, PNG ou PDF.');
+    if (!SCAN_ACCEPTED_TYPES.includes(selected.type)) {
+      setError('Formato não suportado. Use uma foto JPEG, PNG ou WebP (para PDF, tire um print da questão).');
       return;
     }
-    if (selected.size > 10 * 1024 * 1024) {
-      setError('Arquivo muito grande (máximo 10 MB).');
+    if (selected.size > SCAN_MAX_INPUT_BYTES) {
+      setError('Arquivo muito grande (máximo 20 MB).');
       return;
     }
     setFile(selected);
@@ -110,18 +102,21 @@ export function QuestionScanner() {
     setError('');
     setSuccess('');
     try {
-      const { uploadId, key } = await apiQuestionScanPresignedUpload(token(), { contentType: file.type });
-      await apiQuestionScanCompleteUpload(token(), key, {
-        fileUrl: previewUrl ?? (await readAsDataUrl(file)),
-        width: 1920,
-        height: 1080,
-        sizeBytes: file.size,
+      // Reduz a foto no aparelho (máx. 1.800 px, JPEG) antes de enviar.
+      const image = await prepareScanImage(file);
+      const { key } = await apiQuestionScanPresignedUpload(token(), { contentType: 'image/jpeg' });
+      // A resposta já traz a leitura: não é preciso consultar de novo.
+      const result = await apiQuestionScanCompleteUpload(token(), key, {
+        fileUrl: image.dataUrl,
+        width: image.width,
+        height: image.height,
+        sizeBytes: image.sizeBytes,
       });
-      setSuccess('Foto enviada. O processamento começou.');
       clearFile();
       resetForm();
-      // O processamento é assíncrono: a primeira leitura pode ainda estar em PROCESSING.
-      setProcessing(await apiGetQuestionScanProcessing(token(), uploadId));
+      fillForm(result);
+      if (result.status === 'FAILED') setError(result.errorMessage ?? 'Não foi possível ler a questão nesta foto.');
+      else setSuccess('Questão lida. Confira o texto com a foto, marque a alternativa correta e salve.');
       setUploads(await apiListQuestionScanUploads(token()));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no upload.');
@@ -130,20 +125,24 @@ export function QuestionScanner() {
     }
   }
 
+  /** Preenche o formulário de conferência com a leitura (sempre editável). */
+  function fillForm(result: QuestionScanProcessingResponseDto) {
+    setProcessing(result);
+    setStem(result.stemText ?? '');
+    const read = (result.alternativesJson ?? []).map((alt) => ({ ...alt, isCorrect: false }));
+    // Sem alternativas lidas, abre cinco em branco para o aluno digitar.
+    setAlternatives(read.length ? read : [1, 2, 3, 4, 5].map((position) => ({ position, text: '', isCorrect: false })));
+    setSubject(result.subject ?? '');
+    setTopic(result.topic ?? '');
+    setDifficulty((result.difficulty as Difficulty) ?? 'MEDIA');
+  }
+
   /** Carrega um processamento do histórico no formulário de conferência. */
   async function openProcessing(id: string) {
     setError('');
     setSuccess('');
     try {
-      const result = await apiGetQuestionScanProcessing(token(), id);
-      setProcessing(result);
-      setStem(result.stemText ?? '');
-      setAlternatives(
-        (result.alternativesJson ?? []).map((alt) => ({ ...alt, isCorrect: false })),
-      );
-      setSubject(result.subject ?? '');
-      setTopic(result.topic ?? '');
-      setDifficulty((result.difficulty as Difficulty) ?? 'MEDIA');
+      fillForm(await apiGetQuestionScanProcessing(token(), id));
       setTab('scan');
     } catch {
       setError('Não foi possível abrir este processamento.');
@@ -258,7 +257,7 @@ export function QuestionScanner() {
                 <input
                   id="question-scan-file"
                   type="file"
-                  accept="image/jpeg,image/png,application/pdf"
+                  accept="image/jpeg,image/png,image/webp"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -274,7 +273,7 @@ export function QuestionScanner() {
                   ) : (
                     <>
                       <span className="font-medium">Clique para selecionar a foto da questão</span>
-                      <p className="text-sm text-graphite-400">JPEG, PNG ou PDF · máximo 10 MB</p>
+                      <p className="text-sm text-graphite-400">Foto ou print da questão inteira · JPEG, PNG ou WebP</p>
                     </>
                   )}
                 </label>
@@ -286,7 +285,7 @@ export function QuestionScanner() {
                   disabled={uploading || !file}
                   className="rounded-lg bg-graphite px-5 py-3 font-semibold text-white disabled:opacity-50"
                 >
-                  {uploading ? 'Enviando...' : 'Enviar e processar'}
+                  {uploading ? 'Lendo a questão…' : 'Enviar e ler a questão'}
                 </button>
                 <button type="button" onClick={clearFile} className="rounded-lg border px-5 py-3 font-semibold text-graphite">
                   Limpar seleção

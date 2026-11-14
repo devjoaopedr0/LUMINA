@@ -11,6 +11,8 @@ import { AdaptiveSimulationService } from './adaptive-simulation.service';
 import { AnswerSheetScanService } from './omr/answer-sheet-scan.service';
 import { AnswerSheetController } from './omr/answer-sheet.controller';
 import { QuestionScanService } from './question-scan.service';
+import { QuestionScanCompleteDto } from './question-scan.dto';
+import { AiModule } from '../ai/ai.module';
 import { TaskSimulationService } from './task-simulation.service';
 import { EnemSimulationService } from './enem-simulation.service';
 import { PlanUsageService } from '../plans/plan-usage.service';
@@ -94,7 +96,7 @@ export class SimulationsController {
 
   // Question Scanner endpoints (item 18)
   @Post('question-scans/upload-url') questionScanPresignedUpload(@CurrentUser() user: UserWithProfile, @Body() dto: { contentType: string }) { return this.questionScanService.createPresignedUpload(user.id, dto); }
-  @Post('question-scans/upload/:id/complete') questionScanCompleteUpload(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { fileUrl: string; width: number; height: number; sizeBytes: number }) { return this.questionScanService.completeUpload(id, dto.fileUrl, { width: dto.width, height: dto.height, sizeBytes: dto.sizeBytes }); }
+  @Post('question-scans/upload/:id/complete') questionScanCompleteUpload(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: QuestionScanCompleteDto) { return this.questionScanService.completeUpload(user.id, id, dto); }
   @Get('question-scans/uploads') listQuestionScanUploads(@CurrentUser() user: UserWithProfile) { return this.questionScanService.listUploads(user.id); }
   @Get('question-scans/processing/:id') getQuestionScanProcessing(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) { return this.questionScanService.getProcessing(user.id, id); }
   @Get('question-scans/stats') questionScanStats(@CurrentUser() user: UserWithProfile) { return this.questionScanService.getStats(user.id); }
@@ -103,5 +105,5 @@ export class SimulationsController {
   @Post('question-scans/processing/:id/save-question') saveQuestionScanAsQuestion(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveAsQuestion(user.id, id, dto); }
   @Post('question-scans/processing/:id/save-error-notebook') saveQuestionScanToErrorNotebook(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveToErrorNotebook(user.id, id, dto); }
 }
-@Module({ imports: [QuestionsModule, SchedulesModule], controllers: [SimulationsController, AnswerSheetController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetScanService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
+@Module({ imports: [QuestionsModule, SchedulesModule, AiModule], controllers: [SimulationsController, AnswerSheetController], providers: [SimulationsService, AdaptiveSimulationService, AnswerSheetScanService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
 export class SimulationsModule {}
