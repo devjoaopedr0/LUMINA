@@ -72,9 +72,13 @@ caderno de erros; o mapa não recalcula nem sobrescreve nada.
 - **Tópicos nunca tocados:** como `TopicMastery` só nasce depois de tentativa ou
   tarefa de estudo, o mapa mostra o que já tem registro. O cronograma continua
   sendo a visão dos tópicos ainda não estudados.
-- **Histórico:** `TopicMasteryHistory` já é gravado por dia, mas esta entrega
-  mostra o estado atual; evolução e comparação semana a semana ficam para o
-  próximo incremento.
+- **Histórico (entregue em 13/11/2026):** o card "Evolução nas últimas 8
+  semanas" mostra o domínio médio a cada 7 dias (geral e por matéria) e o que
+  subiu, caiu ou começou na semana (`GET /users/me/topic-mastery/evolution`).
+  Cada ponto usa o último valor conhecido do tópico; tópico ainda não estudado
+  não conta como zero.
+- **Videoaulas (entregue em 13/11/2026):** cada assunto do mapa tem o botão de
+  videoaulas do YouTube no nível do aluno (seção "Videoaulas" abaixo).
 - **Subassunto/habilidade e histórico não alteram a conclusão do item 30 no
   inventário:** a entrega cobre matéria, assunto, estados e mapa de calor.
 
@@ -99,3 +103,15 @@ npm run typecheck
 npm run build
 npm run lint
 ```
+
+## Videoaulas (item 24)
+
+`GET /ai/videos?topicId=…` busca no YouTube (YouTube Data API v3) aulas do
+assunto no nível do aluno, pelo domínio no tópico: abaixo de 40, "aula do
+zero"; de 40 a 74, "aula com exemplos ENEM"; a partir de 75, "exercícios
+resolvidos ENEM". Mostra título, canal, duração, link e o motivo, montado a
+partir dos dados reais do vídeo e do domínio (sem texto gerado por IA, para
+não inventar). Filtra shorts e vídeos longos demais, usa `safeSearch=strict`
+e guarda o resultado por 24 h (cada busca gasta 100 das 10.000 unidades
+diárias). Sem `YOUTUBE_API_KEY`, ou se a API falhar, o app mostra o link da
+busca já pronta no YouTube.

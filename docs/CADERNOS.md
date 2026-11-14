@@ -28,7 +28,7 @@ Rota `/app/caderno-formulas`. Campos: nome, disciplina, assunto, fórmula (texto
 
 ## Acervo da plataforma
 
-Itens com `isPlatform = true`, criados pela administração (contas `ADMIN` veem "Publicar no acervo da Lumina" no formulário). Os alunos leem e podem "Salvar no meu caderno", que cria uma cópia (`origin = PLATFORM_COPY`, `platformSourceId`). Salvar de novo devolve a mesma cópia. O acervo começa vazio: o conteúdo precisa ser curado e conferido antes de publicar.
+Itens com `isPlatform = true`, criados pela administração (contas `ADMIN` veem "Publicar no acervo da Lumina" no formulário). Os alunos leem e podem "Salvar no meu caderno", que cria uma cópia (`origin = PLATFORM_COPY`, `platformSourceId`). Salvar de novo devolve a mesma cópia. **Acervo inicial publicado em 13/11/2026:** 23 fórmulas (Matemática, Física e Química) e 15 repertórios com fonte inequívoca (artigos 6º, 196, 205 e 225 da Constituição; ECA, Lei Maria da Penha, LBI, Marco Civil e LGPD com número e ano; Declaração Universal dos Direitos Humanos; Agenda 2030; Bauman, Arendt, Durkheim e Paulo Freire), sem citação literal. Conteúdo em `lumina-backend/src/notebooks/platform-content.ts`; publicar ou atualizar com `npm run build && npm run notebooks:seed-platform` (idempotente; `--dry-run` para conferir).
 
 ## Planos
 

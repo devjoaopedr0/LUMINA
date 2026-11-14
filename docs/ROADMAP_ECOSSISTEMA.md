@@ -43,12 +43,12 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Correção de redação (foto e texto, IA com RAG e MCP, cota mensal) | Implementado | Revisão humana validada entregue em 05/11/2026; calibração em ampliação e medição held-out aguardando volume validado |
 | Revisão humana da redação (chat, evidências, validação e aprendizado) | Implementado | Ver [REVISAO_HUMANA_REDACAO.md](REVISAO_HUMANA_REDACAO.md) |
 | Cronograma adaptativo, tempo de estudo por matéria, nota de corte Sisu | Implementado | |
-| Mapa de domínio (matéria → assunto, estados e calor) | Implementado (básico) | Página `/app/dominio` entregue em 06/11/2026; consome o domínio já calculado; subassunto/habilidade e histórico ficam para próximos incrementos; ver [MAPA_DOMINIO.md](MAPA_DOMINIO.md) |
+| Mapa de domínio (matéria → assunto, estados, calor e evolução) | Implementado | Mapa em 06/11; evolução semanal e videoaulas por assunto em 13/11/2026. Subassunto/habilidade dependem de classificar o banco pela matriz do ENEM (Fase 2+); ver [MAPA_DOMINIO.md](MAPA_DOMINIO.md) |
 | Cálculo mental | Implementado | |
-| LuminIA (chat) | Parcial | Explicação contextual de questões entregue em 05/11/2026; modo socrático e criação de questão parecida entregues em 06/11/2026; videoaulas planejadas |
+| LuminIA (chat) | Implementado | Explicação contextual (05/11), modo socrático e questão parecida (06/11), videoaulas no nível do aluno (13/11/2026; ativas com `YOUTUBE_API_KEY`) |
 | Scanner de questões | Parcial | OCR ainda simulado |
 | Provas anteriores | Parcial | Navegação por páginas e vínculo questão→página entregues em 05/11/2026; faltam PDF embutido e importação em lote |
-| Cadernos de fórmulas e repertórios | Implementado (básico) | Caderno de Repertórios completo: especificação recebida e incompleta |
+| Cadernos de fórmulas e repertórios | Implementado | Completos em 12/11 (busca, coleções, acervo, LuminIA, painel no editor de redação); acervo inicial com 23 fórmulas e 15 repertórios em 13/11/2026; ver [CADERNOS.md](CADERNOS.md) |
 | Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetida em 12/11 com o modelo padrão de produção (`nemotron-3.5-lightning:free`): 36/63 (57,1%), pior que o Gemini e forçando alternativas em contas que não fecham; próximo passo: cadeia de modelos própria para o gabarito (Gemini) e nova medição; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
 | Gamificação, metas, agenda e notificações push/e-mail | Planejado | Itens 33–52 do inventário; revisão espaçada, flashcards e notificação in-app já entregues |
 | Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
@@ -140,6 +140,22 @@ Preparação para o ENEM; questões e simulados; scanner de gabaritos; correçã
   - **Conteúdo:** Caderno de Repertórios completo (aguarda o resto da especificação); provas anteriores completas.
   - **LuminIA e dados:** ~~LuminIA explicando questões (com o texto real da questão)~~ (feito em 04/11 no Gabarito Inteligente); OCR real no scanner de questões.
   - **Comercial:** planos e cota do plano gratuito alinhados à landing.
+
+#### Fechamento da Fase 1 (13/11/2026)
+
+Todo o desenvolvimento da Fase 1 que depende só de código está entregue (PRs #25 a #30): planos e assinaturas (Asaas, anual em 12x, fundadores), cadernos completos com acervo inicial, gabarito sugerido com cadeia própria e prompt v2 (precisão 96,2%), scanner de questões com OCR real, provas anteriores com importação do INEP e PDF embutido, evolução do mapa de domínio e videoaulas.
+
+Fica em aberto o que depende de material, credencial ou decisão do produto:
+
+| Pendência | Depende de |
+| --- | --- |
+| Cobrança real dos planos | Conta no Asaas, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, preços (`PLAN_PREMIUM_YEARLY_PRICE`, `PLAN_PREMIUM_MONTHLY_PRICE`) e teste no sandbox |
+| Lista de videoaulas | `YOUTUBE_API_KEY` (sem ela, o app mostra o link da busca) |
+| Validação com material real | Fotos de redações manuscritas e cartões-resposta impressos e marcados à mão em 2–3 celulares; fotos de questões de provas impressas |
+| Prompt da redação em produção | Decisão: a produção usa o v3 (critérios C2/C4 de 2026), que na medição de 05/11 ficou abaixo do v2 (concordância 33% contra 47%; C3 pior). Manter o v3 e atacar C3/C1, ou voltar ao v2 com a calibração arquivada |
+| Calibração da redação | Rodadas de medição ao longo de vários dias (cota gratuita de ~500 chamadas/dia; cada redação usa 10–15) |
+| Caderno de Repertórios, além da seção 9 | O restante da especificação (o texto recebido terminava no meio da seção 9) |
+| Subassunto e habilidade no mapa de domínio | Classificar o banco de questões pela matriz do ENEM (projeto próprio, Fase 2+) |
 
 ### Fase 2: Lumina Groups
 - **Primeiro:** criação de grupos, entrada por código e link, convites, participantes e papéis, perfis de estudo com privacidade, registro de sessões, tempo no `StudyTimeLog`.
