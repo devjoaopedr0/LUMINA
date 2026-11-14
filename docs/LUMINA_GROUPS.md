@@ -188,9 +188,14 @@ Regras de presença: heartbeat a cada 30 s, "offline" após 90 s sem sinal, e a 
 - membros: `POST /:id/members/:userId/approve|reject`, `PATCH /:id/members/:userId/role`, `DELETE /:id/members/:userId`;
 - posse e arquivo: `POST /:id/transfer`, `POST /:id/archive|unarchive`, `DELETE /:id`.
 
+**Tela no app (14/11/2026):** `lumina-app/src/pages/Groups.tsx`, item "Grupos de estudo" no menu:
+- `/app/grupos`: meus grupos, pedidos pendentes, criar grupo e entrar com código;
+- `/app/grupos/entrar?codigo=|convite=`: prévia do grupo e entrada, ou pedido de entrada quando há aprovação;
+- `/app/grupos/:id`: membros com o que cada um compartilha, pedidos de entrada, convite (código e link), "o que eu compartilho", edição, gerenciar membros (papel, posse, remover), sair, arquivar e excluir.
+
+As regras da tela ficam em `src/lib/groups.ts`, com teste em `test/groups.check.ts`. A migration foi aplicada no banco em 14/11/2026. A tela foi conferida no navegador contra o banco, com as contas de teste de aluno e professor: criar, compartilhar, gerar link, entrar pelo link, promover, arquivar e excluir. O grupo usado no teste foi excluído em seguida.
+
 **Falta para fechar o MVP:**
-- tela no app: lista, criar, entrar por código ou link, detalhe com membros e "o que eu compartilho";
-- aplicar a migration no banco (`npx prisma migrate deploy`);
 - vincular a sessão individual com matéria ao grupo, quando as salas chegarem (o `StudyTimeLog.groupSessionId` entra com `GroupStudySession` na fase 2);
 - convite nominal (aceitar ou recusar um convite enviado a uma pessoa), denúncia e filtro de conteúdo do nome e da imagem.
 
