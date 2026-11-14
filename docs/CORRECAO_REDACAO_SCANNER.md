@@ -342,3 +342,27 @@ A suíte `essay-correction.spec.ts` cobre os casos em que a heurística não pod
 - **Cópia dos textos motivadores** (que derruba a C2 e desconta linhas) não é detectada: o sistema não tem os textos motivadores de cada proposta.
 - **Calibração pendente para o prompt novo:** a calibração v2 foi ajustada com 174 redações completas (180 coletadas; 6 falharam por 503/timeout) e está arquivada em `model/archive/llm-calibration.v2-competencia.json`. Ela não vale para `v3-c2-c4-oficial-2026`; até a recalibração, as notas usam a identidade. A amostra 29+30 de 05/11/2026 completou o teste, mas a v3 não mostrou ganho e a calibração não foi gravada; o ajuste final em n=59 escolheu isotônica em C3 e C5, mas não foi validado fora da amostra. O script aceita amostras maiores ao longo de vários dias, graças ao cache, mas não grava calibração parcial (exige pelo menos 10 redações de teste). O limite atual não é só o tamanho da amostra: C3/C1 precisam de ajuste no prompt, e a C4 melhorou mas ainda não tem significância. A validação com dois avaliadores é uma etapa separada.
 - A nota é uma **estimativa para estudo**, e a tela diz isso. A nota oficial é da banca do Enem.
+
+### Segunda rodada (13/11/2026, mesmo modelo, sem cache)
+
+Mesmas 30 redações de teste, chamadas novas. O v4 fechou as 30; o v2 fechou 17 antes de a cota diária do Gemini acabar (110 chamadas). Nota bruta, sem calibração:
+
+| | MAE total | Viés | Concordância |
+| --- | --- | --- | --- |
+| **17 redações medidas nas 4 rodadas** | | | |
+| v2 rodada 1 | **117,6** | −47,1 | 41,2% |
+| v2 rodada 2 | 120,0 | −40,0 | 41,2% |
+| v4 rodada 1 | 129,4 | −40,0 | 41,2% |
+| v4 rodada 2 | 127,1 | **−28,2** | 41,2% |
+| **29 redações (v4 nas duas rodadas)** | | | |
+| v2 rodada 1 | **129,7** | −33,1 | 44,8% |
+| v4 rodada 1 | 135,2 | −13,8 | 41,4% |
+| v4 rodada 2 | 133,8 | **−6,9** | 44,8% |
+
+Leitura:
+- O padrão se repetiu: o v4 erra de 6 a 10 pontos a mais no total, mas tira de 10 a 25 pontos do viés negativo do v2. A concordância é igual.
+- O ganho do v4 está em C2, C4 e no viés de C1; a perda está em C1 (MAE) e C3.
+- A mesma redação, corrigida duas vezes pelo mesmo prompt, muda em média ~31 pontos no total (máximo de 80 a 120). Diferenças abaixo disso entre versões não são confiáveis com 30 redações.
+- **Decisão: a produção continua no v2.** O v4 corrige menos para baixo, mas não erra menos. O próximo candidato deve partir do v2 e trazer só o C4 e as regras de C2 do v4, sem mexer em C1 e C3.
+
+As respostas da segunda rodada estão em `.cache/llm-runs/<versão>/gemini_gemini-3.5-flash-lite.rodada2/`; a pasta sem sufixo continua sendo a da rodada 1 (e da calibração).
