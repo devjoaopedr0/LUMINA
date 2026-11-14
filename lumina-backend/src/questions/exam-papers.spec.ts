@@ -18,9 +18,16 @@ function setup() {
       findUnique: vi.fn().mockResolvedValue(paper),
     },
     examPaperPage: { findMany: vi.fn().mockResolvedValue([]) },
+    exam: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'exam-1', name: 'ENEM' },
+        { id: 'exam-2', name: 'FUVEST' },
+        { id: 'exam-2024', name: 'enem' },
+      ]),
+    },
     examPaperQuestion: {
       findMany: vi.fn().mockResolvedValue([
-        { id: 'q1', number: 1, pageNumber: 1, boundsJson: null, area: null, question: { subject: 'Matemática' } },
+        { id: 'q1', questionId: 'question-1', number: 1, pageNumber: 1, boundsJson: null, area: null, question: { subject: 'Matemática' } },
       ]),
     },
   };
@@ -57,7 +64,7 @@ describe('Provas antigas no catálogo (item 19)', () => {
 
     const rows = await service.getExamPaperQuestions('aluno', 'paper-1');
     // Achata `question.subject` para o frontend não precisar navegar a relação.
-    expect(rows[0]).toEqual({ id: 'q1', number: 1, pageNumber: 1, boundsJson: null, area: null, subject: 'Matemática' });
+    expect(rows[0]).toEqual({ id: 'q1', questionId: 'question-1', number: 1, pageNumber: 1, boundsJson: null, area: null, subject: 'Matemática' });
   });
 
   it('rascunho e arquivada respondem 404, como se não existissem', async () => {
@@ -97,6 +104,15 @@ describe('Comparação de edições (item 19)', () => {
       .mockResolvedValueOnce({ id: 'base', examId: 'exam-1', year: 2022, status: 'PUBLISHED' })
       .mockResolvedValueOnce({ id: 'cmp', examId: 'exam-2', year: 2023, status: 'PUBLISHED' });
     await expect(service.compareExamPapers('aluno', 'base', 'cmp')).rejects.toThrow('mesmo vestibular');
+  });
+
+  it('ENEM de anos diferentes (um registro de Exam por ano) pode ser comparado', async () => {
+    const { service, db } = setup();
+    db.examPaper.findFirst
+      .mockResolvedValueOnce({ id: 'base', examId: 'exam-1', year: 2023, status: 'PUBLISHED' })
+      .mockResolvedValueOnce({ id: 'cmp', examId: 'exam-2024', year: 2024, status: 'PUBLISHED' });
+    db.examPaperQuestion.findMany.mockResolvedValue([]);
+    await expect(service.compareExamPapers('aluno', 'base', 'cmp')).resolves.toMatchObject({ base: { year: 2023 }, compare: { year: 2024 } });
   });
 
   it('prova não publicada não entra na comparação', async () => {

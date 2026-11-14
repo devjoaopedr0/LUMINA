@@ -1825,6 +1825,9 @@ model ExamPaper {
    * Caderno de questões (separado do gabarito).
    */
   cadernoJson        Json?
+  /// Edição dentro do ano (ex.: "D1" e "D2" para os dois dias do ENEM).
+  /// Vazio nas provas de um caderno só.
+  edition            String                @default("") @db.VarChar(40)
   status             ExamPaperStatus       @default(DRAFT)
   publishedAt        DateTime?             @map("published_at")
   createdAt          DateTime              @default(now()) @map("created_at")
@@ -1834,7 +1837,7 @@ model ExamPaper {
   baseComparisons    ExamPaperComparison[] @relation("ComparisonBase")
   compareComparisons ExamPaperComparison[] @relation("ComparisonCompare")
 
-  @@unique([examId, year])
+  @@unique([examId, year, edition])
   @@index([examId, year])
   @@map("exam_papers")
 }
