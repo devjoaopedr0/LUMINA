@@ -7,12 +7,14 @@ import {
   CheckCircle2,
   Clock3,
   Filter,
+  PlayCircle,
   RotateCcw,
   Search,
   Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { MasteryEvolutionCard } from '@/components/MasteryEvolutionCard';
+import { VideoLessonsModal } from '@/components/VideoLessonsModal';
 import { Card } from '@/components/ui/Card';
 import { apiGetTopicMastery, type TopicMasteryEntry } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
@@ -82,6 +84,7 @@ export function MasteryMap() {
   const [band, setBand] = useState<MasteryBand | ''>('');
   const [dueOnly, setDueOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const [videoTopic, setVideoTopic] = useState<{ topicId: string; topic: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -344,15 +347,15 @@ export function MasteryMap() {
                             const accuracy = masteryAccuracy(entry);
                             const entryBand = masteryBand(entry.status);
                             return (
+                              <div key={entry.id} className="relative">
                               <Link
-                                key={entry.id}
                                 to={`/app/questoes?subjectId=${encodeURIComponent(entry.subjectId)}&topicId=${encodeURIComponent(entry.topicId)}`}
                                 className={`group flex min-h-[128px] flex-col justify-between rounded-xl border p-3 transition hover:-translate-y-0.5 hover:shadow-md ${heatClass(entry.masteryScore)}`}
                                 title={`${entry.subject} · ${entry.topic}: ${MASTERY_STATUS_LABEL[entry.status]} (${entry.masteryScore}/100). ${masteryReviewLabel(entry)}`}
                                 aria-label={`${entry.topic}: ${MASTERY_STATUS_LABEL[entry.status]}, domínio ${entry.masteryScore} de 100, ${accuracy === null ? 'sem tentativas' : `${accuracy}% de acerto`}. ${masteryReviewLabel(entry)}. Abrir questões do assunto.`}
                               >
                                 <div>
-                                  <p className="text-sm font-semibold leading-snug">{entry.topic}</p>
+                                  <p className="pr-8 text-sm font-semibold leading-snug">{entry.topic}</p>
                                   <p className="mt-1 text-[11px] font-bold uppercase tracking-wide opacity-70">
                                     {MASTERY_BAND_LABEL[entryBand]}
                                   </p>
@@ -372,6 +375,16 @@ export function MasteryMap() {
                                   <p className="mt-1.5 line-clamp-1 text-[11px] opacity-75">{masteryReviewLabel(entry)}</p>
                                 </div>
                               </Link>
+                              <button
+                                type="button"
+                                onClick={() => setVideoTopic({ topicId: entry.topicId, topic: entry.topic })}
+                                className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 text-graphite shadow-sm hover:bg-white"
+                                aria-label={`Videoaulas de ${entry.topic}`}
+                                title="Videoaulas"
+                              >
+                                <PlayCircle className="h-4 w-4" />
+                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -384,6 +397,7 @@ export function MasteryMap() {
           </>
         ) : null}
       </div>
+      {videoTopic ? <VideoLessonsModal topicId={videoTopic.topicId} topic={videoTopic.topic} onClose={() => setVideoTopic(null)} /> : null}
     </main>
   );
 }
