@@ -376,3 +376,27 @@ npm run build && npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --p
 ```
 
 Critério para virar produção: erro total menor ou igual ao do v2 nas mesmas redações, em duas rodadas, com viés menor. Se passar, a calibração dele precisa ser ajustada antes da troca (`--calib 30 --test 30`, sem `--write false`).
+
+### Medição do v5 (14/11/2026)
+
+Mesmas 30 redações de teste, `gemini-3.5-flash-lite`, nota bruta, 145 chamadas; 29 redações fecharam (uma ficou incompleta).
+
+| | MAE total | Viés | Concordância |
+| --- | --- | --- | --- |
+| **17 redações comuns a todas as rodadas** | | | |
+| v2 rodada 1 (05/11) | **117,6** | −47,1 | 41,2% |
+| v2 rodada 2 (13/11) | 120,0 | −40,0 | 41,2% |
+| v4 rodada 1 (13/11) | 129,4 | −40,0 | 41,2% |
+| v4 rodada 2 (13/11) | 127,1 | −28,2 | 41,2% |
+| v5 (14/11) | 127,1 | **−28,2** | 41,2% |
+| **28 redações (v2 r1, v4 r1/r2 e v5)** | | | |
+| v2 rodada 1 | **131,4** | −31,4 | 42,9% |
+| v4 rodada 1 | 137,1 | −11,4 | 39,3% |
+| v4 rodada 2 | 137,1 | −5,7 | 42,9% |
+| v5 | 138,6 | **−4,3** | 42,9% |
+
+Leitura:
+- **O v5 não passou no critério:** o erro total ficou 7 a 10 pontos acima do v2. Ele repete o padrão do v4: corrige o viés (−4 contra −31), mas não erra menos.
+- **A diferença está dentro do ruído do modelo.** C1, C3 e C5 do v5 usam exatamente o prompt do v2 e, mesmo assim, mediram 3 a 4 pontos de MAE piores que o v2 da rodada 1. É o modelo variando de um dia para o outro, não o prompt. A C4 do v3 (47,1 contra 55,7 / 42,4 nas rodadas do v2) não mostrou ganho robusto; a regra da C2 é o que reduz o viés.
+- **Viés bruto não é o problema a resolver no prompt:** em produção, a nota do v2 passa pela calibração (`model/llm-calibration.json`), que já corrige o viés sistemático. O que importa é o erro, e nele nenhuma variação de prompt (v3, v4, v5) ganhou do v2.
+- **Decisão: produção continua no v2 e a iteração de prompt para por aqui.** Os próximos ganhos devem vir de outro lugar: mais redações na calibração, dois avaliadores com média, ou um modelo mais forte quando houver cota paga. Para comparar duas versões, rodar as duas no mesmo dia, porque o modelo varia entre dias.
