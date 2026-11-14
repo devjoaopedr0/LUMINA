@@ -16,14 +16,18 @@ import { EntitlementsService } from '../plans/entitlements.service';
 import { notebookLimitsFor, NotebookLimits, TIER_LABELS } from '../plans/plan-limits';
 import { PlanUsageService } from '../plans/plan-usage.service';
 import {
+  analyzeUsePrompt,
+  applyPrompt,
   checkPrompt,
   connectionsPrompt,
   explainPrompt,
   FORMULA_SYSTEM,
   formulaPrompt,
   howToUsePrompt,
+  parseApplication,
   parseCheck,
   parseSuggestions,
+  parseUseAnalysis,
   PROMPT_VERSION,
   REPERTOIRE_SYSTEM,
   suggestPrompt,
@@ -44,6 +48,18 @@ import {
 } from './notebooks.dto';
 
 const MAX_KEYWORDS = 20;
+
+/**
+ * Modelos da LuminIA nos cadernos: AI_NOTEBOOK_MODELS ou, sem ela, a cadeia
+ * da redação (AI_ESSAY_MODELS, Gemini primeiro). Avaliar repertório é
+ * avaliar a competência 2; o modelo padrão do chat mediu pior em julgamento
+ * (ver docs/GABARITO_INTELIGENTE.md). Vazio = cadeia padrão.
+ */
+export function notebookModels(env: Record<string, string | undefined> = process.env): string[] {
+  const parse = (raw: string | undefined) => (raw ?? '').split(',').map((m) => m.trim()).filter(Boolean);
+  const own = parse(env.AI_NOTEBOOK_MODELS);
+  return own.length ? own : parse(env.AI_ESSAY_MODELS);
+}
 const MAX_THEMES = 15;
 
 /** Normaliza as palavras-chave do repertório: minúsculas, sem espaço nas
@@ -312,12 +328,17 @@ export class NotebooksService {
                   { source: contains(q) },
                   { keywords: { has: q.toLowerCase() } },
                   { relatedThemes: { has: q } },
+                  { concepts: { has: q } },
+                  { socialProblems: contains(q) },
+                  { brazilRelation: contains(q) },
                 ],
               }
             : {},
           query.category ? { category: query.category } : {},
           query.theme ? { theme: query.theme } : {},
           query.referenceType ? { referenceType: query.referenceType } : {},
+          query.axis ? { axes: { has: query.axis } } : {},
+          query.argumentFunction ? { argumentFunctions: { has: query.argumentFunction } } : {},
           query.favorite ? { isFavorite: true } : {},
           query.collectionId ? { collectionItems: { some: { collectionId: query.collectionId } } } : {},
         ],
@@ -331,17 +352,22 @@ export class NotebooksService {
 
   async repertoireSummary(userId: string) {
     const where = { userId, isPlatform: false };
-    const [total, favorites, categories, recent, platform, { tier, limits }] = await Promise.all([
+    const [total, favorites, categories, recent, platform, { tier, limits }, tagged] = await Promise.all([
       this.prisma.repertoire.count({ where }),
       this.prisma.repertoire.count({ where: { ...where, isFavorite: true } }),
       this.prisma.repertoire.groupBy({ by: ['category'], where, _count: { _all: true } }),
       this.prisma.repertoire.findMany({ where, orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, title: true, category: true, author: true, createdAt: true } }),
       this.prisma.repertoire.count({ where: { isPlatform: true } }),
       this.limits(userId),
+      this.prisma.repertoire.findMany({ where: { OR: [where, { isPlatform: true }] }, select: { axes: true, argumentFunctions: true } }),
     ]);
+    const tally = (lists: string[][]) => lists.flat().reduce<Record<string, number>>((acc, key) => ({ ...acc, [key]: (acc[key] ?? 0) + 1 }), {});
     return {
       total,
       favorites,
+      // Contagens de "meu caderno + acervo", para o mapa de aplicação.
+      byAxis: tally(tagged.map((row) => row.axes)),
+      byFunction: tally(tagged.map((row) => row.argumentFunctions)),
       categoriesUsed: categories.length,
       byCategory: categories.map((row) => ({ category: row.category, count: row._count._all })),
       recent,
@@ -378,6 +404,16 @@ export class NotebooksService {
         notes: dto.notes ?? null,
         isFavorite: dto.isFavorite ?? false,
         origin: dto.origin ?? 'MANUAL',
+        axes: dto.axes ?? [],
+        argumentFunctions: dto.argumentFunctions ?? [],
+        concepts: normalizeThemes(dto.concepts),
+        socialProblems: dto.socialProblems ?? null,
+        brazilRelation: dto.brazilRelation ?? null,
+        exampleSlot: dto.exampleSlot ?? null,
+        connections: dto.connections ?? null,
+        pitfalls: dto.pitfalls ?? null,
+        quote: dto.quote ?? null,
+        quoteSource: dto.quoteSource ?? null,
         isPlatform,
       },
     });
@@ -386,11 +422,12 @@ export class NotebooksService {
   async updateRepertoire(userId: string, id: string, dto: UpdateRepertoireDto) {
     const repertoire = await this.findRepertoire(userId, id);
     const isPlatform = dto.isPlatform !== undefined ? await this.platformFlag(userId, dto.isPlatform) : undefined;
-    const plain = ['title', 'summary', 'source', 'year', 'theme', 'isStudied', 'author', 'referenceType', 'context', 'importance', 'essayUse', 'example', 'notes', 'isFavorite'] as const;
+    const plain = ['title', 'summary', 'source', 'year', 'theme', 'isStudied', 'author', 'referenceType', 'context', 'importance', 'essayUse', 'example', 'notes', 'isFavorite', 'axes', 'argumentFunctions', 'socialProblems', 'brazilRelation', 'exampleSlot', 'connections', 'pitfalls', 'quote', 'quoteSource'] as const;
     const data: Prisma.RepertoireUpdateInput = {};
     for (const field of plain) if (dto[field] !== undefined) (data as Record<string, unknown>)[field] = dto[field];
     if (dto.keywords !== undefined) data.keywords = normalizeKeywords(dto.keywords);
     if (dto.relatedThemes !== undefined) data.relatedThemes = normalizeThemes(dto.relatedThemes);
+    if (dto.concepts !== undefined) data.concepts = normalizeThemes(dto.concepts);
     if (dto.category !== undefined) data.category = normalizeCategory(dto.category);
     if (isPlatform !== undefined) data.isPlatform = isPlatform;
     return this.prisma.repertoire.update({ where: { id: repertoire.id }, data });
@@ -489,7 +526,7 @@ export class NotebooksService {
 
   private async generate(system: string, prompt: string, maxTokens: number): Promise<{ text: string; model: string | null }> {
     if (!this.ai) throw new ServiceUnavailableException('A LuminIA não está disponível agora.');
-    const result = await this.ai.generateStructured({ system, prompt, maxTokens, timeoutMs: 45_000, temperature: 0.3 });
+    const result = await this.ai.generateStructured({ system, prompt, maxTokens, timeoutMs: 45_000, temperature: 0.3, models: notebookModels() });
     if (!result?.text?.trim()) throw new ServiceUnavailableException('A LuminIA não está disponível agora. Tente de novo em instantes.');
     return { text: result.text.trim(), model: result.model ?? null };
   }
@@ -501,11 +538,12 @@ export class NotebooksService {
 
   async repertoireAi(userId: string, dto: RepertoireAiDto) {
     const ids = [...new Set(dto.ids ?? [])];
-    const needs = { suggest: [0, 0], explain: [1, 1], howToUse: [1, 1], check: [1, 1], connections: [2, 4] }[dto.action];
+    const needs = { suggest: [0, 0], explain: [1, 1], howToUse: [1, 1], check: [1, 1], apply: [1, 1], analyzeUse: [0, 0], connections: [2, 4] }[dto.action];
     if (ids.length < needs[0] || ids.length > needs[1]) {
       throw new BadRequestException(dto.action === 'connections' ? 'Escolha de 2 a 4 repertórios.' : dto.action === 'suggest' ? 'A sugestão parte de um tema, não de repertórios.' : 'Escolha um repertório.');
     }
-    if ((dto.action === 'suggest' || dto.action === 'check') && !dto.theme) throw new BadRequestException('Informe o tema da redação.');
+    if ((dto.action === 'suggest' || dto.action === 'check' || dto.action === 'apply') && !dto.theme) throw new BadRequestException('Informe o tema da redação.');
+    if (dto.action === 'analyzeUse' && !dto.paragraph) throw new BadRequestException('Cole o parágrafo que você quer analisar.');
     const items = ids.length
       ? await this.prisma.repertoire.findMany({ where: { id: { in: ids }, OR: [{ userId }, { isPlatform: true }] } })
       : [];
@@ -525,6 +563,18 @@ export class NotebooksService {
           const check = parseCheck(text);
           if (!check) throw new BadGatewayException('A LuminIA devolveu uma resposta que não deu para ler. Tente de novo.');
           return { ...base, model, theme: dto.theme, check };
+        }
+        case 'apply': {
+          const { text, model } = await this.generate(REPERTOIRE_SYSTEM, applyPrompt(items[0], dto.theme!), 1400);
+          const application = parseApplication(text);
+          if (!application) throw new BadGatewayException('A LuminIA devolveu uma resposta que não deu para ler. Tente de novo.');
+          return { ...base, model, theme: dto.theme, application };
+        }
+        case 'analyzeUse': {
+          const { text, model } = await this.generate(REPERTOIRE_SYSTEM, analyzeUsePrompt(dto.paragraph!, dto.theme), 900);
+          const analysis = parseUseAnalysis(text, dto.paragraph!);
+          if (!analysis) throw new BadGatewayException('A LuminIA devolveu uma resposta que não deu para ler. Tente de novo.');
+          return { ...base, model, theme: dto.theme, analysis };
         }
         case 'explain':
           return { ...base, ...(await this.generate(REPERTOIRE_SYSTEM, explainPrompt(items[0]), 900)) };

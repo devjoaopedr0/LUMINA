@@ -47,10 +47,10 @@ assert.equal(isCustomCategory('FILOSOFIA'), false);
 
 // Seções na ordem da especificação; as vazias somem.
 const titles = repertoireSections(base).map((s) => s.title);
-assert.deepEqual(titles, ['Identificação', 'Conceito', 'Como usar na redação', 'Temas relacionados']);
+assert.deepEqual(titles, ['1. Autor, obra ou documento', '3. Ideia central', '7. Temas de redação', 'Como usar na redação']);
 assert.match(repertoireSections({ ...base, year: -350 })[0].body, /Ano: 350 a\.C\./);
 
-assert.deepEqual(missingRepertoireFields(base), ['contexto', 'exemplo de uso', 'fonte']);
+assert.deepEqual(missingRepertoireFields(base), ['contexto', 'problemas que explica', 'relação com o Brasil', 'exemplo de uso', 'cuidados de uso', 'fonte']);
 
 // Inserir na redação: o exemplo pronto, senão uma menção ao autor.
 assert.equal(repertoireInsertText(base), 'Segundo Zygmunt Bauman, em "Modernidade líquida", ');
@@ -91,3 +91,30 @@ assert.deepEqual(splitBold('O **Big Brother** vigia'), [
 ]);
 assert.equal(splitBold('<script>x</script>')[0].text, '<script>x</script>');
 console.log('cadernos (texto da LuminIA): ok');
+
+// ---- Especificação completa (13/11/2026): 10 itens, guia das 5 perguntas e mapa de aplicação
+import { byArgumentFunction, practiceGuide, AXIS_LABEL, FUNCTION_LABEL } from '../src/lib/notebooks.ts';
+const full = { ...base, axes: ['MIDIA_COMPORTAMENTO'], argumentFunctions: ['COMPORTAMENTOS_COLETIVOS'], concepts: ['liquidez'], socialProblems: 'Solidão nas redes.', brazilRelation: 'Uso intenso de redes no Brasil.', exampleSlot: 'D2', example: 'Parágrafo modelo.', connections: 'Byung-Chul Han.', pitfalls: 'Não use como palavra solta.', quote: null, quoteSource: null } as Repertoire;
+const fullTitles = repertoireSections(full).map((s) => s.title);
+assert.deepEqual(fullTitles.slice(0, 7), ['1. Autor, obra ou documento', '3. Ideia central', '4. Conceitos fundamentais', '5. Problemas sociais que ajuda a explicar', '6. Relação com a realidade brasileira', '7. Temas de redação', '8. Exemplo de aplicação (D2)']);
+assert.match(repertoireSections(full)[0].body, /Eixos: Mídia, comunicação e comportamento social/);
+const guide = practiceGuide(full);
+assert.equal(guide.length, 5);
+assert.equal(guide[0].question, 'O que esse repertório defende?');
+assert.match(guide[4].answer!, /Parágrafo modelo\.[\s\S]*Cuidado: Não use como palavra solta\./);
+assert.equal(practiceGuide({ ...full, socialProblems: null }).find((g) => g.question.startsWith('Qual problema'))!.answer, null);
+const map = byArgumentFunction([full, { ...full, argumentFunctions: ['OMISSAO_ESTATAL'] }]);
+assert.equal(map.length, 8);
+assert.equal(map.find((m) => m.fn === 'COMPORTAMENTOS_COLETIVOS')!.items.length, 1);
+assert.equal(Object.keys(AXIS_LABEL).length, 10);
+assert.equal(Object.keys(FUNCTION_LABEL).length, 8);
+console.log('cadernos (especificação completa): ok');
+
+// ---- Parágrafo do cursor (análise de uso do repertório no editor)
+import { paragraphAt } from '../src/lib/notebooks.ts';
+const essay = 'Introdução aqui.\nSegundo Bauman, vivemos tempos líquidos.\n\nConclusão.';
+assert.equal(paragraphAt(essay, essay.indexOf('Bauman')), 'Segundo Bauman, vivemos tempos líquidos.');
+assert.equal(paragraphAt(essay, essay.indexOf('\n\n') + 1), 'Segundo Bauman, vivemos tempos líquidos.');
+assert.equal(paragraphAt(essay, essay.length), 'Conclusão.');
+assert.equal(paragraphAt('', 0), '');
+console.log('cadernos (parágrafo do cursor): ok');
