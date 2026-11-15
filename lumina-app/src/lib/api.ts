@@ -1114,7 +1114,8 @@ export const apiAdaptiveList = (token: string): Promise<AdaptiveSessionSummary[]
 
 // Question Scanner (item 18)
 export const apiQuestionScanPresignedUpload = (token: string, dto: { contentType: string }): Promise<QuestionScanUploadUrlResponseDto> => request('/simulations/question-scans/upload-url', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
-export const apiQuestionScanCompleteUpload = (token: string, id: string, dto: { fileUrl: string; width: number; height: number; sizeBytes: number }): Promise<QuestionScanUploadResponseDto> => request(`/simulations/question-scans/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
+/** Envia a foto e já devolve a leitura (COMPLETED ou FAILED com o motivo). */
+export const apiQuestionScanCompleteUpload = (token: string, id: string, dto: { fileUrl: string; width: number; height: number; sizeBytes: number }): Promise<QuestionScanProcessingResponseDto> => request(`/simulations/question-scans/upload/${id}/complete`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
 export const apiListQuestionScanUploads = (token: string): Promise<QuestionScanUploadResponseDto[]> => request('/simulations/question-scans/uploads', { headers: authHeaders(token) });
 export const apiGetQuestionScanProcessing = (token: string, id: string): Promise<QuestionScanProcessingResponseDto> => request(`/simulations/question-scans/processing/${id}`, { headers: authHeaders(token) });
 export const apiSaveQuestionScanAsQuestion = (token: string, processingId: string, dto: any): Promise<any> => request(`/simulations/question-scans/processing/${processingId}/save-question`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(dto) });
@@ -2613,9 +2614,11 @@ export interface ExamPaper {
   examId: string;
   exam?: { id: string; name: string };
   year: number;
+  /** Edição dentro do ano (ex.: "D2-AMARELO"); vazio quando há um caderno só. */
+  edition?: string;
   pdfUrl: string | null;
   pageImagesJson: string[] | null;
-  metadataJson: { totalPages?: number; hasGabarito?: boolean; hasCaderno?: boolean; sourceUrl?: string } | null;
+  metadataJson: { totalPages?: number; hasGabarito?: boolean; hasCaderno?: boolean; sourceUrl?: string; day?: number; bookletColor?: string | null } | null;
   gabaritoJson: Record<string, number> | null;
   cadernoJson: Record<string, number> | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
@@ -2636,6 +2639,8 @@ export interface ExamPaperPage {
 
 export interface ExamPaperQuestion {
   id: string;
+  /** Questão no banco: abre a resolução em /app/questoes?questionId=… */
+  questionId?: string;
   number: number;
   pageNumber: number;
   boundsJson: { x: number; y: number; width: number; height: number } | null;
@@ -2926,6 +2931,30 @@ export const apiBillingCheckout = (token: string, payload: { cpfCnpj: string; cy
 export const apiBillingCancel = (token: string): Promise<{ subscription: SubscriptionView; refunded?: boolean }> =>
   request('/billing/cancel', { method: 'POST', headers: authHeaders(token) });
 
+// ------------------------------------------------- provas anteriores (PDF e importação)
+
+/** Baixa o PDF da prova pelo backend (o navegador não acessa o INEP direto). */
+export async function apiExamPaperPdfBlobUrl(token: string, id: string): Promise<string> {
+  const response = await fetch(`${API_URL}/exam-papers/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new ApiError(response.status, response.status === 404 ? 'O PDF desta prova não está disponível.' : 'Não foi possível carregar o PDF da prova.');
+  return URL.createObjectURL(await response.blob());
+}
+
+export interface EnemPaperImportItem { year: number; day: 1 | 2; provaUrl: string; gabaritoUrl: string }
+export interface EnemPaperImportResult {
+  year: number;
+  day: number;
+  status: 'OK' | 'ERROR';
+  paperId?: string;
+  edition?: string;
+  totalPages?: number;
+  questions?: { imported: number; duplicates: number; invalid: number; skipped: number };
+  linked?: number;
+  message?: string;
+}
+export const apiImportEnemPapers = (token: string, items: EnemPaperImportItem[], publish: boolean): Promise<{ items: EnemPaperImportResult[] }> =>
+  request('/exam-papers/import/enem', { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ items, publish }) });
+
 /** Evolução do domínio por semana (mapa de domínio). */
 export const apiGetMasteryEvolution = (accessToken: string, weeks = 8): Promise<import("@/lib/mastery-evolution").MasteryEvolution> =>
   request(`/users/me/topic-mastery/evolution?weeks=${weeks}`, { headers: authHeaders(accessToken) });
@@ -2971,3 +3000,39 @@ export function apiGetEnemMatrix(accessToken: string): Promise<import("@/lib/ene
 /** Acerto do aluno por habilidade do ENEM (mapa de domínio). */
 export const apiGetSkillMastery = (accessToken: string): Promise<import("@/lib/enem-skills").SkillMasteryReport> =>
   request("/users/me/skill-mastery", { headers: authHeaders(accessToken) });
+
+// ---- Lumina Groups (docs/LUMINA_GROUPS.md) ----
+export const apiGroups = (accessToken: string): Promise<import("@/lib/groups").GroupSummary[]> =>
+  request("/groups", { headers: authHeaders(accessToken) });
+export const apiGroup = (accessToken: string, id: string): Promise<import("@/lib/groups").GroupDetail> =>
+  request(`/groups/${id}`, { headers: authHeaders(accessToken) });
+export const apiCreateGroup = (accessToken: string, payload: import("@/lib/groups").GroupPayload): Promise<import("@/lib/groups").GroupDetail> =>
+  request("/groups", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiUpdateGroup = (accessToken: string, id: string, payload: Partial<import("@/lib/groups").GroupPayload>): Promise<import("@/lib/groups").GroupDetail> =>
+  request(`/groups/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiGroupPreview = (accessToken: string, input: { code?: string; token?: string }): Promise<import("@/lib/groups").GroupPreview> =>
+  request(`/groups/preview?${new URLSearchParams(input.token ? { token: input.token } : { code: input.code ?? "" })}`, { headers: authHeaders(accessToken) });
+export const apiJoinGroup = (accessToken: string, input: { code?: string; token?: string }): Promise<{ groupId: string; status: import("@/lib/groups").GroupMemberStatus; alreadyMember: boolean }> =>
+  input.token
+    ? request("/groups/join-link", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ token: input.token }) })
+    : request("/groups/join", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ code: input.code }) });
+export const apiGroupInviteLink = (accessToken: string, id: string): Promise<{ token: string; expiresAt: string }> =>
+  request(`/groups/${id}/invite-link`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiRegenerateGroupCode = (accessToken: string, id: string): Promise<{ joinCode: string }> =>
+  request(`/groups/${id}/code`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiUpdateGroupSharing = (accessToken: string, id: string, sharing: Partial<import("@/lib/groups").GroupSharing>): Promise<import("@/lib/groups").GroupSharing> =>
+  request(`/groups/${id}/me/sharing`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(sharing) });
+export const apiLeaveGroup = (accessToken: string, id: string): Promise<{ left: boolean }> =>
+  request(`/groups/${id}/leave`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiDecideGroupRequest = (accessToken: string, id: string, userId: string, decision: "approve" | "reject"): Promise<unknown> =>
+  request(`/groups/${id}/members/${userId}/${decision}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiChangeGroupRole = (accessToken: string, id: string, userId: string, role: Exclude<import("@/lib/groups").GroupRole, "OWNER">): Promise<unknown> =>
+  request(`/groups/${id}/members/${userId}/role`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ role }) });
+export const apiRemoveGroupMember = (accessToken: string, id: string, userId: string): Promise<unknown> =>
+  request(`/groups/${id}/members/${userId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+export const apiTransferGroup = (accessToken: string, id: string, userId: string): Promise<unknown> =>
+  request(`/groups/${id}/transfer`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ userId }) });
+export const apiArchiveGroup = (accessToken: string, id: string, archived: boolean): Promise<unknown> =>
+  request(`/groups/${id}/${archived ? "archive" : "unarchive"}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiDeleteGroup = (accessToken: string, id: string): Promise<unknown> =>
+  request(`/groups/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });

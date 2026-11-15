@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { CsvQuestionNormalizer } from './import/csv-question.normalizer';
 import { EnemImportService } from './import/enem/enem-import.service';
+import { ExamPaperImportService } from './exam-paper-import.service';
 import { JsonQuestionNormalizer } from './import/json-question.normalizer';
 import { QuestionDeduplicator } from './import/question-deduplicator';
 import { QuestionImportService } from './import/question-import.service';
@@ -79,6 +80,7 @@ import {
     CsvQuestionNormalizer,
     QuestionImportService,
     EnemImportService,
+    ExamPaperImportService,
     QuestionHintsService,
     // O provedor de dicas é trocável por token: para plugar um modelo de
     // linguagem basta registrar outro HintProvider aqui.

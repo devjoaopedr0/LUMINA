@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAccessToken } from '@/lib/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   apiCompareExamPapers,
   apiExamPaper,
   apiExamPaperPages,
   apiExamPaperQuestions,
   apiExamPapers,
+  apiExamPaperPdfBlobUrl,
+  apiImportEnemPapers,
+  type EnemPaperImportResult,
   type ExamPaper,
   type ExamPaperComparison,
   type ExamPaperPage,
@@ -14,9 +18,13 @@ import {
 } from '@/lib/api';
 import {
   adjacentPage,
+  clampPdfPage,
   pageByNumber,
   pagePosition,
+  paperTitle,
+  parseImportLines,
   questionsOnPage,
+  sameExam,
 } from '@/lib/exam-paper-navigation';
 
 const token = () => getAccessToken() ?? '';
@@ -49,6 +57,23 @@ export function PastExams() {
   const [compareId, setCompareId] = useState('');
   const [comparison, setComparison] = useState<ExamPaperComparison | null>(null);
   const [compareError, setCompareError] = useState('');
+  const { user } = useAuth();
+  const isAdmin = user?.accountType === 'ADMIN';
+
+  // Visualizador de PDF embutido (o PDF vem pelo backend).
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+  const viewerRef = useRef<HTMLElement>(null);
+  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
+
+  // Importação em lote (só administração).
+  const [importText, setImportText] = useState('');
+  const [importPublish, setImportPublish] = useState(true);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importResults, setImportResults] = useState<EnemPaperImportResult[]>([]);
 
   useEffect(() => {
     apiExamPapers(token())
@@ -59,7 +84,7 @@ export function PastExams() {
   /** Só edições do mesmo vestibular fazem sentido: o backend recusa o resto
    * e o filtro aqui evita o aluno montar uma combinação que daria erro. */
   const editionsOfSelected = paper
-    ? papers.filter((item) => item.examId === paper.examId && item.id !== paper.id)
+    ? papers.filter((item) => sameExam(item, paper) && item.id !== paper.id)
     : [];
 
   const pagePositionInfo = currentPage ? pagePosition(pages, currentPage.pageNumber) : null;
@@ -110,8 +135,49 @@ export function PastExams() {
     if (page) openPage(page);
   }
 
+  /** Abre a prova no visualizador, já na página pedida. */
+  async function showPdf(page = 1) {
+    if (!paper) return;
+    setPdfPage(clampPdfPage(page, paper.metadataJson?.totalPages));
+    setPdfError('');
+    if (!pdfUrl) {
+      setPdfLoading(true);
+      try {
+        setPdfUrl(await apiExamPaperPdfBlobUrl(token(), paper.id));
+      } catch (e) {
+        setPdfError(e instanceof Error ? e.message : 'Não foi possível carregar o PDF.');
+      } finally {
+        setPdfLoading(false);
+      }
+    }
+    window.setTimeout(() => viewerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
+
+  async function runImport() {
+    const { items, errors } = parseImportLines(importText);
+    setImportErrors(errors);
+    setImportResults([]);
+    if (errors.length || !items.length) {
+      if (!items.length && !errors.length) setImportErrors(['Informe ao menos um caderno.']);
+      return;
+    }
+    setImportBusy(true);
+    try {
+      const result = await apiImportEnemPapers(token(), items, importPublish);
+      setImportResults(result.items);
+      setPapers(await apiExamPapers(token()));
+    } catch (e) {
+      setImportErrors([e instanceof Error ? e.message : 'A importação falhou.']);
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   function backToList() {
     setView('list');
+    setPdfUrl(null);
+    setPdfPage(1);
+    setPdfError('');
     setPaper(null);
     setPages([]);
     setQuestions([]);
@@ -153,7 +219,7 @@ export function PastExams() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <p className="font-medium">{item.exam?.name ?? 'Prova'} · {item.year}</p>
+                          <p className="font-medium">{paperTitle(item)}</p>
                           <p className="text-sm text-graphite-400">
                             {[
                               item.pdfUrl ? 'PDF disponível' : null,
@@ -173,6 +239,42 @@ export function PastExams() {
           </section>
         )}
 
+        {view === 'list' && isAdmin && (
+          <section className="mt-6 rounded-xl border bg-white p-5" aria-label="Importar provas do INEP">
+            <h2 className="font-bold">Importar cadernos do ENEM (administração)</h2>
+            <p className="mt-1 text-sm text-graphite-500">
+              Uma linha por caderno: <code>ano; dia; URL da prova; URL do gabarito</code>, com os PDFs públicos do INEP.
+              As questões entram no banco central, a prova entra no acervo com o PDF e o gabarito, e cada questão fica ligada à página dela.
+            </p>
+            <textarea
+              rows={4}
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="2024; 2; https://download.inep.gov.br/enem/provas_e_gabaritos/2024_PV_impresso_D2_CD7.pdf; https://download.inep.gov.br/enem/provas_e_gabaritos/2024_GB_impresso_D2_CD7.pdf"
+              className="mt-3 w-full rounded-lg border p-3 font-mono text-xs"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={importPublish} onChange={(e) => setImportPublish(e.target.checked)} />Publicar no acervo ao terminar</label>
+              <button type="button" onClick={() => void runImport()} disabled={importBusy} className="rounded-lg bg-graphite px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {importBusy ? 'Importando… (alguns minutos por caderno)' : 'Importar'}
+              </button>
+            </div>
+            {importErrors.length ? <ul role="alert" className="mt-3 list-disc pl-5 text-sm text-red-700">{importErrors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
+            {importResults.length ? (
+              <ul className="mt-4 space-y-2 text-sm">
+                {importResults.map((r) => (
+                  <li key={`${r.year}-${r.day}`} className={`rounded-lg p-3 ${r.status === 'OK' ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'}`}>
+                    <strong>ENEM {r.year} · {r.day}º dia{r.edition ? ` (${r.edition})` : ''}:</strong>{' '}
+                    {r.status === 'OK'
+                      ? `${r.questions?.imported ?? 0} questões novas, ${r.questions?.duplicates ?? 0} já existiam, ${r.questions?.skipped ?? 0} puladas na extração; ${r.linked ?? 0} ligadas às páginas de ${r.totalPages ?? '?'}.`
+                      : r.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        )}
+
         {view !== 'list' && paper && (
           <>
             <div className="mt-4 flex flex-wrap items-center gap-3 print:hidden">
@@ -189,18 +291,18 @@ export function PastExams() {
                 </button>
               )}
               {paper.pdfUrl && (
-                <a
-                  href={paper.pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg border px-4 py-2 text-sm font-semibold"
-                >
-                  Abrir PDF
+                <button type="button" onClick={() => void showPdf(pdfPage)} className="rounded-lg border px-4 py-2 text-sm font-semibold">
+                  Ver a prova aqui
+                </button>
+              )}
+              {paper.pdfUrl && (
+                <a href={paper.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold underline">
+                  PDF oficial do INEP
                 </a>
               )}
             </div>
 
-            <h2 className="mt-6 text-2xl font-bold">{paper.exam?.name ?? 'Prova'} · {paper.year}</h2>
+            <h2 className="mt-6 text-2xl font-bold">{paperTitle(paper)}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[paper.status] ?? STATUS_STYLE.DRAFT}`}>
                 {STATUS_LABEL[paper.status] ?? paper.status}
@@ -217,8 +319,39 @@ export function PastExams() {
               )}
             </div>
 
+            {paper.pdfUrl && (pdfUrl || pdfLoading || pdfError) ? (
+              <section ref={viewerRef} className="mt-6 rounded-xl border bg-white p-5" aria-label="Prova em PDF">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="font-bold">Prova</h3>
+                  <div className="flex items-center gap-2 text-sm">
+                    <button type="button" className="rounded border px-3 py-1 disabled:opacity-40" disabled={pdfPage <= 1} onClick={() => setPdfPage((page) => clampPdfPage(page - 1, paper.metadataJson?.totalPages))}>Anterior</button>
+                    <label className="flex items-center gap-1">
+                      Página
+                      <input
+                        type="number"
+                        min={1}
+                        max={paper.metadataJson?.totalPages}
+                        value={pdfPage}
+                        onChange={(e) => setPdfPage(clampPdfPage(Number(e.target.value), paper.metadataJson?.totalPages))}
+                        className="w-16 rounded border px-2 py-1"
+                      />
+                      {paper.metadataJson?.totalPages ? <span>de {paper.metadataJson.totalPages}</span> : null}
+                    </label>
+                    <button type="button" className="rounded border px-3 py-1 disabled:opacity-40" disabled={!!paper.metadataJson?.totalPages && pdfPage >= paper.metadataJson.totalPages} onClick={() => setPdfPage((page) => clampPdfPage(page + 1, paper.metadataJson?.totalPages))}>Próxima</button>
+                  </div>
+                </div>
+                {pdfLoading ? <p role="status" className="mt-4 text-sm text-graphite-500">Carregando o PDF da prova… (a primeira abertura pode levar alguns segundos)</p> : null}
+                {pdfError ? <p role="alert" className="mt-4 text-sm text-red-700">{pdfError}</p> : null}
+                {pdfUrl ? (
+                  // A chave muda com a página: o visualizador reabre na página pedida.
+                  <iframe key={pdfPage} title={`Prova, página ${pdfPage}`} src={`${pdfUrl}#page=${pdfPage}`} className="mt-4 h-[80vh] w-full rounded-lg border" />
+                ) : null}
+              </section>
+            ) : null}
+
             {view === 'paper' && (
               <>
+                {pages.length > 0 || !paper.pdfUrl ? (
                 <section className="mt-6 rounded-xl border bg-white p-5">
                   <h3 className="font-bold">Páginas ({pages.length})</h3>
                   {pages.length === 0 ? (
@@ -247,6 +380,7 @@ export function PastExams() {
                     </div>
                   )}
                 </section>
+                ) : null}
 
                 <section className="mt-6 rounded-xl border bg-white p-5">
                   <h3 className="font-bold">Questões mapeadas ({questions.length})</h3>
@@ -275,9 +409,23 @@ export function PastExams() {
                               >
                                 pág. {question.pageNumber}
                               </button>
+                            ) : paper.pdfUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => void showPdf(question.pageNumber)}
+                                title={`Ver a página ${question.pageNumber} da prova`}
+                                className="rounded bg-surface-card px-2 py-0.5 font-medium hover:underline"
+                              >
+                                pág. {question.pageNumber}
+                              </button>
                             ) : (
                               <span>pág. {question.pageNumber}</span>
                             )}
+                            {question.questionId ? (
+                              <Link to={`/app/questoes?questionId=${question.questionId}`} className="rounded bg-primary/15 px-2 py-0.5 font-semibold text-primary-700 hover:underline">
+                                Resolver
+                              </Link>
+                            ) : null}
                           </div>
                         </li>
                       ))}

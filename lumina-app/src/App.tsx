@@ -37,6 +37,7 @@ import { EssayReviewWorkspacePage } from "@/pages/EssayReviewWorkspacePage";
 import { EssayReviewDivergencesPage } from "@/pages/EssayReviewDivergencesPage";
 import { MasteryMap } from "@/pages/MasteryMap";
 import { PlanPage } from "@/pages/PlanPage";
+import { Groups } from "@/pages/Groups";
 import { AiChatWidget } from "@/components/AiChatWidget";
 
 function App() {
@@ -44,6 +45,8 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
+        <Route path="/app/grupos" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
+        <Route path="/app/grupos/:id" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
         <Route path="/app/acompanhamento" element={<ProtectedRoute><TeacherAnalyticsPage /></ProtectedRoute>} />
         <Route path="/app/gabarito-inteligente" element={<ProtectedRoute><SmartAnswerKey /></ProtectedRoute>} />
         <Route path="/app/gabarito-inteligente/:id/cartao" element={<ProtectedRoute><SmartAnswerKeySheet /></ProtectedRoute>} />

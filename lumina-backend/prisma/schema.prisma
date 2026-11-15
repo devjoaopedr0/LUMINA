@@ -73,6 +73,8 @@ model User {
   essayFeedbacks         EssayFeedback[]             @relation("EssayFeedbackAuthor")
   formulas               Formula[]
   repertoires            Repertoire[]
+  studyGroupsOwned       StudyGroup[]                @relation("StudyGroupOwner")
+  studyGroupMemberships  StudyGroupMember[]
   flashcards             Flashcard[]
   flashcardReviews       FlashcardReview[]
 
@@ -1854,6 +1856,9 @@ model ExamPaper {
    * Caderno de questões (separado do gabarito).
    */
   cadernoJson        Json?
+  /// Edição dentro do ano (ex.: "D1" e "D2" para os dois dias do ENEM).
+  /// Vazio nas provas de um caderno só.
+  edition            String                @default("") @db.VarChar(40)
   status             ExamPaperStatus       @default(DRAFT)
   publishedAt        DateTime?             @map("published_at")
   createdAt          DateTime              @default(now()) @map("created_at")
@@ -1863,7 +1868,7 @@ model ExamPaper {
   baseComparisons    ExamPaperComparison[] @relation("ComparisonBase")
   compareComparisons ExamPaperComparison[] @relation("ComparisonCompare")
 
-  @@unique([examId, year])
+  @@unique([examId, year, edition])
   @@index([examId, year])
   @@map("exam_papers")
 }
@@ -2697,4 +2702,71 @@ model FormulaCollectionItem {
   @@id([collectionId, formulaId])
   @@index([formulaId])
   @@map("formula_collection_items")
+}
+
+// ===================================================== Lumina Groups (Fase 2)
+// Grupos de estudo entre alunos: comunidade, não turma institucional. Ficam
+// fora de Workspace/Class, e os papéis valem só dentro do grupo
+// (docs/LUMINA_GROUPS.md §4). O tempo estudado continua vindo só de
+// StudyTimeLog: o grupo lê, não contabiliza.
+
+enum StudyGroupRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum StudyGroupMemberStatus {
+  ACTIVE
+  /// Pediu para entrar num grupo com aprovação de entrada.
+  PENDING
+}
+
+model StudyGroup {
+  id               String             @id @default(uuid()) @db.Uuid
+  name             String             @db.VarChar(80)
+  description      String?            @db.VarChar(500)
+  /// Propósito curto, ex.: "ENEM 2027", "Medicina", "Grupo de redação".
+  purpose          String?            @db.VarChar(60)
+  imageUrl         String?            @map("image_url")
+  rules            String?            @db.VarChar(2000)
+  /// Código de entrada; trocar o código invalida os links de convite antigos.
+  joinCode         String             @unique @map("join_code") @db.VarChar(12)
+  requiresApproval Boolean            @default(false) @map("requires_approval")
+  maxMembers       Int                @default(30) @map("max_members")
+  ownerId          String             @map("owner_id") @db.Uuid
+  /// Arquivado antes da exclusão definitiva (só o dono exclui).
+  archivedAt       DateTime?          @map("archived_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  owner            User               @relation("StudyGroupOwner", fields: [ownerId], references: [id])
+  members          StudyGroupMember[]
+
+  @@index([ownerId])
+  @@map("study_groups")
+}
+
+/// Vínculo aluno x grupo, com papel e o que ele compartilha com os colegas.
+/// Tudo começa desligado: o colega só vê nome e foto até o próprio aluno ligar.
+model StudyGroupMember {
+  id                String                 @id @default(uuid()) @db.Uuid
+  groupId           String                 @map("group_id") @db.Uuid
+  userId            String                 @map("user_id") @db.Uuid
+  role              StudyGroupRole         @default(MEMBER)
+  status            StudyGroupMemberStatus @default(ACTIVE)
+  shareStudyTime    Boolean                @default(false) @map("share_study_time")
+  shareSubjects     Boolean                @default(false) @map("share_subjects")
+  shareStreak       Boolean                @default(false) @map("share_streak")
+  shareLastActivity Boolean                @default(false) @map("share_last_activity")
+  /// Participação no ranking (fase de engajamento). Desligada por padrão.
+  rankingOptIn      Boolean                @default(false) @map("ranking_opt_in")
+  joinedAt          DateTime               @default(now()) @map("joined_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  group             StudyGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("study_group_members")
 }
