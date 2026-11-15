@@ -3064,3 +3064,16 @@ export const apiArchiveGroup = (accessToken: string, id: string, archived: boole
   request(`/groups/${id}/${archived ? "archive" : "unarchive"}`, { method: "POST", headers: authHeaders(accessToken) });
 export const apiDeleteGroup = (accessToken: string, id: string): Promise<unknown> =>
   request(`/groups/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+
+// ------------------------------------------------- plano de recuperação (item 42)
+type RecoveryPlanDto = import("@/lib/recovery-plans").RecoveryPlan;
+export const apiCreateRecoveryPlan = (token: string, payload: { studentId?: string; topicId?: string; subjectId?: string; classId?: string; alertId?: string }): Promise<RecoveryPlanDto> =>
+  request('/recovery-plans', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiMyRecoveryPlans = (token: string): Promise<RecoveryPlanDto[]> => request('/recovery-plans/mine', { headers: authHeaders(token) });
+export const apiTeacherRecoveryPlans = (token: string, studentId?: string): Promise<RecoveryPlanDto[]> =>
+  request(`/recovery-plans/teacher${studentId ? `?studentId=${studentId}` : ''}`, { headers: authHeaders(token) });
+export const apiGetRecoveryPlan = (token: string, id: string): Promise<RecoveryPlanDto> => request(`/recovery-plans/${id}`, { headers: authHeaders(token) });
+export const apiRecoveryPlanVideo = (token: string, id: string): Promise<RecoveryPlanDto> =>
+  request(`/recovery-plans/${id}/video`, { method: 'POST', headers: authHeaders(token) });
+export const apiCancelRecoveryPlan = (token: string, id: string): Promise<RecoveryPlanDto> =>
+  request(`/recovery-plans/${id}/cancel`, { method: 'POST', headers: authHeaders(token) });

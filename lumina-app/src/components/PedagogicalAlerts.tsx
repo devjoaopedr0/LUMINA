@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { ApiError, apiPedagogicalAlerts, apiUpdatePedagogicalAlert, type PedagogicalAlert, type PedagogicalAlertStatus } from '@/lib/api';
+import { ApiError, apiCreateRecoveryPlan, apiPedagogicalAlerts, apiUpdatePedagogicalAlert, type PedagogicalAlert, type PedagogicalAlertStatus } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import {
   ROTULO_STATUS_ALERTA,
@@ -13,6 +13,9 @@ import {
   rotuloSinal,
   type AlertTab,
 } from '@/lib/teacher-analytics';
+
+/** Alertas de dificuldade do aluno, em que um plano de recuperação faz sentido. */
+const PLAN_KINDS = new Set(['STUDENT_LOW_ACCURACY', 'STUDENT_PERFORMANCE_DROP', 'STUDENT_ERROR_STREAK']);
 
 const ABAS: { id: AlertTab; label: string }[] = [
   { id: 'abertos', label: 'Abertos' },
@@ -32,6 +35,19 @@ export function PedagogicalAlerts() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [planMsg, setPlanMsg] = useState<Record<string, string>>({});
+
+  async function createPlan(alert: PedagogicalAlert) {
+    setSaving(true);
+    try {
+      const plan = await apiCreateRecoveryPlan(getAccessToken() ?? '', { studentId: alert.studentId!, classId: alert.classId ?? undefined, alertId: alert.id });
+      setPlanMsg((m) => ({ ...m, [alert.id]: `Plano criado: ${plan.topicName} (${plan.subjectName}), o assunto mais fraco do aluno. Ele aparece para o aluno em "Planos de recuperação".` }));
+    } catch (e) {
+      setPlanMsg((m) => ({ ...m, [alert.id]: e instanceof ApiError ? e.message : 'Não foi possível criar o plano.' }));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const load = useCallback(() => {
     setError('');
@@ -126,8 +142,14 @@ export function PedagogicalAlerts() {
                 ) : null}
               </div>
             ) : (
-              <Button size="sm" variant="outline" className="mt-3" onClick={() => { setExpanded(alert.id); setNote(alert.note ?? ''); }}>Registrar acompanhamento</Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => { setExpanded(alert.id); setNote(alert.note ?? ''); }}>Registrar acompanhamento</Button>
+                {alert.studentId && PLAN_KINDS.has(alert.kind) && alert.status !== 'RESOLVED' && alert.status !== 'DISMISSED' ? (
+                  <Button size="sm" variant="ghost" disabled={saving} onClick={() => void createPlan(alert)}>Criar plano de recuperação</Button>
+                ) : null}
+              </div>
             )}
+            {planMsg[alert.id] ? <p role="status" className="mt-2 text-xs text-graphite-500">{planMsg[alert.id]}</p> : null}
           </article>
         ))}
       </div>

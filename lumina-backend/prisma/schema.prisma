@@ -80,6 +80,8 @@ model User {
 
   @@map("users")
   pedagogicalAlerts        PedagogicalAlert[]        @relation("PedagogicalAlertTeacher")
+  recoveryPlans            RecoveryPlan[]            @relation("RecoveryPlanStudent")
+  recoveryPlansCreated     RecoveryPlan[]            @relation("RecoveryPlanCreatedBy")
 }
 
 model AuthSession {
@@ -2816,4 +2818,46 @@ enum PedagogicalAlertStatus {
   DISMISSED
 
   @@map("pedagogical_alert_status")
+}
+
+/// Plano de recuperação (item 42): etapas guiadas para um assunto em que o
+/// aluno tem dificuldade. Criado pelo próprio aluno ou por um professor da
+/// turma dele. O progresso é calculado na leitura, a partir das respostas.
+/// Ver src/recovery-plans/recovery-plan.ts.
+model RecoveryPlan {
+  id              String             @id @default(uuid()) @db.Uuid
+  studentId       String             @map("student_id") @db.Uuid
+  createdById     String             @map("created_by_id") @db.Uuid
+  classId         String?            @map("class_id") @db.Uuid
+  alertId         String?            @map("alert_id") @db.Uuid
+  subjectId       String             @map("subject_id") @db.Uuid
+  topicId         String             @map("topic_id") @db.Uuid
+  subjectName     String             @map("subject_name") @db.VarChar(120)
+  topicName       String             @map("topic_name") @db.VarChar(160)
+  status          RecoveryPlanStatus @default(ACTIVE)
+  /// [{ kind, title, questionIds, target, note? }]
+  steps           Json
+  /// De onde vieram as questões e quantas havia (para a tela explicar).
+  poolInfo        Json               @map("pool_info")
+  baselineMastery Int?               @map("baseline_mastery")
+  finalMastery    Int?               @map("final_mastery")
+  reviewAt        DateTime           @map("review_at")
+  videoWatchedAt  DateTime?          @map("video_watched_at")
+  completedAt     DateTime?          @map("completed_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  student         User               @relation("RecoveryPlanStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy       User               @relation("RecoveryPlanCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([studentId, status])
+  @@index([createdById])
+  @@map("recovery_plans")
+}
+
+enum RecoveryPlanStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("recovery_plan_status")
 }

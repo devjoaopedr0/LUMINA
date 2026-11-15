@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { PedagogicalAlerts } from '@/components/PedagogicalAlerts';
+import { TeacherRecoveryPlans } from '@/components/TeacherRecoveryPlans';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   apiSimulationClasses,
@@ -348,6 +349,7 @@ export function TeacherAnalyticsPage() {
             </section>
 
             <PedagogicalAlerts />
+            <TeacherRecoveryPlans />
 
             <section className="mt-8">
               <div className="flex flex-wrap items-center justify-between gap-3">
