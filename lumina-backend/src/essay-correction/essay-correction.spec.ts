@@ -304,9 +304,10 @@ describe('Corretor por competência', () => {
   });
 
   it('a calibração só vale para a versão de prompt em que foi ajustada', () => {
-    expect(llmCalibration.promptVersion).toBe('v2-competencia');
+    expect(llmCalibration.promptVersion).toBe('v6-checagem');
     const calibration = llmCalibration as unknown as LlmCalibration;
-    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v2-competencia').fitted).toBe(true);
+    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v6-checagem').fitted).toBe(true);
+    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v2-competencia').fitted).toBe(false);
     expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v3-c2-c4-oficial-2026').fitted).toBe(false);
     expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite', 'v4-calibrado').fitted).toBe(false);
   });
@@ -488,11 +489,14 @@ describe('Corretor por competência', () => {
     expect(PROMPT_SETS['v6-checagem'].system).toMatch(/Responda APENAS com um objeto JSON válido/);
   });
 
-  it('produção usa o prompt v6 (decisão do usuário em 14/11/2026), ainda sem calibração própria', () => {
+  it('produção usa o prompt v6 (decisão do usuário em 14/11/2026), com a calibração dele', () => {
     expect(GRADER_PROMPT_VERSION).toBe('v6-checagem');
-    // A calibração gravada é a do v2 e não vale para o v6: as notas saem brutas.
+    // Calibração do v6 (14/11/2026): isotônica em C1 e C3, identidade nas demais.
     const calibration = llmCalibration as unknown as LlmCalibration;
-    expect(calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite').fitted).toBe(false);
+    const { perCompetency, fitted } = calibrationFor(calibration, 'gemini:gemini-3.5-flash-lite');
+    expect(fitted).toBe(true);
+    expect(perCompetency.C1.type).toBe('isotonic');
+    expect(perCompetency.C2.type).toBe('identity');
   });
 
   it('devolve pontos fortes, problemas, explicação do nível e a versão da base usada', async () => {

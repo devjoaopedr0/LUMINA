@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "promptVersion": "v2-competencia",
+  "promptVersion": "v6-checagem",
   "byModel": {
     "gemini:gemini-3.5-flash-lite": {
       "perCompetency": {
@@ -13,19 +13,19 @@
             ],
             [
               40,
-              72
+              51.4
             ],
             [
               80,
-              110.9
+              109.6
             ],
             [
               120,
-              142.3
+              126.3
             ],
             [
               160,
-              156.7
+              153.3
             ],
             [
               200,
@@ -34,6 +34,9 @@
           ]
         },
         "C2": {
+          "type": "identity"
+        },
+        "C3": {
           "type": "isotonic",
           "points": [
             [
@@ -42,28 +45,25 @@
             ],
             [
               40,
-              71.1
+              32
             ],
             [
               80,
-              93.3
+              40
             ],
             [
               120,
-              126.2
+              78.6
             ],
             [
               160,
-              156.5
+              136
             ],
             [
               200,
               200
             ]
           ]
-        },
-        "C3": {
-          "type": "identity"
         },
         "C4": {
           "type": "identity"
@@ -72,8 +72,8 @@
           "type": "identity"
         }
       },
-      "fittedAt": "2026-11-04T23:53:45.663Z",
-      "sampleSize": 174,
+      "fittedAt": "2026-11-14T20:25:16.172Z",
+      "sampleSize": 56,
       "selection": {
         "C1": {
           "fn": {
@@ -85,19 +85,19 @@
               ],
               [
                 40,
-                72
+                51.4
               ],
               [
                 80,
-                110.9
+                109.6
               ],
               [
                 120,
-                142.3
+                126.3
               ],
               [
                 160,
-                156.7
+                153.3
               ],
               [
                 200,
@@ -106,16 +106,28 @@
             ]
           },
           "loo": {
-            "identity": 35.2,
-            "linear": 24.4,
-            "isotonic": 24.4
+            "identity": 40.7,
+            "linear": 35,
+            "isotonic": 35.7
           },
-          "n": 174,
+          "n": 56,
           "rejectedForExtremes": [
             "linear"
           ]
         },
         "C2": {
+          "fn": {
+            "type": "identity"
+          },
+          "loo": {
+            "identity": 32.9,
+            "linear": 35,
+            "isotonic": 32.9
+          },
+          "n": 56,
+          "rejectedForExtremes": []
+        },
+        "C3": {
           "fn": {
             "type": "isotonic",
             "points": [
@@ -125,19 +137,19 @@
               ],
               [
                 40,
-                71.1
+                32
               ],
               [
                 80,
-                93.3
+                40
               ],
               [
                 120,
-                126.2
+                78.6
               ],
               [
                 160,
-                156.5
+                136
               ],
               [
                 200,
@@ -146,37 +158,25 @@
             ]
           },
           "loo": {
-            "identity": 29.2,
-            "linear": 26,
-            "isotonic": 26
+            "identity": 45,
+            "linear": 35,
+            "isotonic": 35.7
           },
-          "n": 174,
+          "n": 56,
           "rejectedForExtremes": [
             "linear"
           ]
-        },
-        "C3": {
-          "fn": {
-            "type": "identity"
-          },
-          "loo": {
-            "identity": 27.4,
-            "linear": 27.4,
-            "isotonic": 27.4
-          },
-          "n": 174,
-          "rejectedForExtremes": []
         },
         "C4": {
           "fn": {
             "type": "identity"
           },
           "loo": {
-            "identity": 41.1,
-            "linear": 40.5,
-            "isotonic": 41.1
+            "identity": 49.3,
+            "linear": 49.3,
+            "isotonic": 49.3
           },
-          "n": 174,
+          "n": 56,
           "rejectedForExtremes": []
         },
         "C5": {
@@ -184,12 +184,14 @@
             "type": "identity"
           },
           "loo": {
-            "identity": 35.4,
-            "linear": 35.2,
-            "isotonic": 35.4
+            "identity": 39.3,
+            "linear": 42.9,
+            "isotonic": 30.7
           },
-          "n": 174,
-          "rejectedForExtremes": []
+          "n": 56,
+          "rejectedForExtremes": [
+            "isotonic"
+          ]
         }
       }
     }

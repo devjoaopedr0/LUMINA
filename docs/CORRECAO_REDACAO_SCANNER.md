@@ -396,7 +396,31 @@ Mesmas 30 redações de teste, `gemini-3.5-flash-lite`, nota bruta, 145 chamadas
 | v5 | 138,6 | **−4,3** | 42,9% |
 
 Leitura:
-- **O v5 não passou no critério:** o erro total ficou 7 a 10 pontos acima do v2. Ele repete o padrão do v4: corrige o viés (−4 contra −31), mas não erra menos.
-- **A diferença está dentro do ruído do modelo.** C1, C3 e C5 do v5 usam exatamente o prompt do v2 e, mesmo assim, mediram 3 a 4 pontos de MAE piores que o v2 da rodada 1. É o modelo variando de um dia para o outro, não o prompt. A C4 do v3 (47,1 contra 55,7 / 42,4 nas rodadas do v2) não mostrou ganho robusto; a regra da C2 é o que reduz o viés.
-- **Viés bruto não é o problema a resolver no prompt:** em produção, a nota do v2 passa pela calibração (`model/llm-calibration.json`), que já corrige o viés sistemático. O que importa é o erro, e nele nenhuma variação de prompt (v3, v4, v5) ganhou do v2.
-- **Decisão: produção continua no v2 e a iteração de prompt para por aqui.** Os próximos ganhos devem vir de outro lugar: mais redações na calibração, dois avaliadores com média, ou um modelo mais forte quando houver cota paga. Para comparar duas versões, rodar as duas no mesmo dia, porque o modelo varia entre dias.
+- **O v6 não passou no critério.** Zerou o viés (de −46,7 para +8), mas errou mais: 17 pontos a mais que o v2 nas 30 redações. A checagem tirou a severidade da ponta de cima, mas também subiu as redações fracas. A C3 ficou branda (viés +25,3: o humano dá 0 a 80 e o v6 dá 80 a 120), e a C2 passou do ponto (+9,3).
+- A instrução "comece pelo 200 e desça" empurra todas as notas para cima, não só as que estavam comprimidas. O desvio do v2 é de compressão (regressão ao 120), não um deslocamento uniforme, e uma regra de procedimento não resolve isso.
+- Repetindo a observação de antes: o v6 continua sem conseguir dar 200 em C1 e C4 quando o humano dá. Parte da ponta de baixo do conjunto de teste é ruído das notas humanas (redações de 115 a 215 palavras com zeros pouco consistentes, como C5 = 120 com C1 a C4 = 0).
+- **Decisão: a produção continua no v2.** Das tentativas até aqui (v4, v5, v6), toda mudança de prompt que reduz o viés aumenta o erro. O caminho que sobra para corrigir a compressão é a calibração por competência do v2 (`model/llm-calibration.json`, que já faz esse ajuste depois da nota bruta), não o texto do prompt.
+
+**Atualização (14/11/2026): v6 em produção por decisão do usuário.** `GRADER_PROMPT_VERSION` passou para `v6-checagem`, mesmo com a medição acima. Consequências:
+- a calibração gravada (`model/llm-calibration.json`) é a do v2 e não vale para o v6, então as notas saem brutas (identidade), como na medição;
+- o esperado, pela rodada de 14/11, é um viés total perto de zero, com erro médio maior que o do v2 (cerca de 147 contra 129 pontos) e C3 mais branda;
+- para voltar ao v2, basta trocar `GRADER_PROMPT_VERSION` de volta para `v2-competencia`: a calibração dele continua no arquivo;
+- antes de calibrar o v6, falta uma segunda rodada de medição e uma amostra de calibração (`--prompt v6-checagem --calib 30 --test 30`, sem `--write false`, o que grava a calibração do v6 e arquiva a do v2).
+
+### Calibração do v6 (14/11/2026)
+
+Rodada com `--prompt v6-checagem --calib 30 --test 30` (`gemini:gemini-3.5-flash-lite`). Das 30 redações de calibração, 26 fecharam; 4 bateram no limite de chamadas por minuto do Gemini. As 30 de teste vieram do cache. A calibração do v2 continua arquivada em `model/archive/llm-calibration.v2-competencia.json`.
+
+Calibração gravada (ajustada nas 56 redações, com escolha por validação cruzada deixando uma de fora):
+- **C1:** isotônica. O bruto 80 passa a 120; os outros níveis ficam como estão. Erro na validação cruzada: 40,7 → 35,7.
+- **C3:** isotônica. O bruto 80 passa a 40, o 120 a 80 e o 160 a 120, corrigindo a C3 branda do v6. Erro na validação cruzada: 45,0 → 35,7.
+- **C2, C4 e C5:** identidade, porque nenhum ajuste ganhou da nota bruta.
+
+**Atenção, os sinais são mistos.** Na medição limpa (ajustada só nas 26 de calibração e medida nas 30 de teste), a calibração piorou o total:
+
+| | MAE total | Viés | Concordância |
+| --- | --- | --- | --- |
+| v6 bruto | **146,7** | **+8,0** | **40,0%** |
+| v6 calibrado (só nas 26) | 153,3 | −46,7 | 36,7% |
+
+A função gravada é outra (ajustada com 56 redações), e por competência ela reduz o erro de C1 e C3 na validação cruzada. Mesmo assim, com 26 redações de calibração e o ruído de ~31 pontos entre rodadas, o ganho não está comprovado. Para confirmar, falta uma rodada nova de teste em outro dia, comparando o bruto com o calibrado.
