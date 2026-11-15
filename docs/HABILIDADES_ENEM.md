@@ -24,7 +24,7 @@ O texto das competências e habilidades é o oficial do Inep, extraído sem edi�
 - A área vem da matéria (Matemática → MT; Física, Química, Biologia → CN; História, Geografia, Filosofia, Sociologia → CH; Português, Literatura, línguas, Artes, Educação Física → LC). A edição recusa uma habilidade de outra área.
 - O script nunca sobrescreve uma classificação manual, aceita `--dry-run`, `--limit`, `--area`, `--batch`, `--max-calls`, `--redo` e `--models` (padrão: `AI_ANSWER_KEY_MODELS`, depois `AI_ESSAY_MODELS`) e grava uma justificativa curta (`enemSkillNote`), que aparece para quem valida.
 - Questão sem texto suficiente (ex.: depende de figura) recebe `null` e fica para a classificação manual.
-- **Execução de 13–14/11/2026:** banco central com 417 questões, cerca de 53 chamadas ao `gemini-3.5-flash-lite`. Uma amostra de 16 questões de Matemática foi conferida à mão: as habilidades batem com o comando das questões, e os casos discutíveis (área do círculo, seno de 30°) ficaram como sugestão para o professor validar.
+- **Execução de 13–14/11/2026:** a primeira passada (13/11) usou o `gemini-3.5-flash-lite` só em parte: a cota acabou e 34 dos 52 lotes caíram no reserva (`nemotron` do OpenRouter). Em 14/11 tudo foi refeito com `--redo` e só modelos Gemini: 54 chamadas, todas no `gemini-3.5-flash-lite`, **415 das 416 questões do banco central com habilidade sugerida** e 1 sem habilidade segura (essa mantém a sugestão anterior, também pendente). Uma amostra de 16 questões de Matemática foi conferida à mão: as habilidades batem com o comando das questões, e os casos discutíveis (área do círculo, seno de 30°) ficam para o professor validar. Todas as sugestões continuam pendentes até a validação docente.
 
 ## Mapa por habilidade
 
