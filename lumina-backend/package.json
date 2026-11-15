@@ -23,6 +23,7 @@
     "essay:human-eval": "node dist/essay-review/eval/human-loop-eval.js",
     "answer-keys:eval": "node dist/answer-keys/eval/evaluate-suggestions.js",
     "notebooks:seed-platform": "node dist/notebooks/seed-platform.js",
+    "seed:test-users": "node dist/institutions/seed-test-users.js",
     "questions:classify-skills": "node dist/questions/enem-skills/classify-skills.js"
   },
   "keywords": [],
