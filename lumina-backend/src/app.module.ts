@@ -25,6 +25,7 @@ import { NotebooksModule } from './notebooks/notebooks.module';
 import { AnswerKeysModule } from './answer-keys/answer-keys.module';
 import { InstitutionalAnalyticsModule } from './institutional-analytics/institutional-analytics.module';
 import { PlansModule } from './plans/plans.module';
+import { GroupsModule } from './groups/groups.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PlansModule } from './plans/plans.module';
     }),
     DatabaseModule,
     PlansModule,
+    GroupsModule,
     UsersModule,
     AuthModule,
     WorkspacesModule,

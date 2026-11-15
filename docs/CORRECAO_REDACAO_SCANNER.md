@@ -377,32 +377,23 @@ npm run build && npm run essay:eval -- --models gemini:gemini-3.5-flash-lite --p
 
 Critério para virar produção: erro total menor ou igual ao do v2 nas mesmas redações, em duas rodadas, com viés menor. Se passar, a calibração dele precisa ser ajustada antes da troca (`--calib 30 --test 30`, sem `--write false`).
 
-### Candidato v6 (`v6-checagem`, 14/11/2026)
+### Medição do v5 (14/11/2026)
 
-**O que mudou.** Parte do v5 (v2 + C4 do v3 + regras da C2) e muda o procedimento, não a régua. Nas duas rodadas do v2, o modelo concentra as notas em 120: redações que o humano pôs em 160/200 recebem um nível a menos em C1, C2, C3 e C4. O v6 pede, antes da nota, uma "checagem" com os critérios que a cartilha usa para separar os níveis:
-- C1: lista de desvios e estado da estrutura sintática, com a contagem do critério operacional da Lumina;
-- C2: recorte, repertório (legitimado, pertinente, produtivo), estrutura e argumentação;
-- C3: ponto de vista, argumentos desenvolvidos ou só afirmados, e autoria;
-- C4: recursos coesivos e inadequações;
-- C5: os cinco elementos copiados do texto.
+Mesmas 30 redações de teste, `gemini-3.5-flash-lite`, nota bruta, 145 chamadas; 29 redações fecharam (uma ficou incompleta).
 
-O prompt de sistema também passou a dizer que 120 não é posição neutra: a decisão começa no descritor de 200 e desce um nível por vez.
-
-**Medição.** Mesmas 30 redações, `gemini:gemini-3.5-flash-lite`, nota bruta com as regras de tangência, direitos humanos e anulação. As 30 fecharam; 3 precisaram de uma segunda execução por falha de rede ou 429 pontual.
-
-| | MAE total | Viés | Concordância | C1 | C2 | C3 | C4 | C5 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **30 redações** | | | | | | | | |
-| v2 rodada 1 | **129,3** | −46,7 | **46,7%** | **30,7** / −17,3 | 36,0 / −14,7 | **30,7** / +12,0 | 54,7 / −4,0 | **36,0** / −22,7 |
-| v5 rodada 1 | 134,7 | −17,3 | 43,3% | 34,7 / −18,7 | **34,7** / −5,3 | 38,7 / +14,7 | **45,3** / +5,3 | 37,3 / −13,3 |
-| v6 rodada 1 | 146,7 | **+8,0** | 40,0% | 38,7 / −12,0 | 38,7 / +9,3 | 38,7 / +25,3 | 52,0 / +1,3 | 37,3 / −16,0 |
-| **17 redações comuns a todas as rodadas** | | | | | | | | |
-| v2 rodada 1 | **110,6** | −54,1 | **47,1%** | | | | | |
-| v2 rodada 2 | 115,3 | −44,7 | 41,2% | | | | | |
-| v5 rodada 1 | 124,7 | −30,6 | 41,2% | | | | | |
-| v6 rodada 1 | 134,1 | **−2,4** | 35,3% | | | | | |
-
-Por redação, o erro do v6 menos o do v2 rodada 1 dá +17,3 em média (IC 95% ±33,1): o v6 foi melhor em 7, pior em 16 e empatou em 7. Contra o v5, dá +12,0 (±23,8).
+| | MAE total | Viés | Concordância |
+| --- | --- | --- | --- |
+| **17 redações comuns a todas as rodadas** | | | |
+| v2 rodada 1 (05/11) | **117,6** | −47,1 | 41,2% |
+| v2 rodada 2 (13/11) | 120,0 | −40,0 | 41,2% |
+| v4 rodada 1 (13/11) | 129,4 | −40,0 | 41,2% |
+| v4 rodada 2 (13/11) | 127,1 | −28,2 | 41,2% |
+| v5 (14/11) | 127,1 | **−28,2** | 41,2% |
+| **28 redações (v2 r1, v4 r1/r2 e v5)** | | | |
+| v2 rodada 1 | **131,4** | −31,4 | 42,9% |
+| v4 rodada 1 | 137,1 | −11,4 | 39,3% |
+| v4 rodada 2 | 137,1 | −5,7 | 42,9% |
+| v5 | 138,6 | **−4,3** | 42,9% |
 
 Leitura:
 - **O v6 não passou no critério.** Zerou o viés (de −46,7 para +8), mas errou mais: 17 pontos a mais que o v2 nas 30 redações. A checagem tirou a severidade da ponta de cima, mas também subiu as redações fracas. A C3 ficou branda (viés +25,3: o humano dá 0 a 80 e o v6 dá 80 a 120), e a C2 passou do ponto (+9,3).

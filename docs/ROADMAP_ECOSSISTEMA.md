@@ -143,7 +143,7 @@ Preparação para o ENEM; questões e simulados; scanner de gabaritos; correçã
 
 #### Fechamento da Fase 1 (13/11/2026)
 
-Todo o desenvolvimento da Fase 1 que depende só de código está entregue (PRs #25 a #30): planos e assinaturas (Asaas, anual em 12x, fundadores), cadernos completos com acervo inicial, gabarito sugerido com cadeia própria e prompt v2 (precisão 96,2%), scanner de questões com OCR real, provas anteriores com importação do INEP e PDF embutido, evolução do mapa de domínio e videoaulas.
+Todo o desenvolvimento da Fase 1 que depende só de código está entregue e mergeado na `main` em 14/11/2026 (PRs #25 a #33): planos e assinaturas (Asaas, anual em 12x, fundadores), cadernos completos com acervo inicial, gabarito sugerido com cadeia própria e prompt v2 (precisão 96,2%), scanner de questões com OCR real, provas anteriores com importação do INEP e PDF embutido, evolução do mapa de domínio e videoaulas.
 
 Fica em aberto o que depende de material, credencial ou decisão do produto:
 
@@ -152,10 +152,10 @@ Fica em aberto o que depende de material, credencial ou decisão do produto:
 | Cobrança real dos planos | Conta no Asaas, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, preços (`PLAN_PREMIUM_YEARLY_PRICE`, `PLAN_PREMIUM_MONTHLY_PRICE`) e teste no sandbox |
 | Lista de videoaulas | `YOUTUBE_API_KEY` (sem ela, o app mostra o link da busca) |
 | Validação com material real | Fotos de redações manuscritas e cartões-resposta impressos e marcados à mão em 2–3 celulares; fotos de questões de provas impressas |
-| Prompt da redação em produção | Decisão: a produção usa o v3 (critérios C2/C4 de 2026), que na medição de 05/11 ficou abaixo do v2 (concordância 33% contra 47%; C3 pior). Manter o v3 e atacar C3/C1, ou voltar ao v2 com a calibração arquivada |
+| Prompt da redação em produção | **Decidido em 13–14/11/2026:** produção de volta ao v2; v3, v4 e v5 medidos e nenhum ganhou do v2 no erro (ver `CORRECAO_REDACAO_SCANNER.md`). Próximo ganho: calibração com mais redações ou dois avaliadores |
 | Calibração da redação | Rodadas de medição ao longo de vários dias (cota gratuita de ~500 chamadas/dia; cada redação usa 10–15) |
-| Caderno de Repertórios, além da seção 9 | O restante da especificação (o texto recebido terminava no meio da seção 9) |
-| Habilidade no mapa de domínio | **Entregue em 14/11/2026** (`docs/HABILIDADES_ENEM.md`); falta a validação docente das sugestões da IA |
+| Caderno de Repertórios | **Entregue em 13/11/2026** (especificação v2: eixos, mapa de aplicação, 10 itens, aplicar ao tema e análise do parágrafo; ver `CADERNOS.md`) |
+| Habilidade no mapa de domínio | **Entregue em 14/11/2026** (`docs/HABILIDADES_ENEM.md`); falta a **validação docente** das 416 sugestões da IA (todas do `gemini-3.5-flash-lite`) |
 
 ### Fase 2: Lumina Groups
 - **Primeiro:** criação de grupos, entrada por código e link, convites, participantes e papéis, perfis de estudo com privacidade, registro de sessões, tempo no `StudyTimeLog`.
@@ -192,10 +192,10 @@ Recomendações da LuminIA cruzando desempenho, grupos e marketplace; grupos est
 7. **Este documento, §2 (revisão de 11/11/2026):** convite de turma por link e cartão-resposta configurável apareciam como "em andamento, sem commit", mas entraram no commit `1231306`; flashcards e o painel analítico do professor (09/11) não constavam. Corrigido.
 
 ## 10. Dúvidas que precisam de decisão
-- Idade mínima por recurso (grupos, chat, compra) e fluxo de consentimento do responsável.
+- Idade mínima por recurso (grupos, chat, compra) e fluxo de consentimento do responsável. *Grupos, decidido em 14/11/2026: sem idade mínima por enquanto, com as proteções para menores de 18 por padrão.*
 - Provedor de pagamentos (assinaturas e split do marketplace).
 - Percentual de comissão e variação por categoria.
-- Websocket próprio ou Supabase Realtime.
+- ~~Websocket próprio ou Supabase Realtime~~ *Decidido em 14/11/2026: Socket.IO próprio.*
 - Provedor de vídeo e nível de proteção.
 - Limites do plano gratuito (correções, simulados, LuminIA) e o que muda no pago.
 - Curadoria do marketplace: aberto a qualquer professor verificado ou por convite no começo.
