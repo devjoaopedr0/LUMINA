@@ -82,6 +82,7 @@ model User {
   pedagogicalAlerts        PedagogicalAlert[]        @relation("PedagogicalAlertTeacher")
   recoveryPlans            RecoveryPlan[]            @relation("RecoveryPlanStudent")
   recoveryPlansCreated     RecoveryPlan[]            @relation("RecoveryPlanCreatedBy")
+  materials                Material[]                @relation("MaterialOwner")
 }
 
 model AuthSession {
@@ -591,6 +592,7 @@ model Class {
   workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   subject          Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   academicPeriod   AcademicPeriod? @relation(fields: [academicPeriodId], references: [id], onDelete: SetNull)
+  materials        Material[]      @relation("ClassMaterials")
 
   @@index([workspaceId])
   @@index([subjectId])
@@ -2860,4 +2862,58 @@ enum RecoveryPlanStatus {
   CANCELLED
 
   @@map("recovery_plan_status")
+}
+
+/// Material da central de materiais (item 48): PDF, slides, apostila, lista,
+/// link ou vídeo, organizado por turma, matéria e assunto. O PDF fica no
+/// banco (como os PDFs de provas) e o texto, por página, em MaterialPage,
+/// para a busca (item 50) e a LuminIA (item 49).
+model Material {
+  id          String           @id @default(uuid()) @db.Uuid
+  ownerId     String           @map("owner_id") @db.Uuid
+  /// Sem turma: fica só na biblioteca do professor.
+  classId     String?          @map("class_id") @db.Uuid
+  subjectId   String?          @map("subject_id") @db.Uuid
+  topicId     String?          @map("topic_id") @db.Uuid
+  title       String           @db.VarChar(200)
+  description String?
+  kind        MaterialKind
+  url         String?          @db.VarChar(1000)
+  file        Bytes?
+  mimeType    String?          @map("mime_type") @db.VarChar(100)
+  sizeBytes   Int?             @map("size_bytes")
+  pageCount   Int?             @map("page_count")
+  /// OK = texto extraído; NO_TEXT = PDF digitalizado (sem texto selecionável); NONE = link/vídeo.
+  textStatus  String           @default("NONE") @map("text_status") @db.VarChar(10)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  owner       User             @relation("MaterialOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  class       Class?           @relation("ClassMaterials", fields: [classId], references: [id], onDelete: SetNull)
+  pages       MaterialPage[]
+
+  @@index([ownerId])
+  @@index([classId])
+  @@map("materials")
+}
+
+model MaterialPage {
+  id         String   @id @default(uuid()) @db.Uuid
+  materialId String   @map("material_id") @db.Uuid
+  page       Int
+  text       String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, page])
+  @@map("material_pages")
+}
+
+enum MaterialKind {
+  PDF
+  SLIDES
+  APOSTILA
+  LISTA
+  LINK
+  VIDEO
+
+  @@map("material_kind")
 }

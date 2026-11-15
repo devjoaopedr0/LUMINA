@@ -3077,3 +3077,25 @@ export const apiRecoveryPlanVideo = (token: string, id: string): Promise<Recover
   request(`/recovery-plans/${id}/video`, { method: 'POST', headers: authHeaders(token) });
 export const apiCancelRecoveryPlan = (token: string, id: string): Promise<RecoveryPlanDto> =>
   request(`/recovery-plans/${id}/cancel`, { method: 'POST', headers: authHeaders(token) });
+
+// ------------------------------------------------- central de materiais (itens 48 a 50)
+type MaterialDto = import("@/lib/materials").Material;
+export const apiListMaterials = (token: string, filters: { classId?: string; subjectId?: string; kind?: string } = {}): Promise<MaterialDto[]> => {
+  const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => !!v) as [string, string][]);
+  return request(`/materials${q.toString() ? `?${q}` : ''}`, { headers: authHeaders(token) });
+};
+export const apiCreateMaterial = (token: string, payload: { title: string; description?: string; kind: string; url?: string; file?: string; classId?: string; subjectId?: string }): Promise<MaterialDto> =>
+  request('/materials', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiDeleteMaterial = (token: string, id: string): Promise<void> => request(`/materials/${id}`, { method: 'DELETE', headers: authHeaders(token) });
+export const apiSearchMaterials = (token: string, q: string, classId?: string): Promise<import("@/lib/materials").MaterialSearchResult> =>
+  request(`/materials/search?${new URLSearchParams({ q, ...(classId ? { classId } : {}) })}`, { headers: authHeaders(token) });
+export const apiAskMaterials = (token: string, payload: { question: string; classId?: string; materialId?: string; page?: number }): Promise<import("@/lib/materials").MaterialAnswer> =>
+  request('/materials/ask', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiMaterialQuestions = (token: string, id: string, payload: { count?: number; pages?: number[] }): Promise<{ questions: import("@/lib/materials").DraftQuestion[]; subjectId: string | null; topicId: string | null }> =>
+  request(`/materials/${id}/questions`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+/** Baixa o PDF do material pelo backend (exige o token) e devolve um blob URL. */
+export async function apiMaterialFileUrl(token: string, id: string): Promise<string> {
+  const response = await fetch(`${API_URL}/materials/${id}/file`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new ApiError(response.status, 'Não foi possível abrir o arquivo do material.');
+  return URL.createObjectURL(await response.blob());
+}
