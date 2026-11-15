@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock3,
   Filter,
+  LifeBuoy,
   PlayCircle,
   RotateCcw,
   Search,
@@ -17,7 +18,7 @@ import { MasteryEvolutionCard } from '@/components/MasteryEvolutionCard';
 import { SkillMasteryView } from '@/components/SkillMasteryView';
 import { VideoLessonsModal } from '@/components/VideoLessonsModal';
 import { Card } from '@/components/ui/Card';
-import { apiGetTopicMastery, type TopicMasteryEntry } from '@/lib/api';
+import { ApiError, apiCreateRecoveryPlan, apiGetTopicMastery, type TopicMasteryEntry } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import {
   MASTERY_BANDS,
@@ -86,6 +87,21 @@ export function MasteryMap() {
   const [dueOnly, setDueOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [videoTopic, setVideoTopic] = useState<{ topicId: string; topic: string } | null>(null);
+  const navigate = useNavigate();
+  const [planBusy, setPlanBusy] = useState('');
+  async function startPlan(topicId: string) {
+    setPlanBusy(topicId);
+    try {
+      const plan = await apiCreateRecoveryPlan(getAccessToken() ?? '', { topicId });
+      navigate(`/app/recuperacao?plano=${plan.id}`);
+    } catch (e) {
+      // Já existe plano ativo para o assunto: abre a lista de planos.
+      if (e instanceof ApiError && e.status === 409 && /Já existe um plano ativo/.test(e.message)) navigate('/app/recuperacao');
+      else setError(e instanceof ApiError ? e.message : 'Não foi possível criar o plano de recuperação.');
+    } finally {
+      setPlanBusy('');
+    }
+  }
   const [searchParams, setSearchParams] = useSearchParams();
   const view: 'topics' | 'skills' = searchParams.get('visao') === 'habilidades' ? 'skills' : 'topics';
   const setView = (next: 'topics' | 'skills') => setSearchParams(next === 'skills' ? { visao: 'habilidades' } : {}, { replace: true });
@@ -401,6 +417,18 @@ export function MasteryMap() {
                               >
                                 <PlayCircle className="h-4 w-4" />
                               </button>
+                              {entryBand === 'CRITICO' || entryBand === 'ATENCAO' ? (
+                                <button
+                                  type="button"
+                                  disabled={planBusy === entry.topicId}
+                                  onClick={() => void startPlan(entry.topicId)}
+                                  className="absolute right-11 top-2 rounded-full bg-white/80 p-1.5 text-graphite shadow-sm hover:bg-white disabled:opacity-50"
+                                  aria-label={`Plano de recuperação de ${entry.topic}`}
+                                  title="Plano de recuperação"
+                                >
+                                  <LifeBuoy className="h-4 w-4" />
+                                </button>
+                              ) : null}
                               </div>
                             );
                           })}

@@ -446,7 +446,7 @@
     -  Aluno há muitos dias sem estudar [IMPLEMENTADO]
     -  Meta atrasada [IMPLEMENTADO — TAREFAS DO CRONOGRAMA ATRASADAS]
     -  Recomendação de intervenção [IMPLEMENTADO — COM REGISTRO DO ACOMPANHAMENTO]
-42. 42. Plano automático de recuperação
+42. 42. Plano automático de recuperação [IMPLEMENTADO EM 15/11/2026 — VER docs/PLANO_RECUPERACAO.md]
     -  Detectar dificuldade
     -  Escolher conteúdo de reforço
     -  Recomendar videoaula
