@@ -83,6 +83,7 @@ model User {
   recoveryPlans            RecoveryPlan[]            @relation("RecoveryPlanStudent")
   recoveryPlansCreated     RecoveryPlan[]            @relation("RecoveryPlanCreatedBy")
   materials                Material[]                @relation("MaterialOwner")
+  reportSnapshots          ReportSnapshot[]          @relation("ReportSnapshotRequester")
 }
 
 model AuthSession {
@@ -2916,4 +2917,28 @@ enum MaterialKind {
   VIDEO
 
   @@map("material_kind")
+}
+
+/// Relatório pedagógico salvo (item 59): o retrato de um período, guardado
+/// para consulta e comparação. Os mensais de turma (e o institucional, para
+/// coordenação e direção) são gerados automaticamente no primeiro acesso do
+/// mês seguinte; os demais, quando alguém pede "Salvar relatório".
+model ReportSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  type          String   @db.VarChar(20)
+  /// Turma, aluno, "matéria|turma" ou workspace, conforme o tipo.
+  scopeKey      String   @map("scope_key") @db.VarChar(200)
+  title         String   @db.VarChar(300)
+  requestedById String   @map("requested_by_id") @db.Uuid
+  periodLabel   String   @map("period_label") @db.VarChar(60)
+  from          DateTime
+  to            DateTime
+  automatic     Boolean  @default(false)
+  data          Json
+  createdAt     DateTime @default(now()) @map("created_at")
+  requestedBy   User     @relation("ReportSnapshotRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@unique([requestedById, type, scopeKey, periodLabel])
+  @@index([requestedById, createdAt])
+  @@map("report_snapshots")
 }

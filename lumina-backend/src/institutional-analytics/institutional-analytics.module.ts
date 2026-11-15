@@ -5,5 +5,6 @@ import { TeacherAnalyticsService } from './teacher-analytics.service';
 @Module({
   controllers: [TeacherAnalyticsController],
   providers: [TeacherAnalyticsService],
+  exports: [TeacherAnalyticsService],
 })
 export class InstitutionalAnalyticsModule {}
