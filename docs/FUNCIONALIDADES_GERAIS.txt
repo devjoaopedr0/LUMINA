@@ -488,7 +488,7 @@
     -  Lista de questões ao vivo
     -  Simulado coletivo
     -  Progresso dos participantes
-48. 48. Central de materiais
+48. 48. Central de materiais [IMPLEMENTADO EM 15/11/2026 — VER docs/CENTRAL_MATERIAIS.md]
     -  PDFs
     -  Slides
     -  Apostilas
@@ -498,14 +498,14 @@
     -  Organização por turma
     -  Organização por matéria
     -  Organização por assunto
-49. 49. IA sobre materiais da instituição
+49. 49. IA sobre materiais da instituição [IMPLEMENTADO EM 15/11/2026 — RESPOSTA COM CITAÇÃO DE PÁGINA E QUESTÕES EM RASCUNHO]
     -  Professor envia material
     -  LuminIA usa aquele material como referência
     -  Responde com base no conteúdo da aula
     -  Busca trechos específicos
     -  Explica partes do material
     -  Gera questões a partir dele
-50. 50. Busca inteligente nos materiais
+50. 50. Busca inteligente nos materiais [IMPLEMENTADO EM 15/11/2026 — POR PALAVRAS, COM PÁGINA E TRECHO]
     -  Pesquisar conteúdo
     -  Localizar trecho em PDF
     -  Encontrar aula

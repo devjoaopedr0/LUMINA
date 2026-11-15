@@ -21,6 +21,8 @@ async function bootstrap() {
   app.use('/flashcards/generate/from-pdf', json({ limit: '16mb' }));
   // Foto da questão no scanner de questões: até 3 MB (~4 MB em base64).
   app.use(/^\/simulations\/question-scans\/upload\/[0-9a-f-]+\/complete$/, json({ limit: '5mb' }));
+  // Envio de material (PDF até 15 MB em base64) na central de materiais.
+  app.use(/^\/materials$/, json({ limit: '22mb' }));
   app.use(json({ limit: '100kb' }));
   app.use(urlencoded({ extended: true, limit: '100kb' }));
   const configService = app.get(ConfigService);

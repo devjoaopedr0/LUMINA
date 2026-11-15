@@ -33,6 +33,8 @@ const NAV_ITEMS = [
   { to: "/app/provas-antigas", label: "Provas anteriores", icon: History },
   { to: "/app/caderno-formulas", label: "Caderno de fórmulas", icon: Lightbulb },
   { to: "/app/caderno-repertorio", label: "Caderno de repertórios", icon: BookOpenCheck },
+  { to: "/app/materiais", label: "Materiais da turma", icon: FileText },
+  { to: "/app/recuperacao", label: "Planos de recuperação", icon: Target },
   { to: "/app/plano", label: "Meu plano", icon: Crown },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
 ];

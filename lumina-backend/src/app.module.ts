@@ -25,6 +25,7 @@ import { NotebooksModule } from './notebooks/notebooks.module';
 import { AnswerKeysModule } from './answer-keys/answer-keys.module';
 import { InstitutionalAnalyticsModule } from './institutional-analytics/institutional-analytics.module';
 import { RecoveryPlansModule } from './recovery-plans/recovery-plans.module';
+import { MaterialsModule } from './materials/materials.module';
 import { PlansModule } from './plans/plans.module';
 import { GroupsModule } from './groups/groups.module';
 
@@ -61,6 +62,7 @@ import { GroupsModule } from './groups/groups.module';
     AnswerKeysModule,
     InstitutionalAnalyticsModule,
     RecoveryPlansModule,
+    MaterialsModule,
   ],
   providers: [
     RateLimitMiddleware,
