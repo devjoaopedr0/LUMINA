@@ -94,7 +94,7 @@ describe('ciclo de vida dos alertas', () => {
   it('transição manual registra quem, quando e a anotação', () => {
     const t = manualTransition(stored({}), 'RESOLVED', 'prof-1', 'Conversei com a aluna', now);
     expect(t).toMatchObject({ status: 'RESOLVED', closedAt: now, note: 'Conversei com a aluna' });
-    expect(t.history.at(-1)).toEqual({ at: now.toISOString(), by: 'prof-1', from: 'OPEN', to: 'RESOLVED', note: 'Conversei com a aluna' });
+    expect(t.history[t.history.length - 1]).toEqual({ at: now.toISOString(), by: 'prof-1', from: 'OPEN', to: 'RESOLVED', note: 'Conversei com a aluna' });
     expect(manualTransition(stored({ status: 'RESOLVED' }), 'ACKNOWLEDGED', 'prof-1', undefined, now).closedAt).toBeNull();
   });
 });
