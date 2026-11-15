@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 export class TeacherAnalyticsQueryDto {
   @ApiPropertyOptional({
@@ -20,4 +20,16 @@ export class TeacherAnalyticsQueryDto {
   @IsOptional()
   @IsUUID('4')
   classId?: string;
+}
+
+export class UpdatePedagogicalAlertDto {
+  @ApiPropertyOptional({ enum: ['OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'DISMISSED'] })
+  @IsIn(['OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'DISMISSED'])
+  status!: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | 'DISMISSED';
+
+  @ApiPropertyOptional({ description: 'Anotação do professor (o que foi feito).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 }

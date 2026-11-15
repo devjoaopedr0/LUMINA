@@ -135,3 +135,41 @@ Cada sinal traz uma sugestão textual de intervenção. A interface ordena por g
 3. Persistir relatórios pedagógicos por turma e período (item 59).
 4. Definir a regra de atribuição de tempo de estudo por turma.
 5. Incluir tentativas avulsas e domínio por tópico depois de definir o vínculo com a turma.
+
+## Alertas pedagógicos persistidos (item 41, 15/11/2026)
+
+Migration `20261115120000_pedagogical_alerts` (só adições), aplicada.
+
+### Novos sinais
+
+| Sinal | Regra | Gravidade |
+|---|---|---|
+| `STUDENT_PERFORMANCE_DROP` | acerto do aluno na turma caiu 15+ pontos em relação ao período anterior de mesmo tamanho, com 5+ respostas nos dois | alta a partir de 25 pontos |
+| `STUDENT_OVERDUE_TASKS` ("meta atrasada") | 3+ tarefas do cronograma dos últimos 14 dias nem feitas nem puladas | alta a partir de 8 |
+| `STUDENT_INACTIVITY` (revisto) | continua local à turma, mas agora consulta a atividade do aluno **na Lumina inteira** (tempo de estudo, questões avulsas e simulados) | **alta** sem atividade em lugar nenhum há 14+ dias; média, com a data da última atividade fora da turma, quando o aluno está ativo em outro lugar |
+
+Os sinais extras ficam em `lumina-backend/src/institutional-analytics/extra-signals.ts` e entram também no painel do período filtrado.
+
+### Ciclo de vida
+
+`GET /institutional-analytics/teacher/alerts` recalcula os sinais numa **janela fixa de 30 dias**, com todas as turmas, independente do filtro do painel, e sincroniza a tabela `pedagogical_alerts` (regra em `pedagogical-alerts.ts`):
+
+| Situação | Resultado |
+|---|---|
+| Sinal novo | alerta **Aberto** |
+| Sinal que continua | atualiza texto, gravidade e "visto por último" |
+| Sinal some de um alerta aberto ou em acompanhamento | **Resolvido automaticamente** |
+| Sinal volta num alerta resolvido | reaberto (`reopenCount` + 1) |
+| Alerta dispensado | continua dispensado, a menos que a gravidade suba |
+
+`PATCH /institutional-analytics/teacher/alerts/:id` com `{ status, note }` registra o acompanhamento do professor (Acompanhar, Resolver, Dispensar, Reabrir). Toda mudança entra no histórico do alerta (quando, quem, de → para, anotação; "sistema" nas automáticas). Um professor só vê e altera os próprios alertas (404 para os de outro).
+
+Na tela `/app/acompanhamento`, a seção **Alertas pedagógicos** separa Abertos, Em acompanhamento e Encerrados (últimos 60 dias). A seção de sinais do período continua, agora como leitura do filtro escolhido.
+
+Validado no navegador em 15/11/2026 com a conta de professor de teste: o alerta de inatividade foi criado, mostrou a atividade do aluno fora da turma e passou para "Em acompanhamento" com anotação.
+
+### Ainda não entra
+
+- Notificação push ou e-mail do alerta (depende do módulo de notificações, item 51).
+- Atribuição a outro responsável (coordenação).
+- Questões avulsas do banco no acerto da turma (o vínculo questão avulsa → turma continua indefinido).

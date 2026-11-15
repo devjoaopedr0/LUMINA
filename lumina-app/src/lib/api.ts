@@ -944,7 +944,9 @@ export type TeacherAnalyticsSignalKind =
   | 'STUDENT_LOW_ACCURACY'
   | 'STUDENT_INACTIVITY'
   | 'STUDENT_ERROR_STREAK'
-  | 'DIFFICULT_QUESTION';
+  | 'DIFFICULT_QUESTION'
+  | 'STUDENT_PERFORMANCE_DROP'
+  | 'STUDENT_OVERDUE_TASKS';
 
 export interface TeacherAnalyticsRiskReason {
   kind: TeacherAnalyticsSignalKind;
@@ -1055,6 +1057,32 @@ export const apiTeacherAnalytics = (token: string, params?: { days?: number; cla
   const suffix = query.toString() ? `?${query.toString()}` : '';
   return request(`/institutional-analytics/teacher${suffix}`, { headers: authHeaders(token) });
 };
+export type PedagogicalAlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | 'DISMISSED';
+export interface PedagogicalAlert {
+  id: string;
+  kind: TeacherAnalyticsSignalKind;
+  severity: TeacherAnalyticsSeverity;
+  status: PedagogicalAlertStatus;
+  classId: string | null;
+  className: string | null;
+  studentId: string | null;
+  studentName: string | null;
+  questionKey: string | null;
+  title: string;
+  detail: string;
+  recommendation: string;
+  autoResolved: boolean;
+  reopenCount: number;
+  note: string | null;
+  history: { at: string; by: string | null; from: PedagogicalAlertStatus | null; to: PedagogicalAlertStatus; note?: string }[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  closedAt: string | null;
+}
+export const apiPedagogicalAlerts = (token: string): Promise<{ generatedAt: string; windowDays: number; items: PedagogicalAlert[] }> =>
+  request('/institutional-analytics/teacher/alerts', { headers: authHeaders(token) });
+export const apiUpdatePedagogicalAlert = (token: string, id: string, payload: { status: PedagogicalAlertStatus; note?: string }) =>
+  request(`/institutional-analytics/teacher/alerts/${id}`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(payload) });
 export const apiCoordinatorDashboard = (token: string): Promise<CoordinatorDashboard> => request('/simulations/coordinator/dashboard', { headers: authHeaders(token) });
 export const apiDirectorDashboard = (token: string): Promise<DirectorDashboard> => request('/simulations/director/dashboard', { headers: authHeaders(token) });
 export const apiUpdateDirectorMember = (token: string, memberId: string, data: { status?: 'ACTIVE' | 'SUSPENDED'; accountType?: 'TEACHER' | 'COORDINATOR'; subject?: string }): Promise<{ updated: true }> => request('/simulations/director/members/' + encodeURIComponent(memberId), { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data) });

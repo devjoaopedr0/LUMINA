@@ -438,14 +438,14 @@
     -  Participação
     -  Tempo de estudo
     -  Alunos em risco
-41. 41. Alertas pedagógicos [PARCIAL EM 09/11/2026 — SINAIS CALCULADOS NA LEITURA, SEM HISTÓRICO]
-    -  Queda de desempenho [PENDENTE — exige comparação com período anterior]
+41. 41. Alertas pedagógicos [IMPLEMENTADO EM 15/11/2026 — PERSISTIDOS COM HISTÓRICO; FALTA NOTIFICAÇÃO (ITEM 51)]
+    -  Queda de desempenho [IMPLEMENTADO — COMPARA COM O PERÍODO ANTERIOR]
     -  Muitos erros seguidos [IMPLEMENTADO]
     -  Falta de atividade [IMPLEMENTADO]
     -  Conteúdo com dificuldade coletiva [IMPLEMENTADO — POR DISCIPLINA/QUESTÃO]
     -  Aluno há muitos dias sem estudar [IMPLEMENTADO]
-    -  Meta atrasada [PENDENTE — depende do item 52]
-    -  Recomendação de intervenção [IMPLEMENTADO — TEXTO SUGERIDO, SEM PERSISTÊNCIA]
+    -  Meta atrasada [IMPLEMENTADO — TAREFAS DO CRONOGRAMA ATRASADAS]
+    -  Recomendação de intervenção [IMPLEMENTADO — COM REGISTRO DO ACOMPANHAMENTO]
 42. 42. Plano automático de recuperação
     -  Detectar dificuldade
     -  Escolher conteúdo de reforço
