@@ -79,6 +79,7 @@ model User {
   flashcardReviews       FlashcardReview[]
 
   @@map("users")
+  pedagogicalAlerts        PedagogicalAlert[]        @relation("PedagogicalAlertTeacher")
 }
 
 model AuthSession {
@@ -2769,4 +2770,50 @@ model StudyGroupMember {
   @@unique([groupId, userId])
   @@index([userId])
   @@map("study_group_members")
+}
+
+/// Alerta pedagógico persistido (item 41). Nasce dos sinais calculados no
+/// painel do professor, numa janela fixa de 30 dias, e guarda o ciclo de vida:
+/// aberto → em acompanhamento → resolvido/dispensado, com histórico.
+/// `fingerprint` identifica o mesmo sinal entre leituras (turma + aluno + tipo,
+/// ou questão + tipo).
+model PedagogicalAlert {
+  id             String                 @id @default(uuid()) @db.Uuid
+  teacherId      String                 @map("teacher_id") @db.Uuid
+  fingerprint    String                 @db.VarChar(200)
+  kind           String                 @db.VarChar(40)
+  severity       String                 @db.VarChar(10)
+  status         PedagogicalAlertStatus @default(OPEN)
+  classId        String?                @map("class_id") @db.Uuid
+  studentId      String?                @map("student_id") @db.Uuid
+  questionKey    String?                @map("question_key") @db.VarChar(120)
+  title          String
+  detail         String
+  recommendation String
+  metric         Float?
+  /// Fechado automaticamente porque o sinal deixou de aparecer.
+  autoResolved   Boolean                @default(false) @map("auto_resolved")
+  reopenCount    Int                    @default(0) @map("reopen_count")
+  note           String?
+  /// Trilha: [{ at, by, from, to, note? }] (by = null quando foi o sistema).
+  history        Json                   @default("[]")
+  firstSeenAt    DateTime               @map("first_seen_at")
+  lastSeenAt     DateTime               @map("last_seen_at")
+  closedAt       DateTime?              @map("closed_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  teacher        User                   @relation("PedagogicalAlertTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, fingerprint])
+  @@index([teacherId, status])
+  @@map("pedagogical_alerts")
+}
+
+enum PedagogicalAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+
+  @@map("pedagogical_alert_status")
 }

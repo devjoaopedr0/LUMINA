@@ -197,3 +197,23 @@ assert.match(csvComFormula, /"'=1\+1"/);
 assert.match(csvComFormula, /"'\+soma@lumina\.test"/);
 
 console.log('acompanhamento pedagógico: checks ok');
+
+// ---- Alertas persistidos (item 41)
+import { abaDoAlerta, acoesDoAlerta, alertasDaAba } from '../src/lib/teacher-analytics.ts';
+{
+  const base = { kind: 'STUDENT_INACTIVITY', classId: null, className: null, studentId: null, studentName: null, questionKey: null, title: '', detail: '', recommendation: '', autoResolved: false, reopenCount: 0, note: null, history: [], firstSeenAt: '2026-11-01T00:00:00Z', closedAt: null } as const;
+  const items = [
+    { ...base, id: '1', status: 'OPEN', severity: 'MEDIUM', lastSeenAt: '2026-11-10T00:00:00Z' },
+    { ...base, id: '2', status: 'OPEN', severity: 'HIGH', lastSeenAt: '2026-11-09T00:00:00Z' },
+    { ...base, id: '3', status: 'ACKNOWLEDGED', severity: 'LOW', lastSeenAt: '2026-11-09T00:00:00Z' },
+    { ...base, id: '4', status: 'DISMISSED', severity: 'HIGH', lastSeenAt: '2026-11-08T00:00:00Z' },
+    { ...base, id: '5', status: 'RESOLVED', severity: 'LOW', lastSeenAt: '2026-11-11T00:00:00Z' },
+  ] as Parameters<typeof alertasDaAba>[0];
+  assert.deepEqual(alertasDaAba(items, 'abertos').map((a) => a.id), ['2', '1']);
+  assert.deepEqual(alertasDaAba(items, 'acompanhamento').map((a) => a.id), ['3']);
+  assert.deepEqual(alertasDaAba(items, 'encerrados').map((a) => a.id), ['5', '4']);
+  assert.equal(abaDoAlerta('DISMISSED'), 'encerrados');
+  assert.deepEqual(acoesDoAlerta('OPEN').map((a) => a.to), ['ACKNOWLEDGED', 'RESOLVED', 'DISMISSED']);
+  assert.deepEqual(acoesDoAlerta('RESOLVED').map((a) => a.to), ['OPEN']);
+  console.log('acompanhamento (alertas persistidos): ok');
+}

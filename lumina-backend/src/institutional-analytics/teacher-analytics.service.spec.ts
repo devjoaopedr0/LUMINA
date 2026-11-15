@@ -11,7 +11,11 @@ function serviceWith(prisma: {
   const mock = {
     user: prisma.user ?? { findUnique: vi.fn() },
     class: prisma.class ?? { findMany: vi.fn() },
-    studyTimeLog: prisma.studyTimeLog ?? { findMany: vi.fn() },
+    studyTimeLog: { groupBy: vi.fn().mockResolvedValue([]), ...(prisma.studyTimeLog ?? { findMany: vi.fn() }) },
+    // Contexto dos sinais extras (período anterior, atividade global, cronograma).
+    simulationSubmission: { findMany: vi.fn().mockResolvedValue([]), groupBy: vi.fn().mockResolvedValue([]) },
+    questionAttempt: { groupBy: vi.fn().mockResolvedValue([]) },
+    studyTask: { findMany: vi.fn().mockResolvedValue([]) },
   };
   return {
     service: new TeacherAnalyticsService(mock as unknown as PrismaService),

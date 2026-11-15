@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { PedagogicalAlerts } from '@/components/PedagogicalAlerts';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   apiSimulationClasses,
@@ -346,12 +347,14 @@ export function TeacherAnalyticsPage() {
               />
             </section>
 
+            <PedagogicalAlerts />
+
             <section className="mt-8">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-bold">Sinais pedagógicos</h2>
+                  <h2 className="text-xl font-bold">Sinais do período filtrado</h2>
                   <p className="text-sm text-graphite-500">
-                    Derivados dos dados do período. Eles não substituem a leitura do professor e ainda não têm histórico persistido.
+                    Calculados na hora para o período e a turma escolhidos acima. O acompanhamento fica nos alertas.
                   </p>
                 </div>
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-graphite-500">

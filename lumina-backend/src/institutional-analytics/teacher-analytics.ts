@@ -25,7 +25,9 @@ export type PedagogicalSignalKind =
   | 'STUDENT_LOW_ACCURACY'
   | 'STUDENT_INACTIVITY'
   | 'STUDENT_ERROR_STREAK'
-  | 'DIFFICULT_QUESTION';
+  | 'DIFFICULT_QUESTION'
+  | 'STUDENT_PERFORMANCE_DROP'
+  | 'STUDENT_OVERDUE_TASKS';
 
 export interface TeacherAnalyticsStudentRef {
   id: string;
@@ -284,6 +286,10 @@ export function riskReasonLabel(kind: PedagogicalSignalKind): string {
       return 'Três ou mais erros seguidos';
     case 'DIFFICULT_QUESTION':
       return 'Questão com baixo índice de acerto';
+    case 'STUDENT_PERFORMANCE_DROP':
+      return 'Queda de desempenho em relação ao período anterior';
+    case 'STUDENT_OVERDUE_TASKS':
+      return 'Tarefas do cronograma atrasadas';
   }
 }
 
@@ -299,6 +305,10 @@ export function riskRecommendation(kind: PedagogicalSignalKind): string {
       return 'Retome o tópico com uma questão guiada antes de avançar para outra dificuldade.';
     case 'DIFFICULT_QUESTION':
       return 'Reveja a questão em aula e apresente uma versão com apoio antes de reaplicar.';
+    case 'STUDENT_PERFORMANCE_DROP':
+      return 'Converse com o aluno sobre o que mudou e retome o conteúdo do período com uma atividade curta antes de avançar.';
+    case 'STUDENT_OVERDUE_TASKS':
+      return 'Ajude o aluno a replanejar o cronograma: menos tarefas por dia costuma funcionar melhor do que acumular atrasos.';
   }
 }
 

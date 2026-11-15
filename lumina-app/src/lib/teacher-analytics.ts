@@ -5,6 +5,8 @@ import type {
   TeacherAnalyticsSignal,
   TeacherAnalyticsSignalKind,
   TeacherAnalyticsStudent,
+  PedagogicalAlert,
+  PedagogicalAlertStatus,
 } from './api';
 
 const SEVERITY_ORDER: Record<TeacherAnalyticsSeverity, number> = {
@@ -39,6 +41,10 @@ export function rotuloSinal(kind: TeacherAnalyticsSignalKind): string {
       return 'Sequência de erros';
     case 'DIFFICULT_QUESTION':
       return 'Questão difícil';
+    case 'STUDENT_PERFORMANCE_DROP':
+      return 'Queda de desempenho';
+    case 'STUDENT_OVERDUE_TASKS':
+      return 'Cronograma atrasado';
   }
 }
 
@@ -138,4 +144,41 @@ export function gerarCsvAlunos(result: TeacherAnalyticsResult): string {
     ]),
   );
   return [header, ...rows].map((row) => row.map(csvCell).join(';')).join('\r\n');
+}
+
+// ---------------------------------------------------- alertas persistidos (item 41)
+
+export type AlertTab = 'abertos' | 'acompanhamento' | 'encerrados';
+
+export const ROTULO_STATUS_ALERTA: Record<PedagogicalAlertStatus, string> = {
+  OPEN: 'Aberto',
+  ACKNOWLEDGED: 'Em acompanhamento',
+  RESOLVED: 'Resolvido',
+  DISMISSED: 'Dispensado',
+};
+
+export function abaDoAlerta(status: PedagogicalAlertStatus): AlertTab {
+  if (status === 'OPEN') return 'abertos';
+  if (status === 'ACKNOWLEDGED') return 'acompanhamento';
+  return 'encerrados';
+}
+
+/** Alertas de uma aba: gravidade primeiro, depois o mais recente. */
+export function alertasDaAba(items: PedagogicalAlert[], tab: AlertTab): PedagogicalAlert[] {
+  const peso = { HIGH: 3, MEDIUM: 2, LOW: 1 } as const;
+  return items
+    .filter((a) => abaDoAlerta(a.status) === tab)
+    .sort((a, b) => (tab === 'encerrados' ? 0 : peso[b.severity] - peso[a.severity]) || b.lastSeenAt.localeCompare(a.lastSeenAt));
+}
+
+/** Ações possíveis a partir do estado atual. */
+export function acoesDoAlerta(status: PedagogicalAlertStatus): { to: PedagogicalAlertStatus; label: string }[] {
+  switch (status) {
+    case 'OPEN':
+      return [{ to: 'ACKNOWLEDGED', label: 'Acompanhar' }, { to: 'RESOLVED', label: 'Resolver' }, { to: 'DISMISSED', label: 'Dispensar' }];
+    case 'ACKNOWLEDGED':
+      return [{ to: 'RESOLVED', label: 'Resolver' }, { to: 'DISMISSED', label: 'Dispensar' }];
+    default:
+      return [{ to: 'OPEN', label: 'Reabrir' }];
+  }
 }
