@@ -129,6 +129,7 @@ export class AiService {
 
     // O chat devolve só a mensagem: o modelo que respondeu é detalhe interno.
     const only = async (call: Promise<AiChatResponseDto>) => ({ message: (await call).message });
+    if (dto.image) return only(this.chatWithImage(provider, message, history, context, systemPrompt, dto.image));
     switch (provider) {
       case 'openai':
         return only(this.callOpenAI(message, history, context, systemPrompt));
@@ -235,6 +236,42 @@ export class AiService {
   }
 
   /**
+   * Mensagem do chat com imagem: vai para os modelos com entrada de imagem
+   * (AI_VISION_MODELS, os mesmos dos scanners), com o histórico e o contexto
+   * da conversa. Sem cadeia de visão, usa o provedor padrão em modo visão.
+   */
+  private async chatWithImage(
+    provider: string,
+    message: AiChatMessageDto,
+    history: AiChatMessageDto[],
+    context: string | undefined,
+    systemPrompt: string,
+    image: string,
+  ): Promise<AiChatResponseDto> {
+    const options: GenerationOptions = { imageDataUrl: image, maxTokens: 1200, timeoutMs: 90_000, temperature: 0.4 };
+    const chain = this.listFromEnv('AI_VISION_MODELS');
+    if (provider === 'mock') {
+      return { message: 'Recebi a sua imagem, mas a IA ainda não está configurada neste ambiente para lê-la.' };
+    }
+    if (chain.some((ref) => parseModelRef(ref, provider).model !== ref)) {
+      const result = await this.callChain(chain, provider, message, systemPrompt, options, history, context);
+      return { message: result.text };
+    }
+    switch (provider) {
+      case 'openai':
+        return this.callOpenAI(message, history, context, systemPrompt, options, true);
+      case 'openrouter':
+        return this.callOpenRouter(message, history, context, systemPrompt, options, true);
+      case 'anthropic':
+        return this.callAnthropic(message, history, context, systemPrompt, options);
+      case 'gemini':
+        return this.callGemini(message, history, context, systemPrompt, options);
+      default:
+        throw new BadRequestException('Este provedor de IA não lê imagens. Escreva a questão em texto.');
+    }
+  }
+
+  /**
    * Cadeia com modelos de provedores diferentes (ex.: AI_ESSAY_MODELS =
    * "gemini:gemini-3.8-flash,groq:openai/gpt-oss-120b,nvidia/x:free").
    * Tenta em ordem; provedor sem chave é pulado. O modelo devolvido leva o
@@ -246,6 +283,8 @@ export class AiService {
     message: AiChatMessageDto,
     system: string,
     options: GenerationOptions,
+    history: AiChatMessageDto[] = [],
+    context?: string,
   ): Promise<GenerationResult> {
     let lastError = 'nenhum provedor configurado na cadeia';
     for (const ref of refs) {
@@ -256,7 +295,7 @@ export class AiService {
         continue;
       }
       try {
-        const result = await this.chatCompletion({ ...endpoint, models: [model], message, history: [], systemPrompt: system, options });
+        const result = await this.chatCompletion({ ...endpoint, models: [model], message, history, context, systemPrompt: system, options });
         return { text: result.message, model: `${provider}:${result.model ?? model}` };
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error);
