@@ -49,14 +49,26 @@ export class TeacherAnalyticsService {
     }
 
     const days = query.days ?? DEFAULT_DAYS;
+    const result = await this.analyticsForClasses(
+      { archived: false, teachers: { some: { userId } }, ...(query.classId ? { id: query.classId } : {}) },
+      days,
+      now,
+    );
+    if (query.classId && result.classes.length === 0) {
+      throw new NotFoundException('Turma não encontrada para este professor.');
+    }
+    return result;
+  }
+
+  /**
+   * O mesmo painel para qualquer conjunto de turmas (relatórios de turma, de
+   * matéria e institucional, item 59). Quem chama decide a permissão.
+   */
+  async analyticsForClasses(where: Prisma.ClassWhereInput, days: number, now: Date = new Date()): Promise<TeacherAnalyticsResult> {
     const from = new Date(now.getTime() - days * DAY_MS);
 
     const classes = await this.prisma.class.findMany({
-      where: {
-        archived: false,
-        teachers: { some: { userId } },
-        ...(query.classId ? { id: query.classId } : {}),
-      },
+      where,
       select: {
         id: true,
         name: true,
@@ -107,10 +119,6 @@ export class TeacherAnalyticsService {
       },
       orderBy: { createdAt: 'desc' },
     });
-
-    if (query.classId && classes.length === 0) {
-      throw new NotFoundException('Turma não encontrada para este professor.');
-    }
 
     const studentIds = [
       ...new Set(

@@ -48,6 +48,7 @@ import {
     ReviewQueueController,
   ],
   exports: [
+    SkillMasteryService,
     QuestionAccessService,
     QuestionsService,
     QuestionsRepository,
