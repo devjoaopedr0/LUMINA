@@ -8,6 +8,9 @@ import { computeSchedulePhase, type SchedulePhase } from "./schedule-phase";
 import { ESSAY_SUBJECT_CODE } from "./study-areas";
 import { STUDY_SUBJECT_CODE_TO_SUBJECT_NAME } from "./study-subject-question-bank-map";
 import { Db } from "./domain/types";
+import { assertNotPastDay, brazilToday, formatBr } from "../common/date-rules";
+import { scheduleLimits, weeklyMinutes, type ScheduleLimits, type SubjectContent } from "./schedule-limits";
+import { goalFromProfile } from "./schedule-goal";
 import { personalDurations, type ActivityDurations } from "./activity-durations";
 import { PriorityCalibrationService } from "./priority-calibration.service";
 import { PRACTICE_WINDOW_HOURS, summarizePractice } from "./schedule-practice";
@@ -136,6 +139,7 @@ export class SchedulesService {
     userId: string,
     data: { examId?: string | null; customName?: string | null; targetDate?: Date | null },
   ) {
+    if (data.targetDate) assertNotPastDay(data.targetDate, "A data da prova");
     return this.repo.upsertUserVestibular(userId, data);
   }
 
@@ -161,6 +165,11 @@ export class SchedulesService {
     const dayMinutes =
       dto.dayMinutes ?? schedule.dayMinutes.map(({ weekday, minutes }) => ({ weekday, minutes }));
 
+    // Mudar o início não pode levá-lo para o passado; manter o início antigo pode.
+    if (dto.startDate && startDate.getTime() !== startOfDay(schedule.startDate).getTime()) {
+      assertNotPastDay(startDate, "A data de início do cronograma");
+    }
+    if (dto.endDate) assertNotPastDay(endDate, "A data final do cronograma");
     if (endDate < startDate) {
       throw new BadRequestException("A data final deve ser igual ou posterior à inicial.");
     }
@@ -168,13 +177,24 @@ export class SchedulesService {
       throw new BadRequestException("Informe horas de estudo para pelo menos uma disciplina.");
     }
     const minutesByWeekday = this.minutesByWeekday(studyDays, dailyMinutes, dayMinutes);
+    if (dto.startDate || dto.endDate || dto.subjects || dto.studyDays || dto.dailyMinutes || dto.dayMinutes) {
+      const subjects = dto.subjects ?? schedule.scheduleSubjects.map((s) => ({ subjectId: s.subjectId, targetHours: Number(s.targetHours) }));
+      await this.assertWithinContent(startDate, endDate, subjects, minutesByWeekday);
+    }
     if (!eachDayOfInterval(startDate, endDate).some((d) => minutesByWeekday.has(d.getUTCDay()))) {
       throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
     }
 
+    // Objetivo e curso vêm do perfil (fonte única); o texto livre só vale para quem ainda não preencheu o perfil.
+    const goal = goalFromProfile(await this.profileGoal(userId));
     const update: Prisma.StudyScheduleUpdateInput = { startDate, endDate, studyDays, dailyMinutes };
-    if (dto.objective !== undefined) update.objective = dto.objective || null;
-    if (dto.targetCourse !== undefined) update.targetCourse = dto.targetCourse || null;
+    if (goal.objective) {
+      update.objective = goal.objective;
+      update.targetCourse = goal.targetCourse;
+    } else {
+      if (dto.objective !== undefined) update.objective = dto.objective || null;
+      if (dto.targetCourse !== undefined) update.targetCourse = dto.targetCourse || null;
+    }
     if (dto.priorityAreas !== undefined) update.priorityAreas = dto.priorityAreas;
     if (dto.essayFrequency !== undefined) update.essayFrequency = dto.essayFrequency ?? null;
 
@@ -254,7 +274,7 @@ export class SchedulesService {
     userId: string,
     dto: CreateStudyScheduleDto,
   ): Promise<void> {
-    const startDate = startOfDay(new Date(dto.startDate));
+    const startDate = assertNotPastDay(dto.startDate, "A data de início do cronograma");
     const endDate = startOfDay(new Date(dto.endDate));
     if (endDate < startDate) {
       throw new BadRequestException("A data final deve ser igual ou posterior à inicial.");
@@ -262,6 +282,12 @@ export class SchedulesService {
     if (!dto.subjects.some((subject) => subject.targetHours > 0)) {
       throw new BadRequestException("Informe horas de estudo para pelo menos uma disciplina.");
     }
+    await this.assertWithinContent(
+      startDate,
+      endDate,
+      dto.subjects,
+      this.minutesByWeekday(dto.studyDays, dto.dailyMinutes, dto.dayMinutes),
+    );
 
     // As tarefas de cada dia não são mais geradas aqui: ficam pra quando o
     // dia for de fato consultado (getDailySession), com a prioridade calculada
@@ -277,6 +303,7 @@ export class SchedulesService {
       throw new BadRequestException("O período deve incluir pelo menos um dia de estudo selecionado.");
     }
 
+    const goal = goalFromProfile(await this.profileGoal(userId));
     await this.repo.prisma.$transaction(async (tx: Db) => {
       const scheduleRecord = await this.repo.createSchedule(tx, {
         userId,
@@ -284,8 +311,8 @@ export class SchedulesService {
         endDate,
         studyDays: dto.studyDays,
         dailyMinutes: dto.dailyMinutes,
-        objective: dto.objective ?? null,
-        targetCourse: dto.targetCourse ?? null,
+        objective: goal.objective ?? dto.objective ?? null,
+        targetCourse: goal.targetCourse ?? dto.targetCourse ?? null,
         priorityAreas: dto.priorityAreas ?? [],
         essayFrequency: dto.essayFrequency ?? null,
       });
@@ -702,6 +729,9 @@ export class SchedulesService {
 
     const newSession = await this.repo.findSessionById(sessionId);
     if (!newSession || newSession.scheduleId !== task.scheduleId) return null;
+    if (startOfDay(newSession.date) < brazilToday()) {
+      throw new BadRequestException("Não dá para reagendar uma tarefa para um dia que já passou.");
+    }
 
     return this.repo.updateTask(taskId, { sessionId: newSession.id });
   }
@@ -1169,6 +1199,69 @@ export class SchedulesService {
   /** Minutos de estudo por dia da semana: o que o aluno informou para cada
    *  dia (onboarding, §11) ou `dailyMinutes` onde ele não informou. Dia com
    *  zero minuto não é dia de estudo. */
+  private profileGoal(userId: string) {
+    return this.repo.prisma.userProfile.findUnique({ where: { userId }, select: { desiredCourse: true, targetUniversity: true } });
+  }
+
+  /**
+   * Limites de data do cronograma para os parâmetros informados (início,
+   * matérias e tempo semanal). O app usa para travar o calendário e explicar
+   * o prazo máximo antes de o aluno enviar.
+   */
+  async limits(input: {
+    startDate?: string;
+    studyDays: number[];
+    dailyMinutes: number;
+    dayMinutes?: { weekday: number; minutes: number }[];
+    subjects: { subjectId: string; targetHours: number }[];
+  }): Promise<ScheduleLimits> {
+    const start = input.startDate ? startOfDay(new Date(input.startDate)) : brazilToday();
+    const content = await this.subjectContent(input.subjects);
+    return scheduleLimits(start, content, weeklyMinutes(this.minutesByWeekday(input.studyDays, input.dailyMinutes, input.dayMinutes)));
+  }
+
+  /** Assuntos do currículo de cada matéria escolhida (Redação e línguas usam as horas-alvo). */
+  private async subjectContent(subjects: { subjectId: string; targetHours: number }[]): Promise<SubjectContent[]> {
+    const studySubjects = await this.repo.prisma.studySubject.findMany({
+      where: { id: { in: subjects.map((s) => s.subjectId) } },
+      select: { id: true, code: true },
+    });
+    const nameById = new Map(studySubjects.map((s) => [s.id, STUDY_SUBJECT_CODE_TO_SUBJECT_NAME[s.code]]));
+    const names = [...new Set([...nameById.values()].filter((n): n is string => Boolean(n)))];
+    const counts = names.length
+      ? await this.repo.prisma.topic.groupBy({
+          by: ["subjectId"],
+          where: { subject: { name: { in: names } }, NOT: { name: "Geral" } },
+          _count: true,
+        })
+      : [];
+    const subjectRows = names.length ? await this.repo.prisma.subject.findMany({ where: { name: { in: names } }, select: { id: true, name: true } }) : [];
+    const topicsByName = new Map(subjectRows.map((s) => [s.name, counts.find((c) => c.subjectId === s.id)?._count ?? 0]));
+    return subjects.map((s) => {
+      const name = nameById.get(s.subjectId);
+      const topics = name ? topicsByName.get(name) ?? 0 : 0;
+      return { topics: topics > 0 ? topics : null, targetHours: Number(s.targetHours) };
+    });
+  }
+
+  /** O fim não pode passar do prazo máximo que a gama de conteúdos justifica. */
+  private async assertWithinContent(
+    start: Date,
+    end: Date,
+    subjects: { subjectId: string; targetHours: number }[],
+    minutesByWeekday: Map<number, number>,
+  ) {
+    const limits = scheduleLimits(start, await this.subjectContent(subjects), weeklyMinutes(minutesByWeekday));
+    if (end > limits.maxEnd) {
+      const hours = Math.round(limits.weeklyMinutes / 6) / 10;
+      throw new BadRequestException(
+        `Com ${hours} h de estudo por semana, o conteúdo das matérias escolhidas` +
+          (limits.topics ? ` (${limits.topics} assuntos)` : "") +
+          ` cabe até ${formatBr(limits.maxEnd)}. Escolha uma data final até lá, acrescente matérias ou diminua o tempo semanal.`,
+      );
+    }
+  }
+
   private minutesByWeekday(
     studyDays: number[],
     dailyMinutes: number,

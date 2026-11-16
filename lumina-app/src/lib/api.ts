@@ -3099,3 +3099,10 @@ export async function apiMaterialFileUrl(token: string, id: string): Promise<str
   if (!response.ok) throw new ApiError(response.status, 'Não foi possível abrir o arquivo do material.');
   return URL.createObjectURL(await response.blob());
 }
+
+/** Limites de data do cronograma: início a partir de hoje e prazo máximo pela gama de conteúdos. */
+export const apiScheduleLimits = (
+  token: string,
+  payload: { startDate?: string; studyDays: number[]; dailyMinutes: number; dayMinutes?: { weekday: number; minutes: number }[]; subjects: { subjectId: string; targetHours: number }[] },
+): Promise<import("@/lib/schedule-dates").ScheduleLimits> =>
+  request("/study/schedule/limits", { method: "POST", headers: authHeaders(token), body: JSON.stringify(payload) });

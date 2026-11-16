@@ -21,6 +21,7 @@ import { SchedulesService } from "./schedules.service";
 import { ScheduleInsightsService } from "./schedule-insights.service";
 import {
   CreateStudyScheduleDto,
+  ScheduleLimitsDto,
   CreateStudyTaskDto,
   ReplanTaskDto,
   RescheduleTaskDto,
@@ -85,6 +86,14 @@ export class SchedulesController {
   async createSchedule(@CurrentUser() user: UserWithProfile, @Body() dto: CreateStudyScheduleDto) {
     await this.service.createSchedule(user.id, dto);
     return { ok: true };
+  }
+
+  @Post("study/schedule/limits")
+  @ApiOperation({ summary: "Limites de data do cronograma: início a partir de hoje e prazo máximo pela gama de conteúdos." })
+  async scheduleLimits(@Body() dto: ScheduleLimitsDto) {
+    const limits = await this.service.limits(dto);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    return { ...limits, minStart: iso(limits.minStart), maxEnd: iso(limits.maxEnd) };
   }
 
   @Patch("study/schedule/:id")

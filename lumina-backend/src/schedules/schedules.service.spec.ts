@@ -17,6 +17,11 @@ describe('Cronograma: regressões funcionais', () => {
       studyTask: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
       studySession: { findMany: vi.fn().mockResolvedValue([]) },
       studyTimeLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
+      // Conteúdo (prazo máximo) e objetivo do perfil.
+      studySubject: { findMany: vi.fn().mockResolvedValue([]) },
+      topic: { groupBy: vi.fn().mockResolvedValue([]) },
+      subject: { findMany: vi.fn().mockResolvedValue([]) },
+      userProfile: { findUnique: vi.fn().mockResolvedValue(null) },
     };
     db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
     repo = {
@@ -295,6 +300,9 @@ describe('Cronograma: regressões funcionais', () => {
   });
 
   it('cria só as sessões do dia (sem tarefa nenhuma) — a fase 2 gera sob demanda', async () => {
+    // O início (13/09) não pode ser no passado: o "hoje" do teste é a véspera.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-12T15:00:00Z'));
     // 13/09/2026 a 20/09/2026 com studyDays=[0] (domingo) cobre exatamente
     // dois domingos: 13/09 e 20/09.
     repo.createSchedule = vi.fn().mockResolvedValue({ id: 'schedule-1' });
@@ -347,6 +355,11 @@ describe('Cronograma: o cronômetro é por matéria, não por subtópico', () =>
       studyTask: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
       studySession: { findMany: vi.fn().mockResolvedValue([]) },
       studyTimeLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
+      // Conteúdo (prazo máximo) e objetivo do perfil.
+      studySubject: { findMany: vi.fn().mockResolvedValue([]) },
+      topic: { groupBy: vi.fn().mockResolvedValue([]) },
+      subject: { findMany: vi.fn().mockResolvedValue([]) },
+      userProfile: { findUnique: vi.fn().mockResolvedValue(null) },
     };
     db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
     repo = {
