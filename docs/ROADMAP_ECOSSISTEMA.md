@@ -22,18 +22,19 @@ A Lumina é uma plataforma SaaS de preparação para vestibulares, começando pe
 
 A **LuminIA** é a camada que conecta tudo: entende onde o aluno está e recomenda o próximo passo (revisão, questões, sessão em grupo e, por último, um conteúdo pago), sempre de forma transparente.
 
-O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). Groups e Marketplace estão documentados para orientar decisões de arquitetura de hoje, não para competir com as prioridades atuais.
+A **Fase 1** (produto principal para o aluno) foi encerrada em 17/11/2026; o que sobrou dela é operação contínua (credenciais, material real e calibração, ver §7). O foco agora é a **Fase 2** (Lumina Groups). O Marketplace está documentado para orientar decisões de arquitetura de hoje, não para competir com as prioridades atuais.
 
-## 2. Estado atual (resumo em 11/11/2026)
+## 2. Estado atual (resumo em 17/11/2026 — Fase 1 encerrada)
 
 | Área | Status | Observação |
 | --- | --- | --- |
-| Autenticação (JWT, refresh, Google OAuth, verificação de e-mail) | Implementado | |
+| Autenticação (JWT, refresh, Google OAuth, verificação de e-mail) | Implementado | E-mails só chegam a usuários depois de verificar um domínio no Resend (hoje o remetente de teste só entrega ao dono da conta) |
+| Termos de Uso e Política de Privacidade (LGPD) | Implementado | 17/11/2026 (PR #48): aceite versionado no cadastro e tela de bloqueio até o aceite; páginas `/termos` e `/privacidade`. Dados do responsável opcionais (vazios para o piloto) |
 | Controle de acesso por workspace, cargos e permissões | Implementado | |
 | Painéis do aluno, professor, coordenação e direção | Implementado | |
 | Instituições, convites institucionais e turmas | Implementado | Convite de turma por link para aluno independente entregue (commit `1231306`, rota `/app/turmas/convite/:token`) |
 | Painel analítico do professor (Fase 3) | Parcial | Primeira versão em 09/11/2026 (simulados e tempo de estudo, `/app/acompanhamento`); correções de métricas e exportação no PR #23 (aberto em 10/11); alertas pedagógicos calculados na leitura, ainda sem histórico; ver [ACOMPANHAMENTO_PEDAGOGICO.md](ACOMPANHAMENTO_PEDAGOGICO.md) |
-| Banco de questões, busca na web, resolução com dicas | Implementado | Dicas por regras; "Pedir ajuda à LuminIA" em 05/11/2026, modo socrático e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
+| Banco de questões, busca na web, resolução com dicas | Implementado | Busca na web real pela Tavily com classificação automática pelo catálogo (17/11/2026, PR #48; ver [BUSCA_WEB.md](BUSCA_WEB.md)). Dicas por regras; "Pedir ajuda à LuminIA" em 05/11/2026, modo socrático e "Criar questão parecida" em 06/11/2026, sempre com o contexto montado no servidor |
 | Caderno de erros com motivo do erro | Implementado | Revisão espaçada automática integrada em 07/11/2026 |
 | Revisão espaçada unificada | Implementado | Fila única, recálculo automático e aviso in-app entregues em 07/11/2026 |
 | Flashcards (item 32) | Implementado | Entregue em 09/11/2026: criação manual, por IA e por PDF, com revisão espaçada; ver [FLASHCARDS.md](FLASHCARDS.md) |
@@ -49,10 +50,10 @@ O foco do momento continua sendo a **Fase 1** (produto principal para o aluno). 
 | Scanner de questões | Implementado | OCR real com modelo de visão em 13/11/2026 (enunciado, alternativas, disciplina, assunto, dificuldade e aviso de figura); ver [SCANNER_QUESTOES.md](SCANNER_QUESTOES.md) |
 | Provas anteriores | Implementado | Navegação por páginas (05/11); em 13/11/2026: importação em lote dos cadernos do INEP (questões + prova + vínculo questão → página), PDF embutido servido pelo backend e botão Resolver; ver [PROVAS_ANTERIORES.md](PROVAS_ANTERIORES.md) |
 | Cadernos de fórmulas e repertórios | Implementado | Completos em 12/11 (busca, coleções, acervo, LuminIA, painel no editor de redação); acervo inicial com 23 fórmulas e 15 repertórios em 13/11/2026; ver [CADERNOS.md](CADERNOS.md) |
-| Gabarito Inteligente | Em andamento | Fase 1, INEP, foto, painel e comunitário no código; vínculo com o banco e LuminIA por questão validados em 04/11 (ENEM 2024: 75/90 questões importadas e ligadas); gabarito sugerido por IA com validação docente no código e caminho da IA medido em 05/11 (44/59 sugestões corretas entre as respondidas; 16 pendentes; modelo `gemini-3.1-flash-lite`), com revisão docente obrigatória; repetida em 12/11 com o modelo padrão de produção (`nemotron-3.5-lightning:free`): 36/63 (57,1%), pior que o Gemini e forçando alternativas em contas que não fecham; próximo passo: cadeia de modelos própria para o gabarito (Gemini) e nova medição; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
+| Gabarito Inteligente | Implementado | Fase 1, INEP, foto, painel e comunitário; vínculo com o banco e LuminIA por questão (ENEM 2024: 75/90 questões ligadas); gabarito sugerido por IA com cadeia própria (Gemini) e prompt v2, precisão 96,2% na medição de 13/11/2026, sempre com validação docente; ver [GABARITO_INTELIGENTE.md](GABARITO_INTELIGENTE.md) |
 | Gamificação, metas, agenda e notificações push/e-mail | Planejado | Itens 33–52 do inventário; revisão espaçada, flashcards e notificação in-app já entregues |
-| Assinaturas e pagamentos | Planejado | Item 55; **a landing já cita planos Free/Premium** (ver §9) |
-| Lumina Groups | Planejado | Fase 2 |
+| Assinaturas e pagamentos | Implementado | Item 55 entregue em 14/11/2026 (Asaas, anual em 12x, fundadores, limites do Gratuito); a cobrança real aguarda conta e chaves do Asaas |
+| Lumina Groups | Em andamento | Fase 2 iniciada: MVP no ar (PR #37, 15/11/2026); ver [LUMINA_GROUPS.md](LUMINA_GROUPS.md) |
 | Lumina Marketplace | Futuro | Fase 4 |
 
 ## 3. Modelo de negócio
@@ -131,7 +132,7 @@ Hoje: imagens e PDFs do scanner são guardados no banco ou em URL, e não há st
 
 ## 7. Roadmap em fases
 
-### Fase 1: consolidação do produto principal (agora)
+### Fase 1: consolidação do produto principal (encerrada em 17/11/2026)
 Preparação para o ENEM; questões e simulados; scanner de gabaritos; correção de redação; cadernos; cronograma; LuminIA; experiência individual do aluno.
 - **Já entregue:** ver §2.
 - **Pendências da fase:**
@@ -157,7 +158,22 @@ Fica em aberto o que depende de material, credencial ou decisão do produto:
 | Caderno de Repertórios | **Entregue em 13/11/2026** (especificação v2: eixos, mapa de aplicação, 10 itens, aplicar ao tema e análise do parágrafo; ver `CADERNOS.md`) |
 | Habilidade no mapa de domínio | **Entregue em 14/11/2026** (`docs/HABILIDADES_ENEM.md`); falta a **validação docente** das 416 sugestões da IA (todas do `gemini-3.5-flash-lite`) |
 
-### Fase 2: Lumina Groups
+#### Fase 1 encerrada (17/11/2026)
+
+A Fase 1 está **encerrada** em 17/11/2026. Depois do fechamento de 13–14/11, entraram ainda (PR #48): aceite dos Termos e da Política de Privacidade (LGPD), busca na web real pela Tavily com classificação automática dos resultados e a ordem dos modelos de IA por qualidade medida. As chaves do YouTube e da Tavily estão configuradas e testadas (16–17/11).
+
+Daqui em diante, o que sobrou da Fase 1 **não bloqueia** a Fase 2 e passa a ser **operação contínua**:
+
+| Item | Tipo | Depende de |
+| --- | --- | --- |
+| Cobrança real dos planos | Credencial | Conta e chaves do Asaas, preços e teste no sandbox |
+| E-mails para usuários (verificação, recuperação de senha) | Credencial | Domínio verificado no Resend e `RESEND_FROM_EMAIL` desse domínio |
+| Responsável e contato nos Termos | Decisão | Antes do lançamento aberto: preencher `LEGAL_ENTITY` em `lumina-app/src/content/legal.ts`, trocar a versão e passar por revisão jurídica |
+| Validação com material real | Material | Fotos de redações manuscritas, cartões-resposta impressos e provas, em 2–3 celulares |
+| Calibração da redação | Medição | Rodadas diárias dentro da cota gratuita; atacar C4/C2 e dois avaliadores |
+| Habilidades do ENEM | Validação docente | Revisar as 416 sugestões da IA |
+
+### Fase 2: Lumina Groups (agora)
 - **Primeiro:** criação de grupos, entrada por código e link, convites, participantes e papéis, perfis de estudo com privacidade, registro de sessões, tempo no `StudyTimeLog`.
 - **Depois:** salas coletivas com presença, ranking opcional, metas, desafios, notificações e chat.
 
