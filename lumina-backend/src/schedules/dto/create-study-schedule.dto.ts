@@ -355,3 +355,40 @@ export class SetTopicIncludedDto {
   @IsBoolean()
   included: boolean;
 }
+
+/// Parâmetros para calcular os limites de data do cronograma antes de criar ou editar.
+export class ScheduleLimitsDto {
+  @ApiProperty({ format: "date", required: false, description: "Início pretendido; sem valor, hoje." })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiProperty({ example: [1, 2, 3, 4, 5] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  studyDays: number[];
+
+  @ApiProperty({ example: 120 })
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  dailyMinutes: number;
+
+  @ApiProperty({ type: [DayMinutesDto], required: false })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DayMinutesDto)
+  dayMinutes?: DayMinutesDto[];
+
+  @ApiProperty({ type: [SubjectTargetDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => SubjectTargetDto)
+  subjects: SubjectTargetDto[];
+}

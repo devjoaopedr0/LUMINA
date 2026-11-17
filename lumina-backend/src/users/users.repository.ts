@@ -19,6 +19,11 @@ type Db = PrismaService | Prisma.TransactionClient;
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** O objetivo do cronograma acompanha o perfil (curso e universidade). */
+  syncScheduleGoal(userId: string, goal: { objective: string | null; targetCourse: string | null }) {
+    return this.prisma.studySchedule.updateMany({ where: { userId }, data: goal });
+  }
+
   findByEmail(email: string, db: Db = this.prisma): Promise<UserWithProfile | null> {
     return db.user.findUnique({ where: { email }, include: { profile: true, teacherProfile: true } });
   }

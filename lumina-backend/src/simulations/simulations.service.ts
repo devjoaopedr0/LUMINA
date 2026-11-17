@@ -7,6 +7,7 @@ import { QuestionAccessService } from '../questions/question-access.service';
 import { TopicMasteryService } from '../questions/topic-mastery.service';
 import { upsertSheetTemplate } from './omr/sheet-template';
 import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
+import { assertFutureInstant } from '../common/date-rules';
 
 /** Papéis com vínculo de instituição além de aluno — só eles podem pedir o
  *  cartão-resposta automático na criação do simulado (item pedido pelo
@@ -467,7 +468,7 @@ export class SimulationsService {
     }
     const byId = new Map(questions.map(q => [q.id, q]));
     const row = await this.prisma.simulation.create({ data: {
-      id: randomUUID(), title: title.trim(), createdBy: userId, classId: classId ?? null, workspaceId, assessmentType, dueAt: dueAt ? new Date(dueAt) : null, durationMinutes, isRealExam: isRealExam ?? false,
+      id: randomUUID(), title: title.trim(), createdBy: userId, classId: classId ?? null, workspaceId, assessmentType, dueAt: dueAt ? assertFutureInstant(dueAt, 'O prazo da atividade') : null, durationMinutes, isRealExam: isRealExam ?? false,
       items: { create: questionIds.map((id, i) => {
         const q = byId.get(id)!;
         return { id: randomUUID(), questionId: id, position: i + 1, stem: q.stem, subject: q.subject, correctPosition: q.alternatives.find(a => a.isCorrect)!.position, alternatives: q.alternatives.map(a => ({ position: a.position, text: a.text })) };

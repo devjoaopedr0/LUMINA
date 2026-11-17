@@ -288,6 +288,10 @@ export function createFakePrisma() {
         .map((q) => ({ id: q.id }));
     }),
 
+    // O perfil sincroniza o objetivo do cronograma (curso e universidade).
+    studySchedule: {
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
     userVestibular: {
       findUnique: vi.fn(async ({ where }: any) => vestibulares.find(v => v.userId === where.userId) ?? null),
       upsert: vi.fn(async ({ where, create, update }: any) => {

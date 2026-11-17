@@ -12,6 +12,7 @@ import type { OfficialGabarito } from '../questions/import/enem/enem-pdf.parser'
 import { enemArea, gradeAnswers, GradingError, GradingItem, GradingResult, keyNumbers, LANGUAGES, letterToPosition } from './answer-key.grading';
 import { CommunityContributionDto, CreateAnswerKeyDto, ImportInepAnswerKeyDto, ReviseAnswerKeyDto, SuggestAnswerKeyDto, ValidateAnswerKeyItemsDto } from './answer-keys.dto';
 import { correctPositions, enemQuestionSourceId, EXPLANATION_SYSTEM_PROMPT, explanationPrompt, fallbackExplanation, parseSuggestedAnswerOutcome, pickAccessibleQuestion, pickQuestion, plainExplanation, positionLetter, SUGGESTION_SYSTEM_PROMPT, SUGGESTION_GENERATION, suggestionPrompt, answerKeyModels } from './answer-key.questions';
+import { assertNotFutureDay } from '../common/date-rules';
 
 /** Quem cadastra gabarito de professor (e publica para as próprias turmas). */
 const TEACHER_ACCOUNT_TYPES = ['TEACHER', 'COORDINATOR', 'DIRECTOR', 'ADMIN'];
@@ -401,6 +402,7 @@ export class AnswerKeysService {
     if (official) {
       if (viewer.accountType !== 'ADMIN') throw new ForbiddenException('Só a administração da Lumina cadastra gabarito oficial.');
       if (!dto.sourceName?.trim() || !dto.sourceUrl?.trim() || !dto.publishedAt) throw new BadRequestException('Gabarito oficial precisa da fonte (banca e link) e da data de publicação.');
+      assertNotFutureDay(dto.publishedAt, 'A data de publicação do gabarito');
     } else if (dto.origin === AnswerKeyOrigin.TEACHER) {
       if (!TEACHER_ACCOUNT_TYPES.includes(viewer.accountType)) throw new ForbiddenException('Só professores e a gestão cadastram gabaritos.');
     } else {
@@ -805,7 +807,7 @@ export class AnswerKeysService {
         status: dto.publish === false ? AnswerKeyStatus.DRAFT : AnswerKeyStatus.PUBLISHED,
         sourceName: `INEP${parsed.bookletNumber ? ` — caderno ${parsed.bookletNumber}` : ''}`,
         sourceUrl: dto.gabaritoUrl,
-        publishedAt: new Date(dto.publishedAt),
+        publishedAt: assertNotFutureDay(dto.publishedAt, 'A data de publicação do gabarito'),
         createdBy: viewer.id,
         items: { create: items.map((i) => ({ ...i, validated: true })) },
       },

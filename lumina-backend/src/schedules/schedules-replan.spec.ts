@@ -51,6 +51,11 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
       },
       studySchedule: { update: vi.fn() },
       studyTimeLog: { findMany: vi.fn().mockResolvedValue([]) },
+      // Conteúdo (prazo máximo) e objetivo do perfil.
+      studySubject: { findMany: vi.fn().mockResolvedValue([]) },
+      topic: { groupBy: vi.fn().mockResolvedValue([]) },
+      subject: { findMany: vi.fn().mockResolvedValue([]) },
+      userProfile: { findUnique: vi.fn().mockResolvedValue(null) },
     };
     db.$transaction = vi.fn((callback: (tx: unknown) => unknown) => callback(db));
     repo = {
@@ -213,6 +218,9 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
       subjects: [{ subjectId: 'a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01', targetHours: 10 }],
     };
 
+    // O início não pode ser no passado: aqui o "hoje" é antes do início (28/09).
+    beforeEach(() => vi.setSystemTime(new Date('2026-09-27T15:00:00Z')));
+
     it('cada dia nasce com o tempo que o aluno informou; sem informar, vale o tempo diário', async () => {
       await service.createSchedule('user', { ...dto, dayMinutes: [{ weekday: 1, minutes: 90 }, { weekday: 6, minutes: 240 }] });
       expect(repo.createSessions).toHaveBeenCalledWith(db, 'schedule', [
@@ -252,6 +260,10 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
   describe('editar o cronograma', () => {
     it('aceita trocar as disciplinas (o formulário de edição manda a lista inteira)', async () => {
       const subjects = [{ subjectId: 'a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01', targetHours: 30 }];
+      // Matemática com 60 assuntos: o conteúdo justifica o período atual do cronograma.
+      db.studySubject.findMany.mockResolvedValue([{ id: subjects[0].subjectId, code: 'MATH' }]);
+      db.subject.findMany.mockResolvedValue([{ id: 'subject-math', name: 'Matemática' }]);
+      db.topic.groupBy.mockResolvedValue([{ subjectId: 'subject-math', _count: 60 }]);
       expect(await validate(plainToInstance(UpdateStudyScheduleDto, { subjects, dailyMinutes: 90 }))).toHaveLength(0);
       await service.updateSchedule('user', 'schedule', { subjects });
       expect(repo.deleteScheduleSubjects).toHaveBeenCalledWith(db, 'schedule');
@@ -439,5 +451,50 @@ describe('Cronograma: replanejamento, onboarding e cronogramas antigos', () => {
     ]);
     expect(repo.findSessionsWithTasks).toHaveBeenCalledWith('schedule', new Date('2026-09-27'), new Date('2026-10-03'));
     expect(generator.buildTasksForSession).not.toHaveBeenCalled();
+  });
+  describe('datas e objetivo (validações de 16/11/2026)', () => {
+    // "Hoje" destes testes: 30/09/2026 (beforeEach do arquivo).
+    const base = {
+      studyDays: [1, 3, 5], dailyMinutes: 60,
+      subjects: [{ subjectId: 'a0a80121-7b3e-4f8a-9d4f-8a3b2c1d0e01', targetHours: 10 }],
+    };
+
+    it('recusa início antes de hoje', async () => {
+      await expect(service.createSchedule('user', { ...base, startDate: '2026-09-29', endDate: '2026-10-20' })).rejects.toThrow('não pode ser anterior a hoje');
+      expect(db.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('recusa fim depois do prazo máximo da gama de conteúdos e explica o limite', async () => {
+      // 10 h-alvo (sem assuntos mapeados) com 3 h por semana: 600 ÷ 180 × 7 = 24 dias, com folga de 50% = 36 dias a partir de 01/10.
+      await expect(service.createSchedule('user', { ...base, startDate: '2026-10-01', endDate: '2027-06-30' })).rejects.toThrow(/cabe até 06\/11\/2026/);
+      await expect(service.createSchedule('user', { ...base, startDate: '2026-10-01', endDate: '2026-11-06' })).resolves.toBeUndefined();
+    });
+
+    it('na edição, manter o início antigo (já passado) pode; mudar para o passado não', async () => {
+      db.studySubject.findMany.mockResolvedValue([{ id: 'math', code: 'MATH' }]);
+      db.subject.findMany.mockResolvedValue([{ id: 'subject-math', name: 'Matemática' }]);
+      db.topic.groupBy.mockResolvedValue([{ subjectId: 'subject-math', _count: 60 }]);
+      await expect(service.updateSchedule('user', 'schedule', { startDate: '2026-09-21', dailyMinutes: 90 })).resolves.toBeDefined();
+      await expect(service.updateSchedule('user', 'schedule', { startDate: '2026-09-25' })).rejects.toThrow('não pode ser anterior a hoje');
+      await expect(service.updateSchedule('user', 'schedule', { endDate: '2026-09-29' })).rejects.toThrow('data final do cronograma não pode ser anterior a hoje');
+    });
+
+    it('objetivo e curso vêm do perfil quando ele tem curso', async () => {
+      db.userProfile.findUnique.mockResolvedValue({ desiredCourse: 'Medicina', targetUniversity: 'UFC' });
+      await service.createSchedule('user', { ...base, startDate: '2026-10-01', endDate: '2026-10-20', objective: 'texto livre', targetCourse: 'Outro' });
+      expect(repo.createSchedule).toHaveBeenCalledWith(db, expect.objectContaining({ objective: 'Medicina na UFC', targetCourse: 'Medicina' }));
+    });
+
+    it('data da prova no passado é recusada', async () => {
+      repo.upsertUserVestibular = vi.fn();
+      await expect(service.setVestibular('user', { targetDate: new Date('2026-09-01') })).rejects.toThrow('A data da prova');
+      expect(repo.upsertUserVestibular).not.toHaveBeenCalled();
+    });
+
+    it('não reagenda tarefa para um dia que já passou', async () => {
+      repo.findSessionById = vi.fn().mockResolvedValue({ id: 'old', scheduleId: 'schedule', date: new Date('2026-09-28') });
+      await expect(service.rescheduleTask('user', 'task', 'old')).rejects.toThrow('dia que já passou');
+      expect(repo.updateTask).not.toHaveBeenCalled();
+    });
   });
 });

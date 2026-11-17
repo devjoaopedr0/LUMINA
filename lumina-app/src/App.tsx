@@ -1,5 +1,6 @@
 import { RecoveryPlansPage } from '@/pages/RecoveryPlansPage';
 import { MaterialsPage } from '@/pages/MaterialsPage';
+import { ReportsPage } from '@/pages/ReportsPage';
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthProvider";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -52,6 +53,7 @@ function App() {
         <Route path="/app/acompanhamento" element={<ProtectedRoute><TeacherAnalyticsPage /></ProtectedRoute>} />
         <Route path="/app/recuperacao" element={<ProtectedRoute><RecoveryPlansPage /></ProtectedRoute>} />
         <Route path="/app/materiais" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
+        <Route path="/app/relatorios" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
         <Route path="/app/gabarito-inteligente" element={<ProtectedRoute><SmartAnswerKey /></ProtectedRoute>} />
         <Route path="/app/gabarito-inteligente/:id/cartao" element={<ProtectedRoute><SmartAnswerKeySheet /></ProtectedRoute>} />
         <Route path="/app/turmas/convite/:token" element={<ProtectedRoute><ClassInvite /></ProtectedRoute>} />

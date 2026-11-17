@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { CheckCircle2, X } from "lucide-react";
 import { CutoffTargetCard } from "@/components/CutoffTargetCard";
+import { ProfileGoalCard } from "@/components/schedule/ProfileGoalCard";
+import { brDate, localToday, scheduleDateError, type ScheduleLimits } from "@/lib/schedule-dates";
+import { apiScheduleLimits } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
@@ -17,7 +20,6 @@ import {
   apiSetVestibular,
   apiUpdateStudySchedule,
 } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
 import { getAccessToken } from "@/lib/auth";
 import {
   STUDY_AREA_LABEL,
@@ -54,7 +56,6 @@ function clampMinutes(value: string, fallback: number): number {
  */
 export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }: ScheduleFormProps) {
   const token = getAccessToken() ?? "";
-  const { user } = useAuth();
   const editing = existingSchedule !== null;
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -75,12 +76,9 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
     Object.fromEntries(existingDayMinutes.map((day) => [day.weekday, day.minutes])),
   );
 
-  const [objective, setObjective] = useState(existingSchedule?.objective ?? "");
-  // No cronograma novo o curso já vem do cadastro: é com ele (e com a
-  // universidade do perfil) que a meta de nota pelo Sisu é calculada.
-  const [targetCourse, setTargetCourse] = useState(
-    existingSchedule ? existingSchedule.targetCourse ?? "" : user?.desiredCourse ?? "",
-  );
+  // Objetivo e curso vêm do perfil (ProfileGoalCard); o servidor puxa de lá.
+  const today = localToday();
+  const [limits, setLimits] = useState<ScheduleLimits | null>(null);
   const [priorityAreas, setPriorityAreas] = useState<StudyArea[]>(existingSchedule?.priorityAreas ?? []);
   // A data da prova é do aluno (vestibular), não do cronograma: é ela que
   // define as fases (base, consolidação, preparação).
@@ -120,6 +118,27 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
   }, [token]);
 
   const minutesFor = (day: number) => minutesByDay[day] ?? dailyMinutes;
+
+  // Prazo máximo pela gama de conteúdos: recalcula quando mudam início,
+  // dias, tempo ou matérias (com uma pequena espera para não chamar a cada tecla).
+  const limitsKey = JSON.stringify([startDate, studyDays, sameEveryDay ? dailyMinutes : minutesByDay, Object.entries(selectedSubjects)]);
+  useEffect(() => {
+    if (!token || !studyDays.length || !Object.keys(selectedSubjects).length) return;
+    const timer = setTimeout(() => {
+      const perDay = sameEveryDay ? undefined : studyDays.map((weekday) => ({ weekday, minutes: minutesByDay[weekday] ?? dailyMinutes }));
+      apiScheduleLimits(token, {
+        startDate: startDate || undefined,
+        studyDays,
+        dailyMinutes: sameEveryDay ? dailyMinutes : Math.max(dailyMinutes, ...(perDay ?? []).map((d) => d.minutes)),
+        dayMinutes: perDay,
+        subjects: Object.entries(selectedSubjects).map(([subjectId, targetHours]) => ({ subjectId, targetHours })),
+      })
+        .then(setLimits)
+        .catch(() => setLimits(null));
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, limitsKey]);
   const weeklyMinutes = studyDays.reduce(
     (sum, day) => sum + (sameEveryDay ? dailyMinutes : minutesFor(day)),
     0,
@@ -177,8 +196,8 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
   }
 
   function validateAvailability(): string | null {
-    if (!startDate || !endDate) return "Selecione as datas de início e término.";
-    if (new Date(startDate) > new Date(endDate)) return "A data de início deve ser anterior à de término.";
+    const dateError = scheduleDateError({ startDate, endDate, keepStart: existingSchedule?.startDate.slice(0, 10), limits }, today);
+    if (dateError) return dateError;
     if (studyDays.length === 0) return "Selecione pelo menos um dia de estudo por semana.";
     if (sameEveryDay) {
       if (dailyMinutes < 15) return "O tempo diário mínimo é 15 minutos.";
@@ -189,6 +208,7 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
   }
 
   function validateGoal(): string | null {
+    if (examDate && examDate < today) return "A data da prova não pode ser antes de hoje.";
     if (examDate && startDate && new Date(examDate) < new Date(startDate)) {
       return "A data da prova deve ser depois do início do cronograma.";
     }
@@ -228,8 +248,6 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
       studyDays,
       // Com tempo por dia, `dailyMinutes` vira só o valor de reserva.
       dailyMinutes: sameEveryDay ? dailyMinutes : Math.max(...perDay.map((day) => day.minutes)),
-      objective: objective || undefined,
-      targetCourse: targetCourse || undefined,
       priorityAreas,
       essayFrequency: essaySelected ? essayFrequency : undefined,
       subjects: Object.entries(selectedSubjects).map(
@@ -254,8 +272,6 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
         // o backend entende "não mexer".
         await apiUpdateStudySchedule(token, existingSchedule.id, {
           ...payload,
-          objective,
-          targetCourse,
           dayMinutes: perDay,
         });
       } else {
@@ -314,13 +330,19 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
               <label htmlFor="startDate" className="mb-1.5 block text-sm font-medium text-graphite">
                 Data de início
               </label>
-              <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+              <Input id="startDate" type="date" value={startDate} min={existingSchedule && existingSchedule.startDate.slice(0, 10) < today ? undefined : today} onChange={(e) => setStartDate(e.target.value)} required />
+              <p className="mt-1 text-xs text-graphite-400">A partir de hoje ({brDate(today)}).</p>
             </div>
             <div>
               <label htmlFor="endDate" className="mb-1.5 block text-sm font-medium text-graphite">
                 Data de término
               </label>
-              <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+              <Input id="endDate" type="date" value={endDate} min={startDate && startDate > today ? startDate : today} max={limits?.maxEnd} onChange={(e) => setEndDate(e.target.value)} required />
+              {limits ? (
+                <p className="mt-1 text-xs text-graphite-400">
+                  Até {brDate(limits.maxEnd)}: prazo máximo para o conteúdo escolhido{limits.topics ? ` (${limits.topics} assuntos)` : ""} com {Math.round(limits.weeklyMinutes / 6) / 10} h por semana.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -408,41 +430,18 @@ export function ScheduleForm({ subjects, existingSchedule, onCancel, onSuccess }
             </p>
           </div>
 
-          {/* A média que o curso e a universidade do cadastro pedem — para o
-              objetivo ser escrito na escala certa (o ENEM vai até 1000). */}
+          {/* Objetivo e curso vêm do perfil; se faltar, o aluno preenche ali mesmo (salva no perfil). */}
+          <ProfileGoalCard />
+
+          {/* A média que o curso e a universidade do perfil pedem (o ENEM vai até 1000). */}
           <CutoffTargetCard compact />
 
-          <div>
-            <label htmlFor="objective" className="mb-1.5 block text-sm font-medium text-graphite">
-              Objetivo
-            </label>
-            <Input
-              id="objective"
-              value={objective}
-              onChange={(e) => setObjective(e.target.value)}
-              placeholder="Ex: Média 750 no ENEM para Medicina"
-              maxLength={500}
-            />
-          </div>
-
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label htmlFor="targetCourse" className="mb-1.5 block text-sm font-medium text-graphite">
-                Curso que você quer
-              </label>
-              <Input
-                id="targetCourse"
-                value={targetCourse}
-                onChange={(e) => setTargetCourse(e.target.value)}
-                placeholder="Ex: Medicina"
-                maxLength={120}
-              />
-            </div>
             <div>
               <label htmlFor="examDate" className="mb-1.5 block text-sm font-medium text-graphite">
                 Data da prova
               </label>
-              <Input id="examDate" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
+              <Input id="examDate" type="date" value={examDate} min={today} onChange={(e) => setExamDate(e.target.value)} />
             </div>
           </div>
 

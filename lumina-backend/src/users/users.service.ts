@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersRepository, UserWithProfile } from './users.repository';
+import { assertBirthDate } from '../common/date-rules';
+import { goalFromProfile } from '../schedules/schedule-goal';
 
 @Injectable()
 export class UsersService {
@@ -29,10 +31,13 @@ export class UsersService {
     if (dto.schoolName) data.schoolName = dto.schoolName.trim();
     if (dto.desiredCourse) data.desiredCourse = dto.desiredCourse.trim();
     if (dto.targetUniversity) data.targetUniversity = dto.targetUniversity.trim();
-    if (dto.birthDate) data.birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
+    if (dto.birthDate) data.birthDate = assertBirthDate(dto.birthDate);
 
     try {
       const updated = await this.usersRepository.updateProfile(userId, data);
+      if (dto.desiredCourse !== undefined || dto.targetUniversity !== undefined) {
+        await this.usersRepository.syncScheduleGoal(userId, goalFromProfile(updated.profile));
+      }
       return this.toPublicUser(updated);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
