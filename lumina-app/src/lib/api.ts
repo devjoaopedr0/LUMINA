@@ -3100,20 +3100,9 @@ export async function apiMaterialFileUrl(token: string, id: string): Promise<str
   return URL.createObjectURL(await response.blob());
 }
 
-// ------------------------------------------------- relatórios (item 59)
-type Period = { days?: number; month?: boolean };
-const periodQuery = (p: Period) => (p.month ? 'month=true' : `days=${p.days ?? 30}`);
-export const apiReportScope = (token: string): Promise<import("@/lib/reports").ReportScope> => request('/reports/scope', { headers: authHeaders(token) });
-export const apiClassReport = (token: string, classId: string, p: Period): Promise<import("@/lib/reports").ClassReport> =>
-  request(`/reports/class/${classId}?${periodQuery(p)}`, { headers: authHeaders(token) });
-export const apiSubjectReport = (token: string, subject: string, p: Period, classId?: string): Promise<import("@/lib/reports").SubjectReport> =>
-  request(`/reports/subject?${new URLSearchParams({ subject, ...(classId ? { classId } : {}) })}&${periodQuery(p)}`, { headers: authHeaders(token) });
-export const apiInstitutionReport = (token: string, p: Period): Promise<import("@/lib/reports").InstitutionReport> =>
-  request(`/reports/institution?${periodQuery(p)}`, { headers: authHeaders(token) });
-export const apiStudentReport = (token: string, studentId: string, p: Period): Promise<import("@/lib/reports").StudentReport> =>
-  request(`/reports/student/${studentId}?${periodQuery(p)}`, { headers: authHeaders(token) });
-export const apiReportSnapshots = (token: string): Promise<import("@/lib/reports").SnapshotSummary[]> => request('/reports/snapshots', { headers: authHeaders(token) });
-export const apiSaveReport = (token: string, payload: { type: import("@/lib/reports").ReportType; scopeId: string; subject?: string } & Period) =>
-  request('/reports/snapshots', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
-export const apiReportSnapshot = (token: string, id: string): Promise<import("@/lib/reports").SnapshotSummary & { data: import("@/lib/reports").AnyReport }> =>
-  request(`/reports/snapshots/${id}`, { headers: authHeaders(token) });
+/** Limites de data do cronograma: início a partir de hoje e prazo máximo pela gama de conteúdos. */
+export const apiScheduleLimits = (
+  token: string,
+  payload: { startDate?: string; studyDays: number[]; dailyMinutes: number; dayMinutes?: { weekday: number; minutes: number }[]; subjects: { subjectId: string; targetHours: number }[] },
+): Promise<import("@/lib/schedule-dates").ScheduleLimits> =>
+  request("/study/schedule/limits", { method: "POST", headers: authHeaders(token), body: JSON.stringify(payload) });
