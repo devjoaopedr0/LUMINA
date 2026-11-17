@@ -592,7 +592,7 @@
     -  Exportação
     -  Operações administrativas
     -  Histórico de ações
-59. 59. Relatórios
+59. 59. Relatórios [IMPLEMENTADO EM 16/11/2026 — VER docs/RELATORIOS.md; PDF PELA IMPRESSÃO DO NAVEGADOR]
     -  Relatório individual
     -  Relatório de turma
     -  Relatório de matéria
