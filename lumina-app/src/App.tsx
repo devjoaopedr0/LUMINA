@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/AuthProvider";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
+import { LegalPage } from "@/pages/LegalPage";
 import { Dashboard } from "@/pages/Dashboard";
 import { SetPassword } from "@/pages/SetPassword";
 import { ForgotPassword } from "@/pages/ForgotPassword";
@@ -77,6 +78,8 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/termos" element={<LegalPage slug="termos" />} />
+        <Route path="/privacidade" element={<LegalPage slug="privacidade" />} />
         <Route path="/esqueci-senha" element={<ForgotPassword />} />
         <Route path="/redefinir-senha" element={<ResetPassword />} />
         <Route

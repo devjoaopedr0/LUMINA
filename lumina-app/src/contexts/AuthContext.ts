@@ -10,6 +10,7 @@ export interface SignupData {
   email: string;
   password: string;
   teacherSubject?: string;
+  acceptTerms: true;
 }
 
 export interface AuthContextValue {
@@ -21,6 +22,8 @@ export interface AuthContextValue {
   verifyEmail: (code: string) => Promise<ApiUser>;
   resendVerification: () => Promise<void>;
   updateProfile: (data: UpdateProfilePayload) => Promise<ApiUser>;
+  /** Registra o aceite da versão vigente dos Termos. */
+  acceptTerms: () => Promise<ApiUser>;
   logout: () => void;
   logoutAll: () => Promise<void>;
 }

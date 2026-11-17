@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  Equals,
   IsEmail,
   IsString,
   Matches,
@@ -13,6 +14,13 @@ import { Type } from 'class-transformer';
 import { CreateInstitutionDto } from '../../institutions/institutions.dto';
 
 export class RegisterDto {
+  @ApiProperty({
+    description: 'Aceite dos Termos de Uso e da Política de Privacidade (e, se menor de 18, a autorização do responsável).',
+    example: true,
+  })
+  @Equals(true, { message: 'Para criar a conta, aceite os Termos de Uso e a Política de Privacidade.' })
+  acceptTerms: boolean;
+
   @ApiProperty({ required: false, type: CreateInstitutionDto })
   @IsOptional()
   @ValidateNested()

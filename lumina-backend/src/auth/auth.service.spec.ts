@@ -132,6 +132,7 @@ describe('AuthService', () => {
     username: 'maria.silva',
     email: 'maria@exemplo.com',
     password: 'SenhaForte123',
+    acceptTerms: true as const,
   };
 
   describe('register', () => {

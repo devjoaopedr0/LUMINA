@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AuthContext, type AuthContextValue, type SignupData } from './AuthContext';
 import {
+  apiAcceptTerms,
   apiLogin,
   apiLogoutAll,
   apiMe,
@@ -13,6 +14,7 @@ import {
   type UpdateProfilePayload,
   type ApiUser,
 } from "@/lib/api";
+import { CURRENT_TERMS_VERSION } from "@/content/legal";
 import { ACCESS_TOKEN_KEY, clearTokens, getAccessToken, setTokens } from "@/lib/auth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -100,6 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return updated;
   }
 
+  async function acceptTerms() {
+    const token = getAccessToken();
+    const updated = await apiAcceptTerms(token ?? '', CURRENT_TERMS_VERSION);
+    setUser(updated);
+    return updated;
+  }
+
   function logout() {
     clearTokens();
     setUser(null);
@@ -120,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     verifyEmail,
     resendVerification,
     updateProfile,
+    acceptTerms,
     logout,
     logoutAll,
   };

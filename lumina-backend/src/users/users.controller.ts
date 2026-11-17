@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +6,7 @@ import { UserWithProfile } from './users.repository';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersService } from './users.service';
+import { AcceptTermsDto } from './dto/accept-terms.dto';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -19,6 +20,13 @@ export class UsersController {
   @ApiResponse({ status: 200, type: UserResponseDto })
   getProfile(@CurrentUser() user: UserWithProfile): UserResponseDto {
     return this.usersService.toPublicUser(user);
+  }
+
+  @Post('me/accept-terms')
+  @ApiOperation({ summary: 'Registra o aceite da versão vigente dos Termos de Uso e da Política de Privacidade.' })
+  @ApiResponse({ status: 201, type: UserResponseDto })
+  acceptTerms(@CurrentUser() user: UserWithProfile, @Body() dto: AcceptTermsDto): Promise<UserResponseDto> {
+    return this.usersService.acceptTerms(user.id, dto.version);
   }
 
   @Patch('me/profile')

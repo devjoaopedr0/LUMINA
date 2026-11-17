@@ -37,6 +37,11 @@ export interface ApiUser {
   studySessionMinutes: number | null;
   weeklyStudyDays: number | null;
   teacherSubject: string | null;
+  /** Versão dos Termos aceita; null = nunca aceitou (ex.: cadastro pelo Google). */
+  termsVersion: string | null;
+  termsAcceptedAt: string | null;
+  /** false = precisa aceitar a versão vigente antes de usar o app. */
+  termsCurrent: boolean;
 }
 
 export interface AuthResponse {
@@ -453,6 +458,7 @@ export function apiRegister(payload: {
   email: string;
   password: string;
   teacherSubject?: string;
+  acceptTerms: true;
 }): Promise<AuthResponse> {
   return request("/auth/register", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -531,6 +537,14 @@ export function apiUpdateProfile(
     method: 'PATCH',
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(payload),
+  });
+}
+
+export function apiAcceptTerms(accessToken: string, version: string): Promise<ApiUser> {
+  return request('/users/me/accept-terms', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ version }),
   });
 }
 
@@ -1317,9 +1331,9 @@ export interface WebSearchQuery {
 }
 
 export interface WebSearchResults {
-  /** Provedor ativo: "google-cse" (busca real) ou "demo" (demonstração). */
+  /** Provedor ativo: "tavily" ou "google-cse" (busca real) ou "demo" (demonstração). */
   provider: string;
-  /** true quando a busca NÃO saiu do provedor real (sem chaves do Google CSE). */
+  /** true quando a busca NÃO saiu de um provedor real (sem chaves da Tavily nem do Google CSE). */
   demoMode: boolean;
   query: WebSearchQuery;
   items: WebSearchHit[];
@@ -3110,3 +3124,21 @@ export const apiScheduleLimits = (
 /** Calendário do cronograma: o que estudar em cada dia (dias futuros ainda não planejados vêm como previsão). */
 export const apiScheduleCalendar = (token: string, from: string, to: string): Promise<import("@/lib/calendar").ScheduleCalendar> =>
   request(`/study/calendar?from=${from}&to=${to}`, { headers: authHeaders(token) });
+
+// ------------------------------------------------- relatórios (item 59)
+type Period = { days?: number; month?: boolean };
+const periodQuery = (p: Period) => (p.month ? 'month=true' : `days=${p.days ?? 30}`);
+export const apiReportScope = (token: string): Promise<import("@/lib/reports").ReportScope> => request('/reports/scope', { headers: authHeaders(token) });
+export const apiClassReport = (token: string, classId: string, p: Period): Promise<import("@/lib/reports").ClassReport> =>
+  request(`/reports/class/${classId}?${periodQuery(p)}`, { headers: authHeaders(token) });
+export const apiSubjectReport = (token: string, subject: string, p: Period, classId?: string): Promise<import("@/lib/reports").SubjectReport> =>
+  request(`/reports/subject?${new URLSearchParams({ subject, ...(classId ? { classId } : {}) })}&${periodQuery(p)}`, { headers: authHeaders(token) });
+export const apiInstitutionReport = (token: string, p: Period): Promise<import("@/lib/reports").InstitutionReport> =>
+  request(`/reports/institution?${periodQuery(p)}`, { headers: authHeaders(token) });
+export const apiStudentReport = (token: string, studentId: string, p: Period): Promise<import("@/lib/reports").StudentReport> =>
+  request(`/reports/student/${studentId}?${periodQuery(p)}`, { headers: authHeaders(token) });
+export const apiReportSnapshots = (token: string): Promise<import("@/lib/reports").SnapshotSummary[]> => request('/reports/snapshots', { headers: authHeaders(token) });
+export const apiSaveReport = (token: string, payload: { type: import("@/lib/reports").ReportType; scopeId: string; subject?: string } & Period) =>
+  request('/reports/snapshots', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+export const apiReportSnapshot = (token: string, id: string): Promise<import("@/lib/reports").SnapshotSummary & { data: import("@/lib/reports").AnyReport }> =>
+  request(`/reports/snapshots/${id}`, { headers: authHeaders(token) });

@@ -19,6 +19,14 @@ type Db = PrismaService | Prisma.TransactionClient;
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  acceptTerms(userId: string, version: string): Promise<UserWithProfile> {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { termsAcceptedAt: new Date(), termsVersion: version },
+      include: { profile: true, teacherProfile: true },
+    });
+  }
+
   /** O objetivo do cronograma acompanha o perfil (curso e universidade). */
   syncScheduleGoal(userId: string, goal: { objective: string | null; targetCourse: string | null }) {
     return this.prisma.studySchedule.updateMany({ where: { userId }, data: goal });
@@ -55,6 +63,7 @@ export class UsersRepository {
       username: string;
       teacherSubject?: string;
       accountType: AccountType;
+      termsVersion?: string;
     },
     db: Db = this.prisma,
   ): Promise<UserWithProfile> {
@@ -63,6 +72,7 @@ export class UsersRepository {
         email: data.email,
         passwordHash: data.passwordHash,
         accountType: data.accountType,
+        ...(data.termsVersion ? { termsAcceptedAt: new Date(), termsVersion: data.termsVersion } : {}),
         ...(data.teacherSubject ? { teacherProfile: { create: { subject: data.teacherSubject } } } : {}),
         profile: {
           create: {

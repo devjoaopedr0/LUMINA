@@ -112,6 +112,18 @@ export class UserResponseDto {
   @ApiProperty({ nullable: true })
   weeklyStudyDays: number | null;
 
+  @Expose()
+  @ApiProperty({ nullable: true, description: 'Versão dos Termos aceita.' })
+  termsVersion: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  termsAcceptedAt: Date | null;
+
+  @Expose()
+  @ApiProperty({ description: 'false = precisa aceitar a versão vigente dos Termos antes de usar o app.' })
+  termsCurrent: boolean;
+
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);
   }
