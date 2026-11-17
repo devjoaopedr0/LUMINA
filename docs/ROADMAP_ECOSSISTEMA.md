@@ -164,6 +164,8 @@ Fica em aberto o que depende de material, credencial ou decisão do produto:
 ### Fase 3: fortalecimento institucional e ferramentas para professores
 Painel do professor mais completo, gestão de alunos e turmas, acompanhamento (alertas pedagógicos, plano de recuperação, relatórios: itens 40–42 e 59), central de materiais (48–50), integração com o ecossistema. Também prepara o terreno do Marketplace: professores ativos e conteúdo próprio.
 
+**Estado em 16/11/2026:** alertas pedagógicos persistidos (item 41, `ACOMPANHAMENTO_PEDAGOGICO.md`), plano de recuperação (item 42, `PLANO_RECUPERACAO.md`), central de materiais com busca e LuminIA (itens 48–50, `CENTRAL_MATERIAIS.md`) e relatórios (item 59, `RELATORIOS.md`) entregues. Ficam para depois: notificações (item 51), comparação de desempenho entre turmas (item 43) e a sala de estudo da turma (item 47).
+
 ### Fase 4: Lumina Marketplace
 Cadastro e verificação de vendedores, perfis, publicação de cursos, catálogo, compra, biblioteca, pagamentos com split, comissões, painel financeiro e avaliações.
 

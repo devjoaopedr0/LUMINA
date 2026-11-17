@@ -109,7 +109,7 @@ export function AiChatWidget() {
   if (!user || !location.pathname.startsWith("/app")) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-5 right-5 z-50 sm:bottom-6 sm:right-6 print:hidden">
       {open ? (
         <section aria-label="Conversa com a LuminIA" className="flex h-[min(620px,calc(100vh-48px))] w-[min(390px,calc(100vw-32px))] flex-col overflow-hidden rounded-[24px] border border-surface-line bg-white shadow-2xl shadow-graphite/20">
           <header className="flex items-center gap-3 bg-graphite px-4 py-4 text-white">
