@@ -33,6 +33,11 @@ describe('Busca de questões na web (e2e — item 10)', () => {
     process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
     process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
     process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3998/auth/google/callback';
+    // Provedores reais de busca desligados: o e2e cobre o modo demonstração e não
+    // pode gastar créditos da Tavily nem do Google com a chave do .env local.
+    process.env.TAVILY_API_KEY = '';
+    process.env.GOOGLE_CSE_ID = '';
+    process.env.GOOGLE_CSE_API_KEY = '';
     process.env.FRONTEND_URL = 'http://localhost:5174';
     // Garante o modo DEMO da fase 10: sem chaves do Google CSE, o serviço
     // escolhe o provedor demonstrativo e sinaliza no response.
@@ -72,6 +77,7 @@ describe('Busca de questões na web (e2e — item 10)', () => {
         username: 'marina.costa',
         email: 'marina@exemplo.com',
         password: 'SenhaForte123',
+        acceptTerms: true,
       });
     accessToken = register.body.accessToken;
   }, 30000);
@@ -249,6 +255,7 @@ describe('Busca de questões na web (e2e — item 10)', () => {
           username: 'bruno.alves',
           email: 'bruno@exemplo.com',
           password: 'SenhaForte123',
+          acceptTerms: true,
         })
         .expect(201);
 

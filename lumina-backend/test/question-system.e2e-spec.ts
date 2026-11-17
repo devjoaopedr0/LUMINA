@@ -55,6 +55,7 @@ describe('Question system (e2e)', () => {
         username: 'ana.souza',
         email: 'ana@exemplo.com',
         password: 'SenhaForte123',
+        acceptTerms: true,
       });
     accessToken = register.body.accessToken;
   }, 30000);

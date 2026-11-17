@@ -41,11 +41,13 @@ export class SearchController {
 
   @Get('web')
   @ApiOperation({
-    summary: 'Busca questões públicas na web (Google CSE ou demonstração).',
+    summary: 'Busca questões públicas na web (Tavily, Google CSE ou demonstração).',
     description:
-      'Usa o Google Programmable Search Engine (GOOGLE_CSE_ID + GOOGLE_CSE_API_KEY) ' +
-      'quando configurado. Sem as chaves, entra em modo demonstração ' +
-      'determinístico — o response sinaliza provider="demo" e demoMode=true.',
+      'Usa a Tavily (TAVILY_API_KEY) quando configurada; depois, ou se ela falhar, ' +
+      'o Google Programmable Search Engine (GOOGLE_CSE_ID + GOOGLE_CSE_API_KEY). ' +
+      'Sem nenhuma chave, entra em modo demonstração determinístico — o response ' +
+      'sinaliza provider="demo" e demoMode=true. Se todos os provedores reais ' +
+      'falharem, responde 503.',
   })
   @ApiOkResponse({ type: SearchWebResultsDto })
   @ApiNotFoundResponse({ description: 'Workspace pessoal não encontrado (modo demo).' })

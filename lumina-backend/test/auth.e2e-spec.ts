@@ -63,6 +63,7 @@ describe('Auth (e2e)', () => {
     username: 'maria.silva',
     email: 'maria@exemplo.com',
     password: 'SenhaForte123',
+    acceptTerms: true,
   };
 
   it('POST /auth/register cria a conta e nunca retorna password_hash', async () => {
@@ -92,6 +93,7 @@ describe('Auth (e2e)', () => {
         username: 'paulo.diretor',
         email: 'diretor.instituicao@exemplo.com',
         password: 'SenhaForte123',
+        acceptTerms: true,
         institution: { name: 'Instituto Exemplo', email: 'instituto.exemplo@contato.com' },
       });
 

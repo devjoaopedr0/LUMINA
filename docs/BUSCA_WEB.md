@@ -97,6 +97,35 @@ Resposta (`ImportReportDto`):
 { "total": 1, "imported": 1, "duplicates": 0, "invalid": 0, "errors": 0, "details": [] }
 ```
 
+## Classificação automática dos resultados reais
+
+Os resultados da Tavily e do Google CSE chegam sem classificação. O
+`WebHitClassifierService` (`src/search/web-hit-classifier*.ts`) classifica cada
+um **sem IA externa**, cruzando título, trecho e endereço da página com o
+catálogo da Lumina (disciplinas, assuntos e provas, em cache por 10 minutos):
+
+- **Assunto:** nome do assunto do catálogo no texto, sem diferenciar acento,
+  plural ou "2º"/"segundo", mais sinônimos comuns (ex.: "função do 1º grau" →
+  Função afim; "leis de Mendel" → Genética). Prefere o assunto do título e o mais
+  específico. Assunto de uma palavra só ("Conjuntos", "Evolução") exige
+  disciplina definida ou contexto de questão na página ("questão", "exercício",
+  "vestibular", "ENEM"…). O assunto "Geral" é ignorado.
+- **Disciplina:** a do filtro do aluno; senão, a do assunto achado; senão, a
+  disciplina mais citada no texto (empate = nenhuma).
+- **Prova e ano:** nome de prova do catálogo e o ano escrito até 3 palavras
+  depois dele ("ENEM 2021", "(Fuvest – 2013)"); senão, um ano único no título.
+  Página que mistura anos fica sem ano. `examId` só vem com prova **e** ano
+  existentes no catálogo.
+- **Dificuldade:** só a do filtro (o texto da página não diz isso com segurança).
+
+Os resultados que batem com o assunto/prova pedidos sobem para o topo (ordem
+estável entre empatados). A classificação preenche os selos do resultado e o
+formulário de transcrição; o aluno revisa tudo antes de salvar. Se o catálogo
+não carregar, a busca segue sem classificação, sem erro.
+
+Para melhorar a cobertura, acrescente sinônimos em `TOPIC_ALIASES` e
+`SUBJECT_ALIASES` (pelo nome do catálogo) e um caso em `web-hit-classifier.spec.ts`.
+
 ## Busca sem acento
 
 A busca por conteúdo é insensível a acento **e** a maiúsculas: digitar
@@ -140,10 +169,28 @@ caminho é o wrapper `IMMUTABLE` documentado na própria doc do `unaccent` mais 
   assunto, prova, ano, dificuldade) editável. Nada é gravado enquanto o
   formulário não é enviado — clicar em "Salvar" sozinho não cria nada.
 
+## Ativando a busca real (Tavily — recomendado)
+
+Sem configuração, a funcionalidade opera em **modo demonstração**. O jeito mais
+simples de buscar na web de verdade é a [Tavily](https://app.tavily.com):
+
+1. Crie uma conta e copie a API key.
+2. Adicione no `.env` do backend: `TAVILY_API_KEY=sua-chave`.
+3. Reinicie o backend.
+
+O `SearchService` escolhe o provedor nesta ordem: **Tavily → Google CSE → demo**.
+Com a Tavily configurada, o response traz `"provider": "tavily"`. Se a Tavily
+falhar (limite, chave recusada, fora do ar) e o Google CSE estiver configurado,
+ele assume como reserva; se todos os provedores reais falharem, a API responde
+**503** com uma mensagem clara, sem cair no modo demonstração.
+
+Direitos autorais: a Tavily devolve um resumo da página; o `TavilySearchProvider`
+corta esse trecho em 300 caracteres e não guarda nada — vale a mesma política dos
+outros provedores (só título, link, trecho e domínio como atribuição).
+
 ## Ativando a busca real (Google CSE)
 
-Sem configuração, a functionality opera em **modo demonstração**. Para buscar
-na web de verdade:
+Alternativa ou reserva da Tavily:
 
 1. Crie um [Programmable Search Engine](https://programmablesearchengine.google.com/)
    e anote o **Search engine ID** (o `cx`).

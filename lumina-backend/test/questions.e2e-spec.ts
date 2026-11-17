@@ -64,6 +64,7 @@ describe('Questions (e2e)', () => {
         username: 'joao.pereira',
         email: 'joao@exemplo.com',
         password: 'SenhaForte123',
+        acceptTerms: true,
       });
     accessToken = register.body.accessToken;
     // Subir uma segunda aplicação Nest completa em paralelo com a do
@@ -552,6 +553,7 @@ describe('Questions (e2e)', () => {
           username: `aluno.caderno.${alunos}`,
           email: `aluno.caderno.${alunos}@exemplo.com`,
           password: 'SenhaForte123',
+          acceptTerms: true,
         });
       return { Authorization: `Bearer ${cadastro.body.accessToken}` };
     }

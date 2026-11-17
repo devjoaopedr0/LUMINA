@@ -1,9 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersRepository, UserWithProfile } from './users.repository';
 import { assertBirthDate } from '../common/date-rules';
+import { CURRENT_TERMS_VERSION } from '../common/legal';
 import { goalFromProfile } from '../schedules/schedule-goal';
 
 @Injectable()
@@ -50,12 +51,24 @@ export class UsersService {
     }
   }
 
+  /** Aceite da versão vigente dos Termos (cadastro pelo Google, conta antiga ou termos atualizados). */
+  async acceptTerms(userId: string, version: string): Promise<UserResponseDto> {
+    if (version !== CURRENT_TERMS_VERSION) {
+      throw new BadRequestException('Os Termos foram atualizados. Recarregue a página e leia a versão vigente.');
+    }
+    const updated = await this.usersRepository.acceptTerms(userId, version);
+    return this.toPublicUser(updated);
+  }
+
   /** Achata User + UserProfile num único objeto público, sem password_hash. */
   toPublicUser(user: UserWithProfile): UserResponseDto {
     return new UserResponseDto({
       id: user.id,
       accountType: user.accountType,
       teacherSubject: user.teacherProfile?.subject ?? null,
+      termsVersion: user.termsVersion ?? null,
+      termsAcceptedAt: user.termsAcceptedAt ?? null,
+      termsCurrent: user.termsVersion === CURRENT_TERMS_VERSION,
       email: user.email,
       emailVerified: user.emailVerified,
       status: user.status,

@@ -3,6 +3,10 @@ import { QuestionDifficulty, QuestionSourceType } from '@prisma/client';
 import { SearchService } from './search.service';
 import { GoogleCseSearchProvider } from './google-cse.provider';
 import { DemoWebSearchProvider } from './demo-search.provider';
+import { TavilySearchProvider } from './tavily.provider';
+import { WebHitClassifierService } from './web-hit-classifier.service';
+import { WebSearchProviderError } from './search-provider.error';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { QuestionsService } from '../questions/questions.service';
 import { QuestionImportService } from '../questions/import/question-import.service';
 import { SaveWebQuestionDto, SearchWebQueryDto } from './search.dto';
@@ -30,11 +34,27 @@ const hit = {
 
 const importReport = { total: 1, imported: 1, updated: 0, skipped: 0, duplicates: [], issues: [] };
 
-function makeService(options: { googleConfigured: boolean; hits?: unknown[] }) {
+function makeService(options: {
+  googleConfigured: boolean;
+  hits?: unknown[];
+  tavilyConfigured?: boolean;
+  tavilyError?: WebSearchProviderError;
+  googleError?: WebSearchProviderError;
+}) {
+  const tavily = {
+    name: 'tavily' as const,
+    isConfigured: vi.fn().mockReturnValue(options.tavilyConfigured ?? false),
+    searchWeb: options.tavilyError
+      ? vi.fn().mockRejectedValue(options.tavilyError)
+      : vi.fn().mockResolvedValue(options.hits ?? [hit]),
+  } as unknown as TavilySearchProvider;
+
   const google = {
     name: 'google-cse' as const,
     isConfigured: vi.fn().mockReturnValue(options.googleConfigured),
-    searchWeb: vi.fn().mockResolvedValue(options.hits ?? [hit]),
+    searchWeb: options.googleError
+      ? vi.fn().mockRejectedValue(options.googleError)
+      : vi.fn().mockResolvedValue(options.hits ?? [hit]),
   } as unknown as GoogleCseSearchProvider;
 
   const demo = {
@@ -51,8 +71,12 @@ function makeService(options: { googleConfigured: boolean; hits?: unknown[] }) {
     importFromDtos: vi.fn().mockResolvedValue(importReport),
   } as unknown as QuestionImportService;
 
-  const service = new SearchService(google, demo, questionsService, questionImportService);
-  return { service, google, demo, questionsService, questionImportService };
+  const classifier = {
+    classifyAndRank: vi.fn().mockImplementation(async (hits: unknown[]) => hits),
+  } as unknown as WebHitClassifierService;
+
+  const service = new SearchService(tavily, google, demo, questionsService, questionImportService, classifier);
+  return { service, tavily, google, demo, questionsService, questionImportService };
 }
 
 describe('SearchService (item 10 — busca de questões na web)', () => {
@@ -77,6 +101,44 @@ describe('SearchService (item 10 — busca de questões na web)', () => {
       expect(google.searchWeb).not.toHaveBeenCalled();
       expect(result.provider).toBe('demo');
       expect(result.demoMode).toBe(true);
+    });
+  });
+
+  describe('searchWeb — Tavily e reserva', () => {
+    it('prefere a Tavily quando configurada', async () => {
+      const { service, tavily, google, demo } = makeService({ googleConfigured: true, tavilyConfigured: true });
+      const result = await service.searchWeb('user-1', { q: 'função afim' });
+      expect(result.provider).toBe('tavily');
+      expect(result.demoMode).toBe(false);
+      expect(tavily.searchWeb).toHaveBeenCalled();
+      expect(google.searchWeb).not.toHaveBeenCalled();
+      expect(demo.searchWeb).not.toHaveBeenCalled();
+    });
+
+    it('cai no Google CSE quando a Tavily falha', async () => {
+      const { service, google } = makeService({
+        googleConfigured: true,
+        tavilyConfigured: true,
+        tavilyError: new WebSearchProviderError('RATE_LIMIT', 'limite'),
+      });
+      const result = await service.searchWeb('user-1', { q: 'função afim' });
+      expect(result.provider).toBe('google-cse');
+      expect(google.searchWeb).toHaveBeenCalled();
+    });
+
+    it('responde 503 (sem cair no demo) quando todos os provedores reais falham', async () => {
+      const { service, demo } = makeService({
+        googleConfigured: false,
+        tavilyConfigured: true,
+        tavilyError: new WebSearchProviderError('UPSTREAM', 'fora do ar'),
+      });
+      await expect(service.searchWeb('user-1', { q: 'função afim' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(demo.searchWeb).not.toHaveBeenCalled();
+    });
+
+    it('não engole erros que não são do provedor', async () => {
+      const { service } = makeService({ googleConfigured: true, tavilyConfigured: true, tavilyError: new TypeError('bug') as never });
+      await expect(service.searchWeb('user-1', { q: 'função afim' })).rejects.toBeInstanceOf(TypeError);
     });
   });
 

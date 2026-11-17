@@ -26,6 +26,7 @@ import { EmailVerificationCodeRepository } from './email-verification-codes.repo
 import { GoogleProfile } from './interfaces/google-profile.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { PasswordResetTokenRepository } from './password-reset-tokens.repository';
+import { CURRENT_TERMS_VERSION } from '../common/legal';
 
 @Injectable()
 export class AuthService {
@@ -98,6 +99,7 @@ export class AuthService {
           username: dto.username,
           teacherSubject: dto.teacherSubject,
           accountType: dto.institution ? 'DIRECTOR' : accountType,
+          termsVersion: CURRENT_TERMS_VERSION,
         },
         tx,
       );

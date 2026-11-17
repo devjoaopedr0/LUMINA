@@ -4,9 +4,9 @@ import { QuestionDifficulty } from '@prisma/client';
  * Tanto o Google CSE real quanto o provedor demonstração implementam esta
  * interface; a SearchService escolhe o ativo conforme a configuração. */
 export interface WebSearchProvider {
-  /** Nome estável para o response (google-cse | demo) — o cliente sempre
+  /** Nome estável para o response (tavily | google-cse | demo) — o cliente sempre
    * sabe a origem, nunca confunde demo com resultado real. */
-  readonly name: 'google-cse' | 'demo';
+  readonly name: 'tavily' | 'google-cse' | 'demo';
   /** true quando o provedor tem tudo que precisa para operar de verdade. */
   isConfigured(): boolean;
   searchWeb(

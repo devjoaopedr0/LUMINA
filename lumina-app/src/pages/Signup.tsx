@@ -65,6 +65,7 @@ export function Signup() {
   const [institutionName, setInstitutionName] = useState("");
   const [institutionEmail, setInstitutionEmail] = useState("");
   const [institutionPhone, setInstitutionPhone] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -104,6 +105,10 @@ export function Signup() {
       setError('Escolha sua matéria antes de criar a conta.'); return;
     }
 
+    if (!acceptTerms) {
+      setError('Para criar a conta, aceite os Termos de Uso e a Política de Privacidade.'); return;
+    }
+
     setSubmitting(true);
     try {
       const newUser = isInstitution
@@ -113,6 +118,7 @@ export function Signup() {
             username,
             email,
             password,
+            acceptTerms: true,
             institution: {
               name: institutionName.trim(),
               email: institutionEmail.trim(),
@@ -125,6 +131,7 @@ export function Signup() {
             username,
             email,
             password,
+            acceptTerms: true,
             accountType: accountType === 'professor' ? 'TEACHER' : 'STUDENT_INDEPENDENT',
             ...(accountType === 'professor' ? { teacherSubject } : {}),
           });
@@ -335,6 +342,21 @@ export function Signup() {
             required
           />
         </div>
+
+        <label className="flex items-start gap-3 text-sm text-graphite-500">
+          <input
+            type="checkbox"
+            checked={acceptTerms}
+            onChange={(e) => setAcceptTerms(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-graphite"
+          />
+          <span>
+            Li e concordo com os{" "}
+            <Link to="/termos" target="_blank" className="font-semibold text-graphite underline hover:text-primary-600">Termos de Uso</Link>{" "}
+            e a{" "}
+            <Link to="/privacidade" target="_blank" className="font-semibold text-graphite underline hover:text-primary-600">Política de Privacidade</Link>.
+          </span>
+        </label>
 
         {error && (
           <div className="flex items-start gap-2 rounded-xl border border-alert/20 bg-alert/5 p-3 text-sm text-alert">
