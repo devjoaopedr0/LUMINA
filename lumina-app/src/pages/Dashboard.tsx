@@ -1,3 +1,4 @@
+import { cachedHasClasses, isNavItemVisible, storeHasClasses } from "@/lib/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, Layers, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck, Crown } from "lucide-react";
@@ -33,7 +34,7 @@ const NAV_ITEMS = [
   { to: "/app/provas-antigas", label: "Provas anteriores", icon: History },
   { to: "/app/caderno-formulas", label: "Caderno de fórmulas", icon: Lightbulb },
   { to: "/app/caderno-repertorio", label: "Caderno de repertórios", icon: BookOpenCheck },
-  { to: "/app/materiais", label: "Materiais da turma", icon: FileText },
+  { to: "/app/materiais", label: "Materiais da turma", icon: FileText, onlyWithClasses: true },
   { to: "/app/recuperacao", label: "Planos de recuperação", icon: Target },
   { to: "/app/relatorios", label: "Relatórios", icon: FileText },
   { to: "/app/plano", label: "Meu plano", icon: Crown },
@@ -56,15 +57,24 @@ function formatMinutes(minutes: number) {
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useAuth();
-  // Aluno independente só vê "Turmas" se entrou em alguma pelo link de convite.
+  // Aluno independente só vê o que é de turma se entrou em alguma pelo link
+  // de convite. Até saber (null), esses itens ficam escondidos: nada aparece
+  // e some depois. O resultado fica guardado na sessão para as outras telas.
   const independent = user?.accountType === "STUDENT_INDEPENDENT";
-  const [hasClasses, setHasClasses] = useState(false);
+  const [hasClasses, setHasClasses] = useState<boolean | null>(() => cachedHasClasses(user?.id));
   useEffect(() => {
-    if (!independent) return;
+    if (!independent || !user?.id) return;
     let active = true;
-    apiSimulationClasses(getAccessToken() ?? "").then(rows => { if (active) setHasClasses(rows.length > 0); }).catch(() => undefined);
+    apiSimulationClasses(getAccessToken() ?? "")
+      .then(rows => {
+        if (!active) return;
+        setHasClasses(rows.length > 0);
+        storeHasClasses(user.id, rows.length > 0);
+      })
+      .catch(() => { if (active) setHasClasses(false); });
     return () => { active = false; };
-  }, [independent]);
+  }, [independent, user?.id]);
+  const navContext = { accountType: user?.accountType ?? null, hasClasses };
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}` || "LU";
   return (
     <>
@@ -77,7 +87,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         <nav className="flex-1 px-4 py-7" aria-label="Navegação principal">
           <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">Estudos</p>
           <div className="mt-3 space-y-1.5">
-            {NAV_ITEMS.filter(item => !(item.onlyWithClasses && independent && !hasClasses) && !(item.reviewersOnly && (user?.accountType === "STUDENT_INDEPENDENT" || user?.accountType === "STUDENT_INSTITUTION"))).map(({ to, label, icon: Icon, end }) => (
+            {NAV_ITEMS.filter(item => isNavItemVisible(item, navContext)).map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} onClick={onClose} className={({ isActive }) => `group flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition ${isActive ? "bg-primary text-graphite" : "text-white/65 hover:bg-white/10 hover:text-white"}`}>
                 <Icon className="h-[18px] w-[18px]" /><span>{label}</span><ChevronRight className="ml-auto h-4 w-4 opacity-40 transition group-hover:translate-x-0.5" />
               </NavLink>
