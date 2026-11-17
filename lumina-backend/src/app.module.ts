@@ -66,6 +66,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
     RecoveryPlansModule,
     MaterialsModule,
     FlashcardsModule,
+    ReportsModule,
   ],
   providers: [
     RateLimitMiddleware,
