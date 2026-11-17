@@ -351,11 +351,10 @@ export function Signup() {
             className="mt-0.5 h-4 w-4 shrink-0 accent-graphite"
           />
           <span>
-            Li e aceito os{" "}
+            Li e concordo com os{" "}
             <Link to="/termos" target="_blank" className="font-semibold text-graphite underline hover:text-primary-600">Termos de Uso</Link>{" "}
             e a{" "}
             <Link to="/privacidade" target="_blank" className="font-semibold text-graphite underline hover:text-primary-600">Política de Privacidade</Link>.
-            Se tenho menos de 18 anos, tenho a autorização de um dos meus pais ou do meu responsável legal.
           </span>
         </label>
 

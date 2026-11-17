@@ -146,7 +146,8 @@ export function AiChatWidget() {
     void send(content, { image: attached });
   }
 
-  if (!user || !location.pathname.startsWith("/app")) return null;
+  // Antes do aceite dos Termos o app inteiro fica bloqueado — a LuminIA também.
+  if (!user || !user.termsCurrent || !location.pathname.startsWith("/app")) return null;
 
   return (
     <div className="fixed bottom-5 right-5 z-50 sm:bottom-6 sm:right-6 print:hidden">

@@ -5,18 +5,26 @@
  * Mudou o texto de forma relevante: troque a data nos dois lugares e todo
  * usuário volta a ver a tela de aceite no próximo acesso.
  *
- * ATENÇÃO: os campos de LEGAL_ENTITY são dados reais da empresa (razão social,
- * CNPJ, endereço, e-mail do encarregado) — preencha antes de publicar. O texto
- * é um rascunho técnico e deve passar por revisão jurídica.
+ * LEGAL_ENTITY é opcional: vazio (como na demo do piloto), o texto não cita
+ * razão social, CNPJ, endereço nem e-mail. Antes do lançamento aberto,
+ * preencha o responsável (pessoa física ou empresa) e um e-mail de contato
+ * — a LGPD pede identificação e canal do controlador — e troque a data da
+ * versão para todos aceitarem de novo. O texto deve passar por revisão jurídica.
  */
 export const CURRENT_TERMS_VERSION = '2026-11-17';
 
-export const LEGAL_ENTITY = {
-  name: '[RAZÃO SOCIAL — preencher]',
-  cnpj: '[CNPJ — preencher]',
-  address: '[endereço — preencher]',
-  dpoEmail: '[e-mail do encarregado de dados — preencher]',
-};
+export const LEGAL_ENTITY: { name?: string; cnpj?: string; address?: string; contactEmail?: string } = {};
+
+/** "Fulano, CNPJ X, com sede em Y" com só o que estiver preenchido. */
+function controllerName(): string | null {
+  const { name, cnpj, address } = LEGAL_ENTITY;
+  if (!name) return null;
+  return [name, cnpj && `CNPJ ${cnpj}`, address && `com sede em ${address}`].filter(Boolean).join(', ');
+}
+
+const contactChannel = LEGAL_ENTITY.contactEmail
+  ? `pelo e-mail ${LEGAL_ENTITY.contactEmail}`
+  : 'pelos canais de atendimento da Lumina';
 
 export interface LegalSection {
   title: string;
@@ -29,7 +37,7 @@ export interface LegalDocument {
   sections: LegalSection[];
 }
 
-const controller = `${LEGAL_ENTITY.name}, CNPJ ${LEGAL_ENTITY.cnpj}, com sede em ${LEGAL_ENTITY.address}`;
+const controller = controllerName();
 
 export const TERMS_OF_USE: LegalDocument = {
   slug: 'termos',
@@ -38,7 +46,7 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       title: '1. Quem somos e o que é a Lumina',
       paragraphs: [
-        `A Lumina é uma plataforma de estudos para o ENEM e vestibulares, operada por ${controller}. Ela reúne banco de questões, simulados, correção de redação, cronograma, flashcards, turmas e a assistente LuminIA.`,
+        `A Lumina é uma plataforma de estudos para o ENEM e vestibulares${controller ? `, operada por ${controller}` : ''}. Ela reúne banco de questões, simulados, correção de redação, cronograma, flashcards, turmas e a assistente LuminIA.`,
         'Ao criar uma conta ou usar a plataforma, você concorda com estes Termos e com a Política de Privacidade. Se não concordar, não use a Lumina.',
       ],
     },
@@ -99,7 +107,7 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       title: '10. Contato e foro',
       paragraphs: [
-        `Dúvidas: ${LEGAL_ENTITY.dpoEmail}. Estes Termos seguem a lei brasileira. Fica eleito o foro do domicílio do usuário consumidor.`,
+        `Dúvidas podem ser enviadas ${contactChannel}. Estes Termos seguem a lei brasileira. Fica eleito o foro do domicílio do usuário consumidor.`,
       ],
     },
   ],
@@ -110,9 +118,11 @@ export const PRIVACY_POLICY: LegalDocument = {
   title: 'Política de Privacidade',
   sections: [
     {
-      title: '1. Controlador e encarregado',
+      title: '1. Controlador e contato',
       paragraphs: [
-        `O controlador dos seus dados pessoais é ${controller}. O encarregado pelo tratamento de dados (DPO) pode ser contatado em ${LEGAL_ENTITY.dpoEmail}.`,
+        controller
+          ? `O controlador dos seus dados pessoais é ${controller}. Dúvidas sobre o tratamento dos seus dados podem ser enviadas ${contactChannel}.`
+          : `O controlador dos seus dados pessoais é a equipe responsável pela Lumina. Dúvidas sobre o tratamento dos seus dados podem ser enviadas ${contactChannel}.`,
         'Quando você usa a Lumina por meio de uma escola ou cursinho, a instituição também decide sobre parte do uso dos seus dados (por exemplo, turmas e relatórios de desempenho).',
       ],
     },
@@ -152,7 +162,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       title: '6. Seus direitos',
       paragraphs: [
         'Pela LGPD (art. 18), você pode: confirmar se tratamos seus dados e acessá-los; corrigir dados incompletos ou desatualizados; pedir anonimização, bloqueio ou exclusão de dados desnecessários; pedir a portabilidade; saber com quem compartilhamos; e revogar o consentimento, quando ele for a base do tratamento.',
-        `Para exercer esses direitos, escreva para ${LEGAL_ENTITY.dpoEmail}. Você também pode reclamar à Autoridade Nacional de Proteção de Dados (ANPD).`,
+        `Para exercer esses direitos, entre em contato ${contactChannel}. Você também pode reclamar à Autoridade Nacional de Proteção de Dados (ANPD).`,
       ],
     },
     {

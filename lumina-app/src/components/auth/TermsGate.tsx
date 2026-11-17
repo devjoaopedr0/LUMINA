@@ -79,8 +79,7 @@ export function TermsGate() {
               className="mt-0.5 h-4 w-4 shrink-0 accent-graphite"
             />
             <span>
-              Li e aceito os Termos de Uso e a Política de Privacidade. Se tenho menos de 18 anos, tenho a
-              autorização de um dos meus pais ou do meu responsável legal.
+              Li e concordo com os Termos de Uso e a Política de Privacidade.
             </span>
           </label>
           {error && (

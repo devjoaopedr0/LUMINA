@@ -15,7 +15,7 @@ import { CreateInstitutionDto } from '../../institutions/institutions.dto';
 
 export class RegisterDto {
   @ApiProperty({
-    description: 'Aceite dos Termos de Uso e da Política de Privacidade (e, se menor de 18, a autorização do responsável).',
+    description: 'Aceite ("Li e concordo") dos Termos de Uso e da Política de Privacidade.',
     example: true,
   })
   @Equals(true, { message: 'Para criar a conta, aceite os Termos de Uso e a Política de Privacidade.' })
