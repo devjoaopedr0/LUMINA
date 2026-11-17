@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -150,6 +151,19 @@ export class SchedulesController {
     const result = await this.service.setTopicIncluded(user.id, id, dto.included);
     if (!result) throw new NotFoundException("Tópico não encontrado.");
     return result;
+  }
+
+  @Get("study/calendar")
+  @ApiOperation({
+    summary: "Calendário do cronograma: o que estudar em cada dia (até 42 dias)",
+    description: "Dias com tarefas mostram as tarefas; dias futuros ainda sem tarefas trazem uma previsão (projected=true), montada pelo gerador sem gravar nada.",
+  })
+  async calendar(@CurrentUser() user: UserWithProfile, @Query("from") from: string, @Query("to") to: string) {
+    const valid = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v ?? "");
+    if (!valid(from) || !valid(to)) throw new BadRequestException("Informe from e to no formato AAAA-MM-DD.");
+    const calendar = await this.service.getCalendar(user.id, new Date(`${from}T00:00:00Z`), new Date(`${to}T00:00:00Z`));
+    if (!calendar) throw new NotFoundException("Você ainda não tem cronograma.");
+    return calendar;
   }
 
   @Get("study/week")

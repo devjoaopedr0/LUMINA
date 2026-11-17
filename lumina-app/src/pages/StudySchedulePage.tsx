@@ -1,3 +1,5 @@
+import { ScheduleCalendar } from "@/components/schedule/ScheduleCalendar";
+import { calendarGrid } from "@/lib/calendar";
 import {
   createContext,
   useCallback,
@@ -54,7 +56,6 @@ import {
   type StudySubject,
   type StudyTask,
   type StudyProgressSummary,
-  type StudyWeekDay,
   type PaginatedTasks,
   type DailySession,
   ApiError,
@@ -63,7 +64,6 @@ import {
   apiGetDiagnostic,
   apiGetProgress,
   apiGetStudySchedule,
-  apiGetWeek,
   apiListStudySubjects,
   apiListTasks,
   apiLogSubjectTime,
@@ -104,11 +104,6 @@ const TASK_STATUS_BADGE: Record<StudyTask["status"], string> = {
   SKIPPED: "border-surface-line bg-white text-graphite-400",
 };
 
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 function addDays(date: Date, n: number): Date {
   const d = new Date(date);
@@ -475,7 +470,6 @@ export function StudySchedulePage() {
   const [tasks, setTasks] = useState<PaginatedTasks | null>(null);
   const [catalogTasks, setCatalogTasks] = useState<StudyTask[]>([]);
   const [progress, setProgress] = useState<StudyProgressResponse | null>(null);
-  const [weekData, setWeekData] = useState<StudyWeekDay[]>([]);
   // Diagnóstico inicial: só é oferecido a quem ainda não tem domínio
   // registrado (o backend decide), e o aluno pode dispensar.
   const [diagnosticAreas, setDiagnosticAreas] = useState<StudyDiagnosticArea[] | null>(null);
@@ -562,16 +556,8 @@ export function StudySchedulePage() {
     }
   }, [schedule, token, activeTab, currentDate]);
 
-  // A visão semanal lê o resumo dos sete dias de uma vez; dia ainda não
-  // aberto vem sem tarefas (elas nascem quando o dia é aberto).
-  const weekStartKey = formatDate(addDays(startOfDay(currentDate), -startOfDay(currentDate).getDay()));
-  useEffect(() => {
-    if (schedule && token && activeTab === "weekly") {
-      apiGetWeek(token, weekStartKey)
-        .then((days) => setWeekData(days ?? []))
-        .catch(() => undefined);
-    }
-  }, [schedule, token, activeTab, weekStartKey]);
+  // Semana do calendário: de segunda a domingo (o resumo semanal usa o mesmo início).
+  const weekStartKey = formatDate(calendarGrid("week", currentDate)[0]);
 
   const scheduleId = schedule?.id;
   useEffect(() => {
@@ -655,22 +641,8 @@ export function StudySchedulePage() {
       ? `${minutesToHours(schedule.dayMinutes.reduce((sum, day) => sum + day.minutes, 0))}/semana`
       : `${minutesToHours(schedule.dailyMinutes)}/dia`;
 
-  const startDay = startOfDay(currentDate);
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startDay, i - startDay.getDay()));
+  const weekDays = calendarGrid("week", currentDate);
 
-  const monthlyDays = (() => {
-    const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    const last = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-    const start = startOfDay(first);
-    start.setDate(start.getDate() - start.getDay());
-    const days: Date[] = [];
-    let current = start;
-    while (current <= last) {
-      days.push(new Date(current));
-      current = addDays(current, 1);
-    }
-    return days;
-  })();
 
   // Diária anda de dia em dia; semanal, de semana em semana; mensal, de mês.
   function prevPeriod() {
@@ -892,22 +864,19 @@ export function StudySchedulePage() {
               )}
                {activeTab === "weekly" && (
                 <>
-                  <WeeklyView
-                    weekDays={weekDays}
-                    week={weekData}
+                  <ScheduleCalendar
+                    mode="week"
+                    reference={currentDate}
                     onOpenDay={(day) => { setCurrentDate(day); setActiveTab("daily"); }}
                   />
                   <WeeklySummaryView date={weekStartKey} />
                 </>
               )}
               {activeTab === "monthly" && (
-                <MonthlyView
-                  monthlyDays={monthlyDays}
-                  date={currentDate}
-                  schedule={schedule}
-                  completedTaskDates={
-                    progress?.evolution?.filter((p) => p.completedTasks > 0).map((p) => p.date) ?? []
-                  }
+                <ScheduleCalendar
+                  mode="month"
+                  reference={currentDate}
+                  onOpenDay={(day) => { setCurrentDate(day); setActiveTab("daily"); }}
                 />
               )}
               {activeTab === "tasks" && (
@@ -1212,115 +1181,6 @@ function FocusTimer({
  * tempo planejado — as tarefas dele nascem quando o dia é aberto, com a
  * prioridade daquele momento. Clicar num dia abre a visão diária dele.
  */
-function WeeklyView({
-  weekDays,
-  week,
-  onOpenDay,
-}: {
-  weekDays: Date[];
-  week: StudyWeekDay[];
-  onOpenDay: (day: Date) => void;
-}) {
-  const todayKey = formatDate(new Date());
-  const byDate = new Map(week.map((day) => [day.date, day]));
-
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-7">
-      {weekDays.map((day) => {
-        const key = formatDate(day);
-        const info = byDate.get(key);
-        const isToday = key === todayKey;
-
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onOpenDay(day)}
-            className={`rounded-xl border p-3 text-center transition-colors hover:border-primary/60 ${
-              isToday ? "border-primary bg-primary/5" : "border-surface-line bg-white"
-            }`}
-          >
-            <p className="text-xs font-semibold text-graphite-500">{WEEKDAY_LABELS[day.getDay()]}</p>
-            <p className={`text-lg font-bold ${isToday ? "text-primary" : "text-graphite"}`}>{day.getDate()}</p>
-            {!info && <p className="mt-1 text-xs text-graphite-400">Não estuda</p>}
-            {info && info.totalTasks > 0 && (
-              <>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-surface-line">
-                  <div
-                    className="h-1.5 rounded-full bg-primary"
-                    style={{ width: `${(info.doneTasks / info.totalTasks) * 100}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-xs text-graphite-400">
-                  {info.doneTasks}/{info.totalTasks} tarefas
-                </p>
-              </>
-            )}
-            {info && info.totalTasks === 0 && (
-              <p className="mt-1 text-xs text-graphite-400">
-                {info.scheduledMinutes > 0 ? `${minutesToHours(info.scheduledMinutes)} planejadas` : "Dia extra"}
-              </p>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function MonthlyView({
-  monthlyDays,
-  date,
-  schedule,
-  completedTaskDates,
-}: {
-  monthlyDays: Date[];
-  date: Date;
-  schedule: StudySchedule;
-  completedTaskDates: string[];
-}) {
-  return (
-    <div className="grid grid-cols-7 gap-px bg-surface-line">
-      {WEEKDAY_LABELS.map((label) => (
-        <div key={label} className="bg-surface-card p-2 text-center text-xs font-semibold text-graphite-400">
-          {label}
-        </div>
-      ))}
-      {monthlyDays.map((day, idx) => {
-        const isCurrentMonth = day.getMonth() === date.getMonth();
-        const isToday = formatDate(day) === formatDate(new Date());
-        const hasActivity = completedTaskDates.includes(formatDate(day));
-        const isStudyDay = schedule.studyDays.includes(day.getDay());
-
-        return (
-          <div
-            key={idx}
-            className={`aspect-square p-1 ${
-              isCurrentMonth ? "bg-white" : "bg-graphite/5"
-            }`}
-          >
-            <div className="relative h-full w-full">
-              <span
-                className={`text-xs ${
-                  isCurrentMonth ? "text-graphite" : "text-graphite-400"
-                } ${isToday ? "font-bold text-primary" : ""}`}
-              >
-                {day.getDate()}
-              </span>
-              {isStudyDay && hasActivity && (
-                <span className="absolute bottom-0 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-success" />
-              )}
-              {isToday && (
-                <span className="absolute bottom-0 left-1/2 h-1 w-3 -translate-x-1/2 rounded-full bg-primary" />
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function TaskListView({
   tasks,
   taskFilter,

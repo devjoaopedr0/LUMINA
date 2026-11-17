@@ -3106,3 +3106,7 @@ export const apiScheduleLimits = (
   payload: { startDate?: string; studyDays: number[]; dailyMinutes: number; dayMinutes?: { weekday: number; minutes: number }[]; subjects: { subjectId: string; targetHours: number }[] },
 ): Promise<import("@/lib/schedule-dates").ScheduleLimits> =>
   request("/study/schedule/limits", { method: "POST", headers: authHeaders(token), body: JSON.stringify(payload) });
+
+/** Calendário do cronograma: o que estudar em cada dia (dias futuros ainda não planejados vêm como previsão). */
+export const apiScheduleCalendar = (token: string, from: string, to: string): Promise<import("@/lib/calendar").ScheduleCalendar> =>
+  request(`/study/calendar?from=${from}&to=${to}`, { headers: authHeaders(token) });

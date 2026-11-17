@@ -11,6 +11,7 @@ import { Db } from "./domain/types";
 import { assertNotPastDay, brazilToday, formatBr } from "../common/date-rules";
 import { scheduleLimits, weeklyMinutes, type ScheduleLimits, type SubjectContent } from "./schedule-limits";
 import { goalFromProfile } from "./schedule-goal";
+import { withReadCache } from "./calendar-cache";
 import { personalDurations, type ActivityDurations } from "./activity-durations";
 import { PriorityCalibrationService } from "./priority-calibration.service";
 import { PRACTICE_WINDOW_HOURS, summarizePractice } from "./schedule-practice";
@@ -66,6 +67,9 @@ function withSubjectName<T extends object>(task: T): T & { subjectName: string |
   const subject = (task as { subject?: { name: string } | null }).subject;
   return { ...task, subjectName: subject?.name ?? null };
 }
+
+/** Maior período do calendário de uma vez (um mês com as semanas das bordas). */
+export const CALENDAR_MAX_DAYS = 42;
 
 type ScheduleWithSubjects = NonNullable<
   Awaited<ReturnType<SchedulesRepository["findScheduleByUserId"]>>
@@ -457,6 +461,105 @@ export class SchedulesService {
         doneTasks: tasks.filter((t) => t.status === StudyTaskStatus.DONE).length,
       };
     });
+  }
+
+  /**
+   * Calendário do cronograma (semana ou mês): o que estudar em cada dia.
+   *
+   * - Dia que já tem tarefas (hoje, passados, ou futuros já planejados):
+   *   mostra as tarefas reais.
+   * - Dia futuro ainda sem tarefas: PREVISÃO, montada pelo mesmo gerador do
+   *   dia (prioridades de agora), sem gravar nada. Os assuntos previstos num
+   *   dia saem dos dias seguintes, como na progressão real. O cronograma é
+   *   adaptativo: quando o dia chegar, ele é refeito com o desempenho daquele
+   *   momento, então a previsão pode mudar.
+   */
+  async getCalendar(userId: string, from: Date, to: Date) {
+    const schedule = await this.repo.findScheduleByUserId(userId);
+    if (!schedule) return null;
+    const start = startOfDay(from);
+    const end = startOfDay(to);
+    if (end < start) throw new BadRequestException("O fim do período deve ser depois do início.");
+    if ((end.getTime() - start.getTime()) / 86_400_000 > CALENDAR_MAX_DAYS) {
+      throw new BadRequestException(`O calendário mostra no máximo ${CALENDAR_MAX_DAYS} dias por vez.`);
+    }
+    const sessions = await this.repo.findSessionsWithTasks(schedule.id, start, end);
+    const subjectName = new Map(schedule.scheduleSubjects.map((ss) => [ss.subjectId, ss.subject.name]));
+    const today = brazilToday();
+    const used = new Set<string>(schedule.excludedTopicIds);
+    const durations = await this.activityDurations(this.repo.prisma, schedule.id, today);
+    const weights = await this.priorityCalibration?.weights();
+    // Leituras que não mudam entre os dias ficam em cache durante a consulta.
+    const db = withReadCache(this.repo.prisma);
+    const vestibular = await this.repo.findUserVestibular(userId);
+    const examDate = vestibular?.targetDate ?? schedule.endDate;
+
+    const days = [];
+    for (const session of sessions) {
+      const real = session.tasks.filter((t) => t.status !== StudyTaskStatus.SKIPPED);
+      if (real.length > 0 || session.date < today) {
+        for (const t of real) if (t.topicId) used.add(t.topicId);
+        days.push({
+          date: formatDate(session.date),
+          scheduledMinutes: session.scheduledMinutes,
+          projected: false,
+          tasks: real.map((t) => ({
+            id: t.id,
+            subject: t.subject?.name ?? subjectName.get(t.subjectId ?? "") ?? "Estudo",
+            title: t.title,
+            activityType: t.activityType,
+            minutes: t.scheduledMinutes,
+            status: t.status,
+          })),
+        });
+        continue;
+      }
+      const projected = await this.generator.buildTasksForSession(
+        {
+          id: session.id,
+          scheduleId: schedule.id,
+          date: session.date,
+          scheduledMinutes: session.scheduledMinutes,
+          phase: computeSchedulePhase(schedule.startDate, examDate, startOfDay(session.date)),
+          priorityAreas: schedule.priorityAreas,
+          essay: await this.essayFor(db, schedule, session),
+          occupiedMinutes: 0,
+          excludeTopicIds: [...used],
+          occupiedBySubject: {},
+          durations,
+          priorityWeights: weights,
+        },
+        schedule.userId,
+        schedule.scheduleSubjects.map((ss) => ({
+          subjectId: ss.subjectId,
+          targetHours: ss.targetHours,
+          subject: { name: ss.subject.name, code: ss.subject.code },
+        })),
+        db,
+      );
+      for (const t of projected) if (t.topicId) used.add(t.topicId);
+      days.push({
+        date: formatDate(session.date),
+        scheduledMinutes: session.scheduledMinutes,
+        projected: true,
+        tasks: projected.map((t) => ({
+          id: null,
+          subject: subjectName.get(t.subjectId ?? "") ?? "Estudo",
+          title: t.title,
+          activityType: t.activityType,
+          minutes: t.scheduledMinutes ?? 0,
+          status: StudyTaskStatus.PENDING,
+        })),
+      });
+    }
+    return {
+      from: formatDate(start),
+      to: formatDate(end),
+      scheduleStart: formatDate(schedule.startDate),
+      scheduleEnd: formatDate(schedule.endDate),
+      examDate: vestibular?.targetDate ? formatDate(vestibular.targetDate) : null,
+      days,
+    };
   }
 
   /** Fase da reta num dia (fase 3, §7). A prova é a data-alvo do vestibular
