@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, MaxLength, IsArray, ValidateNested, IsOptional, IsIn, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsArray, ValidateNested, IsOptional, IsIn, IsUUID, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** Modos de tutoria aceitos pelo chat. O padrão (sem campo) é resposta direta. */
@@ -55,6 +55,16 @@ export class AiChatRequestDto {
   @IsOptional()
   @IsIn(['SOCRATIC'])
   mode?: AiChatMode;
+
+  /** Imagem da mensagem atual (foto de questão, print), em data URL. Vai só
+   *  para modelos com entrada de imagem; imagens de mensagens antigas não são
+   *  reenviadas. O app reduz a foto para até 1600 px antes de enviar. */
+  @ApiProperty({ required: false, description: 'data:image/(jpeg|png|webp);base64,… até ~4 MB' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(6_000_000)
+  @Matches(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, { message: 'Envie a imagem em JPG, PNG ou WEBP.' })
+  image?: string;
 }
 
 export class AiChatResponseDto {

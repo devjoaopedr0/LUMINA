@@ -10,6 +10,8 @@ export interface AiChatMessage {
   id: string;
   role: "assistant" | "user";
   content: string;
+  /** Imagem anexada pelo aluno (data URL), para mostrar na conversa. */
+  image?: string;
 }
 
 /** Evento que qualquer tela dispara para abrir a LuminIA já com uma
@@ -58,7 +60,7 @@ const apiClient = createApiClient({
 export async function sendAiChatMessage(
   message: string,
   history: AiChatMessage[],
-  options: { scheduleTaskId?: string; questionId?: string; mode?: AiChatMode } = {},
+  options: { scheduleTaskId?: string; questionId?: string; mode?: AiChatMode; image?: string } = {},
 ): Promise<string> {
   if (!message.trim()) throw new Error("Mensagem vazia.");
   if (message.length > 4000) throw new Error("Mensagem muito longa (máx. 4000 caracteres).");

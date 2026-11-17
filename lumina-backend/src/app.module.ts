@@ -26,6 +26,7 @@ import { AnswerKeysModule } from './answer-keys/answer-keys.module';
 import { InstitutionalAnalyticsModule } from './institutional-analytics/institutional-analytics.module';
 import { RecoveryPlansModule } from './recovery-plans/recovery-plans.module';
 import { MaterialsModule } from './materials/materials.module';
+import { ReportsModule } from './reports/reports.module';
 import { PlansModule } from './plans/plans.module';
 import { GroupsModule } from './groups/groups.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
