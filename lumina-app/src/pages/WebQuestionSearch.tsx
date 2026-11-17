@@ -340,10 +340,9 @@ export function WebQuestionSearch() {
             <div className="text-sm text-graphite">
               <p className="font-semibold text-primary-700">Modo demonstração</p>
               <p className="mt-1 text-graphite/70">
-                As chaves do Google Programmable Search não estão configuradas, então a busca está
-                sendo feita no banco de questões da própria Lumina. Para buscar na web real,
-                configure <code className="rounded bg-white/60 px-1">GOOGLE_CSE_ID</code> e{" "}
-                <code className="rounded bg-white/60 px-1">GOOGLE_CSE_API_KEY</code> no servidor.
+                Nenhum provedor de busca na web está configurado, então a busca está sendo feita no
+                banco de questões da própria Lumina. Para buscar na web real, configure{" "}
+                <code className="rounded bg-white/60 px-1">TAVILY_API_KEY</code> no servidor.
               </p>
             </div>
           </Card>

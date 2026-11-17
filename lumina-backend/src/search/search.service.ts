@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { QuestionSourceType } from '@prisma/client';
 import {
   SearchWebQueryDto,
@@ -11,9 +11,13 @@ import {
   WebSearchProvider,
   WebSearchQuery,
   WebSearchHitClassification,
+  WebSearchHit,
 } from './search-provider.interface';
 import { GoogleCseSearchProvider } from './google-cse.provider';
 import { DemoWebSearchProvider } from './demo-search.provider';
+import { TavilySearchProvider } from './tavily.provider';
+import { WebHitClassifierService } from './web-hit-classifier.service';
+import { WebSearchProviderError } from './search-provider.error';
 import {
   ImportQuestionDto,
   ImportReportDto,
@@ -27,8 +31,10 @@ import { QuestionImportService } from '../questions/import/question-import.servi
  * O SearchService é o orquestrador do pipeline:
  *
  *   1. `searchWeb(userId, query)` — delega ao provedor ATIVO:
- *      · `GoogleCseSearchProvider` quando o Google CSE está configurado no .env
- *        (chaves GOOGLE_CSE_ID + GOOGLE_CSE_API_KEY);
+ *      · `TavilySearchProvider` quando TAVILY_API_KEY está no .env (preferido);
+ *      · `GoogleCseSearchProvider` quando o Google CSE está configurado
+ *        (chaves GOOGLE_CSE_ID + GOOGLE_CSE_API_KEY) — também é a reserva
+ *        se a Tavily falhar;
  *      · `DemoWebSearchProvider` caso contrário (modo demonstração, SEMPRE
  *        sinalizado no response via `demoMode: true` + `provider: 'demo'`).
  *      A resposta devolve APENAS metadados públicos (título, link, trecho)
@@ -45,29 +51,53 @@ export class SearchService {
   private readonly logger = new Logger(SearchService.name);
 
   constructor(
+    private readonly tavilyProvider: TavilySearchProvider,
     private readonly googleCseProvider: GoogleCseSearchProvider,
     private readonly demoWebSearchProvider: DemoWebSearchProvider,
     private readonly questionsService: QuestionsService,
     private readonly questionImportService: QuestionImportService,
+    private readonly classifier: WebHitClassifierService,
   ) {}
 
-  /** Provedor ativo: Google CSE quando configurado; senão demo. A escolha é
-   * SEMPRE refletida no response (`provider` + `demoMode`), para o cliente
-   * nunca confundir busca real com demonstração. */
-  private get activeProvider(): WebSearchProvider {
-    if (this.googleCseProvider.isConfigured()) {
-      return this.googleCseProvider;
+  /** Provedores reais configurados, na ordem de preferência. Vazio = demo.
+   * A escolha é SEMPRE refletida no response (`provider` + `demoMode`), para
+   * o cliente nunca confundir busca real com demonstração. */
+  private realProviders(): WebSearchProvider[] {
+    return [this.tavilyProvider, this.googleCseProvider].filter((p) => p.isConfigured());
+  }
+
+  /** Tenta cada provedor real em ordem; se todos falharem, 503 com o motivo
+   * (não cai no demo, que o app apresentaria como "chaves não configuradas"). */
+  private async searchWithFallback(
+    webQuery: WebSearchQuery,
+    userId: string,
+    limit: number,
+  ): Promise<{ provider: WebSearchProvider; hits: WebSearchHit[] }> {
+    const providers = this.realProviders();
+    if (providers.length === 0) {
+      return { provider: this.demoWebSearchProvider, hits: await this.demoWebSearchProvider.searchWeb(webQuery, userId, limit) };
     }
-    return this.demoWebSearchProvider;
+    let lastError: WebSearchProviderError | null = null;
+    for (const provider of providers) {
+      try {
+        return { provider, hits: await provider.searchWeb(webQuery, userId, limit) };
+      } catch (error) {
+        if (!(error instanceof WebSearchProviderError)) throw error;
+        lastError = error;
+        this.logger.warn(`searchWeb: ${provider.name} falhou (${error.code}): ${error.message}`);
+      }
+    }
+    throw new ServiceUnavailableException(
+      lastError?.code === 'RATE_LIMIT'
+        ? 'A busca na web atingiu o limite de uso por agora. Tente de novo mais tarde.'
+        : 'A busca na web está indisponível no momento. Tente de novo em instantes.',
+    );
   }
 
   async searchWeb(
     userId: string,
     query: SearchWebQueryDto,
   ): Promise<SearchWebResultsDto> {
-    const provider = this.activeProvider;
-    const demoMode = provider.name === 'demo';
-
     const webQuery: WebSearchQuery = {
       q: query.q.trim(),
       exam: query.exam ?? null,
@@ -76,7 +106,12 @@ export class SearchService {
       difficulty: query.difficulty ?? null,
     };
     const limit = Math.min(query.limit ?? DEFAULT_SEARCH_LIMIT, 20);
-    const hits = await provider.searchWeb(webQuery, userId, Math.max(1, limit));
+    const found = await this.searchWithFallback(webQuery, userId, Math.max(1, limit));
+    const provider = found.provider;
+    const demoMode = provider.name === 'demo';
+    // O demo já vem classificado pelo próprio banco; os provedores reais são
+    // classificados aqui com o catálogo (disciplina, assunto, prova, ano).
+    const hits = demoMode ? found.hits : await this.classifier.classifyAndRank(found.hits, webQuery);
 
     const items: WebSearchResultDto[] = hits.map((hit) => ({
       title: hit.title,

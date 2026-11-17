@@ -115,7 +115,7 @@ export class SearchWebResultsDto {
   @ApiProperty({ maxLength: 80 })
   provider: string;
 
-  @ApiProperty({ description: 'true quando SEM o Google CSE configurado.' })
+  @ApiProperty({ description: 'true quando nenhum provedor real (Tavily ou Google CSE) está configurado.' })
   demoMode: boolean;
 
   @ApiProperty({ type: SearchWebQueryDto })
