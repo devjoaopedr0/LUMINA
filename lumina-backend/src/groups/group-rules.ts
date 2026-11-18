@@ -201,3 +201,8 @@ export function visibleStats(stats: MemberStudyStats, prefs: SharePreferences, i
     lastActivityAt: show(prefs.shareLastActivity) ? stats.lastActivityAt : null,
   };
 }
+
+/** Nome exibido no grupo: nome e sobrenome do perfil, ou o início do e-mail. */
+export function displayName(user: { email: string; profile: { firstName: string; lastName: string | null } | null }): string {
+  return [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.email.split('@')[0];
+}

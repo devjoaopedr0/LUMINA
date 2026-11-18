@@ -3066,6 +3066,24 @@ export const apiUpdateGroupSharing = (accessToken: string, id: string, sharing: 
   request(`/groups/${id}/me/sharing`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(sharing) });
 export const apiLeaveGroup = (accessToken: string, id: string): Promise<{ left: boolean }> =>
   request(`/groups/${id}/leave`, { method: "POST", headers: authHeaders(accessToken) });
+
+// Salas coletivas (etapa 2). As ações devolvem o estado das salas do grupo.
+type RoomsState = import("@/lib/group-rooms").GroupRoomsState;
+type JoinRoom = import("@/lib/group-rooms").JoinRoomPayload;
+export const apiGroupRooms = (accessToken: string, groupId: string): Promise<RoomsState> =>
+  request(`/groups/${groupId}/rooms`, { headers: authHeaders(accessToken) });
+export const apiOpenGroupRoom = (accessToken: string, groupId: string, payload: JoinRoom & { title?: string | null }): Promise<RoomsState> =>
+  request(`/groups/${groupId}/rooms`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiJoinGroupRoom = (accessToken: string, sessionId: string, payload: JoinRoom): Promise<RoomsState> =>
+  request(`/groups/rooms/${sessionId}/join`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiRoomAction = (accessToken: string, sessionId: string, action: "pause" | "resume" | "leave"): Promise<RoomsState> =>
+  request(`/groups/rooms/${sessionId}/${action}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiUpdateRoomParticipation = (accessToken: string, sessionId: string, payload: JoinRoom): Promise<RoomsState> =>
+  request(`/groups/rooms/${sessionId}/me`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiRoomHeartbeat = (accessToken: string, sessionId: string): Promise<{ ok: boolean; studiedSeconds: number }> =>
+  request(`/groups/rooms/${sessionId}/heartbeat`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiMyRoom = (accessToken: string): Promise<{ mine: import("@/lib/group-rooms").MyRoomParticipation | null }> =>
+  request("/groups/rooms/me", { headers: authHeaders(accessToken) });
 export const apiDecideGroupRequest = (accessToken: string, id: string, userId: string, decision: "approve" | "reject"): Promise<unknown> =>
   request(`/groups/${id}/members/${userId}/${decision}`, { method: "POST", headers: authHeaders(accessToken) });
 export const apiChangeGroupRole = (accessToken: string, id: string, userId: string, role: Exclude<import("@/lib/groups").GroupRole, "OWNER">): Promise<unknown> =>

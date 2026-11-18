@@ -221,8 +221,9 @@ export class SchedulesRepository {
       subjectId?: string | null;
       userId: string;
       startTime: Date;
-    endTime: Date;
-    durationMinutes: number;
+      endTime: Date;
+      durationMinutes: number;
+      groupSessionId?: string | null;
     },
   ) {
     return tx.studyTimeLog.create({
@@ -233,6 +234,7 @@ export class SchedulesRepository {
         startTime: data.startTime,
         endTime: data.endTime,
         durationMinutes: data.durationMinutes,
+        groupSessionId: data.groupSessionId ?? null,
       },
     });
   }
@@ -272,6 +274,10 @@ export class SchedulesRepository {
   ) {
     return client.studyTimeLog.findMany({
       where: {
+        // Só os logs do dono do cronograma: a matéria (StudySubject) é global,
+        // e sem este filtro o tempo de outros alunos na mesma matéria entrava
+        // no progresso deste cronograma.
+        user: { studySchedule: { id: scheduleId } },
         OR: [
           { task: { scheduleId } },
           { subject: { scheduleSubjects: { some: { scheduleId } } } },

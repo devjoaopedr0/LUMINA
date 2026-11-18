@@ -43,6 +43,7 @@ import { MasteryMap } from "@/pages/MasteryMap";
 import { PlanPage } from "@/pages/PlanPage";
 import { Groups } from "@/pages/Groups";
 import { AiChatWidget } from "@/components/AiChatWidget";
+import { RoomPresenceBar } from "@/components/groups/RoomPresenceBar";
 
 function App() {
   return (
@@ -173,6 +174,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <AiChatWidget />
+      <RoomPresenceBar />
     </AuthProvider>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Archive, ArrowLeft, Check, Copy, Crown, Flame, Link2, LogOut, Plus, RefreshCw, Shield, Trash2, UserMinus, Users, X } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
+import { GroupRooms } from '@/components/groups/GroupRooms';
 import {
   ApiError,
   apiArchiveGroup,
@@ -304,6 +305,7 @@ function GroupView({ id }: { id: string }) {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-6">
+          <GroupRooms groupId={group.id} archived={group.archived} />
           <section className="rounded-2xl border bg-white p-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold"><Users size={18} />Membros</h2>
             <ul className="mt-3 divide-y">

@@ -1,9 +1,22 @@
-import { ValidationPipe } from '@nestjs/common';
+import { INestApplicationContext, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { IoAdapter } from '@nestjs/platform-socket.io';
+import type { ServerOptions } from 'socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+
+/** Socket.IO (salas do Lumina Groups) com as mesmas origens do CORS HTTP. */
+class CorsIoAdapter extends IoAdapter {
+  constructor(app: INestApplicationContext, private readonly origins: string[] | undefined) {
+    super(app);
+  }
+
+  createIOServer(port: number, options?: ServerOptions) {
+    return super.createIOServer(port, { ...options, cors: { origin: this.origins ?? false, credentials: true } });
+  }
+}
 
 async function bootstrap() {
   // Parser de corpo próprio: o padrão do Nest aceita até 100 kB, e a foto
@@ -29,10 +42,12 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '100kb' }));
   const configService = app.get(ConfigService);
 
+  const corsOrigins = configService.get<string>('CORS_ORIGIN')?.split(',').map((origin) => origin.trim());
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN')?.split(',').map((origin) => origin.trim()),
+    origin: corsOrigins,
     credentials: true,
   });
+  app.useWebSocketAdapter(new CorsIoAdapter(app, corsOrigins));
 
   // Validação automática de todo DTO de entrada. whitelist + forbidNonWhitelisted
   // rejeitam qualquer campo não declarado no DTO (evita mass assignment).
