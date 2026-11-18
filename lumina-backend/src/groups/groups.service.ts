@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import {
@@ -6,6 +6,7 @@ import {
   canManageGroup,
   canModerate,
   canRemoveMember,
+  displayName,
   generateJoinCode,
   GROUP_LIMITS,
   GroupRole,
@@ -17,6 +18,7 @@ import {
   verifyGroupInvite,
   visibleStats,
 } from './group-rules';
+import { GroupRoomsService } from './group-rooms.service';
 import { ChangeMemberRoleDto, CreateGroupDto, UpdateGroupDto, UpdateSharingDto } from './groups.dto';
 
 /** Janela de logs lida para hoje/semana/sequência. O total vem de uma soma. */
@@ -27,13 +29,13 @@ const NOT_FOUND = 'Grupo não encontrado.';
 type Membership = { id: string; groupId: string; userId: string; role: GroupRole; status: 'ACTIVE' | 'PENDING' };
 type GroupRow = { id: string; name: string; joinCode: string; requiresApproval: boolean; maxMembers: number; ownerId: string; archivedAt: Date | null };
 
-function displayName(user: { email: string; profile: { firstName: string; lastName: string | null } | null }): string {
-  return [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.email.split('@')[0];
-}
-
 @Injectable()
 export class GroupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Opcional só para os testes do MVP, que montam o serviço sem as salas.
+    @Optional() private readonly rooms?: GroupRoomsService,
+  ) {}
 
   // ------------------------------------------------------------ leitura
 
@@ -270,6 +272,7 @@ export class GroupsService {
     if (!canModerate(me.role)) throw new ForbiddenException('Só moderadores, administradores e o dono recusam pedidos.');
     const target = await this.membership(targetUserId, groupId);
     if (!target || target.status !== 'PENDING') throw new NotFoundException('Pedido de entrada não encontrado.');
+    await this.rooms?.endForMember(groupId, targetUserId);
     await this.prisma.studyGroupMember.delete({ where: { id: target.id } });
     return { userId: targetUserId, removed: true };
   }
@@ -300,6 +303,8 @@ export class GroupsService {
     const me = await this.membership(userId, groupId);
     if (!me) throw new NotFoundException(NOT_FOUND);
     if (me.role === 'OWNER') throw new BadRequestException('O dono não pode sair: transfira a posse para outro membro ou arquive o grupo.');
+    // Sair do grupo tira da sala; o tempo estudado continua do aluno.
+    await this.rooms?.endForMember(groupId, userId);
     await this.prisma.studyGroupMember.delete({ where: { id: me.id } });
     return { left: true };
   }
@@ -333,6 +338,7 @@ export class GroupsService {
   async setArchived(userId: string, groupId: string, archived: boolean) {
     const me = await this.activeMembership(userId, groupId);
     if (me.role !== 'OWNER') throw new ForbiddenException('Só o dono arquiva ou reativa o grupo.');
+    if (archived) await this.rooms?.closeAllInGroup(groupId);
     await this.prisma.studyGroup.update({ where: { id: groupId }, data: { archivedAt: archived ? new Date() : null } });
     return { archived };
   }

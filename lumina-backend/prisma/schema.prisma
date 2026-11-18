@@ -10,83 +10,85 @@ datasource db {
 /// UserProfile, separada para manter esta tabela enxuta e não expor
 /// password_hash junto de dados exibíveis publicamente.
 model User {
-  id                     String                      @id @default(uuid()) @db.Uuid
-  email                  String                      @unique
-  passwordHash           String?                     @map("password_hash")
-  emailVerified          Boolean                     @default(false) @map("email_verified")
-  status                 UserStatus                  @default(ACTIVE)
-  accountType            AccountType                 @default(STUDENT_INDEPENDENT) @map("account_type")
+  id                      String                      @id @default(uuid()) @db.Uuid
+  email                   String                      @unique
+  passwordHash            String?                     @map("password_hash")
+  emailVerified           Boolean                     @default(false) @map("email_verified")
+  status                  UserStatus                  @default(ACTIVE)
+  accountType             AccountType                 @default(STUDENT_INDEPENDENT) @map("account_type")
   /// Aceite dos Termos de Uso e da Política de Privacidade (LGPD): quando e qual versão.
-  termsAcceptedAt        DateTime?                   @map("terms_accepted_at")
-  termsVersion           String?                     @map("terms_version") @db.VarChar(20)
-  lastLogin              DateTime?                   @map("last_login")
-  createdAt              DateTime                    @default(now()) @map("created_at")
-  updatedAt              DateTime                    @updatedAt @map("updated_at")
-  deletedAt              DateTime?                   @map("deleted_at")
-  googleId               String?                     @unique @map("google_id")
-  sessionVersion         Int                         @default(0) @map("session_version")
-  authSessions           AuthSession[]
-  classMemberships       ClassMember[]
-  classesTeaching        ClassTeacher[]
-  coordinatedClasses     Class[]                     @relation("ClassCoordinator")
-  createdClasses         Class[]                     @relation("ClassCreatedBy")
-  emailVerificationCodes EmailVerificationCode[]
-  passwordResetTokens    PasswordResetToken[]
-  questionAttempts       QuestionAttempt[]
-  createdQuestions       Question[]                  @relation("QuestionCreatedBy")
-  profile                UserProfile?
-  questionProgress       UserQuestionProgress[]
-  errorNotebook          ErrorNotebookEntry[]
-  workspaceMembers       WorkspaceMember[]
-  studySchedule          StudySchedule?
-  studyTimeLogs          StudyTimeLog[]
-  topicMasteries         TopicMastery[]
-  topicMasteryHistory    TopicMasteryHistory[]
-  selectedVestibular     UserVestibular?
-  mentalMathSessions     MentalMathSession[]
-  essays                 Essay[]
-  essayScans             EssayScan[]
-  essayCorrectionUsages  EssayCorrectionUsage[]
-  subscriptions          Subscription[]
-  planUsages             PlanUsage[]
-  notebookCollections    NotebookCollection[]
-  essayReviews           EssayReview[]               @relation("EssayReviewEvaluator")
-  essayReviewsValidated  EssayReview[]               @relation("EssayReviewValidator")
-  essayReviewMessages    EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
-  essayLearningCreated   EssayLearningRecord[]       @relation("EssayLearningCreatedBy")
-  essayLearningValidated EssayLearningRecord[]       @relation("EssayLearningValidatedBy")
-  essayAuditEvents       EssayAuditEvent[]
-  teacherProfile         TeacherProfile?
-  authoredEssayThemes    EssayTheme[]
-  createdSimulations     Simulation[]
-  simulationSubmissions  SimulationSubmission[]
-  adaptiveSessions       AdaptiveSimulationSession[]
-  adaptiveSteps          AdaptiveSimulationStep[]
-  answerSheetUploads     AnswerSheetUpload[]
-  answerSheetSubmissions AnswerSheetSubmission[]
-  answerSheetReviews     AnswerSheetSubmission[]     @relation("AnswerSheetReview")
-  answerSheetScans       AnswerSheetUpload[]         @relation("AnswerSheetScanner")
-  answerSheetCodes       AnswerSheetCode[]
-  answerSheetBatches     AnswerSheetBatch[]
-  answerKeysCreated      AnswerKey[]                 @relation("AnswerKeyCreatedBy")
-  answerKeyChecks        AnswerKeyCheck[]
-  answerKeyVotes         AnswerKeyVote[]
-  questionScanUploads    QuestionScanUpload[]
-  questionScanResults    QuestionScanResult[]
-  essayFeedbacks         EssayFeedback[]             @relation("EssayFeedbackAuthor")
-  formulas               Formula[]
-  repertoires            Repertoire[]
-  studyGroupsOwned       StudyGroup[]                @relation("StudyGroupOwner")
-  studyGroupMemberships  StudyGroupMember[]
-  flashcards             Flashcard[]
-  flashcardReviews       FlashcardReview[]
+  termsAcceptedAt         DateTime?                   @map("terms_accepted_at")
+  termsVersion            String?                     @map("terms_version") @db.VarChar(20)
+  lastLogin               DateTime?                   @map("last_login")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  deletedAt               DateTime?                   @map("deleted_at")
+  googleId                String?                     @unique @map("google_id")
+  sessionVersion          Int                         @default(0) @map("session_version")
+  authSessions            AuthSession[]
+  classMemberships        ClassMember[]
+  classesTeaching         ClassTeacher[]
+  coordinatedClasses      Class[]                     @relation("ClassCoordinator")
+  createdClasses          Class[]                     @relation("ClassCreatedBy")
+  emailVerificationCodes  EmailVerificationCode[]
+  passwordResetTokens     PasswordResetToken[]
+  questionAttempts        QuestionAttempt[]
+  createdQuestions        Question[]                  @relation("QuestionCreatedBy")
+  profile                 UserProfile?
+  questionProgress        UserQuestionProgress[]
+  errorNotebook           ErrorNotebookEntry[]
+  workspaceMembers        WorkspaceMember[]
+  studySchedule           StudySchedule?
+  studyTimeLogs           StudyTimeLog[]
+  topicMasteries          TopicMastery[]
+  topicMasteryHistory     TopicMasteryHistory[]
+  selectedVestibular      UserVestibular?
+  mentalMathSessions      MentalMathSession[]
+  essays                  Essay[]
+  essayScans              EssayScan[]
+  essayCorrectionUsages   EssayCorrectionUsage[]
+  subscriptions           Subscription[]
+  planUsages              PlanUsage[]
+  notebookCollections     NotebookCollection[]
+  essayReviews            EssayReview[]               @relation("EssayReviewEvaluator")
+  essayReviewsValidated   EssayReview[]               @relation("EssayReviewValidator")
+  essayReviewMessages     EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
+  essayLearningCreated    EssayLearningRecord[]       @relation("EssayLearningCreatedBy")
+  essayLearningValidated  EssayLearningRecord[]       @relation("EssayLearningValidatedBy")
+  essayAuditEvents        EssayAuditEvent[]
+  teacherProfile          TeacherProfile?
+  authoredEssayThemes     EssayTheme[]
+  createdSimulations      Simulation[]
+  simulationSubmissions   SimulationSubmission[]
+  adaptiveSessions        AdaptiveSimulationSession[]
+  adaptiveSteps           AdaptiveSimulationStep[]
+  answerSheetUploads      AnswerSheetUpload[]
+  answerSheetSubmissions  AnswerSheetSubmission[]
+  answerSheetReviews      AnswerSheetSubmission[]     @relation("AnswerSheetReview")
+  answerSheetScans        AnswerSheetUpload[]         @relation("AnswerSheetScanner")
+  answerSheetCodes        AnswerSheetCode[]
+  answerSheetBatches      AnswerSheetBatch[]
+  groupRoomsOpened        GroupStudySession[]         @relation("GroupStudySessionOpener")
+  groupRoomParticipations GroupSessionParticipant[]
+  answerKeysCreated       AnswerKey[]                 @relation("AnswerKeyCreatedBy")
+  answerKeyChecks         AnswerKeyCheck[]
+  answerKeyVotes          AnswerKeyVote[]
+  questionScanUploads     QuestionScanUpload[]
+  questionScanResults     QuestionScanResult[]
+  essayFeedbacks          EssayFeedback[]             @relation("EssayFeedbackAuthor")
+  formulas                Formula[]
+  repertoires             Repertoire[]
+  studyGroupsOwned        StudyGroup[]                @relation("StudyGroupOwner")
+  studyGroupMemberships   StudyGroupMember[]
+  flashcards              Flashcard[]
+  flashcardReviews        FlashcardReview[]
+  pedagogicalAlerts       PedagogicalAlert[]          @relation("PedagogicalAlertTeacher")
+  recoveryPlans           RecoveryPlan[]              @relation("RecoveryPlanStudent")
+  recoveryPlansCreated    RecoveryPlan[]              @relation("RecoveryPlanCreatedBy")
+  materials               Material[]                  @relation("MaterialOwner")
+  reportSnapshots         ReportSnapshot[]            @relation("ReportSnapshotRequester")
 
   @@map("users")
-  pedagogicalAlerts        PedagogicalAlert[]        @relation("PedagogicalAlertTeacher")
-  recoveryPlans            RecoveryPlan[]            @relation("RecoveryPlanStudent")
-  recoveryPlansCreated     RecoveryPlan[]            @relation("RecoveryPlanCreatedBy")
-  materials                Material[]                @relation("MaterialOwner")
-  reportSnapshots          ReportSnapshot[]          @relation("ReportSnapshotRequester")
 }
 
 model AuthSession {
@@ -218,37 +220,37 @@ model EssayModel {
 /// usada e uma anotação pessoal ("quando usar", variações). O favoritos
 /// serve para fixar as fórmulas que o aluno ainda não memorizou.
 model Formula {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
+  id               String                  @id @default(uuid()) @db.Uuid
+  userId           String                  @map("user_id") @db.Uuid
   /// Nome curto da fórmula (ex.: "Bhaskara", "Área do círculo").
-  name        String   @db.VarChar(160)
+  name             String                  @db.VarChar(160)
   /// Disciplina: MATEMATICA, FISICA, QUIMICA, BIOLOGIA, OUTRA.
-  discipline  String   @default("MATEMATICA") @db.VarChar(40)
+  discipline       String                  @default("MATEMATICA") @db.VarChar(40)
   /// Assunto dentro da disciplina (ex.: "Funções quadráticas").
-  topic       String?  @db.VarChar(160)
+  topic            String?                 @db.VarChar(160)
   /// A expressão em LaTeX, ex.: x = (-b ± √(b²-4ac)) / 2a.
-  latex       String
+  latex            String
   /// Anotações pessoais: quando usar, variações, macetes.
-  description String?
+  description      String?
   /// O que cada símbolo significa (ex.: "a, b, c: coeficientes").
-  variables   String?
+  variables        String?
   /// Em que tipo de questão a fórmula aparece.
-  whenToUse   String?  @map("when_to_use")
+  whenToUse        String?                 @map("when_to_use")
   /// Exemplo resolvido curto.
-  example     String?
-  isFavorite  Boolean  @default(false) @map("is_favorite")
+  example          String?
+  isFavorite       Boolean                 @default(false) @map("is_favorite")
   /// Marcado pelo aluno quando já sabe a fórmula de cor.
-  isMemorized Boolean  @default(false) @map("is_memorized")
+  isMemorized      Boolean                 @default(false) @map("is_memorized")
   /// MANUAL, AI ou PLATFORM_COPY (copiada do acervo da plataforma).
-  origin      String   @default("MANUAL") @db.VarChar(20)
+  origin           String                  @default("MANUAL") @db.VarChar(20)
   /// Item do acervo da plataforma (curado pela administração, só leitura para os alunos).
-  isPlatform  Boolean  @default(false) @map("is_platform")
+  isPlatform       Boolean                 @default(false) @map("is_platform")
   /// De qual item da plataforma esta cópia veio.
-  platformSourceId String? @map("platform_source_id") @db.Uuid
-  collectionItems FormulaCollectionItem[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformSourceId String?                 @map("platform_source_id") @db.Uuid
+  collectionItems  FormulaCollectionItem[]
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, discipline])
   @@index([userId, isFavorite])
@@ -262,71 +264,71 @@ model Formula {
 /// o ano para citar com precisão na redação e o tema para filtrar na escrita.
 /// para citar com precisão na redação e o tema para filtrar na escrita.
 model Repertoire {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
+  id                String                     @id @default(uuid()) @db.Uuid
+  userId            String                     @map("user_id") @db.Uuid
   /// Título do repertório (ex.: "George Orwell — 1984").
-  title     String   @db.VarChar(240)
+  title             String                     @db.VarChar(240)
   /// Resumo com as ideias principais, dados e argumentos.
-  summary   String
+  summary           String
   /// Fonte (livro, artigo, filme, série, lei, dados de pesquisa).
-  source    String?  @db.VarChar(160)
-  year      Int?
+  source            String?                    @db.VarChar(160)
+  year              Int?
   /// Tema para filtro: TECNOLOGIA, MEIO_AMBIENTE, SAUDE, POLITICA,
   /// EDUCACAO, ECONOMIA, CULTURA, CIENCIA, DIREITOS_HUMANOS, OUTRO.
-  theme     String   @default("OUTRO") @db.VarChar(40)
+  theme             String                     @default("OUTRO") @db.VarChar(40)
   /// Palavras-chave para localizar o repertório na hora da redação.
-  keywords  String[] @default([])
+  keywords          String[]                   @default([])
   /// Marcado pelo aluno quando já domina o repertório.
-  isStudied Boolean  @default(false) @map("is_studied")
+  isStudied         Boolean                    @default(false) @map("is_studied")
   /// Categoria do caderno (FILOSOFIA, SOCIOLOGIA, ...) ou nome de uma
   /// categoria criada pelo aluno.
-  category      String   @default("OUTRA") @db.VarChar(60)
+  category          String                     @default("OUTRA") @db.VarChar(60)
   /// Autor ou responsável (pensador, cineasta, órgão que publicou os dados).
-  author        String?  @db.VarChar(200)
+  author            String?                    @db.VarChar(200)
   /// LIVRO, FILME, SERIE, MUSICA, LEI, PESQUISA, PENSADOR, OBRA_DE_ARTE,
   /// ACONTECIMENTO, CONCEITO, OUTRO.
-  referenceType String   @default("OUTRO") @map("reference_type") @db.VarChar(40)
+  referenceType     String                     @default("OUTRO") @map("reference_type") @db.VarChar(40)
   /// Contexto histórico, social ou cultural.
-  context       String?
+  context           String?
   /// Importância sociocultural.
-  importance    String?
+  importance        String?
   /// Como aplicar na redação.
-  essayUse      String?  @map("essay_use")
+  essayUse          String?                    @map("essay_use")
   /// Exemplo de uso argumentativo (um trecho pronto para adaptar).
-  example       String?
+  example           String?
   /// Temas de redação com que o repertório se relaciona (texto livre).
-  relatedThemes String[] @default([]) @map("related_themes")
+  relatedThemes     String[]                   @default([]) @map("related_themes")
   /// Anotações pessoais.
-  notes         String?
-  isFavorite    Boolean  @default(false) @map("is_favorite")
+  notes             String?
+  isFavorite        Boolean                    @default(false) @map("is_favorite")
   /// MANUAL, AI (sugestão da LuminIA revisada pelo aluno) ou PLATFORM_COPY.
-  origin        String   @default("MANUAL") @db.VarChar(20)
-  isPlatform    Boolean  @default(false) @map("is_platform")
-  platformSourceId String? @map("platform_source_id") @db.Uuid
+  origin            String                     @default("MANUAL") @db.VarChar(20)
+  isPlatform        Boolean                    @default(false) @map("is_platform")
+  platformSourceId  String?                    @map("platform_source_id") @db.Uuid
   /// Eixos temáticos (especificação de 13/11/2026), um repertório pode ter vários.
-  axes              String[] @default([])
+  axes              String[]                   @default([])
   /// Funções no mapa de aplicação argumentativa (explicar desigualdades
   /// estruturais, evidenciar omissão estatal...).
-  argumentFunctions String[] @default([]) @map("argument_functions")
+  argumentFunctions String[]                   @default([]) @map("argument_functions")
   /// Conceitos fundamentais.
-  concepts          String[] @default([])
+  concepts          String[]                   @default([])
   /// Problemas sociais que o repertório ajuda a explicar.
-  socialProblems    String?  @map("social_problems")
+  socialProblems    String?                    @map("social_problems")
   /// Relação com a realidade brasileira.
-  brazilRelation    String?  @map("brazil_relation")
+  brazilRelation    String?                    @map("brazil_relation")
   /// Em que desenvolvimento o exemplo se encaixa: D1 ou D2.
-  exampleSlot       String?  @map("example_slot") @db.VarChar(4)
+  exampleSlot       String?                    @map("example_slot") @db.VarChar(4)
   /// Possíveis conexões com outros repertórios.
   connections       String?
   /// Cuidados para evitar uso superficial ou decorativo.
   pitfalls          String?
   /// Citação literal (separada da paráfrase), sempre com a fonte exata.
   quote             String?
-  quoteSource       String?  @map("quote_source") @db.VarChar(300)
-  collectionItems RepertoireCollectionItem[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quoteSource       String?                    @map("quote_source") @db.VarChar(300)
+  collectionItems   RepertoireCollectionItem[]
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+  user              User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, theme])
   @@index([userId, isStudied])
@@ -1281,16 +1283,17 @@ model StudySchedule {
 /// Catálogo fixo (12 matérias) separado de Subject (classificação de
 /// questões) — Redação, por exemplo, não tem questões mas é estudável.
 model StudySubject {
-  id               String                 @id @default(uuid()) @db.Uuid
-  name             String                 @unique
-  code             String                 @unique @map("code")
-  displayOrder     Int                    @default(99) @map("display_order")
-  createdAt        DateTime               @default(now()) @map("created_at")
-  updatedAt        DateTime               @updatedAt @map("updated_at")
-  scheduleSubjects StudyScheduleSubject[]
-  sessionSubjects  StudySessionSubject[]
-  tasks            StudyTask[]
-  timeLogs         StudyTimeLog[]
+  id                    String                    @id @default(uuid()) @db.Uuid
+  name                  String                    @unique
+  code                  String                    @unique @map("code")
+  displayOrder          Int                       @default(99) @map("display_order")
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
+  scheduleSubjects      StudyScheduleSubject[]
+  sessionSubjects       StudySessionSubject[]
+  tasks                 StudyTask[]
+  timeLogs              StudyTimeLog[]
+  groupRoomParticipants GroupSessionParticipant[]
 
   @@map("study_subjects")
 }
@@ -1420,21 +1423,26 @@ enum StudyActivityType {
 /// um aluno pode estudar uma matéria do cronograma num dia sem sessão
 /// (domingo, feriado, revisão avulsa) e ainda assim querer registrar o tempo.
 model StudyTimeLog {
-  id              String        @id @default(uuid()) @db.Uuid
-  taskId          String?       @map("task_id") @db.Uuid
-  subjectId       String?       @map("subject_id") @db.Uuid
-  userId          String        @map("user_id") @db.Uuid
-  startTime       DateTime      @map("start_time")
-  endTime         DateTime      @map("end_time")
-  durationMinutes Int           @map("duration_minutes")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  task            StudyTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  subject         StudySubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String             @id @default(uuid()) @db.Uuid
+  taskId          String?            @map("task_id") @db.Uuid
+  subjectId       String?            @map("subject_id") @db.Uuid
+  userId          String             @map("user_id") @db.Uuid
+  startTime       DateTime           @map("start_time")
+  endTime         DateTime           @map("end_time")
+  durationMinutes Int                @map("duration_minutes")
+  /// Sessão coletiva do Groups em que o tempo foi estudado (contexto, não
+  /// segunda contabilidade: o tempo continua sendo só este log do aluno).
+  groupSessionId  String?            @map("group_session_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at")
+  task            StudyTask?         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  subject         StudySubject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupSession    GroupStudySession? @relation(fields: [groupSessionId], references: [id], onDelete: SetNull)
 
   @@index([taskId])
   @@index([subjectId])
   @@index([userId])
+  @@index([groupSessionId])
   @@map("study_time_logs")
 }
 
@@ -2733,27 +2741,91 @@ enum StudyGroupMemberStatus {
 }
 
 model StudyGroup {
-  id               String             @id @default(uuid()) @db.Uuid
-  name             String             @db.VarChar(80)
-  description      String?            @db.VarChar(500)
+  id               String              @id @default(uuid()) @db.Uuid
+  name             String              @db.VarChar(80)
+  description      String?             @db.VarChar(500)
   /// Propósito curto, ex.: "ENEM 2027", "Medicina", "Grupo de redação".
-  purpose          String?            @db.VarChar(60)
-  imageUrl         String?            @map("image_url")
-  rules            String?            @db.VarChar(2000)
+  purpose          String?             @db.VarChar(60)
+  imageUrl         String?             @map("image_url")
+  rules            String?             @db.VarChar(2000)
   /// Código de entrada; trocar o código invalida os links de convite antigos.
-  joinCode         String             @unique @map("join_code") @db.VarChar(12)
-  requiresApproval Boolean            @default(false) @map("requires_approval")
-  maxMembers       Int                @default(30) @map("max_members")
-  ownerId          String             @map("owner_id") @db.Uuid
+  joinCode         String              @unique @map("join_code") @db.VarChar(12)
+  requiresApproval Boolean             @default(false) @map("requires_approval")
+  maxMembers       Int                 @default(30) @map("max_members")
+  ownerId          String              @map("owner_id") @db.Uuid
   /// Arquivado antes da exclusão definitiva (só o dono exclui).
-  archivedAt       DateTime?          @map("archived_at")
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
-  owner            User               @relation("StudyGroupOwner", fields: [ownerId], references: [id])
+  archivedAt       DateTime?           @map("archived_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  owner            User                @relation("StudyGroupOwner", fields: [ownerId], references: [id])
   members          StudyGroupMember[]
+  rooms            GroupStudySession[]
 
   @@index([ownerId])
   @@map("study_groups")
+}
+
+enum GroupSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum GroupParticipantStatus {
+  STUDYING
+  PAUSED
+  LEFT
+}
+
+/// Sala coletiva do Groups (etapa 2): do primeiro que entrou ao último que
+/// saiu. Fecha sozinha depois de ficar vazia por um tempo.
+model GroupStudySession {
+  id             String                    @id @default(uuid()) @db.Uuid
+  groupId        String                    @map("group_id") @db.Uuid
+  title          String?                   @db.VarChar(80)
+  openedById     String                    @map("opened_by_id") @db.Uuid
+  status         GroupSessionStatus        @default(OPEN)
+  startedAt      DateTime                  @default(now()) @map("started_at")
+  endedAt        DateTime?                 @map("ended_at")
+  /// Último momento em que havia alguém na sala (base do fechamento automático).
+  lastActivityAt DateTime                  @default(now()) @map("last_activity_at")
+  group          StudyGroup                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  openedBy       User                      @relation("GroupStudySessionOpener", fields: [openedById], references: [id], onDelete: Cascade)
+  participants   GroupSessionParticipant[]
+  timeLogs       StudyTimeLog[]
+
+  @@index([groupId, status])
+  @@index([status, lastActivityAt])
+  @@map("group_study_sessions")
+}
+
+/// Passagem de um aluno por uma sala. Cada um escolhe a própria matéria; o
+/// tempo dele (sem pausas) vira um StudyTimeLog ao sair. Sair e voltar cria
+/// outra passagem. Um aluno só pode estar em uma sala por vez.
+model GroupSessionParticipant {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  sessionId          String                 @map("session_id") @db.Uuid
+  userId             String                 @map("user_id") @db.Uuid
+  subjectId          String?                @map("subject_id") @db.Uuid
+  status             GroupParticipantStatus @default(STUDYING)
+  /// Mostrar matéria e cronômetro para a sala. Desligado por padrão: sem isso
+  /// os colegas só veem nome, foto e status.
+  showDetails        Boolean                @default(false) @map("show_details")
+  joinedAt           DateTime               @default(now()) @map("joined_at")
+  leftAt             DateTime?              @map("left_at")
+  lastHeartbeatAt    DateTime               @default(now()) @map("last_heartbeat_at")
+  /// Início do trecho atual de estudo; null quando pausado ou fora da sala.
+  activeSince        DateTime?              @map("active_since")
+  /// Segundos estudados nos trechos já encerrados (sem pausas).
+  accumulatedSeconds Int                    @default(0) @map("accumulated_seconds")
+  /// Log gerado ao sair (ausente quando o tempo não chegou a 1 minuto).
+  timeLogId          String?                @unique @map("time_log_id") @db.Uuid
+  session            GroupStudySession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject            StudySubject?          @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, status])
+  @@index([userId, status])
+  @@map("group_session_participants")
 }
 
 /// Vínculo aluno x grupo, com papel e o que ele compartilha com os colegas.
@@ -2873,26 +2945,26 @@ enum RecoveryPlanStatus {
 /// banco (como os PDFs de provas) e o texto, por página, em MaterialPage,
 /// para a busca (item 50) e a LuminIA (item 49).
 model Material {
-  id          String           @id @default(uuid()) @db.Uuid
-  ownerId     String           @map("owner_id") @db.Uuid
+  id          String         @id @default(uuid()) @db.Uuid
+  ownerId     String         @map("owner_id") @db.Uuid
   /// Sem turma: fica só na biblioteca do professor.
-  classId     String?          @map("class_id") @db.Uuid
-  subjectId   String?          @map("subject_id") @db.Uuid
-  topicId     String?          @map("topic_id") @db.Uuid
-  title       String           @db.VarChar(200)
+  classId     String?        @map("class_id") @db.Uuid
+  subjectId   String?        @map("subject_id") @db.Uuid
+  topicId     String?        @map("topic_id") @db.Uuid
+  title       String         @db.VarChar(200)
   description String?
   kind        MaterialKind
-  url         String?          @db.VarChar(1000)
+  url         String?        @db.VarChar(1000)
   file        Bytes?
-  mimeType    String?          @map("mime_type") @db.VarChar(100)
-  sizeBytes   Int?             @map("size_bytes")
-  pageCount   Int?             @map("page_count")
+  mimeType    String?        @map("mime_type") @db.VarChar(100)
+  sizeBytes   Int?           @map("size_bytes")
+  pageCount   Int?           @map("page_count")
   /// OK = texto extraído; NO_TEXT = PDF digitalizado (sem texto selecionável); NONE = link/vídeo.
-  textStatus  String           @default("NONE") @map("text_status") @db.VarChar(10)
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  owner       User             @relation("MaterialOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  class       Class?           @relation("ClassMaterials", fields: [classId], references: [id], onDelete: SetNull)
+  textStatus  String         @default("NONE") @map("text_status") @db.VarChar(10)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  owner       User           @relation("MaterialOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  class       Class?         @relation("ClassMaterials", fields: [classId], references: [id], onDelete: SetNull)
   pages       MaterialPage[]
 
   @@index([ownerId])

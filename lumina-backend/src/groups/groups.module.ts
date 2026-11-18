@@ -13,6 +13,12 @@ import {
   UpdateSharingDto,
 } from './groups.dto';
 import { GroupsService } from './groups.service';
+import { AuthModule } from '../auth/auth.module';
+import { SchedulesModule } from '../schedules/schedules.module';
+import { GroupRoomEvents } from './group-room-events';
+import { GroupRoomsGateway } from './group-rooms.gateway';
+import { GroupRoomsService } from './group-rooms.service';
+import { JoinRoomDto, OpenRoomDto, UpdateParticipationDto } from './group-rooms.dto';
 
 /** Lumina Groups (Fase 2, MVP): docs/LUMINA_GROUPS.md. */
 @ApiTags('groups')
@@ -142,8 +148,74 @@ export class GroupsController {
   }
 }
 
+/** Salas coletivas (etapa 2): docs/LUMINA_GROUPS.md §2.3–§2.4. As ações
+ * devolvem o estado das salas do grupo, para o app não precisar de outra ida. */
+@ApiTags('groups')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('groups')
+export class GroupRoomsController {
+  constructor(private readonly rooms: GroupRoomsService) {}
+
+  @Get('rooms/me')
+  @ApiOperation({ summary: 'Minha passagem ativa numa sala (em qualquer grupo), ou null.' })
+  current(@CurrentUser() user: UserWithProfile) {
+    return this.rooms.current(user.id);
+  }
+
+  @Get(':id/rooms')
+  @ApiOperation({ summary: 'Salas abertas do grupo, histórico, minha passagem e matérias.' })
+  state(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.rooms.state(user.id, id);
+  }
+
+  @Post(':id/rooms')
+  @ApiOperation({ summary: 'Abre uma sala no grupo e entra nela.' })
+  open(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: OpenRoomDto) {
+    return this.rooms.open(user.id, id, dto);
+  }
+
+  @Post('rooms/:sessionId/join')
+  @ApiOperation({ summary: 'Entra numa sala aberta, com a própria matéria.' })
+  join(@CurrentUser() user: UserWithProfile, @Param('sessionId', ParseUUIDPipe) sessionId: string, @Body() dto: JoinRoomDto) {
+    return this.rooms.join(user.id, sessionId, dto);
+  }
+
+  @Post('rooms/:sessionId/heartbeat')
+  @ApiOperation({ summary: 'Sinal de vida (a cada 30 s). Sem sinal por 90 s, a passagem fecha no último sinal.' })
+  heartbeat(@CurrentUser() user: UserWithProfile, @Param('sessionId', ParseUUIDPipe) sessionId: string) {
+    return this.rooms.heartbeat(user.id, sessionId);
+  }
+
+  @Post('rooms/:sessionId/pause')
+  @ApiOperation({ summary: 'Pausa o meu cronômetro na sala.' })
+  pause(@CurrentUser() user: UserWithProfile, @Param('sessionId', ParseUUIDPipe) sessionId: string) {
+    return this.rooms.pause(user.id, sessionId);
+  }
+
+  @Post('rooms/:sessionId/resume')
+  @ApiOperation({ summary: 'Retoma o meu cronômetro na sala.' })
+  resume(@CurrentUser() user: UserWithProfile, @Param('sessionId', ParseUUIDPipe) sessionId: string) {
+    return this.rooms.resume(user.id, sessionId);
+  }
+
+  @Patch('rooms/:sessionId/me')
+  @ApiOperation({ summary: 'Troca a matéria (fecha o trecho na matéria antiga) ou o que mostro à sala.' })
+  update(@CurrentUser() user: UserWithProfile, @Param('sessionId', ParseUUIDPipe) sessionId: string, @Body() dto: UpdateParticipationDto) {
+    return this.rooms.update(user.id, sessionId, dto);
+  }
+
+  @Post('rooms/:sessionId/leave')
+  @ApiOperation({ summary: 'Sai da sala; o tempo estudado vira registro no histórico pessoal.' })
+  leave(@CurrentUser() user: UserWithProfile, @Param('sessionId', ParseUUIDPipe) sessionId: string) {
+    return this.rooms.leave(user.id, sessionId);
+  }
+}
+
 @Module({
-  controllers: [GroupsController],
-  providers: [GroupsService],
+  imports: [AuthModule, SchedulesModule],
+  // As rotas fixas das salas (`rooms/me`) vêm antes das do grupo (`:id`).
+  controllers: [GroupRoomsController, GroupsController],
+  providers: [GroupsService, GroupRoomsService, GroupRoomEvents, GroupRoomsGateway],
 })
 export class GroupsModule {}

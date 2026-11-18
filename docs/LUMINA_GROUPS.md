@@ -196,7 +196,25 @@ Regras de presença: heartbeat a cada 30 s, "offline" após 90 s sem sinal, e a 
 As regras da tela ficam em `src/lib/groups.ts`, com teste em `test/groups.check.ts`. A migration foi aplicada no banco em 14/11/2026. A tela foi conferida no navegador contra o banco, com as contas de teste de aluno e professor: criar, compartilhar, gerar link, entrar pelo link, promover, arquivar e excluir. O grupo usado no teste foi excluído em seguida.
 
 **Falta para fechar o MVP:**
-- vincular a sessão individual com matéria ao grupo, quando as salas chegarem (o `StudyTimeLog.groupSessionId` entra com `GroupStudySession` na fase 2);
+- ~~vincular a sessão com matéria ao grupo~~ feito na etapa 2 (§9);
 - convite nominal (aceitar ou recusar um convite enviado a uma pessoa), denúncia e filtro de conteúdo do nome e da imagem.
 
 A sequência de dias olha os últimos 60 dias de log; sequências maiores aparecem como 60 até a fase de engajamento trazer um cálculo próprio.
+
+## 9. Salas coletivas (etapa 2, 17/11/2026)
+
+**Feito** (`lumina-backend/src/groups/group-rooms.*`, `room-rules.ts`; migration `20261117150000_group_study_rooms`, só adições):
+- **Modelo:** `GroupStudySession` (a sala: título, quem abriu, aberta/fechada, início e fim) e `GroupSessionParticipant` (a passagem de cada aluno: matéria, status, pausas, último sinal). `StudyTimeLog.groupSessionId` liga o tempo à sala como **contexto**.
+- **Sem segunda contabilidade:** a sala não guarda horas. Ao sair, o tempo do aluno (sem pausas, em minutos inteiros) vira um `StudyTimeLog` comum e atualiza o progresso do cronograma, se houver. A saída é "reivindicada" com um `updateMany` condicional, então requisições repetidas não duplicam o tempo. Menos de 1 minuto não vira log.
+- **Três tempos na tela:** duração da sala (do início até o fim, ou até agora), tempo individual de cada um e, no histórico do grupo, quanto o próprio aluno estudou em cada sala.
+- **Presença:** o app manda sinal a cada 30 s (pela barra global `RoomPresenceBar`, enquanto o aluno usa qualquer tela). Sem sinal por 90 s, a passagem fecha **no último sinal**, sem inflar horas; uma passagem também é cortada em 8 h. Uma varredura a cada 60 s fecha passagens esquecidas e salas vazias há 30 min (`endedAt` = último momento com gente).
+- **Regras:** um aluno fica em uma sala por vez (em qualquer grupo); até 5 salas abertas por grupo; cada um escolhe a própria matéria. Trocar de matéria fecha o trecho na matéria antiga e abre outro. Grupo arquivado fecha as salas e não abre novas; sair ou ser removido do grupo tira o aluno da sala (o tempo continua dele).
+- **Privacidade (§5 para todos):** os colegas veem nome, foto e status (estudando, em pausa, sem sinal). Matéria e cronômetro só aparecem se o próprio aluno ligar "mostrar minha matéria e meu tempo" — desligado por padrão, ao abrir, ao entrar e dentro da sala.
+- **Tempo real (Socket.IO próprio, namespace `/groups`):** o socket exige o access token no handshake, só membro ativo acompanha um grupo, e o servidor só avisa `rooms:changed`; o app busca o estado por HTTP, onde ficam as regras de privacidade (nenhum dado pessoal passa pelo socket). Sem socket, o app consulta a cada 15 s. CORS do socket = `CORS_ORIGIN`. Com mais de uma instância do backend, usar o adaptador Redis.
+- **Endpoints** (`/groups`, autenticados): `GET rooms/me`; `GET|POST :id/rooms`; `POST rooms/:sessionId/join|heartbeat|pause|resume|leave`; `PATCH rooms/:sessionId/me`.
+- **Tela:** seção "Sala de estudo" no topo da página do grupo (abrir sala, entrar com matéria, participantes ao vivo, pausar, trocar matéria, mostrar ou esconder, sair, salas anteriores) e a barra flutuante com o cronômetro em qualquer tela do app.
+- **Testes:** `room-rules.spec.ts` (13) e `group-rooms.service.spec.ts` (12), mais `test/salas-grupo.check.ts` no app. Ponta a ponta contra o banco em 17/11: duas contas na mesma sala, privacidade, um aluno por sala (409), não membro (404), socket recusando token inválido e avisando as mudanças, e 1 minuto de cada uma no histórico ao sair.
+
+**Correção encontrada no caminho:** `timeLogsForSchedule` somava logs por matéria sem filtrar o aluno. Como a matéria é global, o tempo de outros alunos entrava no progresso de qualquer cronograma com a mesma matéria. Agora só conta o dono do cronograma.
+
+**Próximo (etapa 3, engajamento):** metas da sala e do grupo, ranking opcional (desligado para menores), desafios e conquistas.
