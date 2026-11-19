@@ -31,6 +31,7 @@ function fakeDb() {
     };
 
   const db: any = {
+    groupMessage: { count: async () => 0 },
     users,
     logs,
     studyGroup: {

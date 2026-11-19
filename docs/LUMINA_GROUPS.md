@@ -160,6 +160,7 @@ Regras de presença: heartbeat a cada 30 s, "offline" após 90 s sem sinal, e a 
 - ~~Limite de membros por grupo e de grupos por usuário~~ **Decidido no MVP:** até 10 grupos por aluno, 3 criados a cada 24 h, de 2 a 100 membros por grupo (padrão 30). Os valores ficam em `GROUP_LIMITS`.
 - ~~Websocket próprio ou Supabase Realtime~~ **Decidido em 14/11/2026:** Socket.IO próprio (`@nestjs/websockets`, adaptador Redis quando houver várias instâncias), nas salas coletivas. O MVP usa só HTTP.
 - Se o perfil de grupo aparece também para amigos fora do grupo (rede social) ou só dentro do grupo (recomendação: só dentro).
+- ~~Chat para menores só em grupos ligados a turma ou com consentimento do responsável~~ **Decidido em 18/11/2026 pelo usuário:** chat liberado para todos os membros, de qualquer idade, **com moderação** (filtro de palavras, bloqueio de telefone e e-mail nas mensagens, limite de envio, ocultar, silenciar, denúncia com ocultação automática). Isso substitui a regra de chat do §5 até o jurídico definir o consentimento do responsável.
 
 ## 8. Implementação do MVP (backend, 14/11/2026)
 
@@ -232,3 +233,28 @@ A sequência de dias olha os últimos 60 dias de log; sequências maiores aparec
 - **Testes:** `engagement-rules.spec.ts` (12) e `group-engagement.service.spec.ts` (7), mais `test/engajamento-grupo.check.ts` no app. Conferido contra o banco e na tela em 18/11/2026.
 
 **Fica para depois:** desafios entre grupos (dependem de grupos se encontrarem; entram com a comunicação, etapa 4), medalhas visíveis aos colegas e metas pessoais do aluno (item 52, fora do grupo).
+
+## 11. Comunicação (etapa 4, 18/11/2026)
+
+**Decisão do usuário (18/11/2026):** chat para todos os membros, de qualquer idade, com moderação (ver §7). Por isso a moderação é mais forte do que seria num grupo só de adultos.
+
+**Feito** (`lumina-backend/src/groups/content-filter.ts`, `group-communication.*`, `src/notifications/`; migration `20261118180000_group_communication`, só adições):
+- **Notificações in-app** (módulo genérico `notifications`): avisos do grupo, pedidos de entrada (para a moderação), denúncias, mensagem ocultada e silenciamento. Sino no topo do painel e das páginas de grupo, com contador e "marcar todas como lidas". Notificar nunca derruba a ação que gerou o aviso.
+- **Chat do grupo** em tempo real (mesmo Socket.IO, evento `chat:changed`, só o aviso; o app busca por HTTP). 50 mensagens por página, contador de não lidas na lista de grupos.
+- **Filtro de conteúdo** (determinístico, sem IA): palavrões e ofensas em português, tolerante a acento, maiúsculas, leetspeak ("p0rr4"), letras repetidas e letras separadas ("p u t a"). **Telefone, e-mail e @ de outras redes são recusados** nas mensagens e nos avisos, para evitar contato fora da plataforma com menores. Nome, propósito, descrição e regras do grupo também passam pelo filtro.
+- **Moderação:**
+  - limite de 6 mensagens a cada 30 s por pessoa;
+  - o autor apaga a própria mensagem; moderador oculta a de quem está abaixo dele (nunca a do dono nem de alguém do mesmo nível) e o autor é notificado;
+  - silenciar por 1 h, 24 h ou 7 dias (só quem está acima), com aviso ao silenciado e a hora de volta;
+  - mensagem oculta não sai mais pela API para ninguém.
+- **Avisos fixados:** só moderação publica e remove; todos os outros membros são notificados.
+- **Denúncias** de mensagem, membro ou grupo, com motivo (ofensa, assédio, spam, conteúdo impróprio, dados pessoais, outro):
+  - **denunciante anônimo** para a moderação;
+  - **3 pessoas diferentes** denunciando a mesma mensagem a ocultam até a revisão;
+  - moderador vê só denúncias contra quem está abaixo dele (nunca contra si);
+  - **grupo inteiro e denúncias contra o dono** vão para a administração da Lumina (`/app/grupos/denuncias`, contas `ADMIN`);
+  - "Procede" deixa a mensagem oculta; "Não procede" devolve a que sumiu só pelas denúncias; as outras denúncias da mesma mensagem fecham junto.
+- **Endpoints** (`/groups`): `GET|POST :id/chat`, `DELETE :id/chat/:messageId`, `POST :id/members/:userId/mute`, `POST|DELETE :id/announcements[/:id]`, `POST|GET :id/reports`, `POST :id/reports/:reportId/resolve`, `GET reports/admin`, `POST reports/admin/:reportId/resolve`. Notificações: `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read`.
+- **Testes:** `content-filter.spec.ts` (8) e `group-communication.service.spec.ts` (11), mais `test/comunicacao-grupo.check.ts` no app. Conferido contra o banco e na tela em 18/11/2026.
+
+**Fica para depois:** desafios entre grupos (exigem que grupos se encontrem, ex.: uma vitrine de grupos), ações da administração sobre o grupo denunciado (hoje ela só marca procede/não procede), notificação por e-mail (depende do domínio no Resend) e convite nominal.

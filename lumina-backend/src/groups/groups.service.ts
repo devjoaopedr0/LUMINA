@@ -19,6 +19,8 @@ import {
   visibleStats,
 } from './group-rules';
 import { GroupRoomsService } from './group-rooms.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { checkGroupText } from './content-filter';
 import { ChangeMemberRoleDto, CreateGroupDto, UpdateGroupDto, UpdateSharingDto } from './groups.dto';
 
 /** Janela de logs lida para hoje/semana/sequência. O total vem de uma soma. */
@@ -35,7 +37,14 @@ export class GroupsService {
     private readonly prisma: PrismaService,
     // Opcional só para os testes do MVP, que montam o serviço sem as salas.
     @Optional() private readonly rooms?: GroupRoomsService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
+
+  /** Nome, propósito, descrição e regras passam pelo filtro de conteúdo. */
+  private assertCleanText(dto: { name?: string | null; purpose?: string | null; description?: string | null; rules?: string | null }) {
+    const verdict = checkGroupText([dto.name, dto.purpose, dto.description, dto.rules]);
+    if (!verdict.ok) throw new BadRequestException(verdict.message);
+  }
 
   // ------------------------------------------------------------ leitura
 
@@ -47,6 +56,8 @@ export class GroupsService {
       select: {
         role: true,
         status: true,
+        joinedAt: true,
+        chatLastReadAt: true,
         group: {
           select: {
             id: true, name: true, purpose: true, imageUrl: true, archivedAt: true, maxMembers: true,
@@ -55,7 +66,16 @@ export class GroupsService {
         },
       },
     });
-    return rows.map((r) => ({
+    // Mensagens de outros, visíveis, depois da última vez que abri a conversa.
+    const unread = await Promise.all(rows.map((r) =>
+      r.status === 'ACTIVE'
+        ? this.prisma.groupMessage.count({
+            where: { groupId: r.group.id, authorId: { not: userId }, hiddenAt: null, createdAt: { gt: r.chatLastReadAt ?? r.joinedAt } },
+          })
+        : Promise.resolve(0),
+    ));
+    return rows.map((r, i) => ({
+      unreadMessages: unread[i],
       id: r.group.id,
       name: r.group.name,
       purpose: r.group.purpose,
@@ -155,6 +175,7 @@ export class GroupsService {
   // ------------------------------------------------------------ criação e gestão
 
   async create(userId: string, dto: CreateGroupDto) {
+    this.assertCleanText(dto);
     await this.assertCanJoinAnother(userId);
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const createdToday = await this.prisma.studyGroup.count({ where: { ownerId: userId, createdAt: { gte: since } } });
@@ -190,6 +211,7 @@ export class GroupsService {
   async update(userId: string, groupId: string, dto: UpdateGroupDto) {
     const { group, me } = await this.editable(userId, groupId);
     if (!canManageGroup(me.role)) throw new ForbiddenException('Só o dono e os administradores editam o grupo.');
+    this.assertCleanText(dto);
     if (dto.maxMembers !== undefined) {
       const count = await this.activeCount(groupId);
       if (dto.maxMembers < count) throw new BadRequestException(`O grupo já tem ${count} membros; o limite não pode ser menor.`);
@@ -254,6 +276,18 @@ export class GroupsService {
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return { groupId: group.id, status, alreadyMember: true };
       throw error;
+    }
+    if (status === 'PENDING') {
+      const moderators = await this.prisma.studyGroupMember.findMany({
+        where: { groupId: group.id, status: 'ACTIVE', role: { in: ['OWNER', 'ADMIN', 'MODERATOR'] } },
+        select: { userId: true },
+      });
+      await this.notifications?.notify(moderators.map((m) => m.userId), {
+        kind: 'group.join_request',
+        title: `Pedido de entrada em ${group.name}`,
+        body: 'Alguém pediu para entrar no grupo. Aprove ou recuse na página do grupo.',
+        link: `/app/grupos/${group.id}`,
+      });
     }
     return { groupId: group.id, status, alreadyMember: false };
   }

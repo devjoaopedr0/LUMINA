@@ -46,8 +46,9 @@ export class GroupRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
   }
 
   afterInit() {
-    this.unsubscribe = this.events.subscribe((groupId) => {
-      this.server.to(roomKey(groupId)).emit('rooms:changed', { groupId });
+    this.unsubscribe = this.events.subscribe((groupId, kind) => {
+      // "rooms:changed" ou "chat:changed": só o aviso, sem conteúdo.
+      this.server.to(roomKey(groupId)).emit(`${kind}:changed`, { groupId });
     });
   }
 

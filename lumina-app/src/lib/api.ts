@@ -3093,6 +3093,39 @@ export const apiCreateGroupGoal = (accessToken: string, groupId: string, payload
   request(`/groups/${groupId}/goals`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
 export const apiCancelGroupGoal = (accessToken: string, groupId: string, goalId: string): Promise<Engagement> =>
   request(`/groups/${groupId}/goals/${goalId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+
+// Comunicação (etapa 4): chat, avisos, denúncias.
+type Chat = import("@/lib/group-chat").GroupChat;
+export const apiGroupChat = (accessToken: string, groupId: string, before?: string): Promise<Chat> =>
+  request(`/groups/${groupId}/chat${before ? `?before=${encodeURIComponent(before)}` : ""}`, { headers: authHeaders(accessToken) });
+export const apiSendGroupMessage = (accessToken: string, groupId: string, body: string): Promise<{ id: string }> =>
+  request(`/groups/${groupId}/chat`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ body }) });
+export const apiHideGroupMessage = (accessToken: string, groupId: string, messageId: string): Promise<{ hidden: boolean }> =>
+  request(`/groups/${groupId}/chat/${messageId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+export const apiMuteGroupMember = (accessToken: string, groupId: string, userId: string, hours: number): Promise<{ mutedUntil: string | null }> =>
+  request(`/groups/${groupId}/members/${userId}/mute`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ hours }) });
+export const apiAnnounce = (accessToken: string, groupId: string, body: string): Promise<Chat> =>
+  request(`/groups/${groupId}/announcements`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ body }) });
+export const apiRemoveAnnouncement = (accessToken: string, groupId: string, id: string): Promise<Chat> =>
+  request(`/groups/${groupId}/announcements/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+export const apiReportInGroup = (accessToken: string, groupId: string, payload: import("@/lib/group-chat").ReportPayload): Promise<{ reported: boolean; autoHidden?: boolean; duplicate?: boolean }> =>
+  request(`/groups/${groupId}/reports`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiGroupReports = (accessToken: string, groupId: string): Promise<import("@/lib/group-chat").GroupReportItem[]> =>
+  request(`/groups/${groupId}/reports`, { headers: authHeaders(accessToken) });
+export const apiResolveGroupReport = (accessToken: string, groupId: string, reportId: string, action: "resolve" | "dismiss"): Promise<import("@/lib/group-chat").GroupReportItem[]> =>
+  request(`/groups/${groupId}/reports/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
+export const apiAdminGroupReports = (accessToken: string): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
+  request("/groups/reports/admin", { headers: authHeaders(accessToken) });
+export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
+  request(`/groups/reports/admin/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
+
+// Notificações in-app.
+export const apiNotifications = (accessToken: string): Promise<{ items: import("@/lib/group-chat").AppNotification[]; unread: number }> =>
+  request("/notifications", { headers: authHeaders(accessToken) });
+export const apiUnreadNotifications = (accessToken: string): Promise<{ unread: number }> =>
+  request("/notifications/unread-count", { headers: authHeaders(accessToken) });
+export const apiMarkNotificationsRead = (accessToken: string, ids: string[] = []): Promise<{ unread: number }> =>
+  request("/notifications/read", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ ids }) });
 export const apiDecideGroupRequest = (accessToken: string, id: string, userId: string, decision: "approve" | "reject"): Promise<unknown> =>
   request(`/groups/${id}/members/${userId}/${decision}`, { method: "POST", headers: authHeaders(accessToken) });
 export const apiChangeGroupRole = (accessToken: string, id: string, userId: string, role: Exclude<import("@/lib/groups").GroupRole, "OWNER">): Promise<unknown> =>

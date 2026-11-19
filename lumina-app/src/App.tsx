@@ -42,6 +42,7 @@ import { EssayReviewDivergencesPage } from "@/pages/EssayReviewDivergencesPage";
 import { MasteryMap } from "@/pages/MasteryMap";
 import { PlanPage } from "@/pages/PlanPage";
 import { Groups } from "@/pages/Groups";
+import { GroupReportsAdmin } from "@/pages/GroupReportsAdmin";
 import { AiChatWidget } from "@/components/AiChatWidget";
 import { RoomPresenceBar } from "@/components/groups/RoomPresenceBar";
 
@@ -51,6 +52,7 @@ function App() {
       <Routes>
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
         <Route path="/app/grupos" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
+        <Route path="/app/grupos/denuncias" element={<ProtectedRoute><GroupReportsAdmin /></ProtectedRoute>} />
         <Route path="/app/grupos/:id" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
         <Route path="/app/acompanhamento" element={<ProtectedRoute><TeacherAnalyticsPage /></ProtectedRoute>} />
         <Route path="/app/recuperacao" element={<ProtectedRoute><RecoveryPlansPage /></ProtectedRoute>} />

@@ -14,6 +14,8 @@ export interface GroupSummary {
   maxMembers: number;
   myRole: GroupRole;
   myStatus: GroupMemberStatus;
+  /** Mensagens de outros na conversa desde a última vez que abri. */
+  unreadMessages: number;
 }
 
 export interface GroupSharing {
