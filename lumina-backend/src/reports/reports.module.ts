@@ -1,3 +1,4 @@
+import { ComparisonService } from './comparison.service';
 import { Module } from '@nestjs/common';
 import { InstitutionalAnalyticsModule } from '../institutional-analytics/institutional-analytics.module';
 import { QuestionsModule } from '../questions/questions.module';
@@ -7,6 +8,6 @@ import { ReportsService } from './reports.service';
 @Module({
   imports: [InstitutionalAnalyticsModule, QuestionsModule],
   controllers: [ReportsController],
-  providers: [ReportsService],
+  providers: [ReportsService, ComparisonService],
 })
 export class ReportsModule {}

@@ -1,4 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
+import { newActivityNotice } from '../notifications/notification-rules';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { assertInstitutionClassMember } from '../workspaces/class-membership-policy';
@@ -35,6 +37,8 @@ export class SimulationsService {
     private readonly prisma: PrismaService,
     private readonly access: QuestionAccessService,
     private readonly topicMasteryService: TopicMasteryService,
+    // Opcional só para testes montados à mão.
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async classes(userId: string, includeArchived = false) {
@@ -478,6 +482,14 @@ export class SimulationsService {
     let answerSheetTemplate: { id: string } | null = null;
     if (generateAnswerSheet && accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(accountType)) {
       answerSheetTemplate = (await upsertSheetTemplate(this.prisma, row)).template;
+    }
+    if (classId && this.notifications) {
+      const members = await this.prisma.classMember.findMany({ where: { classId }, select: { userId: true } });
+      await this.notifications.notify(members.map((m) => m.userId), {
+        kind: 'class.new_activity',
+        ...newActivityNotice({ type: assessmentType, title: row.title, className: row.class?.name ?? 'sua turma', dueAt: row.dueAt }),
+        link: `/app/simulados?id=${row.id}`,
+      });
     }
     return this.publicSimulation({ ...row, answerSheetTemplate });
   }

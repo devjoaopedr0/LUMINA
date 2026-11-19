@@ -4,7 +4,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
 import { previousMonthWindow, rollingWindow } from './report-build';
-import { CreateSnapshotDto, ReportPeriodQueryDto, SubjectReportQueryDto } from './reports.dto';
+import { CompareClassesQueryDto, CreateSnapshotDto, ReportPeriodQueryDto, SubjectReportQueryDto } from './reports.dto';
+import { ComparisonService } from './comparison.service';
 import { ReportsService } from './reports.service';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,13 +16,34 @@ const windowOf = (q: ReportPeriodQueryDto) => (q.month ? previousMonthWindow(new
 @UseGuards(JwtAuthGuard)
 @Controller('reports')
 export class ReportsController {
-  constructor(private readonly service: ReportsService) {}
+  constructor(
+    private readonly service: ReportsService,
+    private readonly comparison: ComparisonService,
+  ) {}
 
   @Get('scope')
   @ApiOperation({ summary: 'Turmas e instituição sobre as quais o usuário pode gerar relatórios.' })
   async scope(@CurrentUser() user: UserWithProfile) {
     const s = await this.service.scope(user.id);
     return { teacherClasses: s.teacherClasses, institution: s.institution, institutionClasses: s.institutionClasses };
+  }
+
+  @Get('compare/classes')
+  @ApiOperation({ summary: 'Compara turmas entre si e com o período anterior (só agregados).' })
+  compareClasses(@CurrentUser() user: UserWithProfile, @Query() q: CompareClassesQueryDto) {
+    return this.comparison.compareClasses(user.id, q.ids.split(',').map((id) => id.trim()).filter(Boolean), q.days ?? 30);
+  }
+
+  @Get('compare/me')
+  @ApiOperation({ summary: 'Eu comigo mesmo (período anterior) e com a média das minhas turmas.' })
+  compareMe(@CurrentUser() user: UserWithProfile, @Query() q: ReportPeriodQueryDto) {
+    return this.comparison.compareStudent(user.id, user.id, q.days ?? 30);
+  }
+
+  @Get('compare/student/:id')
+  @ApiOperation({ summary: 'Aluno com ele mesmo e com a média da turma (professor ou coordenação dele).' })
+  compareStudent(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query() q: ReportPeriodQueryDto) {
+    return this.comparison.compareStudent(user.id, id, q.days ?? 30);
   }
 
   @Get('class/:id')

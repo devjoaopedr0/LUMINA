@@ -3119,6 +3119,37 @@ export const apiAdminGroupReports = (accessToken: string): Promise<import("@/lib
 export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request(`/groups/reports/admin/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
 
+// Fase 3: comparação de desempenho (item 43).
+export const apiReportScopeLite = (accessToken: string): Promise<import("@/lib/institution").ReportScope> =>
+  request("/reports/scope", { headers: authHeaders(accessToken) });
+export const apiCompareClasses = (accessToken: string, ids: string[], days: number): Promise<import("@/lib/institution").ClassComparison> =>
+  request(`/reports/compare/classes?ids=${ids.join(",")}&days=${days}`, { headers: authHeaders(accessToken) });
+export const apiCompareMe = (accessToken: string, days: number): Promise<import("@/lib/institution").StudentComparison> =>
+  request(`/reports/compare/me?days=${days}`, { headers: authHeaders(accessToken) });
+
+// Fase 3: sala de estudo da turma (item 47).
+type ClassRoom = import("@/lib/institution").ClassRoomState;
+export const apiClassRoom = (accessToken: string, classId: string): Promise<ClassRoom> =>
+  request(`/class-rooms/class/${classId}`, { headers: authHeaders(accessToken) });
+export const apiOpenClassRoom = (accessToken: string, classId: string, payload: { title?: string | null; simulationId?: string | null }): Promise<ClassRoom> =>
+  request(`/class-rooms/class/${classId}/open`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiSetClassRoomActivity = (accessToken: string, sessionId: string, simulationId: string | null): Promise<ClassRoom> =>
+  request(`/class-rooms/sessions/${sessionId}/activity`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ simulationId }) });
+export const apiClassRoomAction = (accessToken: string, sessionId: string, action: "close" | "pause" | "resume" | "leave"): Promise<ClassRoom> =>
+  request(`/class-rooms/sessions/${sessionId}/${action}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiJoinClassRoom = (accessToken: string, sessionId: string, subjectId: string | null): Promise<ClassRoom> =>
+  request(`/class-rooms/sessions/${sessionId}/join`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ subjectId }) });
+export const apiClassRoomHeartbeat = (accessToken: string, sessionId: string): Promise<{ ok: boolean; studiedSeconds: number }> =>
+  request(`/class-rooms/sessions/${sessionId}/heartbeat`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiMyClassRoom = (accessToken: string): Promise<{ mine: null | { sessionId: string; classId: string; className: string; roomTitle: string | null; status: "STUDYING" | "PAUSED"; subject: string | null; studiedSeconds: number; ticking: boolean } }> =>
+  request("/class-rooms/me", { headers: authHeaders(accessToken) });
+
+// Fase 3: avisos do professor e da coordenação (item 51).
+export const apiBroadcastTargets = (accessToken: string): Promise<import("@/lib/institution").BroadcastTargets> =>
+  request("/notifications/broadcast-targets", { headers: authHeaders(accessToken) });
+export const apiBroadcast = (accessToken: string, payload: { scope: "class" | "institution"; classId?: string; title: string; body?: string }): Promise<{ sent: number; audience: string }> =>
+  request("/notifications/broadcast", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+
 // Notificações in-app.
 export const apiNotifications = (accessToken: string): Promise<{ items: import("@/lib/group-chat").AppNotification[]; unread: number }> =>
   request("/notifications", { headers: authHeaders(accessToken) });

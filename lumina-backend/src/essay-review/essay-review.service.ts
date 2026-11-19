@@ -1,11 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   AccountType,
   EssayAuditAction,
@@ -72,6 +66,7 @@ export class EssayReviewService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ------------------------------------------------------------------ leitura
@@ -863,6 +858,13 @@ export class EssayReviewService {
         },
       });
       return saved;
+    });
+    // Feedback de redação (item 51): o aluno sabe que um professor revisou a correção.
+    await this.notifications?.notify([review.essay.userId], {
+      kind: 'essay.reviewed',
+      title: 'Um professor revisou a correção da sua redação',
+      body: 'Veja os comentários na sua redação.',
+      link: `/app/redacoes/${review.essayId}`,
     });
     return this.reviewResponse(updated);
   }

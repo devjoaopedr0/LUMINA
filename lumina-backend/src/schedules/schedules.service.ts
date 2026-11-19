@@ -1146,9 +1146,9 @@ export class SchedulesService {
   }
 
   /**
-   * Tempo estudado numa sala do Lumina Groups. Vira um StudyTimeLog comum do
-   * aluno (fonte única do tempo), com o vínculo da sessão do grupo como
-   * contexto, e atualiza o progresso do cronograma quando ele existe. Não
+   * Tempo estudado numa sala (do Lumina Groups ou da turma). Vira um
+   * StudyTimeLog comum do aluno (fonte única do tempo), com o vínculo da
+   * sessão como contexto, e atualiza o progresso do cronograma quando ele existe. Não
    * exige cronograma nem que a matéria esteja nele: estudar no grupo conta
    * no histórico pessoal de qualquer jeito.
    */
@@ -1158,7 +1158,8 @@ export class SchedulesService {
     startTime: Date;
     endTime: Date;
     durationMinutes: number;
-    groupSessionId: string;
+    groupSessionId?: string | null;
+    classSessionId?: string | null;
   }) {
     const schedule = await this.repo.findScheduleByUserId(input.userId);
     return this.repo.prisma.$transaction(async (tx: Db) => {

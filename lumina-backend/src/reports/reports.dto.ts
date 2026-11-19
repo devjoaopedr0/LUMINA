@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateIf, Matches } from 'class-validator';
 
 export class ReportPeriodQueryDto {
   @ApiPropertyOptional({ minimum: 7, maximum: 365, default: 30, description: 'Janela em dias até hoje.' })
@@ -10,6 +10,12 @@ export class ReportPeriodQueryDto {
   @ApiPropertyOptional({ description: 'true = mês civil anterior, em vez da janela em dias.' })
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean()
   month?: boolean;
+}
+
+export class CompareClassesQueryDto extends ReportPeriodQueryDto {
+  @ApiProperty({ description: 'Ids das turmas separados por vírgula (1 a 6).', example: 'uuid-a,uuid-b' })
+  @IsString() @Matches(/^[0-9a-f-]{36}(,[0-9a-f-]{36}){0,5}$/i, { message: 'Informe de 1 a 6 turmas.' })
+  ids!: string;
 }
 
 export class SubjectReportQueryDto extends ReportPeriodQueryDto {

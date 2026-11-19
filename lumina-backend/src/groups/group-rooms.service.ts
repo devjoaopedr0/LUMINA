@@ -397,6 +397,7 @@ export class GroupRoomsService implements OnModuleInit, OnModuleDestroy {
 
   /** Um aluno só fica em uma sala por vez; passagem esquecida (sem sinal) é encerrada. */
   private async assertFreeToJoin(userId: string, now: Date) {
+    await this.assertNotInClassRoom(userId, now);
     const mine = await this.myActive(userId);
     if (!mine) return;
     if (presence(mine, now) === 'OFFLINE') {
@@ -406,6 +407,15 @@ export class GroupRoomsService implements OnModuleInit, OnModuleDestroy {
     throw new ConflictException(
       `Você já está estudando na sala${mine.session.title ? ` "${mine.session.title}"` : ''} do grupo ${mine.session.group.name}. Saia dela antes de entrar em outra.`,
     );
+  }
+
+  /** Sala da turma ativa (com sinal recente) também conta: o tempo não pode contar duas vezes. */
+  private async assertNotInClassRoom(userId: string, now: Date) {
+    const inClass = await this.prisma.classSessionParticipant?.findFirst({
+      where: { userId, status: { in: [...ACTIVE] }, lastHeartbeatAt: { gte: new Date(now.getTime() - ROOM_RULES.offlineAfterSeconds * 1000) } },
+      select: { session: { select: { class: { select: { name: true } } } } },
+    });
+    if (inClass) throw new ConflictException(`Você está na sala da turma ${inClass.session.class.name}. Saia dela antes de entrar numa sala de grupo.`);
   }
 
   /** Minha passagem ativa nesta sala; se ela expirou, fecha e avisa. */
