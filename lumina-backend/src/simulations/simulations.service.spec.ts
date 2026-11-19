@@ -474,7 +474,11 @@ describe('SimulationsService — gestão de turma', () => {
         academicPeriod: { id: 'period-1', name: '2026.2', startsAt: new Date(), endsAt: new Date(), active: true },
         coordinator: null,
         teachers: [{ user: { id: 'teacher-1', email: 'prof@exemplo.com', profile: { firstName: 'Paulo', lastName: null }, teacherProfile: { subject: 'Matemática' } } }],
-        members: [{ joinedAt: new Date(), user: { id: 'student-1', email: 'aluno@exemplo.com', profile: null } }],
+        members: [
+          { joinedAt: new Date(), user: { id: 'student-1', email: 'aluno@exemplo.com', profile: null } },
+          { joinedAt: new Date(), user: { id: 'student-2', email: 'colega@exemplo.com', profile: { firstName: 'Bia', lastName: null } } },
+          { joinedAt: new Date(), user: { id: 'student-3', email: 'semnome@exemplo.com', profile: null } },
+        ],
         simulations: [{ id: 'sim-1', title: 'Prova 1', assessmentType: 'TEST', dueAt: null, createdAt: new Date(), _count: { submissions: 3, items: 10 } }],
       };
       const prisma = {
@@ -492,7 +496,10 @@ describe('SimulationsService — gestão de turma', () => {
 
       expect(result.subject).toEqual({ id: 'subject-1', name: 'Matemática' });
       expect(result.teachers[0]).toEqual(expect.objectContaining({ name: 'Paulo', subject: 'Matemática' }));
+      // O aluno vê o próprio e-mail, mas nunca o dos colegas (nem como nome de reserva).
       expect(result.members[0]).toEqual(expect.objectContaining({ email: 'aluno@exemplo.com' }));
+      expect(result.members[1]).toEqual(expect.objectContaining({ name: 'Bia', email: null }));
+      expect(result.members[2]).toEqual(expect.objectContaining({ name: 'Aluno(a)', email: null }));
       expect(result.timeline[0]).toEqual(expect.objectContaining({ title: 'Prova 1', submissionCount: 3, questionCount: 10 }));
     });
   });

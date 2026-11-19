@@ -430,12 +430,17 @@ export class SimulationsService {
         email: t.user.email,
         subject: t.user.teacherProfile?.subject ?? null,
       })),
-      members: classRoom.members.map((m) => ({
-        id: m.user.id,
-        name: [m.user.profile?.firstName, m.user.profile?.lastName].filter(Boolean).join(' ') || m.user.email,
-        email: m.user.email,
-        joinedAt: m.joinedAt,
-      })),
+      // E-mail de colega é dado pessoal (muitos alunos são menores): só quem
+      // gerencia a turma vê o de todos; o aluno vê só o próprio.
+      members: classRoom.members.map((m) => {
+        const visible = canManage || m.user.id === userId;
+        return {
+          id: m.user.id,
+          name: [m.user.profile?.firstName, m.user.profile?.lastName].filter(Boolean).join(' ') || (visible ? m.user.email : 'Aluno(a)'),
+          email: visible ? m.user.email : null,
+          joinedAt: m.joinedAt,
+        };
+      }),
       timeline: classRoom.simulations.map((s) => ({
         id: s.id,
         title: s.title,

@@ -1128,7 +1128,7 @@ export interface ClassDetail {
   availableSubjects: Array<{ id: string; name: string }>;
   availablePeriods: Array<{ id: string; name: string }>;
   teachers: Array<{ id: string; name: string; email: string; subject: string | null }>;
-  members: Array<{ id: string; name: string; email: string; joinedAt: string }>;
+  members: Array<{ id: string; name: string; /** null para alunos: e-mail de colega não aparece. */ email: string | null; joinedAt: string }>;
   timeline: Array<{ id: string; title: string; assessmentType: string; createdAt: string; questionCount: number; submissionCount: number }>;
 }
 export const apiManagedClasses = (token: string): Promise<Array<SimulationClass & { archived: boolean }>> => request('/simulations/classes?includeArchived=true', { headers: authHeaders(token) });
