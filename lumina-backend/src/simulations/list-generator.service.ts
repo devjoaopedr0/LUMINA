@@ -33,23 +33,8 @@ export class ListGeneratorService {
   async generate(userId: string, input: GenerateListInput, now = new Date()) {
     const count = Math.max(LIST_RULES.minCount, Math.min(LIST_RULES.maxCount, Math.round(input.count)));
     const warnings: string[] = [];
-    let klass: { id: string; name: string } | null = null;
-    if (input.classId) {
-      const teacher = await this.prisma.classTeacher.findUnique({
-        where: { classId_userId: { classId: input.classId, userId } },
-        select: { class: { select: { id: true, name: true, archived: true } } },
-      });
-      if (!teacher || teacher.class.archived) throw new ForbiddenException('Você não leciona nesta turma.');
-      klass = { id: teacher.class.id, name: teacher.class.name };
-    }
-
-    // Espaços cujas questões a pessoa pode usar: o banco central e os que ela participa.
-    const [bank, memberships] = await Promise.all([
-      this.access.getBankWorkspace(),
-      this.prisma.workspaceMember.findMany({ where: { userId, status: 'ACTIVE' }, select: { workspaceId: true } }),
-    ]);
-    const workspaceIds = [...new Set([...(bank ? [bank.id] : []), ...memberships.map((m) => m.workspaceId)])];
-    if (!workspaceIds.length) throw new BadRequestException('Nenhum banco de questões disponível.');
+    const klass = input.classId ? await this.teacherClass(userId, input.classId) : null;
+    const workspaceIds = await this.usableWorkspaces(userId);
 
     // Base "dificuldades": os assuntos mais fracos do aluno ou da turma.
     let weak: Array<{ topicId: string; name: string; mastery: number }> = [];
@@ -124,6 +109,27 @@ export class ListGeneratorService {
       warnings,
       questions,
     };
+  }
+
+  /** Turma em que a pessoa leciona (para gerar para ela). */
+  async teacherClass(userId: string, classId: string): Promise<{ id: string; name: string }> {
+    const teacher = await this.prisma.classTeacher.findUnique({
+      where: { classId_userId: { classId, userId } },
+      select: { class: { select: { id: true, name: true, archived: true } } },
+    });
+    if (!teacher || teacher.class.archived) throw new ForbiddenException('Você não leciona nesta turma.');
+    return { id: teacher.class.id, name: teacher.class.name };
+  }
+
+  /** Espaços cujas questões a pessoa pode usar: o banco central e os que ela participa. */
+  async usableWorkspaces(userId: string): Promise<string[]> {
+    const [bank, memberships] = await Promise.all([
+      this.access.getBankWorkspace(),
+      this.prisma.workspaceMember.findMany({ where: { userId, status: 'ACTIVE' }, select: { workspaceId: true } }),
+    ]);
+    const ids = [...new Set([...(bank ? [bank.id] : []), ...memberships.map((m) => m.workspaceId)])];
+    if (!ids.length) throw new BadRequestException('Nenhum banco de questões disponível.');
+    return ids;
   }
 
   /** Assuntos com domínio abaixo de 70%, do mais fraco para o menos. */

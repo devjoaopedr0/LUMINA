@@ -51,6 +51,7 @@ const MasteryMap = lazy(() => import("@/pages/MasteryMap").then((m) => ({ defaul
 const PlanPage = lazy(() => import("@/pages/PlanPage").then((m) => ({ default: m.PlanPage })));
 const Groups = lazy(() => import("@/pages/Groups").then((m) => ({ default: m.Groups })));
 const GroupReportsAdmin = lazy(() => import("@/pages/GroupReportsAdmin").then((m) => ({ default: m.GroupReportsAdmin })));
+const ExamGeneratorPage = lazy(() => import("@/pages/ExamGeneratorPage").then((m) => ({ default: m.ExamGeneratorPage })));
 const ListGeneratorPage = lazy(() => import("@/pages/ListGeneratorPage").then((m) => ({ default: m.ListGeneratorPage })));
 const ComparePage = lazy(() => import("@/pages/ComparePage").then((m) => ({ default: m.ComparePage })));
 const ClassRoomPage = lazy(() => import("@/pages/ClassRoomPage").then((m) => ({ default: m.ClassRoomPage })));
@@ -65,6 +66,7 @@ function App() {
         <Route path="/app/turmas/:id/sala" element={<ProtectedRoute><ClassRoomPage /></ProtectedRoute>} />
         <Route path="/app/comparar" element={<ProtectedRoute><ComparePage /></ProtectedRoute>} />
         <Route path="/app/listas/gerar" element={<ProtectedRoute><ListGeneratorPage /></ProtectedRoute>} />
+        <Route path="/app/provas/gerar" element={<ProtectedRoute><ExamGeneratorPage /></ProtectedRoute>} />
         <Route path="/app/grupos" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
         <Route path="/app/grupos/denuncias" element={<ProtectedRoute><GroupReportsAdmin /></ProtectedRoute>} />
         <Route path="/app/grupos/:id" element={<ProtectedRoute><Groups /></ProtectedRoute>} />

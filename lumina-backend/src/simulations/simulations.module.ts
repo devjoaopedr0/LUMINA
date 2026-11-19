@@ -1,3 +1,4 @@
+import { ExamGeneratorService } from './exam-generator.service';
 import { ListGeneratorService } from './list-generator.service';
 import { Body, Controller, Delete, ForbiddenException, Get, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -6,7 +7,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserWithProfile } from '../users/users.repository';
 import { QuestionsModule } from '../questions/questions.module';
 import { SchedulesModule } from '../schedules/schedules.module';
-import { AcceptClassInviteDto, ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateEnemSimulationDto, CreateSimulationDto, GenerateListDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
+import { AcceptClassInviteDto, ArchiveClassDto, ClassMemberEmailDto, CreateAcademicPeriodDto, CreateClassDto, CreateEnemSimulationDto, CreateExamVersionsDto, CreateSimulationDto, GenerateExamDto, GenerateListDto, JoinClassDto, SubmitSimulationDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { SimulationsService } from './simulations.service';
 import { AdaptiveSimulationService } from './adaptive-simulation.service';
 import { AnswerSheetScanService } from './omr/answer-sheet-scan.service';
@@ -28,6 +29,7 @@ export class SimulationsController {
   constructor(
     private readonly service: SimulationsService,
     private readonly lists: ListGeneratorService,
+    private readonly exams: ExamGeneratorService,
     private readonly adaptiveService: AdaptiveSimulationService,
     private readonly questionScanService: QuestionScanService,
     private readonly taskSimulation: TaskSimulationService,
@@ -62,6 +64,9 @@ export class SimulationsController {
   @Get('coordinator/periods') coordinatorPeriods(@CurrentUser() user: UserWithProfile) { return this.service.coordinatorPeriods(user.id); }
   @Post('coordinator/periods') createCoordinatorPeriod(@CurrentUser() user: UserWithProfile, @Body() dto: CreateAcademicPeriodDto) { return this.service.createCoordinatorPeriod(user.id, dto); }
   @Patch('coordinator/periods/:periodId') updateCoordinatorPeriod(@CurrentUser() user: UserWithProfile, @Param('periodId', ParseUUIDPipe) periodId: string, @Body() dto: UpdateAcademicPeriodDto) { return this.service.updateCoordinatorPeriod(user.id, periodId, dto); }
+  @Post('exams/generate') generateExam(@CurrentUser() user: UserWithProfile, @Body() dto: GenerateExamDto) { return this.exams.preview(user.id, dto); }
+  // Mesma cota do plano que a criação manual de simulado (conta como uma criação).
+  @Post('exams/create') createExam(@CurrentUser() user: UserWithProfile, @Body() dto: CreateExamVersionsDto) { return this.studentQuota(user, () => this.service.createExamVersions(user.id, dto, user.accountType)); }
   @Post('lists/generate') generateList(@CurrentUser() user: UserWithProfile, @Body() dto: GenerateListDto) { return this.lists.generate(user.id, dto); }
   @Get() list(@CurrentUser() user: UserWithProfile) { return this.service.list(user.id); }
   @Post() create(@CurrentUser() user: UserWithProfile, @Body() dto: CreateSimulationDto) { return this.studentQuota(user, () => this.service.create(user.id, dto.title, dto.questionIds, dto.classId, dto.assessmentType, dto.dueAt, dto.durationMinutes, dto.isRealExam, user.accountType, dto.generateAnswerSheet)); }
@@ -108,5 +113,5 @@ export class SimulationsController {
   @Post('question-scans/processing/:id/save-question') saveQuestionScanAsQuestion(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveAsQuestion(user.id, id, dto); }
   @Post('question-scans/processing/:id/save-error-notebook') saveQuestionScanToErrorNotebook(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) { return this.questionScanService.saveToErrorNotebook(user.id, id, dto); }
 }
-@Module({ imports: [QuestionsModule, SchedulesModule, AiModule], controllers: [SimulationsController, AnswerSheetController], providers: [SimulationsService, ListGeneratorService, AdaptiveSimulationService, AnswerSheetScanService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
+@Module({ imports: [QuestionsModule, SchedulesModule, AiModule], controllers: [SimulationsController, AnswerSheetController], providers: [SimulationsService, ListGeneratorService, ExamGeneratorService, AdaptiveSimulationService, AnswerSheetScanService, QuestionScanService, TaskSimulationService, EnemSimulationService] })
 export class SimulationsModule {}

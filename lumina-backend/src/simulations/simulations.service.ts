@@ -8,6 +8,7 @@ import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
 import { TopicMasteryService } from '../questions/topic-mastery.service';
 import { upsertSheetTemplate } from './omr/sheet-template';
+import { EXAM_RULES, buildVersions } from './exam-generator';
 import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { assertFutureInstant } from '../common/date-rules';
 
@@ -497,6 +498,65 @@ export class SimulationsService {
       });
     }
     return this.publicSimulation({ ...row, answerSheetTemplate });
+  }
+
+  /**
+   * Gerador de provas (item 38): cria de 1 a 4 versões da mesma prova (tipo
+   * PROVA). A versão A segue a ordem escolhida; as outras embaralham as
+   * questões e, se pedido, as alternativas — cada uma com o próprio gabarito.
+   * Mesmas checagens da criação manual (turma, acesso e cartão-resposta).
+   */
+  async createExamVersions(userId: string, input: {
+    title: string; questionIds: string[]; versions: number; shuffleAlternatives: boolean;
+    classId?: string; dueAt?: string; durationMinutes?: number; generateAnswerSheet?: boolean;
+  }, accountType?: string) {
+    const { questionIds, classId } = input;
+    if (!questionIds.length || new Set(questionIds).size !== questionIds.length) throw new BadRequestException('A prova precisa de questões, sem repetir.');
+    if (input.versions < 1 || input.versions > EXAM_RULES.maxVersions) throw new BadRequestException(`De 1 a ${EXAM_RULES.maxVersions} versões.`);
+    let workspaceId: string;
+    let className: string | null = null;
+    if (classId) {
+      const teacher = await this.prisma.classTeacher.findUnique({ where: { classId_userId: { classId, userId } }, include: { class: true } });
+      if (!teacher || teacher.class.archived) throw new ForbiddenException('Você não leciona nesta turma.');
+      workspaceId = teacher.class.workspaceId;
+      className = teacher.class.name;
+    } else {
+      workspaceId = (await this.access.getPersonalWorkspaceOrThrow(userId)).id;
+    }
+    const questions = await this.prisma.question.findMany({ where: { id: { in: questionIds } }, include: { alternatives: { orderBy: { position: 'asc' } } } });
+    if (questions.length !== questionIds.length) throw new BadRequestException('Uma ou mais questões não estão disponíveis.');
+    for (const q of questions) {
+      await this.access.assertCanUse(userId, q.workspaceId);
+      if (q.alternatives.length < 2 || q.alternatives.length > 5 || q.alternatives.filter(a => a.isCorrect).length !== 1 || q.alternatives.some((a, i) => a.position !== i + 1)) {
+        throw new BadRequestException('Uma questão tem alternativas incompatíveis com o cartão-resposta.');
+      }
+    }
+    const byId = new Map(questions.map(q => [q.id, q]));
+    const base = questionIds.map((id) => {
+      const q = byId.get(id)!;
+      return { questionId: id, stem: q.stem, subject: q.subject, alternatives: q.alternatives.map(a => ({ position: a.position, text: a.text })), correctPosition: q.alternatives.find(a => a.isCorrect)!.position };
+    });
+    const due = input.dueAt ? assertFutureInstant(input.dueAt, 'O prazo da prova') : null;
+    const versions = buildVersions(base, input.versions, input.shuffleAlternatives);
+    const created: Array<{ id: string; label: string; title: string; answerKey: Array<{ position: number; answer: string }> }> = [];
+    for (const version of versions) {
+      const title = input.versions > 1 ? `${input.title.trim()} — Versão ${version.label}` : input.title.trim();
+      const row = await this.prisma.simulation.create({ data: {
+        id: randomUUID(), title, createdBy: userId, classId: classId ?? null, workspaceId, assessmentType: 'TEST', dueAt: due, durationMinutes: input.durationMinutes,
+        items: { create: version.items.map((it) => ({ id: randomUUID(), questionId: it.questionId, position: it.position, stem: it.stem, subject: it.subject, correctPosition: it.correctPosition, alternatives: it.alternatives })) },
+      }, include: { items: { orderBy: { position: 'asc' } }, class: { select: { name: true } } } });
+      if (input.generateAnswerSheet && accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(accountType)) await upsertSheetTemplate(this.prisma, row);
+      created.push({ id: row.id, label: version.label, title, answerKey: version.answerKey });
+    }
+    if (classId && this.notifications) {
+      const members = await this.prisma.classMember.findMany({ where: { classId }, select: { userId: true } });
+      await this.notifications.notify(members.map((m) => m.userId), {
+        kind: 'class.new_activity',
+        ...newActivityNotice({ type: 'TEST', title: input.title.trim(), className: className ?? 'sua turma', dueAt: due }),
+        link: `/app/simulados?id=${created[0].id}`,
+      });
+    }
+    return { versions: created };
   }
 
   async list(userId: string) {

@@ -406,3 +406,68 @@ export class GenerateListDto {
   @ApiPropertyOptional({ description: 'Não repetir questões acertadas nos últimos 90 dias.' }) @IsOptional() @IsBoolean()
   skipMastered?: boolean;
 }
+
+export class ExamSectionDto {
+  @ApiProperty() @IsUUID()
+  subjectId!: string;
+
+  @ApiProperty({ minimum: 1, maximum: 45 }) @Type(() => Number) @IsInt() @Min(1) @Max(45)
+  count!: number;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  topicId?: string;
+}
+
+export class DifficultyMixDto {
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) FACIL?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) MEDIA?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) DIFICIL?: number;
+}
+
+/** Gerador de provas (item 38): prévia. */
+export class GenerateExamDto {
+  @ApiProperty({ type: [ExamSectionDto] })
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(8) @ValidateNested({ each: true }) @Type(() => ExamSectionDto)
+  sections!: ExamSectionDto[];
+
+  @ApiPropertyOptional({ type: DifficultyMixDto, description: 'Porcentagens; vazio = qualquer dificuldade.' })
+  @IsOptional() @ValidateNested() @Type(() => DifficultyMixDto)
+  difficultyMix?: DifficultyMixDto;
+
+  @ApiPropertyOptional({ type: [String], example: ['MT-H17', 'MT-H21'] })
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(8, { each: true })
+  skills?: string[];
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60)
+  exam?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  classId?: string;
+}
+
+/** Gerador de provas: criar as versões. */
+export class CreateExamVersionsDto {
+  @ApiProperty({ maxLength: 160 }) @IsString() @IsNotEmpty() @MaxLength(160)
+  title!: string;
+
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(90) @IsUUID('4', { each: true })
+  questionIds!: string[];
+
+  @ApiProperty({ minimum: 1, maximum: 4 }) @Type(() => Number) @IsInt() @Min(1) @Max(4)
+  versions!: number;
+
+  @ApiProperty() @IsBoolean()
+  shuffleAlternatives!: boolean;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  classId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  dueAt?: string;
+
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(5) @Max(600)
+  durationMinutes?: number;
+
+  @ApiPropertyOptional() @IsOptional() @IsBoolean()
+  generateAnswerSheet?: boolean;
+}

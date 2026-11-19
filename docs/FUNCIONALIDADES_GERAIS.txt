@@ -410,7 +410,7 @@
     -  Ano
     -  Basear lista nas dificuldades do aluno
     -  Professor gerar lista para turma
-38. 38. Gerador de provas [PARCIAL — MONTAGEM MANUAL E SIMULADO ENEM; SELEÇÃO AUTOMÁTICA E VERSÕES DIFERENTES PENDENTES]
+38. 38. Gerador de provas [IMPLEMENTADO EM 19/11/2026 — /app/provas/gerar: SEÇÕES POR DISCIPLINA, MISTURA DE DIFICULDADE, HABILIDADES DO ENEM, ATÉ 4 VERSÕES COM GABARITO PRÓPRIO]
     -  Seleção automática de questões
     -  Quantidade
     -  Disciplina

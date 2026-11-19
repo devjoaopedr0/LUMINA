@@ -3144,6 +3144,33 @@ export interface GeneratedList {
 export const apiGenerateList = (accessToken: string, payload: GenerateListPayload): Promise<GeneratedList> =>
   request("/simulations/lists/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
 
+// Gerador de provas (item 38): prévia por seções e criação das versões.
+export type ExamDifficulty = "FACIL" | "MEDIA" | "DIFICIL";
+export interface GenerateExamPayload {
+  sections: Array<{ subjectId: string; count: number; topicId?: string }>;
+  difficultyMix?: Partial<Record<ExamDifficulty, number>>;
+  skills?: string[];
+  exam?: string;
+  classId?: string;
+}
+export interface GeneratedExam {
+  title: string;
+  forClass: { id: string; name: string } | null;
+  sections: Array<{ subject: string; requested: number; found: number }>;
+  requested: number;
+  found: number;
+  difficultyActual: Record<ExamDifficulty, number>;
+  warnings: string[];
+  questions: Array<{ id: string; stem: string; subject: string; topic: string; difficulty: ExamDifficulty; exam: string; year: number | null; enemSkill: string | null; section: number }>;
+}
+export interface CreatedExam {
+  versions: Array<{ id: string; label: string; title: string; answerKey: Array<{ position: number; answer: string }> }>;
+}
+export const apiGenerateExam = (accessToken: string, payload: GenerateExamPayload): Promise<GeneratedExam> =>
+  request("/simulations/exams/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiCreateExamVersions = (accessToken: string, payload: { title: string; questionIds: string[]; versions: number; shuffleAlternatives: boolean; classId?: string; dueAt?: string; durationMinutes?: number; generateAnswerSheet?: boolean }): Promise<CreatedExam> =>
+  request("/simulations/exams/create", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+
 // Fase 3: comparação de desempenho (item 43).
 export const apiReportScopeLite = (accessToken: string): Promise<import("@/lib/institution").ReportScope> =>
   request("/reports/scope", { headers: authHeaders(accessToken) });

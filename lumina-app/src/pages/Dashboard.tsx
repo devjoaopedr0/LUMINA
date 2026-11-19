@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { to: "/app/busca-web", label: "Buscar questões na web", icon: Globe },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
   { to: "/app/listas/gerar", label: "Gerador de listas", icon: ListChecks },
+  { to: "/app/provas/gerar", label: "Gerador de provas", icon: FileText },
   { to: "/app/turmas", label: "Turmas", icon: School, onlyWithClasses: true },
   { to: "/app/grupos", label: "Grupos de estudo", icon: Users },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
