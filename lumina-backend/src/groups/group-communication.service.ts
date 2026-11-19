@@ -5,13 +5,15 @@ import {
   HttpStatus,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { checkMessage } from './content-filter';
 import { GroupRoomEvents } from './group-room-events';
 import { GroupRole, ROLE_RANK, canModerate, canRemoveMember, displayName } from './group-rules';
-import type { CreateReportDto, ResolveReportDto } from './group-communication.dto';
+import type { AdminResolveReportDto, CreateReportDto, ResolveReportDto } from './group-communication.dto';
+import { GroupRoomsService } from './group-rooms.service';
 
 const NOT_FOUND = 'Grupo não encontrado.';
 const PAGE = 50;
@@ -46,6 +48,8 @@ export class GroupCommunicationService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly events: GroupRoomEvents,
+    // Para fechar as salas ao arquivar um grupo denunciado (opcional nos testes).
+    @Optional() private readonly rooms?: GroupRoomsService,
   ) {}
 
   // ------------------------------------------------------------ chat
@@ -334,13 +338,36 @@ export class GroupCommunicationService {
       }));
   }
 
-  async adminResolve(accountType: string, userId: string, reportId: string, dto: ResolveReportDto, now = new Date()) {
+  async adminResolve(accountType: string, userId: string, reportId: string, dto: AdminResolveReportDto, now = new Date()) {
     if (accountType !== 'ADMIN') throw new ForbiddenException('Só a administração da Lumina trata estas denúncias.');
     const report = await this.prisma.groupReport.findFirst({ where: { id: reportId, status: 'OPEN' }, select: { id: true, messageId: true, targetType: true, groupId: true } });
     if (!report) throw new NotFoundException('Denúncia não encontrada.');
-    await this.applyResolution(report, dto.action, userId, now);
+    if (dto.action === 'archive_group') {
+      await this.archiveReportedGroup(report.groupId, userId, now);
+    } else {
+      await this.applyResolution(report, dto.action, userId, now);
+    }
     this.events.changed(report.groupId, 'chat');
     return this.adminReports(accountType);
+  }
+
+  /** Medida da administração: arquiva o grupo (salas fecham, ninguém entra
+   * nem escreve), encerra as denúncias abertas dele e avisa o dono. O dono
+   * pode pedir revisão pelos canais de atendimento; nada é apagado. */
+  private async archiveReportedGroup(groupId: string, adminId: string, now: Date) {
+    const group = await this.prisma.studyGroup.findUnique({ where: { id: groupId }, select: { name: true, ownerId: true, archivedAt: true } });
+    if (!group) throw new NotFoundException('Grupo não encontrado.');
+    if (!group.archivedAt) {
+      await this.rooms?.closeAllInGroup(groupId, now);
+      await this.prisma.studyGroup.update({ where: { id: groupId }, data: { archivedAt: now } });
+    }
+    await this.prisma.groupReport.updateMany({ where: { groupId, status: 'OPEN' }, data: { status: 'RESOLVED', resolvedById: adminId, resolvedAt: now } });
+    await this.notifications.notify([group.ownerId], {
+      kind: 'group.archived_by_admin',
+      title: `O grupo ${group.name} foi arquivado pela Lumina`,
+      body: 'Após denúncias, a administração arquivou o grupo. Se discordar, fale com o atendimento da Lumina.',
+      link: '/app/grupos',
+    });
   }
 
   // ------------------------------------------------------------ apoio

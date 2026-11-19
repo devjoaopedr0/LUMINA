@@ -3116,7 +3116,7 @@ export const apiResolveGroupReport = (accessToken: string, groupId: string, repo
   request(`/groups/${groupId}/reports/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
 export const apiAdminGroupReports = (accessToken: string): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request("/groups/reports/admin", { headers: authHeaders(accessToken) });
-export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
+export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss" | "archive_group"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request(`/groups/reports/admin/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
 
 // Fase 3: comparação de desempenho (item 43).

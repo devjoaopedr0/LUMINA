@@ -23,7 +23,7 @@ import { GroupEngagementService } from './group-engagement.service';
 import { CreateGoalDto } from './group-engagement.dto';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { GroupCommunicationService } from './group-communication.service';
-import { AnnouncementDto, CreateReportDto, MuteMemberDto, ResolveReportDto, SendMessageDto } from './group-communication.dto';
+import { AdminResolveReportDto, AnnouncementDto, CreateReportDto, MuteMemberDto, ResolveReportDto, SendMessageDto } from './group-communication.dto';
 
 /** Lumina Groups (Fase 2, MVP): docs/LUMINA_GROUPS.md. */
 @ApiTags('groups')
@@ -267,7 +267,7 @@ export class GroupCommunicationController {
 
   @Post('reports/admin/:reportId/resolve')
   @ApiOperation({ summary: 'Trata uma denúncia de grupo ou contra dono (administração da Lumina).' })
-  adminResolve(@CurrentUser() user: UserWithProfile, @Param('reportId', ParseUUIDPipe) reportId: string, @Body() dto: ResolveReportDto) {
+  adminResolve(@CurrentUser() user: UserWithProfile, @Param('reportId', ParseUUIDPipe) reportId: string, @Body() dto: AdminResolveReportDto) {
     return this.comms.adminResolve(user.accountType, user.id, reportId, dto);
   }
 

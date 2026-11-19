@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Bell } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { apiMarkNotificationsRead, apiNotifications, apiUnreadNotifications } from '@/lib/api';
@@ -8,7 +9,7 @@ import { badgeCount, timeAgo, type AppNotification } from '@/lib/group-chat';
 const POLL_MS = 60_000;
 
 /** Sino de notificações in-app (avisos de grupo, pedidos de entrada, denúncias…). */
-export function NotificationBell({ className = '' }: { className?: string }) {
+export function NotificationBell({ className = '', floating = false }: { className?: string; floating?: boolean }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -80,7 +81,7 @@ export function NotificationBell({ className = '' }: { className?: string }) {
 
   const badge = badgeCount(unread);
   return (
-    <div ref={box} className={`relative ${className}`}>
+    <div ref={box} className={`${floating ? 'fixed right-4 top-4 z-40 rounded-full shadow-sm' : 'relative'} ${className}`}>
       <button
         type="button"
         onClick={() => void toggle()}
@@ -121,4 +122,17 @@ export function NotificationBell({ className = '' }: { className?: string }) {
       )}
     </div>
   );
+}
+
+/**
+ * Sino nas telas que não têm cabeçalho próprio com ele (o painel e as
+ * páginas de grupo já mostram o sino no topo). Fica fixo no canto superior
+ * direito, só dentro do app e depois do aceite dos Termos.
+ */
+export function GlobalNotificationBell() {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  if (!user?.termsCurrent || !pathname.startsWith('/app')) return null;
+  if (pathname === '/app' || pathname.startsWith('/app/grupos')) return null;
+  return <NotificationBell floating />;
 }
