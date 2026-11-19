@@ -158,4 +158,9 @@ export class UpdateSharingDto {
   @IsOptional()
   @IsBoolean()
   shareLastActivity?: boolean;
+
+  @ApiPropertyOptional({ description: 'Participar do placar e das metas do grupo (desligado por padrão).' })
+  @IsOptional()
+  @IsBoolean()
+  rankingOptIn?: boolean;
 }

@@ -21,6 +21,8 @@ export interface GroupSharing {
   shareSubjects: boolean;
   shareStreak: boolean;
   shareLastActivity: boolean;
+  /** Participar do placar e das metas do grupo (desligado por padrão). */
+  rankingOptIn: boolean;
 }
 
 export interface GroupMemberStats {
@@ -110,6 +112,7 @@ export const SHARING_OPTIONS: Array<{ key: keyof GroupSharing; label: string; hi
   { key: 'shareSubjects', label: 'Matérias', hint: 'O que você estudou nos últimos 7 dias.' },
   { key: 'shareStreak', label: 'Sequência de dias', hint: 'Quantos dias seguidos você estudou.' },
   { key: 'shareLastActivity', label: 'Última atividade', hint: 'Quando você estudou pela última vez.' },
+  { key: 'rankingOptIn', label: 'Placar e metas do grupo', hint: 'Seu ritmo aparece no placar e conta nas metas coletivas. Dá para sair quando quiser.' },
 ];
 
 export function formatStudyMinutes(minutes: number | null): string {

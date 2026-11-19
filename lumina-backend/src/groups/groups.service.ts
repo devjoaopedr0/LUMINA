@@ -126,6 +126,7 @@ export class GroupsService {
         shareSubjects: myRow.shareSubjects,
         shareStreak: myRow.shareStreak,
         shareLastActivity: myRow.shareLastActivity,
+        rankingOptIn: myRow.rankingOptIn,
       },
       // Menor de idade: o aviso é só para o próprio aluno, não para os colegas.
       iAmMinor: isMinor(myRow.user.profile?.birthDate, now),
@@ -327,8 +328,8 @@ export class GroupsService {
     const me = await this.activeMembership(userId, groupId);
     const row = await this.prisma.studyGroupMember.update({
       where: { id: me.id },
-      data: { shareStudyTime: dto.shareStudyTime, shareSubjects: dto.shareSubjects, shareStreak: dto.shareStreak, shareLastActivity: dto.shareLastActivity },
-      select: { shareStudyTime: true, shareSubjects: true, shareStreak: true, shareLastActivity: true },
+      data: { shareStudyTime: dto.shareStudyTime, shareSubjects: dto.shareSubjects, shareStreak: dto.shareStreak, shareLastActivity: dto.shareLastActivity, rankingOptIn: dto.rankingOptIn },
+      select: { shareStudyTime: true, shareSubjects: true, shareStreak: true, shareLastActivity: true, rankingOptIn: true },
     });
     return row;
   }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Archive, ArrowLeft, Check, Copy, Crown, Flame, Link2, LogOut, Plus, RefreshCw, Shield, Trash2, UserMinus, Users, X } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { GroupRooms } from '@/components/groups/GroupRooms';
+import { GroupEngagement } from '@/components/groups/GroupEngagement';
 import {
   ApiError,
   apiArchiveGroup,
@@ -306,6 +307,7 @@ function GroupView({ id }: { id: string }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-6">
           <GroupRooms groupId={group.id} archived={group.archived} />
+          <GroupEngagement groupId={group.id} archived={group.archived} optIn={group.mySharing.rankingOptIn} onSharingSaved={(sharing) => setGroup({ ...group, mySharing: sharing })} />
           <section className="rounded-2xl border bg-white p-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold"><Users size={18} />Membros</h2>
             <ul className="mt-3 divide-y">
@@ -451,7 +453,7 @@ function SharingPanel({ group, onSaved, onError }: { group: GroupDetail; onSaved
     <section className="rounded-2xl border bg-white p-5">
       <h2 className="text-lg font-semibold">O que eu compartilho</h2>
       <p className="mt-1 text-sm text-graphite-500">Vale só para este grupo. Seu nome e sua foto aparecem sempre.</p>
-      {group.iAmMinor && <p className="mt-3 rounded-xl bg-primary-50 p-3 text-xs">Você tem menos de 18 anos: mostre só o que quiser. Quando o ranking chegar, ele fica desligado para você até você ligar.</p>}
+      {group.iAmMinor && <p className="mt-3 rounded-xl bg-primary-50 p-3 text-xs">Você tem menos de 18 anos: mostre só o que quiser. O placar fica desligado para você até você mesmo ligar.</p>}
       <ul className="mt-3 space-y-2">{SHARING_OPTIONS.map((opt) => {
         const on = group.mySharing[opt.key];
         return (

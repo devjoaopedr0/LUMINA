@@ -3084,6 +3084,15 @@ export const apiRoomHeartbeat = (accessToken: string, sessionId: string): Promis
   request(`/groups/rooms/${sessionId}/heartbeat`, { method: "POST", headers: authHeaders(accessToken) });
 export const apiMyRoom = (accessToken: string): Promise<{ mine: import("@/lib/group-rooms").MyRoomParticipation | null }> =>
   request("/groups/rooms/me", { headers: authHeaders(accessToken) });
+
+// Engajamento (etapa 3): placar opcional, metas coletivas e conquistas.
+type Engagement = import("@/lib/group-engagement").GroupEngagement;
+export const apiGroupEngagement = (accessToken: string, groupId: string, metric: import("@/lib/group-engagement").RankingMetric, period: import("@/lib/group-engagement").RankingPeriod): Promise<Engagement> =>
+  request(`/groups/${groupId}/engagement?metric=${metric}&period=${period}`, { headers: authHeaders(accessToken) });
+export const apiCreateGroupGoal = (accessToken: string, groupId: string, payload: import("@/lib/group-engagement").GoalPayload): Promise<Engagement> =>
+  request(`/groups/${groupId}/goals`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiCancelGroupGoal = (accessToken: string, groupId: string, goalId: string): Promise<Engagement> =>
+  request(`/groups/${groupId}/goals/${goalId}`, { method: "DELETE", headers: authHeaders(accessToken) });
 export const apiDecideGroupRequest = (accessToken: string, id: string, userId: string, decision: "approve" | "reject"): Promise<unknown> =>
   request(`/groups/${id}/members/${userId}/${decision}`, { method: "POST", headers: authHeaders(accessToken) });
 export const apiChangeGroupRole = (accessToken: string, id: string, userId: string, role: Exclude<import("@/lib/groups").GroupRole, "OWNER">): Promise<unknown> =>

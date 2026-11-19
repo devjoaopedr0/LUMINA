@@ -19,6 +19,8 @@ import { GroupRoomEvents } from './group-room-events';
 import { GroupRoomsGateway } from './group-rooms.gateway';
 import { GroupRoomsService } from './group-rooms.service';
 import { JoinRoomDto, OpenRoomDto, UpdateParticipationDto } from './group-rooms.dto';
+import { GroupEngagementService } from './group-engagement.service';
+import { CreateGoalDto } from './group-engagement.dto';
 
 /** Lumina Groups (Fase 2, MVP): docs/LUMINA_GROUPS.md. */
 @ApiTags('groups')
@@ -212,10 +214,44 @@ export class GroupRoomsController {
   }
 }
 
+/** Engajamento (etapa 3): placar opcional, metas coletivas e conquistas. */
+@ApiTags('groups')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('groups')
+export class GroupEngagementController {
+  constructor(private readonly engagement: GroupEngagementService) {}
+
+  @Get(':id/engagement')
+  @ApiOperation({ summary: 'Placar (só quem participa), metas coletivas e minhas conquistas no grupo.' })
+  overview(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('metric') metric?: string,
+    @Query('period') period?: string,
+  ) {
+    const m = metric === 'hours' || metric === 'streak' ? metric : 'consistency';
+    const p = period === '30' ? 30 : 7;
+    return this.engagement.overview(user.id, id, { metric: m, period: p });
+  }
+
+  @Post(':id/goals')
+  @ApiOperation({ summary: 'Cria uma meta coletiva (moderador ou acima).' })
+  createGoal(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateGoalDto) {
+    return this.engagement.createGoal(user.id, id, dto);
+  }
+
+  @Delete(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Cancela uma meta coletiva (moderador ou acima).' })
+  cancelGoal(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('goalId', ParseUUIDPipe) goalId: string) {
+    return this.engagement.cancelGoal(user.id, id, goalId);
+  }
+}
+
 @Module({
   imports: [AuthModule, SchedulesModule],
   // As rotas fixas das salas (`rooms/me`) vêm antes das do grupo (`:id`).
-  controllers: [GroupRoomsController, GroupsController],
-  providers: [GroupsService, GroupRoomsService, GroupRoomEvents, GroupRoomsGateway],
+  controllers: [GroupRoomsController, GroupEngagementController, GroupsController],
+  providers: [GroupsService, GroupRoomsService, GroupRoomEvents, GroupRoomsGateway, GroupEngagementService],
 })
 export class GroupsModule {}

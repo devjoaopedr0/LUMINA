@@ -217,4 +217,18 @@ A sequência de dias olha os últimos 60 dias de log; sequências maiores aparec
 
 **Correção encontrada no caminho:** `timeLogsForSchedule` somava logs por matéria sem filtrar o aluno. Como a matéria é global, o tempo de outros alunos entrava no progresso de qualquer cronograma com a mesma matéria. Agora só conta o dono do cronograma.
 
-**Próximo (etapa 3, engajamento):** metas da sala e do grupo, ranking opcional (desligado para menores), desafios e conquistas.
+**Etapa 3:** ver §10.
+
+**Conferido na tela em 18/11/2026:** abrir sala com matéria e "mostrar" ligado, cronômetros andando, entrada de outra pessoa aparecendo sem recarregar (Socket.IO), privacidade dela (só "Estudando"), barra flutuante em outra tela do app com o tempo contínuo e sair da sala com o aviso do histórico.
+
+## 10. Engajamento (etapa 3, 18/11/2026)
+
+**Feito** (`lumina-backend/src/groups/engagement-rules.ts`, `group-engagement.*`; migration `20261118120000_group_goals`, só adições):
+- **Participar é opcional:** a opção "Placar e metas do grupo" (`rankingOptIn`, já existia no MVP) fica no painel "O que eu compartilho" e no próprio placar. Começa desligada para todos; para menores, o aviso diz que só o próprio aluno liga. Quem está fora não aparece no placar, não conta nas metas e **não tem o tempo lido** pelo grupo.
+- **Saúde antes de horas:** o placar padrão é **constância** (dias com estudo ÷ dias do período, em %). Também há horas e maior sequência (60 dias). Dia com estudo = pelo menos 15 min. Cada dia conta no máximo **10 h** em qualquer placar ou meta. Empate divide a posição. Nenhuma mensagem do tipo "estude sem parar".
+- **Metas coletivas (desafios):** moderador, administrador ou dono cria metas de "horas juntos" ou "dias de estudo somados", de 1 a 31 dias, começando hoje ou nos próximos 30 dias. Até 3 metas ativas por grupo. O progresso é calculado na leitura, a partir do `StudyTimeLog` (nada de segunda contabilidade), e mostra quantas pessoas contribuíram e a parte do próprio aluno. Sugestões prontas na tela ("Desafio da semana: 20 h juntos").
+- **Conquistas pessoais**, calculadas na hora e vistas só pelo próprio aluno: primeira sala, 3 de 7 dias, semana completa, 14 dias seguidos e meta em equipe.
+- **Endpoints:** `GET /groups/:id/engagement?metric=consistency|hours|streak&period=7|30`, `POST /groups/:id/goals`, `DELETE /groups/:id/goals/:goalId`; `PATCH /groups/:id/me/sharing` aceita `rankingOptIn`.
+- **Testes:** `engagement-rules.spec.ts` (12) e `group-engagement.service.spec.ts` (7), mais `test/engajamento-grupo.check.ts` no app. Conferido contra o banco e na tela em 18/11/2026.
+
+**Fica para depois:** desafios entre grupos (dependem de grupos se encontrarem; entram com a comunicação, etapa 4), medalhas visíveis aos colegas e metas pessoais do aluno (item 52, fora do grupo).
