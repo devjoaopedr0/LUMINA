@@ -333,7 +333,10 @@ export function Simulations() {
   return <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite sm:px-8">
     <div className="mx-auto max-w-5xl">
       <div className="print:hidden"><Link to="/app" className="text-sm font-semibold">← Voltar à visão geral</Link></div>
-      <h1 className="mt-6 text-3xl font-bold">Simulados</h1>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold">Simulados</h1>
+        <Link to="/app/listas/gerar" className="rounded-full bg-graphite px-4 py-2 text-sm font-semibold text-white">Gerar lista automática</Link>
+      </div>
       {(!isIndependent || classes.length > 0) && <Link to="/app/turmas" className="my-4 inline-block underline print:hidden">Gerenciar turmas, vínculos e histórico</Link>}
       {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700 print:hidden">{error}</p>}
 

@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -372,4 +373,36 @@ export class AlternativeInputDto {
 
   @IsOptional() @IsBoolean()
   isCorrect?: boolean;
+}
+
+/** Gerador de listas (item 37): critérios da prévia. */
+export class GenerateListDto {
+  @ApiProperty({ minimum: 5, maximum: 60, example: 15 })
+  @Type(() => Number) @IsInt() @Min(5) @Max(60)
+  count!: number;
+
+  @ApiProperty({ enum: ['filters', 'weaknesses'], description: 'weaknesses = assuntos mais fracos do aluno (ou da turma, se classId).' })
+  @IsIn(['filters', 'weaknesses'])
+  basis!: 'filters' | 'weaknesses';
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  subjectId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  topicId?: string;
+
+  @ApiPropertyOptional({ enum: ['FACIL', 'MEDIA', 'DIFICIL'] }) @IsOptional() @IsIn(['FACIL', 'MEDIA', 'DIFICIL'])
+  difficulty?: 'FACIL' | 'MEDIA' | 'DIFICIL';
+
+  @ApiPropertyOptional({ example: 'ENEM' }) @IsOptional() @IsString() @MaxLength(60)
+  exam?: string;
+
+  @ApiPropertyOptional({ example: 2023 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1990) @Max(2100)
+  year?: number;
+
+  @ApiPropertyOptional({ description: 'Professor: gerar para esta turma.' }) @IsOptional() @IsUUID()
+  classId?: string;
+
+  @ApiPropertyOptional({ description: 'Não repetir questões acertadas nos últimos 90 dias.' }) @IsOptional() @IsBoolean()
+  skipMastered?: boolean;
 }

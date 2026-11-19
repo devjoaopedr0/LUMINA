@@ -3119,6 +3119,31 @@ export const apiAdminGroupReports = (accessToken: string): Promise<import("@/lib
 export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss" | "archive_group"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request(`/groups/reports/admin/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
 
+// Gerador de listas (item 37): prévia; a criação usa apiCreateSimulation com assessmentType LIST.
+export interface GenerateListPayload {
+  count: number;
+  basis: "filters" | "weaknesses";
+  subjectId?: string;
+  topicId?: string;
+  difficulty?: "FACIL" | "MEDIA" | "DIFICIL";
+  exam?: string;
+  year?: number;
+  classId?: string;
+  skipMastered?: boolean;
+}
+export interface GeneratedList {
+  requested: number;
+  found: number;
+  title: string;
+  basis: "filters" | "weaknesses";
+  weakTopics: Array<{ name: string; mastery: number }>;
+  forClass: { id: string; name: string } | null;
+  warnings: string[];
+  questions: Array<{ id: string; stem: string; subject: string; topic: string; difficulty: "FACIL" | "MEDIA" | "DIFICIL"; exam: string; year: number | null }>;
+}
+export const apiGenerateList = (accessToken: string, payload: GenerateListPayload): Promise<GeneratedList> =>
+  request("/simulations/lists/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+
 // Fase 3: comparação de desempenho (item 43).
 export const apiReportScopeLite = (accessToken: string): Promise<import("@/lib/institution").ReportScope> =>
   request("/reports/scope", { headers: authHeaders(accessToken) });

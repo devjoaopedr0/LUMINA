@@ -400,7 +400,7 @@
     -  Chutes
     -  Relação tempo x acerto
     -  Sugestões de estratégia
-37. 37. Gerador de listas [PARCIAL — PROFESSOR MONTA LISTA ESCOLHENDO AS QUESTÕES; GERAÇÃO AUTOMÁTICA PENDENTE]
+37. 37. Gerador de listas [IMPLEMENTADO EM 19/11/2026 — /app/listas/gerar: FILTROS OU DIFICULDADES (DO ALUNO OU DA TURMA), PRÉVIA EDITÁVEL, SEM REPETIR ACERTOS]
     -  Lista personalizada
     -  Escolher quantidade
     -  Matéria
