@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Pause, Play, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/auth';
-import { ApiError, apiMyRoom, apiRoomAction, apiRoomHeartbeat } from '@/lib/api';
+import { ApiError, apiClassRoomHeartbeat, apiMyClassRoom, apiMyRoom, apiRoomAction, apiRoomHeartbeat } from '@/lib/api';
 import { ROOM_CHANGED_EVENT, formatClock, liveSeconds, notifyRoomChanged, type MyRoomParticipation } from '@/lib/group-rooms';
 
 const HEARTBEAT_MS = 30_000;
@@ -117,6 +117,71 @@ export function RoomPresenceBar() {
       >
         {mine.status === 'STUDYING' ? <Pause size={14} /> : <Play size={14} />}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Mesma presença para a sala da turma (item 47): sinal a cada 30 s em qualquer
+ * tela, para o aluno abrir a atividade sem perder a presença. Um aluno só fica
+ * numa sala por vez (turma ou grupo), então as duas barras nunca aparecem juntas.
+ */
+export function ClassPresenceBar() {
+  const { user } = useAuth();
+  const location = useLocation();
+  const [mine, setMine] = useState<Awaited<ReturnType<typeof apiMyClassRoom>>['mine']>(null);
+  const [receivedAt, setReceivedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const enabled = Boolean(user?.termsCurrent);
+
+  const refresh = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token || !enabled) return;
+    try {
+      setMine((await apiMyClassRoom(token)).mine);
+      setReceivedAt(Date.now());
+    } catch { /* sem rede: tenta de novo depois */ }
+  }, [enabled]);
+
+  useEffect(() => {
+    void refresh();
+    const onChange = () => void refresh();
+    window.addEventListener(ROOM_CHANGED_EVENT, onChange);
+    const id = setInterval(onChange, RECHECK_MS);
+    return () => { window.removeEventListener(ROOM_CHANGED_EVENT, onChange); clearInterval(id); };
+  }, [refresh]);
+
+  const sessionId = mine?.sessionId;
+  useEffect(() => {
+    if (!sessionId) return;
+    const beat = async () => {
+      const token = getAccessToken();
+      if (!token) return;
+      try { await apiClassRoomHeartbeat(token, sessionId); }
+      catch (err) { if (err instanceof ApiError && (err.status === 409 || err.status === 404)) { setMine(null); notifyRoomChanged(); } }
+    };
+    void beat();
+    const id = setInterval(beat, HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!mine?.ticking) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [mine?.ticking]);
+
+  if (!enabled || !mine || !location.pathname.startsWith('/app')) return null;
+  if (location.pathname === `/app/turmas/${mine.classId}/sala`) return null;
+  const seconds = liveSeconds(mine.studiedSeconds, mine.ticking, receivedAt, now);
+  return (
+    <div className="fixed bottom-4 left-4 z-40 flex items-center gap-3 rounded-full border bg-white py-2 pl-3 pr-4 text-sm shadow-lg">
+      <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${mine.status === 'STUDYING' ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+      <Link to={`/app/turmas/${mine.classId}/sala`} className="flex items-center gap-2 font-semibold">
+        <Users size={14} />
+        <span className="max-w-[10rem] truncate">{mine.roomTitle || `Sala da turma ${mine.className}`}</span>
+      </Link>
+      <span className="font-mono tabular-nums" aria-label="Seu tempo na sala da turma">{formatClock(seconds)}</span>
     </div>
   );
 }

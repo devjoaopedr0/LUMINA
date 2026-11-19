@@ -43,14 +43,18 @@ import { MasteryMap } from "@/pages/MasteryMap";
 import { PlanPage } from "@/pages/PlanPage";
 import { Groups } from "@/pages/Groups";
 import { GroupReportsAdmin } from "@/pages/GroupReportsAdmin";
+import { ComparePage } from "@/pages/ComparePage";
+import { ClassRoomPage } from "@/pages/ClassRoomPage";
 import { AiChatWidget } from "@/components/AiChatWidget";
-import { RoomPresenceBar } from "@/components/groups/RoomPresenceBar";
+import { ClassPresenceBar, RoomPresenceBar } from "@/components/groups/RoomPresenceBar";
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/app/turmas" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
+        <Route path="/app/turmas/:id/sala" element={<ProtectedRoute><ClassRoomPage /></ProtectedRoute>} />
+        <Route path="/app/comparar" element={<ProtectedRoute><ComparePage /></ProtectedRoute>} />
         <Route path="/app/grupos" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
         <Route path="/app/grupos/denuncias" element={<ProtectedRoute><GroupReportsAdmin /></ProtectedRoute>} />
         <Route path="/app/grupos/:id" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
@@ -177,6 +181,7 @@ function App() {
       </Routes>
       <AiChatWidget />
       <RoomPresenceBar />
+      <ClassPresenceBar />
     </AuthProvider>
   );
 }
