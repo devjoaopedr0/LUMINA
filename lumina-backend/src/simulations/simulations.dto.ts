@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, IsUUID, MaxLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -372,4 +373,101 @@ export class AlternativeInputDto {
 
   @IsOptional() @IsBoolean()
   isCorrect?: boolean;
+}
+
+/** Gerador de listas (item 37): critérios da prévia. */
+export class GenerateListDto {
+  @ApiProperty({ minimum: 5, maximum: 60, example: 15 })
+  @Type(() => Number) @IsInt() @Min(5) @Max(60)
+  count!: number;
+
+  @ApiProperty({ enum: ['filters', 'weaknesses'], description: 'weaknesses = assuntos mais fracos do aluno (ou da turma, se classId).' })
+  @IsIn(['filters', 'weaknesses'])
+  basis!: 'filters' | 'weaknesses';
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  subjectId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  topicId?: string;
+
+  @ApiPropertyOptional({ enum: ['FACIL', 'MEDIA', 'DIFICIL'] }) @IsOptional() @IsIn(['FACIL', 'MEDIA', 'DIFICIL'])
+  difficulty?: 'FACIL' | 'MEDIA' | 'DIFICIL';
+
+  @ApiPropertyOptional({ example: 'ENEM' }) @IsOptional() @IsString() @MaxLength(60)
+  exam?: string;
+
+  @ApiPropertyOptional({ example: 2023 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1990) @Max(2100)
+  year?: number;
+
+  @ApiPropertyOptional({ description: 'Professor: gerar para esta turma.' }) @IsOptional() @IsUUID()
+  classId?: string;
+
+  @ApiPropertyOptional({ description: 'Não repetir questões acertadas nos últimos 90 dias.' }) @IsOptional() @IsBoolean()
+  skipMastered?: boolean;
+}
+
+export class ExamSectionDto {
+  @ApiProperty() @IsUUID()
+  subjectId!: string;
+
+  @ApiProperty({ minimum: 1, maximum: 45 }) @Type(() => Number) @IsInt() @Min(1) @Max(45)
+  count!: number;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  topicId?: string;
+}
+
+export class DifficultyMixDto {
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) FACIL?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) MEDIA?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) DIFICIL?: number;
+}
+
+/** Gerador de provas (item 38): prévia. */
+export class GenerateExamDto {
+  @ApiProperty({ type: [ExamSectionDto] })
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(8) @ValidateNested({ each: true }) @Type(() => ExamSectionDto)
+  sections!: ExamSectionDto[];
+
+  @ApiPropertyOptional({ type: DifficultyMixDto, description: 'Porcentagens; vazio = qualquer dificuldade.' })
+  @IsOptional() @ValidateNested() @Type(() => DifficultyMixDto)
+  difficultyMix?: DifficultyMixDto;
+
+  @ApiPropertyOptional({ type: [String], example: ['MT-H17', 'MT-H21'] })
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(8, { each: true })
+  skills?: string[];
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60)
+  exam?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  classId?: string;
+}
+
+/** Gerador de provas: criar as versões. */
+export class CreateExamVersionsDto {
+  @ApiProperty({ maxLength: 160 }) @IsString() @IsNotEmpty() @MaxLength(160)
+  title!: string;
+
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(90) @IsUUID('4', { each: true })
+  questionIds!: string[];
+
+  @ApiProperty({ minimum: 1, maximum: 4 }) @Type(() => Number) @IsInt() @Min(1) @Max(4)
+  versions!: number;
+
+  @ApiProperty() @IsBoolean()
+  shuffleAlternatives!: boolean;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  classId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  dueAt?: string;
+
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(5) @Max(600)
+  durationMinutes?: number;
+
+  @ApiPropertyOptional() @IsOptional() @IsBoolean()
+  generateAnswerSheet?: boolean;
 }

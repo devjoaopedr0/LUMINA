@@ -24,7 +24,7 @@ export function GroupReportsAdmin() {
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Não foi possível carregar as denúncias.'));
   }, []);
 
-  async function resolve(id: string, action: 'resolve' | 'dismiss') {
+  async function resolve(id: string, action: 'resolve' | 'dismiss' | 'archive_group') {
     const token = getAccessToken();
     if (!token) return;
     try {
@@ -53,6 +53,13 @@ export function GroupReportsAdmin() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={() => void resolve(r.id, 'resolve')} className="rounded-full bg-graphite px-3 py-1 text-xs font-semibold text-white">Procede</button>
                 <button type="button" onClick={() => void resolve(r.id, 'dismiss')} className="rounded-full border px-3 py-1 text-xs font-semibold">Não procede</button>
+                <button
+                  type="button"
+                  onClick={() => { if (window.confirm(`Arquivar o grupo "${r.groupName}"? As salas fecham, ninguém entra nem escreve, e o dono é avisado. Nada é apagado.`)) void resolve(r.id, 'archive_group'); }}
+                  className="rounded-full bg-red-700 px-3 py-1 text-xs font-semibold text-white"
+                >
+                  Arquivar grupo
+                </button>
               </div>
             </li>
           ))}

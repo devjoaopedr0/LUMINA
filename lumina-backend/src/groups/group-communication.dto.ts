@@ -55,3 +55,9 @@ export class ResolveReportDto {
   @IsIn(['resolve', 'dismiss'])
   action!: 'resolve' | 'dismiss';
 }
+
+export class AdminResolveReportDto {
+  @ApiProperty({ enum: ['resolve', 'dismiss', 'archive_group'], description: 'archive_group = arquiva o grupo denunciado e encerra as denúncias dele.' })
+  @IsIn(['resolve', 'dismiss', 'archive_group'])
+  action!: 'resolve' | 'dismiss' | 'archive_group';
+}

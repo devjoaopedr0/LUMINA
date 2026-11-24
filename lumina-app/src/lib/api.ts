@@ -3116,8 +3116,60 @@ export const apiResolveGroupReport = (accessToken: string, groupId: string, repo
   request(`/groups/${groupId}/reports/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
 export const apiAdminGroupReports = (accessToken: string): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request("/groups/reports/admin", { headers: authHeaders(accessToken) });
-export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
+export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss" | "archive_group"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request(`/groups/reports/admin/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
+
+// Gerador de listas (item 37): prévia; a criação usa apiCreateSimulation com assessmentType LIST.
+export interface GenerateListPayload {
+  count: number;
+  basis: "filters" | "weaknesses";
+  subjectId?: string;
+  topicId?: string;
+  difficulty?: "FACIL" | "MEDIA" | "DIFICIL";
+  exam?: string;
+  year?: number;
+  classId?: string;
+  skipMastered?: boolean;
+}
+export interface GeneratedList {
+  requested: number;
+  found: number;
+  title: string;
+  basis: "filters" | "weaknesses";
+  weakTopics: Array<{ name: string; mastery: number }>;
+  forClass: { id: string; name: string } | null;
+  warnings: string[];
+  questions: Array<{ id: string; stem: string; subject: string; topic: string; difficulty: "FACIL" | "MEDIA" | "DIFICIL"; exam: string; year: number | null }>;
+}
+export const apiGenerateList = (accessToken: string, payload: GenerateListPayload): Promise<GeneratedList> =>
+  request("/simulations/lists/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+
+// Gerador de provas (item 38): prévia por seções e criação das versões.
+export type ExamDifficulty = "FACIL" | "MEDIA" | "DIFICIL";
+export interface GenerateExamPayload {
+  sections: Array<{ subjectId: string; count: number; topicId?: string }>;
+  difficultyMix?: Partial<Record<ExamDifficulty, number>>;
+  skills?: string[];
+  exam?: string;
+  classId?: string;
+}
+export interface GeneratedExam {
+  title: string;
+  forClass: { id: string; name: string } | null;
+  sections: Array<{ subject: string; requested: number; found: number }>;
+  requested: number;
+  found: number;
+  difficultyActual: Record<ExamDifficulty, number>;
+  warnings: string[];
+  questions: Array<{ id: string; stem: string; subject: string; topic: string; difficulty: ExamDifficulty; exam: string; year: number | null; enemSkill: string | null; section: number }>;
+}
+export interface CreatedExam {
+  versions: Array<{ id: string; label: string; title: string; answerKey: Array<{ position: number; answer: string }> }>;
+}
+export const apiGenerateExam = (accessToken: string, payload: GenerateExamPayload): Promise<GeneratedExam> =>
+  request("/simulations/exams/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiCreateExamVersions = (accessToken: string, payload: { title: string; questionIds: string[]; versions: number; shuffleAlternatives: boolean; classId?: string; dueAt?: string; durationMinutes?: number; generateAnswerSheet?: boolean }): Promise<CreatedExam> =>
+  request("/simulations/exams/create", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
 
 // Fase 3: comparação de desempenho (item 43).
 export const apiReportScopeLite = (accessToken: string): Promise<import("@/lib/institution").ReportScope> =>

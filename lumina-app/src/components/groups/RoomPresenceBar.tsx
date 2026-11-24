@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Pause, Play, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/auth';
-import { ApiError, apiClassRoomHeartbeat, apiMyClassRoom, apiMyRoom, apiRoomAction, apiRoomHeartbeat } from '@/lib/api';
+import { ApiError, apiClassRoomAction, apiClassRoomHeartbeat, apiMyClassRoom, apiMyRoom, apiRoomAction, apiRoomHeartbeat } from '@/lib/api';
 import { ROOM_CHANGED_EVENT, formatClock, liveSeconds, notifyRoomChanged, type MyRoomParticipation } from '@/lib/group-rooms';
 
 const HEARTBEAT_MS = 30_000;
@@ -171,17 +171,34 @@ export function ClassPresenceBar() {
     return () => clearInterval(id);
   }, [mine?.ticking]);
 
+  async function toggle() {
+    const token = getAccessToken();
+    if (!token || !mine) return;
+    try {
+      await apiClassRoomAction(token, mine.sessionId, mine.status === 'STUDYING' ? 'pause' : 'resume');
+      notifyRoomChanged();
+    } catch { void refresh(); }
+  }
+
   if (!enabled || !mine || !location.pathname.startsWith('/app')) return null;
   if (location.pathname === `/app/turmas/${mine.classId}/sala`) return null;
   const seconds = liveSeconds(mine.studiedSeconds, mine.ticking, receivedAt, now);
   return (
-    <div className="fixed bottom-4 left-4 z-40 flex items-center gap-3 rounded-full border bg-white py-2 pl-3 pr-4 text-sm shadow-lg">
+    <div className="fixed bottom-4 left-4 z-40 flex items-center gap-3 rounded-full border bg-white py-2 pl-3 pr-2 text-sm shadow-lg">
       <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${mine.status === 'STUDYING' ? 'bg-emerald-500' : 'bg-amber-400'}`} />
       <Link to={`/app/turmas/${mine.classId}/sala`} className="flex items-center gap-2 font-semibold">
         <Users size={14} />
         <span className="max-w-[10rem] truncate">{mine.roomTitle || `Sala da turma ${mine.className}`}</span>
       </Link>
       <span className="font-mono tabular-nums" aria-label="Seu tempo na sala da turma">{formatClock(seconds)}</span>
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        aria-label={mine.status === 'STUDYING' ? 'Pausar' : 'Retomar'}
+        className="grid h-8 w-8 place-items-center rounded-full bg-graphite text-white"
+      >
+        {mine.status === 'STUDYING' ? <Pause size={14} /> : <Play size={14} />}
+      </button>
     </div>
   );
 }
