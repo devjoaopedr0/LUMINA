@@ -27,6 +27,7 @@ import { InstitutionalAnalyticsModule } from './institutional-analytics/institut
 import { RecoveryPlansModule } from './recovery-plans/recovery-plans.module';
 import { MaterialsModule } from './materials/materials.module';
 import { ReportsModule } from './reports/reports.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PlansModule } from './plans/plans.module';
 import { GroupsModule } from './groups/groups.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
@@ -67,6 +68,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
     MaterialsModule,
     FlashcardsModule,
     ReportsModule,
+    NotificationsModule,
   ],
   providers: [
     RateLimitMiddleware,

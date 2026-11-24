@@ -70,6 +70,14 @@ model User {
   answerSheetBatches      AnswerSheetBatch[]
   groupRoomsOpened        GroupStudySession[]         @relation("GroupStudySessionOpener")
   groupRoomParticipations GroupSessionParticipant[]
+  groupGoalsCreated       GroupGoal[]                 @relation("GroupGoalCreator")
+  notifications           Notification[]
+  groupMessages           GroupMessage[]              @relation("GroupMessageAuthor")
+  groupMessagesHidden     GroupMessage[]              @relation("GroupMessageHider")
+  groupAnnouncements      GroupAnnouncement[]
+  groupReportsMade        GroupReport[]               @relation("GroupReportReporter")
+  groupReportsAgainst     GroupReport[]               @relation("GroupReportTarget")
+  groupReportsResolved    GroupReport[]               @relation("GroupReportResolver")
   answerKeysCreated       AnswerKey[]                 @relation("AnswerKeyCreatedBy")
   answerKeyChecks         AnswerKeyCheck[]
   answerKeyVotes          AnswerKeyVote[]
@@ -2760,9 +2768,133 @@ model StudyGroup {
   owner            User                @relation("StudyGroupOwner", fields: [ownerId], references: [id])
   members          StudyGroupMember[]
   rooms            GroupStudySession[]
+  goals            GroupGoal[]
+  messages         GroupMessage[]
+  announcements    GroupAnnouncement[]
+  reports          GroupReport[]
 
   @@index([ownerId])
   @@map("study_groups")
+}
+
+/// Notificação in-app (módulo genérico; o Groups é o primeiro a usar).
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  /// Tipo estável, ex.: "group.announcement", "group.join_request".
+  kind      String    @db.VarChar(40)
+  title     String    @db.VarChar(120)
+  body      String?   @db.VarChar(300)
+  /// Caminho dentro do app, ex.: "/app/grupos/<id>".
+  link      String?   @db.VarChar(200)
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+/// Mensagem do chat do grupo (etapa 4). Ocultar não apaga: guarda quem
+/// ocultou e por quê, para a moderação e as denúncias.
+model GroupMessage {
+  id           String        @id @default(uuid()) @db.Uuid
+  groupId      String        @map("group_id") @db.Uuid
+  authorId     String        @map("author_id") @db.Uuid
+  body         String        @db.VarChar(1000)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  hiddenAt     DateTime?     @map("hidden_at")
+  hiddenById   String?       @map("hidden_by_id") @db.Uuid
+  /// "author" (apagou a própria), "moderator" ou "reports" (3 denúncias).
+  hiddenReason String?       @map("hidden_reason") @db.VarChar(20)
+  group        StudyGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author       User          @relation("GroupMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  hiddenBy     User?         @relation("GroupMessageHider", fields: [hiddenById], references: [id], onDelete: SetNull)
+  reports      GroupReport[]
+
+  @@index([groupId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("group_messages")
+}
+
+/// Aviso fixado no topo do grupo, escrito por moderador ou acima.
+model GroupAnnouncement {
+  id        String     @id @default(uuid()) @db.Uuid
+  groupId   String     @map("group_id") @db.Uuid
+  authorId  String     @map("author_id") @db.Uuid
+  body      String     @db.VarChar(1000)
+  createdAt DateTime   @default(now()) @map("created_at")
+  deletedAt DateTime?  @map("deleted_at")
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, createdAt])
+  @@map("group_announcements")
+}
+
+enum GroupReportTarget {
+  MESSAGE
+  MEMBER
+  GROUP
+}
+
+enum GroupReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+/// Denúncia de mensagem, membro ou grupo. Moderadores tratam as do grupo;
+/// as do próprio grupo e as contra o dono vão para a administração da Lumina.
+model GroupReport {
+  id           String            @id @default(uuid()) @db.Uuid
+  groupId      String            @map("group_id") @db.Uuid
+  reporterId   String            @map("reporter_id") @db.Uuid
+  targetType   GroupReportTarget @map("target_type")
+  messageId    String?           @map("message_id") @db.Uuid
+  targetUserId String?           @map("target_user_id") @db.Uuid
+  reason       String            @db.VarChar(30)
+  details      String?           @db.VarChar(500)
+  status       GroupReportStatus @default(OPEN)
+  resolvedById String?           @map("resolved_by_id") @db.Uuid
+  resolvedAt   DateTime?         @map("resolved_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  group        StudyGroup        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  reporter     User              @relation("GroupReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  message      GroupMessage?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  targetUser   User?             @relation("GroupReportTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  resolvedBy   User?             @relation("GroupReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([groupId, status])
+  @@index([status, targetType])
+  @@map("group_reports")
+}
+
+enum GroupGoalMetric {
+  GROUP_MINUTES
+  GROUP_STUDY_DAYS
+}
+
+/// Meta coletiva do grupo (etapa 3), ex.: "20 h juntos nesta semana". Só
+/// conta o tempo de quem participa do placar; cada dia vale no máximo 10 h.
+/// O progresso é calculado na leitura, a partir do StudyTimeLog.
+model GroupGoal {
+  id          String          @id @default(uuid()) @db.Uuid
+  groupId     String          @map("group_id") @db.Uuid
+  title       String          @db.VarChar(80)
+  metric      GroupGoalMetric
+  target      Int
+  /// Primeiro e último dia (AAAA-MM-DD, fuso de Brasília), inclusive.
+  startDate   String          @map("start_date") @db.VarChar(10)
+  endDate     String          @map("end_date") @db.VarChar(10)
+  createdById String          @map("created_by_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at")
+  cancelledAt DateTime?       @map("cancelled_at")
+  group       StudyGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy   User            @relation("GroupGoalCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([groupId, endDate])
+  @@map("group_goals")
 }
 
 enum GroupSessionStatus {
@@ -2842,6 +2974,10 @@ model StudyGroupMember {
   shareLastActivity Boolean                @default(false) @map("share_last_activity")
   /// Participação no ranking (fase de engajamento). Desligada por padrão.
   rankingOptIn      Boolean                @default(false) @map("ranking_opt_in")
+  /// Silenciado no chat por um moderador até esta data (etapa 4).
+  mutedUntil        DateTime?              @map("muted_until")
+  /// Última vez que abriu a conversa do grupo (para o contador de não lidas).
+  chatLastReadAt    DateTime?              @map("chat_last_read_at")
   joinedAt          DateTime               @default(now()) @map("joined_at")
   updatedAt         DateTime               @updatedAt @map("updated_at")
   group             StudyGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)

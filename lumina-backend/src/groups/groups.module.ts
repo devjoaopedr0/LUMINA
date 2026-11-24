@@ -19,6 +19,11 @@ import { GroupRoomEvents } from './group-room-events';
 import { GroupRoomsGateway } from './group-rooms.gateway';
 import { GroupRoomsService } from './group-rooms.service';
 import { JoinRoomDto, OpenRoomDto, UpdateParticipationDto } from './group-rooms.dto';
+import { GroupEngagementService } from './group-engagement.service';
+import { CreateGoalDto } from './group-engagement.dto';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { GroupCommunicationService } from './group-communication.service';
+import { AnnouncementDto, CreateReportDto, MuteMemberDto, ResolveReportDto, SendMessageDto } from './group-communication.dto';
 
 /** Lumina Groups (Fase 2, MVP): docs/LUMINA_GROUPS.md. */
 @ApiTags('groups')
@@ -212,10 +217,120 @@ export class GroupRoomsController {
   }
 }
 
+/** Engajamento (etapa 3): placar opcional, metas coletivas e conquistas. */
+@ApiTags('groups')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('groups')
+export class GroupEngagementController {
+  constructor(private readonly engagement: GroupEngagementService) {}
+
+  @Get(':id/engagement')
+  @ApiOperation({ summary: 'Placar (só quem participa), metas coletivas e minhas conquistas no grupo.' })
+  overview(
+    @CurrentUser() user: UserWithProfile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('metric') metric?: string,
+    @Query('period') period?: string,
+  ) {
+    const m = metric === 'hours' || metric === 'streak' ? metric : 'consistency';
+    const p = period === '30' ? 30 : 7;
+    return this.engagement.overview(user.id, id, { metric: m, period: p });
+  }
+
+  @Post(':id/goals')
+  @ApiOperation({ summary: 'Cria uma meta coletiva (moderador ou acima).' })
+  createGoal(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateGoalDto) {
+    return this.engagement.createGoal(user.id, id, dto);
+  }
+
+  @Delete(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Cancela uma meta coletiva (moderador ou acima).' })
+  cancelGoal(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('goalId', ParseUUIDPipe) goalId: string) {
+    return this.engagement.cancelGoal(user.id, id, goalId);
+  }
+}
+
+/** Comunicação (etapa 4): chat com moderação, avisos e denúncias. */
+@ApiTags('groups')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('groups')
+export class GroupCommunicationController {
+  constructor(private readonly comms: GroupCommunicationService) {}
+
+  @Get('reports/admin')
+  @ApiOperation({ summary: 'Denúncias de grupos e contra donos (só a administração da Lumina).' })
+  adminReports(@CurrentUser() user: UserWithProfile) {
+    return this.comms.adminReports(user.accountType);
+  }
+
+  @Post('reports/admin/:reportId/resolve')
+  @ApiOperation({ summary: 'Trata uma denúncia de grupo ou contra dono (administração da Lumina).' })
+  adminResolve(@CurrentUser() user: UserWithProfile, @Param('reportId', ParseUUIDPipe) reportId: string, @Body() dto: ResolveReportDto) {
+    return this.comms.adminResolve(user.accountType, user.id, reportId, dto);
+  }
+
+  @Get(':id/chat')
+  @ApiOperation({ summary: 'Mensagens (50 por página, `before` para as anteriores), avisos e meu estado no chat.' })
+  chat(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Query('before') before?: string) {
+    const at = before ? new Date(before) : undefined;
+    return this.comms.chat(user.id, id, { before: at && !Number.isNaN(at.getTime()) ? at : undefined });
+  }
+
+  @Post(':id/chat')
+  @ApiOperation({ summary: 'Envia uma mensagem (filtro de palavras, sem telefone/e-mail, limite de envio).' })
+  send(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendMessageDto) {
+    return this.comms.send(user.id, id, dto.body);
+  }
+
+  @Delete(':id/chat/:messageId')
+  @ApiOperation({ summary: 'Apaga a própria mensagem ou oculta a de quem está abaixo (moderação).' })
+  hide(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('messageId', ParseUUIDPipe) messageId: string) {
+    return this.comms.hide(user.id, id, messageId);
+  }
+
+  @Post(':id/members/:userId/mute')
+  @ApiOperation({ summary: 'Silencia um membro no chat por 1 h, 24 h ou 7 dias (0 libera).' })
+  mute(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) target: string, @Body() dto: MuteMemberDto) {
+    return this.comms.mute(user.id, id, target, dto.hours);
+  }
+
+  @Post(':id/announcements')
+  @ApiOperation({ summary: 'Publica um aviso fixado e notifica os membros (moderação).' })
+  announce(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AnnouncementDto) {
+    return this.comms.announce(user.id, id, dto.body);
+  }
+
+  @Delete(':id/announcements/:announcementId')
+  @ApiOperation({ summary: 'Remove um aviso (moderação).' })
+  removeAnnouncement(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('announcementId', ParseUUIDPipe) announcementId: string) {
+    return this.comms.removeAnnouncement(user.id, id, announcementId);
+  }
+
+  @Post(':id/reports')
+  @ApiOperation({ summary: 'Denuncia uma mensagem, um membro ou o grupo.' })
+  report(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateReportDto) {
+    return this.comms.report(user.id, id, dto);
+  }
+
+  @Get(':id/reports')
+  @ApiOperation({ summary: 'Denúncias abertas que eu posso tratar (moderação; denunciante anônimo).' })
+  reports(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.comms.reports(user.id, id);
+  }
+
+  @Post(':id/reports/:reportId/resolve')
+  @ApiOperation({ summary: 'Procede (mensagem fica oculta) ou não procede (volta se sumiu só pelas denúncias).' })
+  resolve(@CurrentUser() user: UserWithProfile, @Param('id', ParseUUIDPipe) id: string, @Param('reportId', ParseUUIDPipe) reportId: string, @Body() dto: ResolveReportDto) {
+    return this.comms.resolveReport(user.id, id, reportId, dto);
+  }
+}
+
 @Module({
-  imports: [AuthModule, SchedulesModule],
+  imports: [AuthModule, SchedulesModule, NotificationsModule],
   // As rotas fixas das salas (`rooms/me`) vêm antes das do grupo (`:id`).
-  controllers: [GroupRoomsController, GroupsController],
-  providers: [GroupsService, GroupRoomsService, GroupRoomEvents, GroupRoomsGateway],
+  controllers: [GroupRoomsController, GroupEngagementController, GroupCommunicationController, GroupsController],
+  providers: [GroupsService, GroupRoomsService, GroupRoomEvents, GroupRoomsGateway, GroupEngagementService, GroupCommunicationService],
 })
 export class GroupsModule {}

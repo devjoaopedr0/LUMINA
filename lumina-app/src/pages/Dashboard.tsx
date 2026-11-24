@@ -1,3 +1,4 @@
+import { NotificationBell } from "@/components/NotificationBell";
 import { cachedHasClasses, isNavItemVisible, storeHasClasses } from "@/lib/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
@@ -403,7 +404,10 @@ export function Dashboard() {
             <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)} className="rounded-xl border border-surface-line bg-white p-2.5 lg:hidden"><Menu className="h-5 w-5" /></button>
             <div><p className="text-xs font-medium capitalize text-graphite-400">{todayLabel}</p><p className="text-sm font-semibold text-graphite">{panel?.title ?? 'Seu espaço de estudos'}</p></div>
           </div>
+          <div className="flex items-center gap-2">
+          <NotificationBell />
           <Link aria-label="Abrir perfil" to="/app/perfil" className="flex h-10 w-10 items-center justify-center rounded-full border border-surface-line bg-white text-graphite-500 transition hover:border-primary hover:text-graphite"><UserRound className="h-[18px] w-[18px]" /></Link>
+          </div>
         </div>
       </header>
 

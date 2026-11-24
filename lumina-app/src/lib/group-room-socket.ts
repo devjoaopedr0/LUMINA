@@ -12,7 +12,8 @@ const POLL_WITH_SOCKET_MS = 60_000;
  * Acompanha as salas de um grupo em tempo real. O servidor só avisa "mudou"
  * (nenhum dado pessoal passa pelo socket); quem chama busca o estado por HTTP.
  */
-export function useGroupRoomsLive(groupId: string | undefined, onChanged: () => void) {
+/** `event`: "rooms:changed" (salas) ou "chat:changed" (conversa e avisos). */
+export function useGroupRoomsLive(groupId: string | undefined, onChanged: () => void, event: 'rooms:changed' | 'chat:changed' = 'rooms:changed') {
   const callback = useRef(onChanged);
   callback.current = onChanged;
 
@@ -50,7 +51,7 @@ export function useGroupRoomsLive(groupId: string | undefined, onChanged: () => 
         connected = false;
         schedule();
       });
-      socket.on('rooms:changed', (payload: { groupId?: string }) => {
+      socket.on(event, (payload: { groupId?: string }) => {
         if (payload?.groupId === groupId) callback.current();
       });
     }
@@ -62,5 +63,5 @@ export function useGroupRoomsLive(groupId: string | undefined, onChanged: () => 
       socket?.emit('group:unwatch');
       socket?.disconnect();
     };
-  }, [groupId]);
+  }, [groupId, event]);
 }

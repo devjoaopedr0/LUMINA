@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ArrowLeft, Check, Copy, Crown, Flame, Link2, LogOut, Plus, RefreshCw, Shield, Trash2, UserMinus, Users, X } from 'lucide-react';
+import { Archive, ArrowLeft, Check, Copy, Crown, Flag, Flame, Link2, LogOut, Plus, RefreshCw, Shield, Trash2, UserMinus, Users, X } from 'lucide-react';
+import { REASON_LABEL, type ReportReason } from '@/lib/group-chat';
 import { getAccessToken } from '@/lib/auth';
 import { GroupRooms } from '@/components/groups/GroupRooms';
+import { GroupEngagement } from '@/components/groups/GroupEngagement';
+import { GroupChat } from '@/components/groups/GroupChat';
+import { NotificationBell } from '@/components/NotificationBell';
 import {
   ApiError,
   apiArchiveGroup,
@@ -18,6 +22,7 @@ import {
   apiLeaveGroup,
   apiRegenerateGroupCode,
   apiRemoveGroupMember,
+  apiReportInGroup,
   apiTransferGroup,
   apiUpdateGroup,
   apiUpdateGroupSharing,
@@ -47,7 +52,10 @@ function Shell({ children, back }: { children: React.ReactNode; back?: { to: str
   return (
     <main className="min-h-screen bg-surface-card px-4 py-8 text-graphite sm:px-8">
       <div className="mx-auto max-w-5xl">
-        <Link to={back?.to ?? '/app'} className="inline-flex items-center gap-1 text-sm font-semibold"><ArrowLeft size={15} />{back?.label ?? 'Voltar à visão geral'}</Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link to={back?.to ?? '/app'} className="inline-flex items-center gap-1 text-sm font-semibold"><ArrowLeft size={15} />{back?.label ?? 'Voltar à visão geral'}</Link>
+          <NotificationBell />
+        </div>
         {children}
       </div>
     </main>
@@ -163,7 +171,10 @@ function GroupList() {
                   <Link to={`/app/grupos/${g.id}`} className="flex items-center gap-4 rounded-2xl border bg-white p-4 transition hover:-translate-y-0.5 hover:border-primary-500">
                     <Avatar name={g.name} url={g.imageUrl} size="h-12 w-12" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{g.name}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="block truncate font-semibold">{g.name}</span>
+                        {g.unreadMessages > 0 && <span className="rounded-full bg-red-600 px-2 text-xs font-bold text-white" aria-label={`${g.unreadMessages} mensagens não lidas`}>{g.unreadMessages > 99 ? '99+' : g.unreadMessages}</span>}
+                      </span>
                       <span className="block text-sm text-graphite-500">{[g.purpose, `${g.memberCount}/${g.maxMembers} membros`, ROLE_LABEL[g.myRole]].filter(Boolean).join(' · ')}{g.archived ? ' · Arquivado' : ''}</span>
                     </span>
                   </Link>
@@ -306,6 +317,8 @@ function GroupView({ id }: { id: string }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-6">
           <GroupRooms groupId={group.id} archived={group.archived} />
+          <GroupChat groupId={group.id} />
+          <GroupEngagement groupId={group.id} archived={group.archived} optIn={group.mySharing.rankingOptIn} onSharingSaved={(sharing) => setGroup({ ...group, mySharing: sharing })} />
           <section className="rounded-2xl border bg-white p-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold"><Users size={18} />Membros</h2>
             <ul className="mt-3 divide-y">
@@ -374,6 +387,7 @@ function GroupView({ id }: { id: string }) {
             {group.myRole !== 'OWNER' && (
               <button type="button" disabled={busy} onClick={() => { if (window.confirm('Sair do grupo? Seu tempo de estudo continua no seu histórico.')) void run(() => apiLeaveGroup(token(), id), () => navigate('/app/grupos'), false); }} className="inline-flex items-center gap-2 font-semibold text-red-700"><LogOut size={15} />Sair do grupo</button>
             )}
+            {group.myRole !== 'OWNER' && <ReportGroup groupId={id} />}
             {group.myRole === 'OWNER' && (
               <>
                 <p className="text-graphite-500">Para sair, transfira a posse a outro membro (no menu de cada membro) ou arquive o grupo.</p>
@@ -451,7 +465,7 @@ function SharingPanel({ group, onSaved, onError }: { group: GroupDetail; onSaved
     <section className="rounded-2xl border bg-white p-5">
       <h2 className="text-lg font-semibold">O que eu compartilho</h2>
       <p className="mt-1 text-sm text-graphite-500">Vale só para este grupo. Seu nome e sua foto aparecem sempre.</p>
-      {group.iAmMinor && <p className="mt-3 rounded-xl bg-primary-50 p-3 text-xs">Você tem menos de 18 anos: mostre só o que quiser. Quando o ranking chegar, ele fica desligado para você até você ligar.</p>}
+      {group.iAmMinor && <p className="mt-3 rounded-xl bg-primary-50 p-3 text-xs">Você tem menos de 18 anos: mostre só o que quiser. O placar fica desligado para você até você mesmo ligar.</p>}
       <ul className="mt-3 space-y-2">{SHARING_OPTIONS.map((opt) => {
         const on = group.mySharing[opt.key];
         return (
@@ -464,5 +478,42 @@ function SharingPanel({ group, onSaved, onError }: { group: GroupDetail; onSaved
         );
       })}</ul>
     </section>
+  );
+}
+
+/** Denunciar o grupo inteiro: vai para a administração da Lumina. */
+function ReportGroup({ groupId }: { groupId: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<ReportReason>('conteudo_improprio');
+  const [details, setDetails] = useState('');
+  const [message, setMessage] = useState('');
+  async function submit() {
+    try {
+      await apiReportInGroup(token(), groupId, { targetType: 'GROUP', reason, details: details.trim() || undefined });
+      setMessage('Denúncia enviada à administração da Lumina. Obrigado.');
+      setOpen(false);
+    } catch (e) {
+      setMessage(errorText(e, 'Não foi possível enviar a denúncia.'));
+    }
+  }
+  return (
+    <div>
+      {!open && <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-2 font-semibold text-graphite-500"><Flag size={15} />Denunciar grupo</button>}
+      {open && (
+        <div className="space-y-2 rounded-xl bg-surface-card p-3">
+          <label className="block">Motivo
+            <select value={reason} onChange={(e) => setReason(e.target.value as ReportReason)} className="mt-1 w-full rounded-lg border bg-white p-2">
+              {(Object.keys(REASON_LABEL) as ReportReason[]).map((r) => <option key={r} value={r}>{REASON_LABEL[r]}</option>)}
+            </select>
+          </label>
+          <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={500} rows={2} placeholder="Detalhes (opcional)" className="w-full rounded-lg border p-2" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => void submit()} className="rounded-full bg-red-700 px-3 py-1.5 text-xs font-semibold text-white">Enviar denúncia</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-full border px-3 py-1.5 text-xs font-semibold">Cancelar</button>
+          </div>
+        </div>
+      )}
+      {message && <p role="status" className="mt-2 text-xs">{message}</p>}
+    </div>
   );
 }

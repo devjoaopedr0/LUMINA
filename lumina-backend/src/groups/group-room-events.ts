@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
-type Listener = (groupId: string) => void;
+/** O que mudou: as salas ou a conversa (chat e avisos) do grupo. */
+export type GroupChangeKind = 'rooms' | 'chat';
+type Listener = (groupId: string, kind: GroupChangeKind) => void;
 
 /** Avisa quem está olhando um grupo que as salas dele mudaram. O gateway do
  * Socket.IO assina; o serviço das salas só emite. O cliente busca o estado
@@ -14,7 +16,7 @@ export class GroupRoomEvents {
     return () => this.listeners.delete(listener);
   }
 
-  changed(groupId: string): void {
-    for (const listener of this.listeners) listener(groupId);
+  changed(groupId: string, kind: GroupChangeKind = 'rooms'): void {
+    for (const listener of this.listeners) listener(groupId, kind);
   }
 }
