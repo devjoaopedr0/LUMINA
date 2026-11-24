@@ -224,6 +224,7 @@ export class SchedulesRepository {
       endTime: Date;
       durationMinutes: number;
       groupSessionId?: string | null;
+      classSessionId?: string | null;
     },
   ) {
     return tx.studyTimeLog.create({
@@ -235,6 +236,7 @@ export class SchedulesRepository {
         endTime: data.endTime,
         durationMinutes: data.durationMinutes,
         groupSessionId: data.groupSessionId ?? null,
+        classSessionId: data.classSessionId ?? null,
       },
     });
   }

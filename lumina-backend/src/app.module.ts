@@ -28,6 +28,7 @@ import { RecoveryPlansModule } from './recovery-plans/recovery-plans.module';
 import { MaterialsModule } from './materials/materials.module';
 import { ReportsModule } from './reports/reports.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ClassRoomsModule } from './class-rooms/class-rooms.module';
 import { PlansModule } from './plans/plans.module';
 import { GroupsModule } from './groups/groups.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
@@ -69,6 +70,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
     FlashcardsModule,
     ReportsModule,
     NotificationsModule,
+    ClassRoomsModule,
   ],
   providers: [
     RateLimitMiddleware,

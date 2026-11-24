@@ -2,7 +2,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { cachedHasClasses, isNavItemVisible, storeHasClasses } from "@/lib/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, Layers, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck, Crown } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, ChevronRight, Award, Clock3, Database, FileText, Flame, Globe, History, Layers, LayoutDashboard, Lightbulb, LogOut, Menu, NotebookPen, Sparkles, TrendingUp, Target, UserRound, Users, School, AlertTriangle, X, ScanLine, ClipboardCheck, Crown, ListChecks } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -22,6 +22,8 @@ const NAV_ITEMS = [
   { to: "/app/caderno-de-erros", label: "Caderno de erros", icon: NotebookPen },
   { to: "/app/busca-web", label: "Buscar questões na web", icon: Globe },
   { to: "/app/simulados", label: "Simulados", icon: BookOpenCheck },
+  { to: "/app/listas/gerar", label: "Gerador de listas", icon: ListChecks },
+  { to: "/app/provas/gerar", label: "Gerador de provas", icon: FileText },
   { to: "/app/turmas", label: "Turmas", icon: School, onlyWithClasses: true },
   { to: "/app/grupos", label: "Grupos de estudo", icon: Users },
   { to: "/app/calculo-mental", label: "Cálculo mental", icon: Target },
@@ -38,6 +40,7 @@ const NAV_ITEMS = [
   { to: "/app/materiais", label: "Materiais da turma", icon: FileText, onlyWithClasses: true },
   { to: "/app/recuperacao", label: "Planos de recuperação", icon: Target },
   { to: "/app/relatorios", label: "Relatórios", icon: FileText },
+  { to: "/app/comparar", label: "Comparar desempenho", icon: TrendingUp },
   { to: "/app/plano", label: "Meu plano", icon: Crown },
   { to: "/app/perfil", label: "Meu perfil", icon: UserRound },
 ];

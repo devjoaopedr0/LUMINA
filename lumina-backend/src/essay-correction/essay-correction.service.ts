@@ -1,13 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  HttpException,
-  HttpStatus,
-  Injectable,
-  Logger,
-  NotFoundException,
-  Optional,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 import { EssayCorrectionStatus, EssayLearningLevel, EssayScanStatus, Prisma } from '@prisma/client';
 import { EntitlementsService } from '../plans/entitlements.service';
 import { AiService } from '../ai/ai.service';
@@ -80,6 +72,7 @@ export class EssayCorrectionService {
     // O limite vem do plano do aluno; sem o serviço (testes montados à mão),
     // vale ESSAY_CORRECTION_MONTHLY_LIMIT.
     @Optional() private readonly entitlements?: EntitlementsService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   private async correctionLimit(userId: string): Promise<number> {
@@ -427,6 +420,16 @@ export class EssayCorrectionService {
           })),
         });
       });
+      // Feedback de redação (item 51).
+      const essay = await this.prisma.essay.findUnique({ where: { id: essayId }, select: { userId: true } });
+      if (essay) {
+        await this.notifications?.notify([essay.userId], {
+          kind: 'essay.corrected',
+          title: 'Sua redação foi corrigida',
+          body: `Nota estimada: ${result.total}. Veja o comentário de cada competência.`,
+          link: `/app/redacoes/${essayId}`,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Correção da redação ${essayId} falhou: ${message}`);

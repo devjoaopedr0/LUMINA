@@ -89,6 +89,10 @@ function fakeDb() {
       group,
     }), { status: 'OPEN' }),
     notification: { createMany: async ({ data }: any) => { notifications.push(...data); return { count: data.length }; } },
+    studyGroup: {
+      findUnique: async () => ({ name: group.name, ownerId: group.ownerId, archivedAt: group.archivedAt }),
+      update: async ({ data }: any) => Object.assign(group, data),
+    },
   };
   return db;
 }
@@ -205,6 +209,18 @@ describe('GroupCommunicationService', () => {
     expect(chat.announcements[0]).toMatchObject({ body: 'Simulado coletivo sábado às 9h', author: 'Mod' });
     const notified = db.notifications.filter((n: any) => n.kind === 'group.announcement').map((n: any) => n.userId);
     expect(notified.sort()).toEqual([dono, ana, bia, caio].sort());
+  });
+
+  it('administração arquiva o grupo denunciado, encerra as denúncias e avisa o dono', async () => {
+    await service.report(ana, db.group.id, { targetType: 'GROUP', reason: 'conteudo_improprio' }, NOW);
+    await service.report(bia, db.group.id, { targetType: 'MEMBER', targetUserId: caio, reason: 'spam' }, NOW);
+    const [groupReport] = await service.adminReports('ADMIN');
+    const after = await service.adminResolve('ADMIN', admin, groupReport.id, { action: 'archive_group' }, later(10));
+    expect(db.group.archivedAt).toEqual(later(10));
+    expect(after).toHaveLength(0);
+    expect(db.reports.every((r: any) => r.status === 'RESOLVED')).toBe(true);
+    expect(db.notifications.some((n: any) => n.userId === dono && n.kind === 'group.archived_by_admin')).toBe(true);
+    await expect(service.send(ana, db.group.id, 'oi', later(20))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('grupo arquivado: conversa só para leitura', async () => {

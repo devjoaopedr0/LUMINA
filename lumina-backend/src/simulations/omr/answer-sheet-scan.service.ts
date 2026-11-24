@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { AnswerSheetProcessingStatus, AnswerSheetStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { SimulationsService } from '../simulations.service';
@@ -51,7 +52,20 @@ export class AnswerSheetScanService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly simulations: SimulationsService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
+
+  /** Nova nota (item 51): avisa o aluno que o cartão dele foi lançado. */
+  private async notifyGrade(studentId: string, simulationId: string, correct: number, total: number) {
+    if (!this.notifications) return;
+    const sim = await this.prisma.simulation.findUnique({ where: { id: simulationId }, select: { title: true } });
+    await this.notifications.notify([studentId], {
+      kind: 'grade.released',
+      title: `Sua nota saiu: ${sim?.title ?? 'simulado'}`,
+      body: `Você acertou ${correct} de ${total} questões.`,
+      link: `/app/simulados?id=${simulationId}`,
+    });
+  }
 
   private async loadSimulation(id: string): Promise<SimulationAccess> {
     const sim = await this.prisma.simulation.findUnique({
@@ -280,6 +294,7 @@ export class AnswerSheetScanService {
         this.prisma.simulationSubmission.update({ where: { simulationId_userId: { simulationId, userId: studentId } }, data: { answers: list, correct } }),
         this.prisma.answerSheetProcessing.update({ where: { id: processing.id }, data: { detectedAnswers: answers, lowConfidenceCount: 0, adjustedJson: adjusted } }),
       ]);
+      await this.notifyGrade(studentId, simulationId, correct, sim.items.length);
       return;
     }
 
@@ -301,6 +316,7 @@ export class AnswerSheetScanService {
         await tx.answerSheetSubmission.create({ data: { processingId: processing.id, simulationId, studentId, finalAnswers: answers, correct: result.correct, total: result.total, ...reviewed } });
       }
     });
+    if (result) await this.notifyGrade(studentId, simulationId, result.correct, result.total);
   }
 
   private async ownedUpload(userId: string, uploadId: string) {

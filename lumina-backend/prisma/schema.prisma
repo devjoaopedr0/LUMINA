@@ -10,91 +10,93 @@ datasource db {
 /// UserProfile, separada para manter esta tabela enxuta e não expor
 /// password_hash junto de dados exibíveis publicamente.
 model User {
-  id                      String                      @id @default(uuid()) @db.Uuid
-  email                   String                      @unique
-  passwordHash            String?                     @map("password_hash")
-  emailVerified           Boolean                     @default(false) @map("email_verified")
-  status                  UserStatus                  @default(ACTIVE)
-  accountType             AccountType                 @default(STUDENT_INDEPENDENT) @map("account_type")
+  id                         String                      @id @default(uuid()) @db.Uuid
+  email                      String                      @unique
+  passwordHash               String?                     @map("password_hash")
+  emailVerified              Boolean                     @default(false) @map("email_verified")
+  status                     UserStatus                  @default(ACTIVE)
+  accountType                AccountType                 @default(STUDENT_INDEPENDENT) @map("account_type")
   /// Aceite dos Termos de Uso e da Política de Privacidade (LGPD): quando e qual versão.
-  termsAcceptedAt         DateTime?                   @map("terms_accepted_at")
-  termsVersion            String?                     @map("terms_version") @db.VarChar(20)
-  lastLogin               DateTime?                   @map("last_login")
-  createdAt               DateTime                    @default(now()) @map("created_at")
-  updatedAt               DateTime                    @updatedAt @map("updated_at")
-  deletedAt               DateTime?                   @map("deleted_at")
-  googleId                String?                     @unique @map("google_id")
-  sessionVersion          Int                         @default(0) @map("session_version")
-  authSessions            AuthSession[]
-  classMemberships        ClassMember[]
-  classesTeaching         ClassTeacher[]
-  coordinatedClasses      Class[]                     @relation("ClassCoordinator")
-  createdClasses          Class[]                     @relation("ClassCreatedBy")
-  emailVerificationCodes  EmailVerificationCode[]
-  passwordResetTokens     PasswordResetToken[]
-  questionAttempts        QuestionAttempt[]
-  createdQuestions        Question[]                  @relation("QuestionCreatedBy")
-  profile                 UserProfile?
-  questionProgress        UserQuestionProgress[]
-  errorNotebook           ErrorNotebookEntry[]
-  workspaceMembers        WorkspaceMember[]
-  studySchedule           StudySchedule?
-  studyTimeLogs           StudyTimeLog[]
-  topicMasteries          TopicMastery[]
-  topicMasteryHistory     TopicMasteryHistory[]
-  selectedVestibular      UserVestibular?
-  mentalMathSessions      MentalMathSession[]
-  essays                  Essay[]
-  essayScans              EssayScan[]
-  essayCorrectionUsages   EssayCorrectionUsage[]
-  subscriptions           Subscription[]
-  planUsages              PlanUsage[]
-  notebookCollections     NotebookCollection[]
-  essayReviews            EssayReview[]               @relation("EssayReviewEvaluator")
-  essayReviewsValidated   EssayReview[]               @relation("EssayReviewValidator")
-  essayReviewMessages     EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
-  essayLearningCreated    EssayLearningRecord[]       @relation("EssayLearningCreatedBy")
-  essayLearningValidated  EssayLearningRecord[]       @relation("EssayLearningValidatedBy")
-  essayAuditEvents        EssayAuditEvent[]
-  teacherProfile          TeacherProfile?
-  authoredEssayThemes     EssayTheme[]
-  createdSimulations      Simulation[]
-  simulationSubmissions   SimulationSubmission[]
-  adaptiveSessions        AdaptiveSimulationSession[]
-  adaptiveSteps           AdaptiveSimulationStep[]
-  answerSheetUploads      AnswerSheetUpload[]
-  answerSheetSubmissions  AnswerSheetSubmission[]
-  answerSheetReviews      AnswerSheetSubmission[]     @relation("AnswerSheetReview")
-  answerSheetScans        AnswerSheetUpload[]         @relation("AnswerSheetScanner")
-  answerSheetCodes        AnswerSheetCode[]
-  answerSheetBatches      AnswerSheetBatch[]
-  groupRoomsOpened        GroupStudySession[]         @relation("GroupStudySessionOpener")
-  groupRoomParticipations GroupSessionParticipant[]
-  groupGoalsCreated       GroupGoal[]                 @relation("GroupGoalCreator")
-  notifications           Notification[]
-  groupMessages           GroupMessage[]              @relation("GroupMessageAuthor")
-  groupMessagesHidden     GroupMessage[]              @relation("GroupMessageHider")
-  groupAnnouncements      GroupAnnouncement[]
-  groupReportsMade        GroupReport[]               @relation("GroupReportReporter")
-  groupReportsAgainst     GroupReport[]               @relation("GroupReportTarget")
-  groupReportsResolved    GroupReport[]               @relation("GroupReportResolver")
-  answerKeysCreated       AnswerKey[]                 @relation("AnswerKeyCreatedBy")
-  answerKeyChecks         AnswerKeyCheck[]
-  answerKeyVotes          AnswerKeyVote[]
-  questionScanUploads     QuestionScanUpload[]
-  questionScanResults     QuestionScanResult[]
-  essayFeedbacks          EssayFeedback[]             @relation("EssayFeedbackAuthor")
-  formulas                Formula[]
-  repertoires             Repertoire[]
-  studyGroupsOwned        StudyGroup[]                @relation("StudyGroupOwner")
-  studyGroupMemberships   StudyGroupMember[]
-  flashcards              Flashcard[]
-  flashcardReviews        FlashcardReview[]
-  pedagogicalAlerts       PedagogicalAlert[]          @relation("PedagogicalAlertTeacher")
-  recoveryPlans           RecoveryPlan[]              @relation("RecoveryPlanStudent")
-  recoveryPlansCreated    RecoveryPlan[]              @relation("RecoveryPlanCreatedBy")
-  materials               Material[]                  @relation("MaterialOwner")
-  reportSnapshots         ReportSnapshot[]            @relation("ReportSnapshotRequester")
+  termsAcceptedAt            DateTime?                   @map("terms_accepted_at")
+  termsVersion               String?                     @map("terms_version") @db.VarChar(20)
+  lastLogin                  DateTime?                   @map("last_login")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  deletedAt                  DateTime?                   @map("deleted_at")
+  googleId                   String?                     @unique @map("google_id")
+  sessionVersion             Int                         @default(0) @map("session_version")
+  authSessions               AuthSession[]
+  classMemberships           ClassMember[]
+  classesTeaching            ClassTeacher[]
+  coordinatedClasses         Class[]                     @relation("ClassCoordinator")
+  createdClasses             Class[]                     @relation("ClassCreatedBy")
+  emailVerificationCodes     EmailVerificationCode[]
+  passwordResetTokens        PasswordResetToken[]
+  questionAttempts           QuestionAttempt[]
+  createdQuestions           Question[]                  @relation("QuestionCreatedBy")
+  profile                    UserProfile?
+  questionProgress           UserQuestionProgress[]
+  errorNotebook              ErrorNotebookEntry[]
+  workspaceMembers           WorkspaceMember[]
+  studySchedule              StudySchedule?
+  studyTimeLogs              StudyTimeLog[]
+  topicMasteries             TopicMastery[]
+  topicMasteryHistory        TopicMasteryHistory[]
+  selectedVestibular         UserVestibular?
+  mentalMathSessions         MentalMathSession[]
+  essays                     Essay[]
+  essayScans                 EssayScan[]
+  essayCorrectionUsages      EssayCorrectionUsage[]
+  subscriptions              Subscription[]
+  planUsages                 PlanUsage[]
+  notebookCollections        NotebookCollection[]
+  essayReviews               EssayReview[]               @relation("EssayReviewEvaluator")
+  essayReviewsValidated      EssayReview[]               @relation("EssayReviewValidator")
+  essayReviewMessages        EssayReviewMessage[]        @relation("EssayReviewMessageAuthor")
+  essayLearningCreated       EssayLearningRecord[]       @relation("EssayLearningCreatedBy")
+  essayLearningValidated     EssayLearningRecord[]       @relation("EssayLearningValidatedBy")
+  essayAuditEvents           EssayAuditEvent[]
+  teacherProfile             TeacherProfile?
+  authoredEssayThemes        EssayTheme[]
+  createdSimulations         Simulation[]
+  simulationSubmissions      SimulationSubmission[]
+  adaptiveSessions           AdaptiveSimulationSession[]
+  adaptiveSteps              AdaptiveSimulationStep[]
+  answerSheetUploads         AnswerSheetUpload[]
+  answerSheetSubmissions     AnswerSheetSubmission[]
+  answerSheetReviews         AnswerSheetSubmission[]     @relation("AnswerSheetReview")
+  answerSheetScans           AnswerSheetUpload[]         @relation("AnswerSheetScanner")
+  answerSheetCodes           AnswerSheetCode[]
+  answerSheetBatches         AnswerSheetBatch[]
+  groupRoomsOpened           GroupStudySession[]         @relation("GroupStudySessionOpener")
+  groupRoomParticipations    GroupSessionParticipant[]
+  classSessionsOpened        ClassStudySession[]         @relation("ClassSessionOpener")
+  classSessionParticipations ClassSessionParticipant[]
+  groupGoalsCreated          GroupGoal[]                 @relation("GroupGoalCreator")
+  notifications              Notification[]
+  groupMessages              GroupMessage[]              @relation("GroupMessageAuthor")
+  groupMessagesHidden        GroupMessage[]              @relation("GroupMessageHider")
+  groupAnnouncements         GroupAnnouncement[]
+  groupReportsMade           GroupReport[]               @relation("GroupReportReporter")
+  groupReportsAgainst        GroupReport[]               @relation("GroupReportTarget")
+  groupReportsResolved       GroupReport[]               @relation("GroupReportResolver")
+  answerKeysCreated          AnswerKey[]                 @relation("AnswerKeyCreatedBy")
+  answerKeyChecks            AnswerKeyCheck[]
+  answerKeyVotes             AnswerKeyVote[]
+  questionScanUploads        QuestionScanUpload[]
+  questionScanResults        QuestionScanResult[]
+  essayFeedbacks             EssayFeedback[]             @relation("EssayFeedbackAuthor")
+  formulas                   Formula[]
+  repertoires                Repertoire[]
+  studyGroupsOwned           StudyGroup[]                @relation("StudyGroupOwner")
+  studyGroupMemberships      StudyGroupMember[]
+  flashcards                 Flashcard[]
+  flashcardReviews           FlashcardReview[]
+  pedagogicalAlerts          PedagogicalAlert[]          @relation("PedagogicalAlertTeacher")
+  recoveryPlans              RecoveryPlan[]              @relation("RecoveryPlanStudent")
+  recoveryPlansCreated       RecoveryPlan[]              @relation("RecoveryPlanCreatedBy")
+  materials                  Material[]                  @relation("MaterialOwner")
+  reportSnapshots            ReportSnapshot[]            @relation("ReportSnapshotRequester")
 
   @@map("users")
 }
@@ -581,32 +583,33 @@ model RolePermission {
 /// referenciar um Workspace com type = INSTITUTION. Precisa ser validada na
 /// camada de aplicação (ou via trigger) antes de criar/mover uma turma.
 model Class {
-  id               String          @id @default(uuid()) @db.Uuid
-  workspaceId      String          @map("workspace_id") @db.Uuid
+  id               String              @id @default(uuid()) @db.Uuid
+  workspaceId      String              @map("workspace_id") @db.Uuid
   name             String
   description      String?
-  joinCode         String          @unique @map("join_code")
-  maxStudents      Int?            @map("max_students")
-  coordinatorId    String?         @map("coordinator_id") @db.Uuid
-  subjectId        String?         @map("subject_id") @db.Uuid
-  academicPeriodId String?         @map("academic_period_id") @db.Uuid
+  joinCode         String              @unique @map("join_code")
+  maxStudents      Int?                @map("max_students")
+  coordinatorId    String?             @map("coordinator_id") @db.Uuid
+  subjectId        String?             @map("subject_id") @db.Uuid
+  academicPeriodId String?             @map("academic_period_id") @db.Uuid
   /// Ano/série da turma (ex: 3 = "3º ano") — mesma convenção de
   /// UserProfile.schoolYear. Organização por ano letivo em si já é
   /// coberta por academicPeriodId (Fase 5: períodos letivos).
-  gradeYear        Int?            @map("grade_year")
-  archived         Boolean         @default(false)
-  createdBy        String          @map("created_by") @db.Uuid
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
+  gradeYear        Int?                @map("grade_year")
+  archived         Boolean             @default(false)
+  createdBy        String              @map("created_by") @db.Uuid
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
   members          ClassMember[]
   teachers         ClassTeacher[]
   simulations      Simulation[]
-  coordinator      User?           @relation("ClassCoordinator", fields: [coordinatorId], references: [id])
-  creator          User            @relation("ClassCreatedBy", fields: [createdBy], references: [id])
-  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  subject          Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  academicPeriod   AcademicPeriod? @relation(fields: [academicPeriodId], references: [id], onDelete: SetNull)
-  materials        Material[]      @relation("ClassMaterials")
+  studySessions    ClassStudySession[]
+  coordinator      User?               @relation("ClassCoordinator", fields: [coordinatorId], references: [id])
+  creator          User                @relation("ClassCreatedBy", fields: [createdBy], references: [id])
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subject          Subject?            @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  academicPeriod   AcademicPeriod?     @relation(fields: [academicPeriodId], references: [id], onDelete: SetNull)
+  materials        Material[]          @relation("ClassMaterials")
 
   @@index([workspaceId])
   @@index([subjectId])
@@ -912,6 +915,7 @@ model Simulation {
    * professor/coordenador/diretor) — ver AnswerSheetTemplate.simulationId.
    */
   answerSheetTemplate    AnswerSheetTemplate?
+  classSessions          ClassStudySession[]
 
   @@index([createdBy, createdAt])
   @@index([classId])
@@ -1291,17 +1295,18 @@ model StudySchedule {
 /// Catálogo fixo (12 matérias) separado de Subject (classificação de
 /// questões) — Redação, por exemplo, não tem questões mas é estudável.
 model StudySubject {
-  id                    String                    @id @default(uuid()) @db.Uuid
-  name                  String                    @unique
-  code                  String                    @unique @map("code")
-  displayOrder          Int                       @default(99) @map("display_order")
-  createdAt             DateTime                  @default(now()) @map("created_at")
-  updatedAt             DateTime                  @updatedAt @map("updated_at")
-  scheduleSubjects      StudyScheduleSubject[]
-  sessionSubjects       StudySessionSubject[]
-  tasks                 StudyTask[]
-  timeLogs              StudyTimeLog[]
-  groupRoomParticipants GroupSessionParticipant[]
+  id                       String                    @id @default(uuid()) @db.Uuid
+  name                     String                    @unique
+  code                     String                    @unique @map("code")
+  displayOrder             Int                       @default(99) @map("display_order")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  scheduleSubjects         StudyScheduleSubject[]
+  sessionSubjects          StudySessionSubject[]
+  tasks                    StudyTask[]
+  timeLogs                 StudyTimeLog[]
+  groupRoomParticipants    GroupSessionParticipant[]
+  classSessionParticipants ClassSessionParticipant[]
 
   @@map("study_subjects")
 }
@@ -1441,16 +1446,20 @@ model StudyTimeLog {
   /// Sessão coletiva do Groups em que o tempo foi estudado (contexto, não
   /// segunda contabilidade: o tempo continua sendo só este log do aluno).
   groupSessionId  String?            @map("group_session_id") @db.Uuid
+  /// Sala de estudo da turma (item 47), também só como contexto.
+  classSessionId  String?            @map("class_session_id") @db.Uuid
   createdAt       DateTime           @default(now()) @map("created_at")
   task            StudyTask?         @relation(fields: [taskId], references: [id], onDelete: Cascade)
   subject         StudySubject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   groupSession    GroupStudySession? @relation(fields: [groupSessionId], references: [id], onDelete: SetNull)
+  classSession    ClassStudySession? @relation(fields: [classSessionId], references: [id], onDelete: SetNull)
 
   @@index([taskId])
   @@index([subjectId])
   @@index([userId])
   @@index([groupSessionId])
+  @@index([classSessionId])
   @@map("study_time_logs")
 }
 
@@ -3152,4 +3161,51 @@ model ReportSnapshot {
   @@unique([requestedById, type, scopeKey, periodLabel])
   @@index([requestedById, createdAt])
   @@map("report_snapshots")
+}
+
+/// Sala de estudo da turma (Fase 3, item 47): versão institucional da sala do
+/// Groups, com o mesmo motor de presença. O professor abre, acompanha em tempo
+/// real e pode ligar uma atividade da turma (lista ou simulado coletivo).
+model ClassStudySession {
+  id             String                    @id @default(uuid()) @db.Uuid
+  classId        String                    @map("class_id") @db.Uuid
+  title          String?                   @db.VarChar(80)
+  openedById     String                    @map("opened_by_id") @db.Uuid
+  /// Atividade da turma ligada à sessão (lista de questões ou simulado).
+  simulationId   String?                   @map("simulation_id") @db.Uuid
+  status         GroupSessionStatus        @default(OPEN)
+  startedAt      DateTime                  @default(now()) @map("started_at")
+  endedAt        DateTime?                 @map("ended_at")
+  lastActivityAt DateTime                  @default(now()) @map("last_activity_at")
+  class          Class                     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  openedBy       User                      @relation("ClassSessionOpener", fields: [openedById], references: [id], onDelete: Cascade)
+  simulation     Simulation?               @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+  participants   ClassSessionParticipant[]
+  timeLogs       StudyTimeLog[]
+
+  @@index([classId, status])
+  @@index([status, lastActivityAt])
+  @@map("class_study_sessions")
+}
+
+/// Passagem de um aluno pela sala da turma (mesmas regras de tempo da sala do Groups).
+model ClassSessionParticipant {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  sessionId          String                 @map("session_id") @db.Uuid
+  userId             String                 @map("user_id") @db.Uuid
+  subjectId          String?                @map("subject_id") @db.Uuid
+  status             GroupParticipantStatus @default(STUDYING)
+  joinedAt           DateTime               @default(now()) @map("joined_at")
+  leftAt             DateTime?              @map("left_at")
+  lastHeartbeatAt    DateTime               @default(now()) @map("last_heartbeat_at")
+  activeSince        DateTime?              @map("active_since")
+  accumulatedSeconds Int                    @default(0) @map("accumulated_seconds")
+  timeLogId          String?                @unique @map("time_log_id") @db.Uuid
+  session            ClassStudySession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject            StudySubject?          @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, status])
+  @@index([userId, status])
+  @@map("class_session_participants")
 }

@@ -1,3 +1,4 @@
+import { NoticeComposer } from '@/components/NoticeComposer';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getAccessToken } from '@/lib/auth';
@@ -47,13 +48,14 @@ export function Classes() {
 
   return <main className="min-h-screen bg-surface-card px-5 py-8 text-graphite"><div className="mx-auto max-w-5xl">
     <Link to="/app">← Visão geral</Link><h1 className="my-6 text-3xl font-bold">Gestão de turmas</h1>
+    <NoticeComposer />
     {user?.accountType !== 'STUDENT_INDEPENDENT' && <Link to="/app/simulados" className="underline">Criar turma ou entrar com código</Link>}
     {error && <p role="alert" className="my-4 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
     {loading ? <p role="status" className="my-6">Carregando turmas…</p> : <>
       <nav aria-label="Turmas" className="my-6 flex flex-wrap gap-3">{classes.map(row => <button key={row.id} onClick={() => setParams({ id: row.id })} aria-pressed={id === row.id} className={`rounded-lg border px-4 py-2 ${id === row.id ? 'bg-graphite text-white' : 'bg-white'}`}>{row.name}{row.archived ? ' · Arquivada' : ''}</button>)}</nav>
       {!classes.length && <p className="my-6">Você ainda não está vinculado a uma turma.</p>}
       {detail && <>
-        <section className="rounded-xl border bg-white p-5"><h2 className="text-2xl font-bold">{detail.name}</h2><p>{detail.archived ? 'Arquivada' : 'Ativa'} · {detail.subject?.name ?? 'Sem disciplina'} · {detail.academicPeriod?.name ?? 'Sem período'}{detail.gradeYear ? ` · Ano/série ${detail.gradeYear}` : ''}</p>
+        <section className="rounded-xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-2xl font-bold">{detail.name}</h2><Link to={`/app/turmas/${detail.id}/sala`} className="rounded-full bg-graphite px-4 py-2 text-sm font-semibold text-white">Sala de estudo</Link></div><p>{detail.archived ? 'Arquivada' : 'Ativa'} · {detail.subject?.name ?? 'Sem disciplina'} · {detail.academicPeriod?.name ?? 'Sem período'}{detail.gradeYear ? ` · Ano/série ${detail.gradeYear}` : ''}</p>
           {detail.canManage && <p className="my-3">Código de ingresso: <strong>{detail.joinCode}</strong></p>}
           {detail.canManage && !detail.archived && <div className="my-3 rounded-lg bg-surface-card p-3 text-sm">
             <button type="button" onClick={() => void createInvite(detail.id)} className="rounded-lg border bg-white px-3 py-1.5 font-semibold">Gerar link de convite</button>
@@ -78,7 +80,7 @@ export function Classes() {
         </section>
         {(['teachers', 'members'] as const).map(kind => <section key={kind} className="mt-5 rounded-xl border bg-white p-5"><h2 className="text-xl font-bold">{kind === 'teachers' ? 'Professores' : 'Alunos'} ({detail[kind].length})</h2>
           {detail.canManage && !detail.archived && <form className="my-4 flex gap-3" onSubmit={event => { event.preventDefault(); const email = String(new FormData(event.currentTarget).get('email')); void run(() => apiLinkClassUser(token(), detail.id, kind, email)); }}><input aria-label={`E-mail do ${kind === 'teachers' ? 'professor' : 'aluno'}`} name="email" type="email" required placeholder="E-mail da conta cadastrada" className={field} /><button disabled={busy} className="rounded-lg border px-4">Vincular</button></form>}
-          {detail[kind].map(person => <div key={person.id} className="flex items-center justify-between gap-3 border-b py-3"><div><strong>{person.name}</strong><p className="text-sm">{person.email}</p></div>{detail.canManage && <button disabled={busy} onClick={() => void run(() => apiUnlinkClassUser(token(), detail.id, kind, person.id))} className="text-sm underline">Remover vínculo</button>}</div>)}
+          {detail[kind].map(person => <div key={person.id} className="flex items-center justify-between gap-3 border-b py-3"><div><strong>{person.name}</strong>{person.email && <p className="text-sm">{person.email}</p>}</div>{detail.canManage && <button disabled={busy} onClick={() => void run(() => apiUnlinkClassUser(token(), detail.id, kind, person.id))} className="text-sm underline">Remover vínculo</button>}</div>)}
         </section>)}
         <section className="mt-5 rounded-xl border bg-white p-5"><h2 className="text-xl font-bold">Histórico da turma</h2>{!detail.timeline.length && <p className="mt-3">Nenhuma atividade criada nesta turma.</p>}{detail.timeline.map(item => <div key={item.id} className="border-b py-3"><Link className="font-semibold underline" to={`/app/simulados?id=${item.id}`}>{item.title}</Link><p className="text-sm">{new Date(item.createdAt).toLocaleDateString('pt-BR')} · {item.questionCount} questões · {item.submissionCount} entregas</p></div>)}</section>
       </>}

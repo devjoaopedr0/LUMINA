@@ -1,4 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
+import { newActivityNotice } from '../notifications/notification-rules';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { assertInstitutionClassMember } from '../workspaces/class-membership-policy';
@@ -6,6 +8,7 @@ import { PrismaService } from '../database/prisma.service';
 import { QuestionAccessService } from '../questions/question-access.service';
 import { TopicMasteryService } from '../questions/topic-mastery.service';
 import { upsertSheetTemplate } from './omr/sheet-template';
+import { EXAM_RULES, buildVersions } from './exam-generator';
 import { CreateAcademicPeriodDto, SimulationAnswerDto, UpdateAcademicPeriodDto, UpdateClassDto, UpdateInstitutionMemberDto } from './simulations.dto';
 import { assertFutureInstant } from '../common/date-rules';
 
@@ -35,6 +38,8 @@ export class SimulationsService {
     private readonly prisma: PrismaService,
     private readonly access: QuestionAccessService,
     private readonly topicMasteryService: TopicMasteryService,
+    // Opcional só para testes montados à mão.
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async classes(userId: string, includeArchived = false) {
@@ -426,12 +431,17 @@ export class SimulationsService {
         email: t.user.email,
         subject: t.user.teacherProfile?.subject ?? null,
       })),
-      members: classRoom.members.map((m) => ({
-        id: m.user.id,
-        name: [m.user.profile?.firstName, m.user.profile?.lastName].filter(Boolean).join(' ') || m.user.email,
-        email: m.user.email,
-        joinedAt: m.joinedAt,
-      })),
+      // E-mail de colega é dado pessoal (muitos alunos são menores): só quem
+      // gerencia a turma vê o de todos; o aluno vê só o próprio.
+      members: classRoom.members.map((m) => {
+        const visible = canManage || m.user.id === userId;
+        return {
+          id: m.user.id,
+          name: [m.user.profile?.firstName, m.user.profile?.lastName].filter(Boolean).join(' ') || (visible ? m.user.email : 'Aluno(a)'),
+          email: visible ? m.user.email : null,
+          joinedAt: m.joinedAt,
+        };
+      }),
       timeline: classRoom.simulations.map((s) => ({
         id: s.id,
         title: s.title,
@@ -479,7 +489,74 @@ export class SimulationsService {
     if (generateAnswerSheet && accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(accountType)) {
       answerSheetTemplate = (await upsertSheetTemplate(this.prisma, row)).template;
     }
+    if (classId && this.notifications) {
+      const members = await this.prisma.classMember.findMany({ where: { classId }, select: { userId: true } });
+      await this.notifications.notify(members.map((m) => m.userId), {
+        kind: 'class.new_activity',
+        ...newActivityNotice({ type: assessmentType, title: row.title, className: row.class?.name ?? 'sua turma', dueAt: row.dueAt }),
+        link: `/app/simulados?id=${row.id}`,
+      });
+    }
     return this.publicSimulation({ ...row, answerSheetTemplate });
+  }
+
+  /**
+   * Gerador de provas (item 38): cria de 1 a 4 versões da mesma prova (tipo
+   * PROVA). A versão A segue a ordem escolhida; as outras embaralham as
+   * questões e, se pedido, as alternativas — cada uma com o próprio gabarito.
+   * Mesmas checagens da criação manual (turma, acesso e cartão-resposta).
+   */
+  async createExamVersions(userId: string, input: {
+    title: string; questionIds: string[]; versions: number; shuffleAlternatives: boolean;
+    classId?: string; dueAt?: string; durationMinutes?: number; generateAnswerSheet?: boolean;
+  }, accountType?: string) {
+    const { questionIds, classId } = input;
+    if (!questionIds.length || new Set(questionIds).size !== questionIds.length) throw new BadRequestException('A prova precisa de questões, sem repetir.');
+    if (input.versions < 1 || input.versions > EXAM_RULES.maxVersions) throw new BadRequestException(`De 1 a ${EXAM_RULES.maxVersions} versões.`);
+    let workspaceId: string;
+    let className: string | null = null;
+    if (classId) {
+      const teacher = await this.prisma.classTeacher.findUnique({ where: { classId_userId: { classId, userId } }, include: { class: true } });
+      if (!teacher || teacher.class.archived) throw new ForbiddenException('Você não leciona nesta turma.');
+      workspaceId = teacher.class.workspaceId;
+      className = teacher.class.name;
+    } else {
+      workspaceId = (await this.access.getPersonalWorkspaceOrThrow(userId)).id;
+    }
+    const questions = await this.prisma.question.findMany({ where: { id: { in: questionIds } }, include: { alternatives: { orderBy: { position: 'asc' } } } });
+    if (questions.length !== questionIds.length) throw new BadRequestException('Uma ou mais questões não estão disponíveis.');
+    for (const q of questions) {
+      await this.access.assertCanUse(userId, q.workspaceId);
+      if (q.alternatives.length < 2 || q.alternatives.length > 5 || q.alternatives.filter(a => a.isCorrect).length !== 1 || q.alternatives.some((a, i) => a.position !== i + 1)) {
+        throw new BadRequestException('Uma questão tem alternativas incompatíveis com o cartão-resposta.');
+      }
+    }
+    const byId = new Map(questions.map(q => [q.id, q]));
+    const base = questionIds.map((id) => {
+      const q = byId.get(id)!;
+      return { questionId: id, stem: q.stem, subject: q.subject, alternatives: q.alternatives.map(a => ({ position: a.position, text: a.text })), correctPosition: q.alternatives.find(a => a.isCorrect)!.position };
+    });
+    const due = input.dueAt ? assertFutureInstant(input.dueAt, 'O prazo da prova') : null;
+    const versions = buildVersions(base, input.versions, input.shuffleAlternatives);
+    const created: Array<{ id: string; label: string; title: string; answerKey: Array<{ position: number; answer: string }> }> = [];
+    for (const version of versions) {
+      const title = input.versions > 1 ? `${input.title.trim()} — Versão ${version.label}` : input.title.trim();
+      const row = await this.prisma.simulation.create({ data: {
+        id: randomUUID(), title, createdBy: userId, classId: classId ?? null, workspaceId, assessmentType: 'TEST', dueAt: due, durationMinutes: input.durationMinutes,
+        items: { create: version.items.map((it) => ({ id: randomUUID(), questionId: it.questionId, position: it.position, stem: it.stem, subject: it.subject, correctPosition: it.correctPosition, alternatives: it.alternatives })) },
+      }, include: { items: { orderBy: { position: 'asc' } }, class: { select: { name: true } } } });
+      if (input.generateAnswerSheet && accountType && INSTITUTION_STAFF_ACCOUNT_TYPES.includes(accountType)) await upsertSheetTemplate(this.prisma, row);
+      created.push({ id: row.id, label: version.label, title, answerKey: version.answerKey });
+    }
+    if (classId && this.notifications) {
+      const members = await this.prisma.classMember.findMany({ where: { classId }, select: { userId: true } });
+      await this.notifications.notify(members.map((m) => m.userId), {
+        kind: 'class.new_activity',
+        ...newActivityNotice({ type: 'TEST', title: input.title.trim(), className: className ?? 'sua turma', dueAt: due }),
+        link: `/app/simulados?id=${created[0].id}`,
+      });
+    }
+    return { versions: created };
   }
 
   async list(userId: string) {

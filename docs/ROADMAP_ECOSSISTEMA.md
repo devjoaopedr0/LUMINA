@@ -182,6 +182,11 @@ Painel do professor mais completo, gestão de alunos e turmas, acompanhamento (a
 
 **Estado em 16/11/2026:** alertas pedagógicos persistidos (item 41, `ACOMPANHAMENTO_PEDAGOGICO.md`), plano de recuperação (item 42, `PLANO_RECUPERACAO.md`), central de materiais com busca e LuminIA (itens 48–50, `CENTRAL_MATERIAIS.md`) e relatórios (item 59, `RELATORIOS.md`) entregues. Ficam para depois: notificações (item 51), comparação de desempenho entre turmas (item 43) e a sala de estudo da turma (item 47).
 
+**Fase 3 concluída em 19/11/2026** (branch `codex/fase3-institucional`):
+- **Notificações (item 51):** módulo genérico global com sino no app. Automáticas: nova atividade na turma, prazo em 24 h (só para quem não entregou, uma vez), revisão do dia (assuntos + flashcards, após 8h de Brasília, uma vez por dia), redação corrigida, revisão do professor e nota do cartão-resposta. Manuais: aviso do professor para a turma e da coordenação/direção para a instituição inteira, com filtro de conteúdo e até 20 por dia (`Gestão de turmas → Enviar aviso`). Fica para depois: recomendação da LuminIA e notificação por e-mail (domínio no Resend).
+- **Comparação de desempenho (item 43):** `/app/comparar`. Professor e coordenação comparam até 6 turmas lado a lado (acerto, participação, estudo por aluno ativo, entregas, alunos em risco) e cada uma com o período anterior, mais a matriz matéria × turma. O aluno se compara consigo mesmo (período anterior, por matéria) e com a média de cada turma dele. Só agregados: nunca a nota de um colega; acerto só com 10+ respostas.
+- **Sala de estudo da turma (item 47):** `/app/turmas/:id/sala`, com o motor de presença do Groups (sinal de 30 s, saída no último sinal, tempo líquido no `StudyTimeLog` com `classSessionId`). O professor (ou coordenação) abre e avisa a turma, liga uma lista ou simulado coletivo, acompanha em tempo real presença, tempo e entrega de cada aluno e encerra a sala. Alunos veem quem está na sala e o status, nunca o tempo ou a nota dos colegas. Um aluno fica numa sala por vez (turma ou grupo), para o tempo não contar duas vezes. Socket.IO no namespace `/classes`.
+
 ### Fase 4: Lumina Marketplace
 Cadastro e verificação de vendedores, perfis, publicação de cursos, catálogo, compra, biblioteca, pagamentos com split, comissões, painel financeiro e avaliações.
 

@@ -1128,7 +1128,7 @@ export interface ClassDetail {
   availableSubjects: Array<{ id: string; name: string }>;
   availablePeriods: Array<{ id: string; name: string }>;
   teachers: Array<{ id: string; name: string; email: string; subject: string | null }>;
-  members: Array<{ id: string; name: string; email: string; joinedAt: string }>;
+  members: Array<{ id: string; name: string; /** null para alunos: e-mail de colega não aparece. */ email: string | null; joinedAt: string }>;
   timeline: Array<{ id: string; title: string; assessmentType: string; createdAt: string; questionCount: number; submissionCount: number }>;
 }
 export const apiManagedClasses = (token: string): Promise<Array<SimulationClass & { archived: boolean }>> => request('/simulations/classes?includeArchived=true', { headers: authHeaders(token) });
@@ -3116,8 +3116,91 @@ export const apiResolveGroupReport = (accessToken: string, groupId: string, repo
   request(`/groups/${groupId}/reports/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
 export const apiAdminGroupReports = (accessToken: string): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request("/groups/reports/admin", { headers: authHeaders(accessToken) });
-export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
+export const apiAdminResolveGroupReport = (accessToken: string, reportId: string, action: "resolve" | "dismiss" | "archive_group"): Promise<import("@/lib/group-chat").AdminGroupReport[]> =>
   request(`/groups/reports/admin/${reportId}/resolve`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ action }) });
+
+// Gerador de listas (item 37): prévia; a criação usa apiCreateSimulation com assessmentType LIST.
+export interface GenerateListPayload {
+  count: number;
+  basis: "filters" | "weaknesses";
+  subjectId?: string;
+  topicId?: string;
+  difficulty?: "FACIL" | "MEDIA" | "DIFICIL";
+  exam?: string;
+  year?: number;
+  classId?: string;
+  skipMastered?: boolean;
+}
+export interface GeneratedList {
+  requested: number;
+  found: number;
+  title: string;
+  basis: "filters" | "weaknesses";
+  weakTopics: Array<{ name: string; mastery: number }>;
+  forClass: { id: string; name: string } | null;
+  warnings: string[];
+  questions: Array<{ id: string; stem: string; subject: string; topic: string; difficulty: "FACIL" | "MEDIA" | "DIFICIL"; exam: string; year: number | null }>;
+}
+export const apiGenerateList = (accessToken: string, payload: GenerateListPayload): Promise<GeneratedList> =>
+  request("/simulations/lists/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+
+// Gerador de provas (item 38): prévia por seções e criação das versões.
+export type ExamDifficulty = "FACIL" | "MEDIA" | "DIFICIL";
+export interface GenerateExamPayload {
+  sections: Array<{ subjectId: string; count: number; topicId?: string }>;
+  difficultyMix?: Partial<Record<ExamDifficulty, number>>;
+  skills?: string[];
+  exam?: string;
+  classId?: string;
+}
+export interface GeneratedExam {
+  title: string;
+  forClass: { id: string; name: string } | null;
+  sections: Array<{ subject: string; requested: number; found: number }>;
+  requested: number;
+  found: number;
+  difficultyActual: Record<ExamDifficulty, number>;
+  warnings: string[];
+  questions: Array<{ id: string; stem: string; subject: string; topic: string; difficulty: ExamDifficulty; exam: string; year: number | null; enemSkill: string | null; section: number }>;
+}
+export interface CreatedExam {
+  versions: Array<{ id: string; label: string; title: string; answerKey: Array<{ position: number; answer: string }> }>;
+}
+export const apiGenerateExam = (accessToken: string, payload: GenerateExamPayload): Promise<GeneratedExam> =>
+  request("/simulations/exams/generate", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiCreateExamVersions = (accessToken: string, payload: { title: string; questionIds: string[]; versions: number; shuffleAlternatives: boolean; classId?: string; dueAt?: string; durationMinutes?: number; generateAnswerSheet?: boolean }): Promise<CreatedExam> =>
+  request("/simulations/exams/create", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+
+// Fase 3: comparação de desempenho (item 43).
+export const apiReportScopeLite = (accessToken: string): Promise<import("@/lib/institution").ReportScope> =>
+  request("/reports/scope", { headers: authHeaders(accessToken) });
+export const apiCompareClasses = (accessToken: string, ids: string[], days: number): Promise<import("@/lib/institution").ClassComparison> =>
+  request(`/reports/compare/classes?ids=${ids.join(",")}&days=${days}`, { headers: authHeaders(accessToken) });
+export const apiCompareMe = (accessToken: string, days: number): Promise<import("@/lib/institution").StudentComparison> =>
+  request(`/reports/compare/me?days=${days}`, { headers: authHeaders(accessToken) });
+
+// Fase 3: sala de estudo da turma (item 47).
+type ClassRoom = import("@/lib/institution").ClassRoomState;
+export const apiClassRoom = (accessToken: string, classId: string): Promise<ClassRoom> =>
+  request(`/class-rooms/class/${classId}`, { headers: authHeaders(accessToken) });
+export const apiOpenClassRoom = (accessToken: string, classId: string, payload: { title?: string | null; simulationId?: string | null }): Promise<ClassRoom> =>
+  request(`/class-rooms/class/${classId}/open`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
+export const apiSetClassRoomActivity = (accessToken: string, sessionId: string, simulationId: string | null): Promise<ClassRoom> =>
+  request(`/class-rooms/sessions/${sessionId}/activity`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ simulationId }) });
+export const apiClassRoomAction = (accessToken: string, sessionId: string, action: "close" | "pause" | "resume" | "leave"): Promise<ClassRoom> =>
+  request(`/class-rooms/sessions/${sessionId}/${action}`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiJoinClassRoom = (accessToken: string, sessionId: string, subjectId: string | null): Promise<ClassRoom> =>
+  request(`/class-rooms/sessions/${sessionId}/join`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ subjectId }) });
+export const apiClassRoomHeartbeat = (accessToken: string, sessionId: string): Promise<{ ok: boolean; studiedSeconds: number }> =>
+  request(`/class-rooms/sessions/${sessionId}/heartbeat`, { method: "POST", headers: authHeaders(accessToken) });
+export const apiMyClassRoom = (accessToken: string): Promise<{ mine: null | { sessionId: string; classId: string; className: string; roomTitle: string | null; status: "STUDYING" | "PAUSED"; subject: string | null; studiedSeconds: number; ticking: boolean } }> =>
+  request("/class-rooms/me", { headers: authHeaders(accessToken) });
+
+// Fase 3: avisos do professor e da coordenação (item 51).
+export const apiBroadcastTargets = (accessToken: string): Promise<import("@/lib/institution").BroadcastTargets> =>
+  request("/notifications/broadcast-targets", { headers: authHeaders(accessToken) });
+export const apiBroadcast = (accessToken: string, payload: { scope: "class" | "institution"; classId?: string; title: string; body?: string }): Promise<{ sent: number; audience: string }> =>
+  request("/notifications/broadcast", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(payload) });
 
 // Notificações in-app.
 export const apiNotifications = (accessToken: string): Promise<{ items: import("@/lib/group-chat").AppNotification[]; unread: number }> =>

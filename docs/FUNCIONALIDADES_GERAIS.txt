@@ -383,7 +383,7 @@
     -  Eventos
     -  Compromissos
     -  Lembretes
-35. 35. Modo revisão de véspera
+35. 35. Modo revisão de véspera [PENDENTE]
     -  Conteúdos prioritários
     -  Conteúdos não dominados
     -  Questões mais importantes
@@ -391,7 +391,7 @@
     -  Flashcards
     -  Revisões rápidas
     -  Recomendações automáticas
-36. 36. Estratégia de prova
+36. 36. Estratégia de prova [PENDENTE — O SIMULADO JÁ GUARDA INÍCIO E ENTREGA, MAS NÃO O TEMPO POR QUESTÃO]
     -  Tempo médio por questão
     -  Tempo por matéria
     -  Questões demoradas
@@ -400,7 +400,7 @@
     -  Chutes
     -  Relação tempo x acerto
     -  Sugestões de estratégia
-37. 37. Gerador de listas
+37. 37. Gerador de listas [IMPLEMENTADO EM 19/11/2026 — /app/listas/gerar: FILTROS OU DIFICULDADES (DO ALUNO OU DA TURMA), PRÉVIA EDITÁVEL, SEM REPETIR ACERTOS]
     -  Lista personalizada
     -  Escolher quantidade
     -  Matéria
@@ -410,7 +410,7 @@
     -  Ano
     -  Basear lista nas dificuldades do aluno
     -  Professor gerar lista para turma
-38. 38. Gerador de provas
+38. 38. Gerador de provas [IMPLEMENTADO EM 19/11/2026 — /app/provas/gerar: SEÇÕES POR DISCIPLINA, MISTURA DE DIFICULDADE, HABILIDADES DO ENEM, ATÉ 4 VERSÕES COM GABARITO PRÓPRIO]
     -  Seleção automática de questões
     -  Quantidade
     -  Disciplina
@@ -438,7 +438,7 @@
     -  Participação
     -  Tempo de estudo
     -  Alunos em risco
-41. 41. Alertas pedagógicos [IMPLEMENTADO EM 15/11/2026 — PERSISTIDOS COM HISTÓRICO; FALTA NOTIFICAÇÃO (ITEM 51)]
+41. 41. Alertas pedagógicos [IMPLEMENTADO EM 15/11/2026 — PERSISTIDOS COM HISTÓRICO]
     -  Queda de desempenho [IMPLEMENTADO — COMPARA COM O PERÍODO ANTERIOR]
     -  Muitos erros seguidos [IMPLEMENTADO]
     -  Falta de atividade [IMPLEMENTADO]
@@ -454,13 +454,13 @@
     -  Evoluir dificuldade
     -  Agendar revisão
     -  Reavaliar domínio
-43. 43. Comparação de desempenho
+43. 43. Comparação de desempenho [IMPLEMENTADO EM 19/11/2026 — /app/comparar; SÓ AGREGADOS, SEM NOTA DE COLEGA]
     -  Comparar aluno consigo mesmo
     -  Comparar períodos
     -  Comparar turmas
     -  Comparação com média da turma
     -  Sem expor notas individuais de outros alunos
-44. 44. Gamificação
+44. 44. Gamificação [PARCIAL — PLACAR, METAS E CONQUISTAS SÓ DENTRO DO LUMINA GROUPS; XP, NÍVEIS E MISSÕES PESSOAIS PENDENTES]
     -  XP
     -  Níveis
     -  Sequência de estudos
@@ -469,7 +469,7 @@
     -  Desafios semanais
     -  Metas
     -  Medalhas
-45. 45. Conquistas
+45. 45. Conquistas [PARCIAL — 5 CONQUISTAS DE CONSTÂNCIA NO GROUPS; CONQUISTAS POR QUESTÕES, REDAÇÃO E SIMULADOS PENDENTES]
     -  Quantidade de questões
     -  Dias consecutivos
     -  Domínio de conteúdo
@@ -482,7 +482,7 @@
     -  Desafios de estudo
     -  Metas coletivas
     -  Sem exposição obrigatória de notas
-47. 47. Sala de estudo [PLANEJADO — VERSÃO INSTITUCIONAL (TURMA); A SALA SOCIAL DE AMIGOS É O ITEM 61, E AS DUAS PODEM DIVIDIR O MOTOR DE PRESENÇA]
+47. 47. Sala de estudo [IMPLEMENTADO EM 19/11/2026 — /app/turmas/:id/sala, MESMO MOTOR DE PRESENÇA DO GROUPS]
     -  Sessões coletivas
     -  Professor acompanha em tempo real
     -  Lista de questões ao vivo
@@ -511,7 +511,7 @@
     -  Encontrar aula
     -  Encontrar tópico
     -  Perguntar “onde o professor explicou X?”
-51. 51. Notificações
+51. 51. Notificações [IMPLEMENTADO EM 19/11/2026 — IN-APP: ATIVIDADE, PRAZO, REVISÃO, REDAÇÃO, NOTA, AVISOS; FALTAM E-MAIL E RECOMENDAÇÃO DA LUMINIA]
     -  Nova atividade
     -  Prova próxima
     -  Simulado
@@ -521,7 +521,7 @@
     -  Feedback de redação
     -  Nova nota
     -  Recomendação da LuminIA
-52. 52. Sistema de metas
+52. 52. Sistema de metas [PENDENTE — SÓ HÁ METAS COLETIVAS NO GROUPS; METAS PESSOAIS DO ALUNO NÃO EXISTEM]
     -  Meta de questões
     -  Meta de tempo
     -  Meta de nota
@@ -530,20 +530,20 @@
     -  Meta mensal
     -  Acompanhamento visual
     -  Recompensas
-53. 53. Painel dos responsáveis
+53. 53. Painel dos responsáveis [PENDENTE — DEPENDE DA DECISÃO JURÍDICA SOBRE CONSENTIMENTO]
     -  Opcional para instituições
     -  Evolução
     -  Frequência de estudo
     -  Metas
     -  Comunicados
     -  Informações acadêmicas permitidas
-54. 54. PWA e modo offline
+54. 54. PWA e modo offline [PENDENTE]
     -  Instalar como aplicativo
     -  Resolver listas offline
     -  Flashcards offline
     -  Revisões offline
     -  Sincronização ao reconectar
-55. 55. Pagamentos [PLANEJADO — O MESMO PROVEDOR DEVE ATENDER AS ASSINATURAS E O SPLIT DO MARKETPLACE (ITEM 62); A LANDING JÁ CITA PLANOS FREE/PREMIUM]
+55. 55. Pagamentos [IMPLEMENTADO EM 14/11/2026 — ASAAS; COBRANÇA REAL AGUARDA CONTA E CHAVES; SPLIT DO MARKETPLACE NA FASE 4]
     -  Plano gratuito
     -  Plano individual
     -  Plano premium
@@ -609,7 +609,7 @@
     -  Plataformas de pagamento
     -  Notificações push
     -  E-mail
-61. 61. Lumina Groups — grupos e salas coletivas de estudo [PLANEJADO — FASE 2; VER docs/LUMINA_GROUPS.md]
+61. 61. Lumina Groups — grupos e salas coletivas de estudo [IMPLEMENTADO 15–18/11/2026 — ETAPAS 1 A 4; DESAFIOS ENTRE GRUPOS PENDENTES; VER docs/LUMINA_GROUPS.md]
     -  Criar grupos privados (nome, descrição, imagem, propósito)
     -  Convite por código e por link; aceitar ou recusar
     -  Papéis no grupo: dono, administrador, moderador, membro
